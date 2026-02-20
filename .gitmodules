@@ -1,0 +1,3 @@
+[submodule "so101_nexus/assets/SO-ARM100"]
+	path = so101_nexus/assets/SO-ARM100
+	url = https://github.com/TheRobotStudio/SO-ARM100.git
