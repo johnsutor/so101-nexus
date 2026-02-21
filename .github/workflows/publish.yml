@@ -1,0 +1,57 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [so101-nexus-core, so101-nexus-mujoco, so101-nexus-maniskill]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build ${{ matrix.package }}
+        run: uv build --package ${{ matrix.package }} --out-dir dist/
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists-${{ matrix.package }}
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+
+    steps:
+      - name: Download all distributions
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-dists-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

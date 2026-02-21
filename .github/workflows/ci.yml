@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dev dependencies
+        run: uv sync --group dev
+
+      - name: Check formatting and lint
+        run: make lint
+
+  test-mujoco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install MuJoCo package with test dependencies
+        run: uv sync --package so101-nexus-mujoco --group test
+
+      - name: Run MuJoCo tests
+        run: make test-mujoco
+
+  test-maniskill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ManiSkill package with test dependencies
+        run: uv sync --package so101-nexus-maniskill --group test --prerelease=allow
+
+      - name: Run ManiSkill tests
+        run: make test-maniskill
