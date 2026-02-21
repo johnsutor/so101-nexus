@@ -2,8 +2,8 @@ import gymnasium as gym
 import pytest
 import torch
 
-import so101_nexus.maniskill  # noqa: F401
-from so101_nexus.maniskill.pick_cube import (
+import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_maniskill.pick_cube import (
     PICK_CUBE_CONFIGS,
     PickCubeGoalSO100Env,
     PickCubeGoalSO101Env,

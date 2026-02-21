@@ -3,7 +3,7 @@
 <img src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/assets/so101.png" width="250" alt="SO-101 Arm">
 
 <h3 align="center">
-    <p>SO-=101-Nexus: Simulation environments for the SO-101 robot arm across ManiSkill, Genesis, and MuJoCo</p>
+    <p>SO101-Nexus: Simulation environments for the SO-101 robot arm across ManiSkill, Genesis, and MuJoCo</p>
 </h3>
 
 <p align="center">
@@ -23,34 +23,24 @@ SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.fara
 
 ## Installation
 
-### From PyPI
+Install only the backend you need. Each backend is a separate package that automatically pulls in the shared core:
 
 ```bash
-pip install so101-nexus
+pip install so101-nexus-mujoco      # MuJoCo backend
+pip install so101-nexus-maniskill   # ManiSkill backend
 ```
 
-### From source
-
-```bash
-pip install git+https://github.com/johnsutor/so101-nexus.git
-```
-
-### Repository
-
-To run examples locally, clone the repository:
+### From source (development)
 
 ```bash
 git clone --recurse-submodules https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
-```
 
-Then install with your backend(s) of choice:
+# Install a single backend for development
+uv sync --package so101-nexus-mujoco
 
-```bash
-pip install -e ".[maniskill]"   # ManiSkill backend
-pip install -e ".[genesis]"     # Genesis backend (coming soon)
-pip install -e ".[mujoco]"      # MuJoCo backend (coming soon)
-pip install -e ".[all]"         # All backends
+# Or for ManiSkill
+uv sync --package so101-nexus-maniskill --prerelease=allow
 ```
 
 > [!NOTE]
@@ -60,13 +50,13 @@ pip install -e ".[all]"         # All backends
 
 SO101-Nexus registers environments with Gymnasium. Any registered environment can be instantiated with `gym.make`.
 
-### Pick and Place
+### ManiSkill — Pick and Place
 
 `PickCubeGoalSO101-v1` requires the robot to place a cube at a target goal position while remaining stationary.
 
 ```python
 import gymnasium as gym
-import so101_nexus  # noqa: F401
+import so101_nexus_maniskill  # noqa: F401
 
 env = gym.make(
     "PickCubeGoalSO101-v1",
@@ -85,13 +75,13 @@ for _ in range(256):
 env.close()
 ```
 
-### Pick and Lift
+### ManiSkill — Pick and Lift
 
 `PickCubeLiftSO101-v1` requires the robot to grasp a cube and lift it above a height threshold.
 
 ```python
 import gymnasium as gym
-import so101_nexus
+import so101_nexus_maniskill
 
 env = gym.make(
     "PickCubeLiftSO101-v1",
@@ -110,13 +100,31 @@ for _ in range(256):
 env.close()
 ```
 
+### MuJoCo — Pick and Place
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco  # noqa: F401
+
+env = gym.make("MuJoCoPickCubeGoal-v1", render_mode="rgb_array")
+
+obs, info = env.reset()
+for _ in range(256):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
 ### Parallel Environments
 
 ManiSkill and Genesis backends support batched simulation for large-scale data collection and training:
 
 ```python
 import gymnasium as gym
-import so101_nexus
+import so101_nexus_maniskill
 
 env = gym.make(
     "PickCubeLiftSO101-v1",
@@ -135,7 +143,7 @@ Use the `RecordEpisode` wrapper to save trajectories and videos:
 ```python
 import gymnasium as gym
 from mani_skill.utils.wrappers.record import RecordEpisode
-import so101_nexus
+import so101_nexus_maniskill
 
 env = gym.make("PickCubeLiftSO101-v1", obs_mode="state", render_mode="rgb_array")
 env = RecordEpisode(env, output_dir="videos", save_trajectory=True, video_fps=30)
@@ -151,6 +159,8 @@ env.close()
 
 ## Environments
 
+### ManiSkill
+
 | Environment | Robot | Task | Description |
 |---|---|---|---|
 | `PickCubeGoal-v1` | Configurable | Place | Place cube at goal position (robot must be static) |
@@ -160,29 +170,38 @@ env.close()
 | `PickCubeLiftSO100-v1` | SO-100 | Lift | SO-100 specific lift task |
 | `PickCubeLiftSO101-v1` | SO-101 | Lift | SO-101 specific lift task |
 
+### MuJoCo
+
+| Environment | Robot | Task | Description |
+|---|---|---|---|
+| `MuJoCoPickCubeGoal-v1` | SO-101 | Place | Place cube at goal position |
+| `MuJoCoPickCubeLift-v1` | SO-101 | Lift | Grasp and lift cube above 0.05m |
+
 All environments have a maximum episode length of **256 steps**.
 
 ## Roadmap
 
 - [x] ManiSkill environments for SO-100 and SO-101
+- [x] MuJoCo environments for SO-101
 - [ ] Genesis environments for SO-100 and SO-101
-- [ ] MuJoCo environments for SO-100 and SO-101
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
 
 
 ## Development
 
-To contribute or customize SO101-Nexus, install with development dependencies:
+To contribute or customize SO101-Nexus, clone and install with development dependencies:
 
 ```bash
 git clone --recurse-submodules https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
-pip install -e ".[maniskill,dev]"
+uv sync --package so101-nexus-mujoco
 ```
 
 Run the test suite:
 
 ```bash
+make test-mujoco
+make test-maniskill
 make test
 ```
 

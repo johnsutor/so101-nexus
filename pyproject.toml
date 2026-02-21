@@ -1,20 +1,22 @@
 [project]
-name = "so101-nexus"
+name = "so101-nexus-workspace"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Workspace root for SO101-Nexus simulation environments"
 requires-python = ">=3.10"
-dependencies = []
 
-[project.optional-dependencies]
-maniskill = ["mani_skill"]
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv]
+conflicts = [
+    [
+        { package = "so101-nexus-maniskill" },
+        { package = "so101-nexus-mujoco" },
+    ],
+]
 
 [dependency-groups]
-dev = [
-    "pytest-cov>=7.0.0",
-    "ruff",
-    "ty",
-]
+dev = ["pytest-cov>=7.0.0", "ruff", "ty"]
 
 [tool.ruff]
 line-length = 100
@@ -25,13 +27,13 @@ select = ["E", "F", "I", "W"]
 ignore = ["F403", "F405"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["so101_nexus"]
+known-first-party = ["so101_nexus_core", "so101_nexus_maniskill", "so101_nexus_mujoco"]
 
 [tool.coverage.run]
 source = ["."]
 omit = [
     "**/__init__.py",
-    "tests/*",
+    "**/tests/*",
 ]
 
 [tool.coverage.report]

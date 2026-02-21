@@ -1,5 +1,4 @@
 import copy
-from pathlib import Path
 
 import numpy as np
 import sapien
@@ -13,7 +12,9 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from transforms3d.euler import euler2quat
 
-_URDF_DIR = Path(__file__).resolve().parent.parent / "assets" / "SO-ARM100" / "Simulation" / "SO101"
+from so101_nexus_core import get_so101_simulation_dir
+
+_URDF_DIR = get_so101_simulation_dir()
 
 
 @register_agent()
@@ -112,14 +113,19 @@ class SO101(BaseAgent):
     ) -> torch.Tensor:
         """Check if the robot is grasping an object.
 
-        Args:
-            object: The object to check if the robot is grasping.
-            min_force: Minimum contact force (N) required for a finger to be
-                considered in contact.
-            max_angle: Maximum angle (degrees) between the finger's closing
-                direction and the contact force vector.
+        Parameters
+        ----------
+        object : Actor
+            The object to check if the robot is grasping.
+        min_force : float
+            Minimum contact force (N) required for a finger to be considered in contact.
+        max_angle : float
+            Maximum angle (degrees) between the finger's closing direction and the contact
+            force vector.
 
-        Returns:
+        Returns
+        -------
+        torch.Tensor
             Boolean tensor of shape ``(num_envs,)`` indicating whether each
             environment's robot is grasping *object*.
         """
@@ -139,11 +145,14 @@ class SO101(BaseAgent):
     def is_static(self, threshold: float = 0.2) -> torch.Tensor:
         """Return whether the arm joints are effectively stationary.
 
-        Args:
-            threshold: Maximum absolute joint velocity (rad/s) below which the
-                robot is considered static.
+        Parameters
+        ----------
+        threshold : float
+            Maximum absolute joint velocity (rad/s) below which the robot is considered static.
 
-        Returns:
+        Returns
+        -------
+        torch.Tensor
             Boolean tensor of shape ``(num_envs,)`` that is ``True`` when all
             arm joints are within *threshold*.
         """
@@ -162,14 +171,19 @@ class SO101(BaseAgent):
         Y-axis aligned with *closing*, and its X-axis equal to
         ``cross(closing, approaching)``.
 
-        Args:
-            approaching: Unit vector pointing from the TCP toward the object
-                along the approach direction.
-            closing: Unit vector pointing along the gripper-closing direction
-                (from one finger toward the other).
-            center: 3-D position of the grasp centre in world coordinates.
+        Parameters
+        ----------
+        approaching : np.ndarray
+            Unit vector pointing from the TCP toward the object along the approach direction.
+        closing : np.ndarray
+            Unit vector pointing along the gripper-closing direction (from one finger toward
+            the other).
+        center : np.ndarray
+            3-D position of the grasp centre in world coordinates.
 
-        Returns:
+        Returns
+        -------
+        sapien.Pose
             A :class:`sapien.Pose` representing the desired grasp frame.
         """
         assert np.abs(1 - np.linalg.norm(approaching)) < 1e-3

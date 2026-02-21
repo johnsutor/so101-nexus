@@ -17,20 +17,8 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus.maniskill.so101_agent import SO101
-
-CubeColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
-
-CUBE_COLOR_MAP: dict[str, list[float]] = {
-    "red": [1.0, 0.0, 0.0, 1.0],
-    "orange": [1.0, 0.5, 0.0, 1.0],
-    "yellow": [1.0, 1.0, 0.0, 1.0],
-    "green": [0.0, 1.0, 0.0, 1.0],
-    "blue": [0.0, 0.0, 1.0, 1.0],
-    "purple": [0.5, 0.0, 0.5, 1.0],
-    "black": [0.0, 0.0, 0.0, 1.0],
-    "white": [1.0, 1.0, 1.0, 1.0],
-}
+from so101_nexus_core.types import CUBE_COLOR_MAP, CubeColorName
+from so101_nexus_maniskill.so101_agent import SO101
 
 PICK_CUBE_CONFIGS: dict[str, dict] = {
     "so100": {
@@ -272,7 +260,9 @@ class PickCubeEnv(BaseEnv):
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Compute per-environment success metrics.
 
-        Returns:
+        Returns
+        -------
+        dict
             A dict with keys ``obj_to_goal_dist``, ``is_obj_placed``,
             ``is_grasped``, ``is_robot_static``, ``lift_height``, and
             ``success``, each a tensor of shape ``(num_envs,)``.
@@ -323,7 +313,9 @@ class PickCubeEnv(BaseEnv):
         when grasped), static bonus (+1 when placed), and a success bonus of
         5.0 when the episode is solved.
 
-        Returns:
+        Returns
+        -------
+        torch.Tensor
             Reward tensor of shape ``(num_envs,)``.
         """
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
@@ -365,7 +357,9 @@ class PickCubeLiftEnv(PickCubeEnv):
         Success requires the cube to be lifted above ``LIFT_THRESHOLD`` metres
         while actively grasped.
 
-        Returns:
+        Returns
+        -------
+        dict
             A dict with keys ``obj_to_goal_dist``, ``is_obj_placed``,
             ``is_grasped``, ``is_robot_static``, ``lift_height``, and
             ``success``, each a tensor of shape ``(num_envs,)``.
@@ -396,7 +390,9 @@ class PickCubeLiftEnv(PickCubeEnv):
         The reward is composed of: reaching (1), grasping (+1), lifting (+1
         when grasped), and a success bonus of 6.0 when the episode is solved.
 
-        Returns:
+        Returns
+        -------
+        torch.Tensor
             Reward tensor of shape ``(num_envs,)``.
         """
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
