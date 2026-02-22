@@ -42,7 +42,7 @@ def _to_uint8(img) -> np.ndarray:
         img = img.cpu().numpy()
     img = np.asarray(img)
     if img.ndim == 4:
-        img = img[0]  
+        img = img[0]
     if img.dtype != np.uint8:
         img = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
     return img

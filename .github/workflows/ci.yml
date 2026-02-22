@@ -31,6 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install MuJoCo dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
@@ -43,7 +48,7 @@ jobs:
         run: uv sync --package so101-nexus-mujoco --group test
 
       - name: Run MuJoCo tests
-        run: make test-mujoco
+        run: xvfb-run -a make test-mujoco
 
   test-maniskill:
     runs-on: ubuntu-latest
