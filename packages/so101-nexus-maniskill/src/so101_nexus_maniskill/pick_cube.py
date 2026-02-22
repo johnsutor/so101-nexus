@@ -32,6 +32,11 @@ PICK_CUBE_CONFIGS: dict[str, dict] = {
         "human_cam_eye_pos": [0.0, 0.4, 0.4],
         "human_cam_target_pos": [-0.46, 0.0, 0.1],
         "wrist_camera_mount_link": "Fixed_Jaw",
+        "wrist_cam_pos_center": [0.0, -0.045, -0.045],
+        "wrist_cam_pos_noise": [0.0, 0.015, 0.015],
+        "wrist_cam_euler_center": [-np.pi, np.radians(-37.5), np.radians(-90)],
+        "wrist_cam_euler_noise": [0.0, np.radians(7.5), 0.0],
+        "wrist_cam_fov_range": [np.pi / 3, np.pi / 2],
     },
     "so101": {
         "cube_half_size": 0.0125,
@@ -44,6 +49,11 @@ PICK_CUBE_CONFIGS: dict[str, dict] = {
         "human_cam_eye_pos": [0.0, 0.4, 0.4],
         "human_cam_target_pos": [-0.46, 0.0, 0.1],
         "wrist_camera_mount_link": "gripper_link",
+        "wrist_cam_pos_center": [0.0, 0.04, -0.04],
+        "wrist_cam_pos_noise": [0.005, 0.01, 0.01],
+        "wrist_cam_euler_center": [-np.pi, np.radians(37.5), np.radians(-90)],
+        "wrist_cam_euler_noise": [0.0, 0.2, 0.0],
+        "wrist_cam_fov_range": [np.pi / 3, np.pi / 2],
     },
 }
 
@@ -150,18 +160,21 @@ class PickCubeEnv(BaseEnv):
 
         if self.camera_mode in ("wrist", "both"):
             mount_link = self.agent.robot.links_map[cfg["wrist_camera_mount_link"]]
-            roll_rad = np.radians(-180)
-            pitch_rad = np.radians(np.random.uniform(-45, -30))
-            yaw_rad = np.radians(-90)
-            q = euler2quat(roll_rad, pitch_rad, yaw_rad, axes="sxyz")
-            x = 0.0
-            y = np.random.uniform(-0.06, -0.03)
-            z = np.random.uniform(-0.06, -0.03)
-            fov = np.random.uniform(np.pi / 3, np.pi / 2)
+            pos_c = cfg["wrist_cam_pos_center"]
+            pos_n = cfg["wrist_cam_pos_noise"]
+            eul_c = cfg["wrist_cam_euler_center"]
+            eul_n = cfg["wrist_cam_euler_noise"]
+            fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
+
+            p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n)]
+            e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n)]
+            q = euler2quat(*e, axes="sxyz")
+            fov = np.random.uniform(fov_lo, fov_hi)
+
             configs.append(
                 CameraConfig(
                     "wrist_camera",
-                    sapien.Pose(p=[x, y, z], q=q),
+                    sapien.Pose(p=p, q=q),
                     self.camera_width,
                     self.camera_height,
                     fov,

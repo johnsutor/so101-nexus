@@ -140,6 +140,36 @@ class TestEpisodeLogic:
         assert 0.0 <= reward <= 1.0
 
 
+class TestCameraModes:
+    def test_state_only_returns_flat_array(self):
+        env = PickCubeEnv(camera_mode="state_only")
+        obs, _ = env.reset()
+        assert isinstance(obs, np.ndarray)
+        assert obs.shape == (24,)
+        env.close()
+
+    def test_wrist_mode_returns_dict(self):
+        env = PickCubeEnv(camera_mode="wrist")
+        obs, _ = env.reset()
+        assert isinstance(obs, dict)
+        assert "state" in obs
+        assert "wrist_camera" in obs
+        assert obs["state"].shape == (24,)
+        assert obs["wrist_camera"].shape == (224, 224, 3)
+        assert obs["wrist_camera"].dtype == np.uint8
+        env.close()
+
+    def test_wrist_mode_step_returns_dict(self):
+        env = PickCubeEnv(camera_mode="wrist")
+        env.reset()
+        action = env.action_space.sample()
+        obs, _, _, _, _ = env.step(action)
+        assert isinstance(obs, dict)
+        assert obs["wrist_camera"].shape == (224, 224, 3)
+        assert obs["wrist_camera"].dtype == np.uint8
+        env.close()
+
+
 class TestRenderModes:
     def test_rgb_array(self):
         env = gym.make("MuJoCoPickCubeGoal-v1", render_mode="rgb_array")

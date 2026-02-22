@@ -184,7 +184,10 @@ All environments have a maximum episode length of **256 steps**.
 - [x] ManiSkill environments for SO-100 and SO-101
 - [x] MuJoCo environments for SO-101
 - [ ] Genesis environments for SO-100 and SO-101
+- [ ] Add a variety of starting poses for the SO-100 and SO-101
+- [ ] Add documentation, with demo videos of each environment
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
+- [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub) 
 
 
 ## Development

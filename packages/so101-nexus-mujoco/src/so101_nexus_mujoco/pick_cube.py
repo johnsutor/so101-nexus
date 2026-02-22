@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from typing import Literal
 
 import gymnasium
 import mujoco
@@ -77,6 +78,9 @@ class PickCubeEnv(gymnasium.Env):
         cube_color: CubeColorName = "red",
         cube_half_size: float = 0.0125,
         render_mode: str | None = None,
+        camera_mode: Literal["state_only", "wrist"] = "state_only",
+        camera_width: int = 224,
+        camera_height: int = 224,
     ):
         if cube_color not in CUBE_COLOR_MAP:
             raise ValueError(
@@ -88,6 +92,9 @@ class PickCubeEnv(gymnasium.Env):
         self.cube_color_name = cube_color
         self.cube_half_size = cube_half_size
         self.render_mode = render_mode
+        self.camera_mode = camera_mode
+        self.camera_width = camera_width
+        self.camera_height = camera_height
 
         xml_string = _build_scene_xml(cube_half_size, CUBE_COLOR_MAP[cube_color])
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
@@ -121,6 +128,14 @@ class PickCubeEnv(gymnasium.Env):
         self._gripper_geom_ids = self._get_collision_geoms(self._gripper_body_id)
         self._jaw_geom_ids = self._get_collision_geoms(self._jaw_body_id)
 
+        # Add finger pad geoms for better grasp detection
+        static_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "static_finger_pad")
+        moving_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "moving_finger_pad")
+        if static_pad_id >= 0:
+            self._gripper_geom_ids.add(static_pad_id)
+        if moving_pad_id >= 0:
+            self._jaw_geom_ids.add(moving_pad_id)
+
         self._arm_qvel_addrs = np.array(
             [self.model.jnt_dofadr[self._joint_ids[i]] for i in range(5)], dtype=np.int32
         )
@@ -132,7 +147,30 @@ class PickCubeEnv(gymnasium.Env):
             dtype=np.float32,
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64)
+        if self.camera_mode == "wrist":
+            self._wrist_cam_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam"
+            )
+            self._wrist_renderer = mujoco.Renderer(
+                self.model, height=self.camera_height, width=self.camera_width
+            )
+            self.observation_space = spaces.Dict(
+                {
+                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64),
+                    "wrist_camera": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.camera_height, self.camera_width, 3),
+                        dtype=np.uint8,
+                    ),
+                }
+            )
+        else:
+            self._wrist_cam_id = None
+            self._wrist_renderer = None
+            self.observation_space = spaces.Box(
+                low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64
+            )
 
         self._renderer = None
         self._viewer = None
@@ -188,14 +226,21 @@ class PickCubeEnv(gymnasium.Env):
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
         return bool(np.all(np.abs(arm_vels) < 0.2))
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> np.ndarray | dict:
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         goal_pos = self._get_goal_pos()
         obj_pose = self._get_cube_pose()
         tcp_to_obj = obj_pose[:3] - tcp_pose[:3]
         obj_to_goal = goal_pos - obj_pose[:3]
-        return np.concatenate([tcp_pose, is_grasped, goal_pos, obj_pose, tcp_to_obj, obj_to_goal])
+        state = np.concatenate([tcp_pose, is_grasped, goal_pos, obj_pose, tcp_to_obj, obj_to_goal])
+
+        if self.camera_mode == "wrist":
+            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
+            wrist_img = self._wrist_renderer.render()
+            return {"state": state, "wrist_camera": wrist_img}
+
+        return state
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
@@ -273,6 +318,23 @@ class PickCubeEnv(gymnasium.Env):
 
         self.data.mocap_pos[self._goal_mocap_id] = [goal_x, goal_y, goal_z]
 
+        if self.camera_mode == "wrist":
+            pitch = self.np_random.uniform(-0.6, 0.0)
+            euler = np.array([pitch, 0.0, 2 * np.pi])
+            quat = np.zeros(4)
+            mujoco.mju_euler2Quat(quat, euler, "XYZ")
+            mat = np.zeros(9)
+            mujoco.mju_quat2Mat(mat, quat)
+            self.model.cam_mat0[self._wrist_cam_id] = mat
+
+            self.model.cam_pos0[self._wrist_cam_id] = [
+                self.np_random.uniform(-0.005, 0.005),
+                0.04 + self.np_random.uniform(-0.01, 0.01),
+                -0.04 + self.np_random.uniform(-0.01, 0.01),
+            ]
+
+            self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(60, 90)
+
         mujoco.mj_forward(self.model, self.data)
 
         obs = self._get_obs()
@@ -307,6 +369,9 @@ class PickCubeEnv(gymnasium.Env):
         return None
 
     def close(self):
+        if self._wrist_renderer is not None:
+            self._wrist_renderer.close()
+            self._wrist_renderer = None
         if self._renderer is not None:
             self._renderer.close()
             self._renderer = None
