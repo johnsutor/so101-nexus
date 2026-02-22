@@ -2,10 +2,13 @@
 name = "so101-nexus-mujoco"
 version = "0.1.0"
 description = "MuJoCo simulation environments for the SO-101 robot arm"
-readme = "../../README.md"
 requires-python = ">=3.10"
 dependencies = ["so101-nexus-core", "mujoco>=3.0.0", "gymnasium>=1.0.0"]
 license = "Apache-2.0"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [{ include-group = "test" }]
@@ -13,10 +16,3 @@ test = ["pytest>=7.0.0", "pytest-cov>=7.0.0"]
 
 [tool.uv.sources]
 so101-nexus-core = { workspace = true }
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/so101_nexus_mujoco"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
