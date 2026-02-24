@@ -9,7 +9,7 @@ import numpy as np
 from gymnasium import spaces
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.types import CUBE_COLOR_MAP, CubeColorName
+from so101_nexus_core.types import CUBE_COLOR_MAP, ControlMode, CubeColorName
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -73,6 +73,12 @@ def _build_scene_xml(
 class PickCubeEnv(gymnasium.Env):
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
 
+    _VALID_CONTROL_MODES: set[str] = {
+        "pd_joint_pos",
+        "pd_joint_delta_pos",
+        "pd_joint_target_delta_pos",
+    }
+
     def __init__(
         self,
         cube_color: CubeColorName = "red",
@@ -81,6 +87,7 @@ class PickCubeEnv(gymnasium.Env):
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         camera_width: int = 224,
         camera_height: int = 224,
+        control_mode: ControlMode = "pd_joint_pos",
     ):
         if cube_color not in CUBE_COLOR_MAP:
             raise ValueError(
@@ -88,7 +95,11 @@ class PickCubeEnv(gymnasium.Env):
             )
         if not (0.01 <= cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
+        if control_mode not in self._VALID_CONTROL_MODES:
+            valid = sorted(self._VALID_CONTROL_MODES)
+            raise ValueError(f"control_mode must be one of {valid}, got {control_mode!r}")
 
+        self.control_mode = control_mode
         self.cube_color_name = cube_color
         self.cube_half_size = cube_half_size
         self.render_mode = render_mode
@@ -141,11 +152,22 @@ class PickCubeEnv(gymnasium.Env):
         )
 
         ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
-        self.action_space = spaces.Box(
-            low=ctrl_range[:, 0].astype(np.float32),
-            high=ctrl_range[:, 1].astype(np.float32),
-            dtype=np.float32,
-        )
+        self._ctrl_low = ctrl_range[:, 0].copy()
+        self._ctrl_high = ctrl_range[:, 1].copy()
+
+        if self.control_mode == "pd_joint_pos":
+            self.action_space = spaces.Box(
+                low=self._ctrl_low.astype(np.float32),
+                high=self._ctrl_high.astype(np.float32),
+                dtype=np.float32,
+            )
+        else:
+            # Delta bounds: +-0.05 for arm joints, +-0.2 for gripper (matches ManiSkill)
+            delta_low = np.array([-0.05, -0.05, -0.05, -0.05, -0.05, -0.2], dtype=np.float32)
+            delta_high = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float32)
+            self.action_space = spaces.Box(low=delta_low, high=delta_high, dtype=np.float32)
+
+        self._prev_target: np.ndarray | None = None
 
         if self.camera_mode == "wrist":
             self._wrist_cam_id = mujoco.mj_name2id(
@@ -335,15 +357,32 @@ class PickCubeEnv(gymnasium.Env):
 
             self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(60, 90)
 
+        self._prev_target = _REST_QPOS.copy()
+
         mujoco.mj_forward(self.model, self.data)
 
         obs = self._get_obs()
         info = self._get_info()
         return obs, info
 
+    def _get_current_qpos(self) -> np.ndarray:
+        return np.array(
+            [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
+            dtype=np.float64,
+        )
+
     def step(self, action):
         action = np.clip(action, self.action_space.low, self.action_space.high)
-        self.data.ctrl[self._actuator_ids] = action
+
+        if self.control_mode == "pd_joint_pos":
+            ctrl = action
+        elif self.control_mode == "pd_joint_delta_pos":
+            ctrl = np.clip(self._get_current_qpos() + action, self._ctrl_low, self._ctrl_high)
+        else:  # pd_joint_target_delta_pos
+            self._prev_target = np.clip(self._prev_target + action, self._ctrl_low, self._ctrl_high)
+            ctrl = self._prev_target
+
+        self.data.ctrl[self._actuator_ids] = ctrl
 
         for _ in range(_N_SUBSTEPS):
             mujoco.mj_step(self.model, self.data)

@@ -10,6 +10,7 @@ import so101_nexus_mujoco  # noqa: F401
 from so101_nexus_mujoco.pick_cube import (
     _CUBE_SPAWN_CENTER,
     _CUBE_SPAWN_HALF_SIZE,
+    _REST_QPOS,
     PickCubeEnv,
 )
 
@@ -168,6 +169,56 @@ class TestCameraModes:
         assert obs["wrist_camera"].shape == (224, 224, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
+
+
+class TestControlModes:
+    ALL_MODES = ["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+
+    @pytest.mark.parametrize("mode", ALL_MODES)
+    def test_action_shape(self, mode):
+        env = PickCubeEnv(control_mode=mode)
+        assert env.action_space.shape == (6,)
+        env.close()
+
+    @pytest.mark.parametrize("mode", ALL_MODES)
+    def test_reset_and_step(self, mode):
+        env = PickCubeEnv(control_mode=mode)
+        obs, info = env.reset()
+        assert isinstance(obs, np.ndarray)
+        assert isinstance(info, dict)
+        action = env.action_space.sample()
+        obs, reward, terminated, truncated, info = env.step(action)
+        assert isinstance(obs, np.ndarray)
+        assert reward is not None
+        env.close()
+
+    @pytest.mark.parametrize("mode", ["pd_joint_delta_pos", "pd_joint_target_delta_pos"])
+    def test_zero_action_stays_near_rest(self, mode):
+        env = PickCubeEnv(control_mode=mode)
+        env.reset()
+        zero = np.zeros(6, dtype=np.float32)
+        for _ in range(10):
+            env.step(zero)
+        # Check arm joints (first 5); gripper can drift due to physics
+        qpos = env._get_current_qpos()[:5]
+        assert np.allclose(qpos, _REST_QPOS[:5], atol=0.1)
+        env.close()
+
+    def test_target_delta_accumulates(self):
+        env = PickCubeEnv(control_mode="pd_joint_target_delta_pos")
+        env.reset()
+        small_delta = np.array([0.01, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        for _ in range(5):
+            env.step(small_delta)
+        expected_target = _REST_QPOS.copy()
+        expected_target[0] += 0.05
+        expected_target = np.clip(expected_target, env._ctrl_low, env._ctrl_high)
+        assert np.allclose(env._prev_target, expected_target, atol=1e-6)
+        env.close()
+
+    def test_invalid_control_mode(self):
+        with pytest.raises(ValueError, match="control_mode"):
+            PickCubeEnv(control_mode="invalid_mode")
 
 
 class TestRenderModes:
