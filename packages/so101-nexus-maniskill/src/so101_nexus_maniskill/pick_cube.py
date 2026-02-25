@@ -2,6 +2,7 @@ from typing import Any, Literal, Union
 
 import numpy as np
 import sapien
+import sapien.render
 import torch
 from mani_skill.agents.robots.so100.so_100 import SO100
 from mani_skill.envs.sapien_env import BaseEnv
@@ -10,27 +11,39 @@ from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
-from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.types import CUBE_COLOR_MAP, CubeColorName
+from so101_nexus_core.types import (
+    CUBE_COLOR_MAP,
+    DEFAULT_CUBE_HALF_SIZE,
+    DEFAULT_CUBE_SPAWN_HALF_SIZE,
+    DEFAULT_GOAL_THRESH,
+    DEFAULT_GROUND_COLOR,
+    DEFAULT_LIFT_THRESHOLD,
+    DEFAULT_MAX_GOAL_HEIGHT,
+    REWARD_WEIGHT_COMPLETION_BONUS,
+    REWARD_WEIGHT_GRASPING,
+    REWARD_WEIGHT_REACHING,
+    REWARD_WEIGHT_TASK_OBJECTIVE,
+    CubeColorName,
+)
 from so101_nexus_maniskill.so101_agent import SO101
 
 PICK_CUBE_CONFIGS: dict[str, dict] = {
     "so100": {
-        "cube_half_size": 0.0125,
-        "goal_thresh": 0.025,
-        "cube_spawn_half_size": 0.05,
-        "cube_spawn_center": (-0.46, 0),
-        "max_goal_height": 0.08,
-        "sensor_cam_eye_pos": [-0.27, 0, 0.4],
-        "sensor_cam_target_pos": [-0.46, 0, 0.02],
+        "cube_half_size": DEFAULT_CUBE_HALF_SIZE,
+        "goal_thresh": DEFAULT_GOAL_THRESH,
+        "cube_spawn_half_size": DEFAULT_CUBE_SPAWN_HALF_SIZE,
+        "cube_spawn_center": (0.15, 0),
+        "max_goal_height": DEFAULT_MAX_GOAL_HEIGHT,
+        "sensor_cam_eye_pos": [0.0, 0.3, 0.3],
+        "sensor_cam_target_pos": [0.15, 0, 0.02],
         "human_cam_eye_pos": [0.0, 0.4, 0.4],
-        "human_cam_target_pos": [-0.46, 0.0, 0.1],
+        "human_cam_target_pos": [0.15, 0.0, 0.05],
         "wrist_camera_mount_link": "Fixed_Jaw",
         "wrist_cam_pos_center": [0.0, -0.045, -0.045],
         "wrist_cam_pos_noise": [0.0, 0.015, 0.015],
@@ -39,15 +52,15 @@ PICK_CUBE_CONFIGS: dict[str, dict] = {
         "wrist_cam_fov_range": [np.pi / 3, np.pi / 2],
     },
     "so101": {
-        "cube_half_size": 0.0125,
-        "goal_thresh": 0.025,
-        "cube_spawn_half_size": 0.05,
-        "cube_spawn_center": (-0.46, 0),
-        "max_goal_height": 0.08,
-        "sensor_cam_eye_pos": [-0.27, 0, 0.4],
-        "sensor_cam_target_pos": [-0.46, 0, 0.02],
+        "cube_half_size": DEFAULT_CUBE_HALF_SIZE,
+        "goal_thresh": DEFAULT_GOAL_THRESH,
+        "cube_spawn_half_size": DEFAULT_CUBE_SPAWN_HALF_SIZE,
+        "cube_spawn_center": (0.15, 0),
+        "max_goal_height": DEFAULT_MAX_GOAL_HEIGHT,
+        "sensor_cam_eye_pos": [0.0, 0.3, 0.3],
+        "sensor_cam_target_pos": [0.15, 0, 0.02],
         "human_cam_eye_pos": [0.0, 0.4, 0.4],
-        "human_cam_target_pos": [-0.46, 0.0, 0.1],
+        "human_cam_target_pos": [0.15, 0.0, 0.05],
         "wrist_camera_mount_link": "gripper_link",
         "wrist_cam_pos_center": [0.0, 0.04, -0.04],
         "wrist_cam_pos_noise": [0.005, 0.01, 0.01],
@@ -71,14 +84,14 @@ class PickCubeEnv(BaseEnv):
     SUPPORTED_ROBOTS = ["so100", "so101"]
     agent: Union[SO100, SO101]
 
-    LIFT_THRESHOLD = 0.05
+    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
 
     def __init__(
         self,
         *args,
         robot_uids: str = "so100",
         cube_color: CubeColorName = "red",
-        cube_half_size: float = 0.02,
+        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         robot_color: tuple[float, float, float, float] | None = None,
         camera_mode: CameraMode = "fixed",
         robot_init_qpos_noise: float = 0.02,
@@ -126,7 +139,6 @@ class PickCubeEnv(BaseEnv):
 
     @property
     def _default_sim_config(self) -> SimConfig:
-        """Return the default simulation configuration with increased contact buffers."""
         return SimConfig(
             gpu_memory_config=GPUMemoryConfig(
                 max_rigid_contact_count=2**20, max_rigid_patch_count=2**19
@@ -135,12 +147,6 @@ class PickCubeEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self) -> list[CameraConfig]:
-        """Return sensor camera configs based on the current ``camera_mode``.
-
-        Returns a fixed overhead camera, a wrist-mounted camera, or both,
-        depending on whether *camera_mode* is ``"fixed"``, ``"wrist"``, or
-        ``"both"``.
-        """
         cfg = self._robot_cfg
         configs: list[CameraConfig] = []
 
@@ -188,21 +194,50 @@ class PickCubeEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self) -> CameraConfig:
-        """Return a high-resolution camera config for human rendering."""
         cfg = self._robot_cfg
         pose = sapien_utils.look_at(cfg["human_cam_eye_pos"], cfg["human_cam_target_pos"])
         return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
     def _load_agent(self, options: dict) -> None:
-        """Load the robot agent at its fixed base position in the scene."""
-        super()._load_agent(options, sapien.Pose(p=[-0.615, 0, 0]))
+        super()._load_agent(options, sapien.Pose(p=[0, 0, 0]))
+
+    def _load_lighting(self, options: dict) -> None:
+        self.scene.set_ambient_light([0.3, 0.3, 0.3])
+        self.scene.add_directional_light(
+            [1, 1, -1], color=[1, 1, 1], shadow=self.enable_shadow,
+            shadow_scale=5, shadow_map_size=2048,
+        )
+        self.scene.add_directional_light([0, 0, -1], color=[1, 1, 1])
 
     def _load_scene(self, options: dict) -> None:
-        """Build the table scene, cube actors, goal site, and optional robot colouring."""
-        self.table_scene = TableSceneBuilder(
-            env=self, robot_init_qpos_noise=self.robot_init_qpos_noise
+        ground_builder = self.scene.create_actor_builder()
+        ground_builder.add_plane_collision(
+            sapien.Pose(p=[0, 0, 0], q=[0.7071068, 0, -0.7071068, 0])
         )
-        self.table_scene.build()
+        ground_builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+        if self.scene.parallel_in_single_scene:
+            ground_builder.set_scene_idxs([0])
+        ground = ground_builder.build_static(name="ground")
+
+        if self.scene.can_render():
+            floor_half = 50
+            verts = np.array(
+                [[-floor_half, -floor_half, 0], [floor_half, -floor_half, 0],
+                 [floor_half, floor_half, 0], [-floor_half, floor_half, 0]],
+                dtype=np.float32,
+            )
+            normals = np.tile([0, 0, 1], (4, 1)).astype(np.float32)
+            tris = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+            uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+            mat = sapien.render.RenderMaterial()
+            mat.base_color = DEFAULT_GROUND_COLOR
+            shape = sapien.render.RenderShapeTriangleMesh(
+                vertices=verts, triangles=tris, normals=normals, uvs=uvs, material=mat
+            )
+            for obj in ground._objs:
+                comp = sapien.render.RenderBodyComponent()
+                comp.attach(shape)
+                obj.add_component(comp)
 
         self._objs: list[Actor] = []
         for i in range(self.num_envs):
@@ -244,10 +279,15 @@ class PickCubeEnv(BaseEnv):
                                 part.material.set_base_color(color)
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
-        """Randomise cube and goal poses for the environments in *env_idx*."""
         with torch.device(self.device):
             b = len(env_idx)
-            self.table_scene.initialize(env_idx)
+
+            qpos = torch.tensor(
+                self.agent.keyframes["rest"].qpos, dtype=torch.float32
+            ).unsqueeze(0).expand(b, -1).clone()
+            noise = (torch.rand_like(qpos) * 2 - 1) * self.robot_init_qpos_noise
+            self.agent.reset(qpos + noise)
+            self.agent.robot.set_pose(sapien.Pose(p=[0, 0, 0]))
 
             cfg = self._robot_cfg
             spawn_cx, spawn_cy = cfg["cube_spawn_center"]
@@ -271,15 +311,6 @@ class PickCubeEnv(BaseEnv):
             self.goal_site.set_pose(Pose.create_from_pq(p=goal_xyz))
 
     def evaluate(self) -> dict[str, torch.Tensor]:
-        """Compute per-environment success metrics.
-
-        Returns
-        -------
-        dict
-            A dict with keys ``obj_to_goal_dist``, ``is_obj_placed``,
-            ``is_grasped``, ``is_robot_static``, ``lift_height``, and
-            ``success``, each a tensor of shape ``(num_envs,)``.
-        """
         obj_to_goal_dist = torch.linalg.norm(self.obj.pose.p - self.goal_site.pose.p, axis=1)
         is_obj_placed = obj_to_goal_dist <= self._robot_cfg["goal_thresh"]
         is_grasped = self.agent.is_grasping(self.obj)
@@ -300,12 +331,6 @@ class PickCubeEnv(BaseEnv):
         )
 
     def _get_obs_extra(self, info: dict) -> dict[str, torch.Tensor]:
-        """Return task-specific observation extras.
-
-        Always includes TCP pose, grasp flag, and goal position.  When
-        ``obs_mode`` contains ``"state"``, object pose and relative positions
-        are also included.
-        """
         obs = dict(
             tcp_pose=self.agent.tcp_pose.raw_pose,
             is_grasped=info["is_grasped"],
@@ -320,41 +345,29 @@ class PickCubeEnv(BaseEnv):
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        """Compute a shaped dense reward for the goal-based task.
-
-        The reward is composed of: reaching (1), grasping (+1), placement (+1
-        when grasped), static bonus (+1 when placed), and a success bonus of
-        5.0 when the episode is solved.
-
-        Returns
-        -------
-        torch.Tensor
-            Reward tensor of shape ``(num_envs,)``.
-        """
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        reaching_reward = 1 - torch.tanh(5 * tcp_to_obj_dist)
-
-        reward = reaching_reward
+        reach_progress = 1 - torch.tanh(5 * tcp_to_obj_dist)
 
         is_grasped = info["is_grasped"]
-        reward = reward + is_grasped
 
         obj_to_goal_dist = info["obj_to_goal_dist"]
-        placement_reward = 1 - torch.tanh(5 * obj_to_goal_dist)
-        reward = reward + placement_reward * is_grasped
+        placement_progress = (1 - torch.tanh(5 * obj_to_goal_dist)) * is_grasped
 
-        is_robot_static = info["is_robot_static"]
-        reward = reward + is_robot_static * info["is_obj_placed"]
+        is_complete = info["success"] & info["is_robot_static"]
 
-        reward[info["success"]] = 5.0
+        reward = (
+            REWARD_WEIGHT_REACHING * reach_progress
+            + REWARD_WEIGHT_GRASPING * is_grasped
+            + REWARD_WEIGHT_TASK_OBJECTIVE * placement_progress
+            + REWARD_WEIGHT_COMPLETION_BONUS * is_complete
+        )
 
         return reward
 
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: dict
     ) -> torch.Tensor:
-        """Return the dense reward normalised to ``[0, 1]``."""
-        return self.compute_dense_reward(obs=obs, action=action, info=info) / 5.0
+        return self.compute_dense_reward(obs=obs, action=action, info=info)
 
 
 PickCubeGoalEnv = PickCubeEnv
@@ -365,18 +378,6 @@ class PickCubeLiftEnv(PickCubeEnv):
     """Pick-cube with lift-based success: cube must be lifted above threshold while grasped."""
 
     def evaluate(self) -> dict[str, torch.Tensor]:
-        """Compute per-environment success metrics for the lift task.
-
-        Success requires the cube to be lifted above ``LIFT_THRESHOLD`` metres
-        while actively grasped.
-
-        Returns
-        -------
-        dict
-            A dict with keys ``obj_to_goal_dist``, ``is_obj_placed``,
-            ``is_grasped``, ``is_robot_static``, ``lift_height``, and
-            ``success``, each a tensor of shape ``(num_envs,)``.
-        """
         is_grasped = self.agent.is_grasping(self.obj)
         is_robot_static = self.agent.is_static()
 
@@ -398,37 +399,29 @@ class PickCubeLiftEnv(PickCubeEnv):
         )
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        """Compute a shaped dense reward for the lift-based task.
-
-        The reward is composed of: reaching (1), grasping (+1), lifting (+1
-        when grasped), and a success bonus of 6.0 when the episode is solved.
-
-        Returns
-        -------
-        torch.Tensor
-            Reward tensor of shape ``(num_envs,)``.
-        """
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        reaching_reward = 1 - torch.tanh(5 * tcp_to_obj_dist)
-
-        reward = reaching_reward
+        reach_progress = 1 - torch.tanh(5 * tcp_to_obj_dist)
 
         is_grasped = info["is_grasped"]
-        reward = reward + is_grasped
 
         lift_height = info["lift_height"].clamp(min=0.0)
-        lift_reward = torch.tanh(5 * lift_height)
-        reward = reward + lift_reward * is_grasped
+        lift_progress = torch.tanh(5 * lift_height) * is_grasped
 
-        reward[info["success"]] = 6.0
+        is_complete = info["success"]
+
+        reward = (
+            REWARD_WEIGHT_REACHING * reach_progress
+            + REWARD_WEIGHT_GRASPING * is_grasped
+            + REWARD_WEIGHT_TASK_OBJECTIVE * lift_progress
+            + REWARD_WEIGHT_COMPLETION_BONUS * is_complete
+        )
 
         return reward
 
     def compute_normalized_dense_reward(
         self, obs: Any, action: torch.Tensor, info: dict
     ) -> torch.Tensor:
-        """Return the dense reward normalised to ``[0, 1]``."""
-        return self.compute_dense_reward(obs=obs, action=action, info=info) / 6.0
+        return self.compute_dense_reward(obs=obs, action=action, info=info)
 
 
 @register_env("PickCubeGoalSO100-v1", max_episode_steps=256)

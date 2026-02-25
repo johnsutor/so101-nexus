@@ -7,12 +7,16 @@ import pytest
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_mujoco.pick_cube import (
-    _CUBE_SPAWN_CENTER,
-    _CUBE_SPAWN_HALF_SIZE,
-    _REST_QPOS,
-    PickCubeEnv,
+from so101_nexus_core.types import (
+    DEFAULT_CUBE_HALF_SIZE,
+    DEFAULT_CUBE_SPAWN_HALF_SIZE,
+    DEFAULT_GOAL_THRESH,
+    DEFAULT_LIFT_THRESHOLD,
+    DEFAULT_MAX_GOAL_HEIGHT,
+    REWARD_WEIGHT_REACHING,
+    SO101_REST_QPOS,
 )
+from so101_nexus_mujoco.pick_cube import PickCubeEnv
 
 
 @pytest.fixture(scope="module")
@@ -37,6 +41,25 @@ class TestConstructionValidation:
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
             PickCubeEnv(cube_half_size=0.001)
+
+
+class TestSharedConstants:
+    def test_default_cube_half_size_matches_core(self):
+        env = PickCubeEnv()
+        assert env.cube_half_size == DEFAULT_CUBE_HALF_SIZE
+        env.close()
+
+    def test_spawn_half_size_matches_core(self):
+        assert DEFAULT_CUBE_SPAWN_HALF_SIZE == 0.05
+
+    def test_goal_thresh_matches_core(self):
+        assert DEFAULT_GOAL_THRESH == 0.025
+
+    def test_lift_threshold_matches_core(self):
+        assert DEFAULT_LIFT_THRESHOLD == 0.05
+
+    def test_max_goal_height_matches_core(self):
+        assert DEFAULT_MAX_GOAL_HEIGHT == 0.08
 
 
 class TestEnvCreation:
@@ -111,20 +134,20 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
     def test_cube_spawns_in_bounds(self, goal_env):
+        cx, cy = 0.15, 0.0
+        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
         for _ in range(5):
             goal_env.reset()
             cube_pose = goal_env.unwrapped._get_cube_pose()
-            cx, cy = _CUBE_SPAWN_CENTER
-            hs = _CUBE_SPAWN_HALF_SIZE
             assert cx - hs <= cube_pose[0] <= cx + hs
             assert cy - hs <= cube_pose[1] <= cy + hs
 
     def test_goal_spawns_in_bounds(self, goal_env):
+        cx, cy = 0.15, 0.0
+        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
         for _ in range(5):
             goal_env.reset()
             goal_pos = goal_env.unwrapped._get_goal_pos()
-            cx, cy = _CUBE_SPAWN_CENTER
-            hs = _CUBE_SPAWN_HALF_SIZE
             assert cx - hs <= goal_pos[0] <= cx + hs
             assert cy - hs <= goal_pos[1] <= cy + hs
 
@@ -139,6 +162,22 @@ class TestEpisodeLogic:
         action = lift_env.action_space.sample()
         _, reward, _, _, _ = lift_env.step(action)
         assert 0.0 <= reward <= 1.0
+
+
+class TestRewardBudget:
+    def test_goal_reaching_only_reward_bounded_by_reaching_weight(self, goal_env):
+        goal_env.reset()
+        info = goal_env.unwrapped._get_info()
+        assert not info["is_grasped"]
+        reward = goal_env.unwrapped._compute_reward(info)
+        assert reward <= REWARD_WEIGHT_REACHING + 1e-6
+
+    def test_lift_reaching_only_reward_bounded_by_reaching_weight(self, lift_env):
+        lift_env.reset()
+        info = lift_env.unwrapped._get_info()
+        assert not info["is_grasped"]
+        reward = lift_env.unwrapped._compute_reward(info)
+        assert reward <= REWARD_WEIGHT_REACHING + 1e-6
 
 
 class TestCameraModes:
@@ -196,21 +235,22 @@ class TestControlModes:
     def test_zero_action_stays_near_rest(self, mode):
         env = PickCubeEnv(control_mode=mode)
         env.reset()
+        rest = np.array(SO101_REST_QPOS, dtype=np.float64)
         zero = np.zeros(6, dtype=np.float32)
         for _ in range(10):
             env.step(zero)
-        # Check arm joints (first 5); gripper can drift due to physics
         qpos = env._get_current_qpos()[:5]
-        assert np.allclose(qpos, _REST_QPOS[:5], atol=0.1)
+        assert np.allclose(qpos, rest[:5], atol=0.1)
         env.close()
 
     def test_target_delta_accumulates(self):
         env = PickCubeEnv(control_mode="pd_joint_target_delta_pos")
         env.reset()
+        rest = np.array(SO101_REST_QPOS, dtype=np.float64)
         small_delta = np.array([0.01, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         for _ in range(5):
             env.step(small_delta)
-        expected_target = _REST_QPOS.copy()
+        expected_target = rest.copy()
         expected_target[0] += 0.05
         expected_target = np.clip(expected_target, env._ctrl_low, env._ctrl_high)
         assert np.allclose(env._prev_target, expected_target, atol=1e-6)

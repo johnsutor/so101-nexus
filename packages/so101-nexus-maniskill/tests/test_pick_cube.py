@@ -3,6 +3,12 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.types import (
+    DEFAULT_CUBE_HALF_SIZE,
+    DEFAULT_CUBE_SPAWN_HALF_SIZE,
+    DEFAULT_GOAL_THRESH,
+    DEFAULT_MAX_GOAL_HEIGHT,
+)
 from so101_nexus_maniskill.pick_cube import (
     PICK_CUBE_CONFIGS,
     PickCubeGoalSO100Env,
@@ -53,7 +59,6 @@ def lift_so101_env():
 
 
 def _get_env(request, env_id):
-    """Helper to resolve the correct module-scoped fixture by env id."""
     mapping = {
         "PickCubeGoalSO100-v1": "goal_so100_env",
         "PickCubeGoalSO101-v1": "goal_so101_env",
@@ -75,6 +80,32 @@ class TestConstructionValidation:
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
             gym.make("PickCubeGoal-v1", robot_uids="panda", **BASE_KWARGS)
+
+
+class TestSharedConstants:
+    def test_cube_half_size_matches_core(self):
+        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
+            assert cfg["cube_half_size"] == DEFAULT_CUBE_HALF_SIZE, (
+                f"{robot_key} cube_half_size mismatch"
+            )
+
+    def test_goal_thresh_matches_core(self):
+        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
+            assert cfg["goal_thresh"] == DEFAULT_GOAL_THRESH
+
+    def test_spawn_half_size_matches_core(self):
+        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
+            assert cfg["cube_spawn_half_size"] == DEFAULT_CUBE_SPAWN_HALF_SIZE
+
+    def test_max_goal_height_matches_core(self):
+        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
+            assert cfg["max_goal_height"] == DEFAULT_MAX_GOAL_HEIGHT
+
+    def test_cube_spawn_center_at_origin_relative(self):
+        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
+            cx, cy = cfg["cube_spawn_center"]
+            assert cx == pytest.approx(0.15), f"{robot_key} spawn center x mismatch"
+            assert cy == pytest.approx(0.0), f"{robot_key} spawn center y mismatch"
 
 
 class TestEnvCreation:
@@ -156,7 +187,6 @@ class TestEpisodeLogic:
 
     @pytest.mark.parametrize("env_id,robot", GOAL_ENV_IDS)
     def test_reward_range_goal(self, request, env_id, robot):
-        """Dense reward for goal env should be in [0, 5]."""
         env = _get_env(request, env_id)
         obs, info = env.reset()
         action = env.action_space.sample()
@@ -166,7 +196,6 @@ class TestEpisodeLogic:
 
     @pytest.mark.parametrize("env_id,robot", LIFT_ENV_IDS)
     def test_reward_range_lift(self, request, env_id, robot):
-        """Dense reward for lift env should be in [0, 6]."""
         env = _get_env(request, env_id)
         obs, info = env.reset()
         action = env.action_space.sample()
@@ -233,3 +262,17 @@ class TestCameraModes:
         sensor_names = [cfg.uid for cfg in both_cam_env.unwrapped._default_sensor_configs]
         assert "base_camera" in sensor_names
         assert "wrist_camera" in sensor_names
+
+
+class TestNoTable:
+    def test_no_table_scene_builder(self, goal_so101_env):
+        inner = goal_so101_env.unwrapped
+        assert not hasattr(inner, "table_scene"), "Should not have a table_scene attribute"
+
+    def test_robot_base_at_origin(self, goal_so101_env):
+        inner = goal_so101_env.unwrapped
+        inner.reset()
+        base_pos = inner.agent.robot.pose.p[0].cpu()
+        assert base_pos[0].item() == pytest.approx(0.0, abs=0.01)
+        assert base_pos[1].item() == pytest.approx(0.0, abs=0.01)
+        assert base_pos[2].item() == pytest.approx(0.0, abs=0.01)

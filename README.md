@@ -19,11 +19,11 @@
 
 ## Overview
 
-SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It is designed to work across multiple simulation backends — [ManiSkill](https://github.com/haosulab/ManiSkill), [Genesis](https://genesis-world.readthedocs.io/), and [MuJoCo](https://mujoco.org/) — so that researchers can train and evaluate policies without being locked into a single physics engine. SO101-Nexus integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
+SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It supports multiple simulation backends ([ManiSkill](https://github.com/haosulab/ManiSkill), [Genesis](https://genesis-world.readthedocs.io/), and [MuJoCo](https://mujoco.org/)) so that researchers can train and evaluate policies without being locked into a single physics engine. SO101-Nexus integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
 
 ## Installation
 
-Install only the backend you need. Each backend is a separate package that automatically pulls in the shared core:
+Install only the backend you need:
 
 ```bash
 pip install so101-nexus-mujoco      # MuJoCo backend
@@ -33,26 +33,19 @@ pip install so101-nexus-maniskill   # ManiSkill backend
 ### From source (development)
 
 ```bash
-git clone --recurse-submodules https://github.com/johnsutor/so101-nexus.git
+git clone https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
 
-# Install a single backend for development
+# Install a single backend for development (swap package name to switch backends)
 uv sync --package so101-nexus-mujoco
-
-# Or for ManiSkill
 uv sync --package so101-nexus-maniskill --prerelease=allow
 ```
-
-> [!NOTE]
-> The `--recurse-submodules` flag is required to fetch the SO-ARM100 robot assets.
 
 ## Quick Start
 
 SO101-Nexus registers environments with Gymnasium. Any registered environment can be instantiated with `gym.make`.
 
-### ManiSkill — Pick and Place
-
-`PickCubeGoalSO101-v1` requires the robot to place a cube at a target goal position while remaining stationary.
+### ManiSkill
 
 ```python
 import gymnasium as gym
@@ -75,32 +68,7 @@ for _ in range(256):
 env.close()
 ```
 
-### ManiSkill — Pick and Lift
-
-`PickCubeLiftSO101-v1` requires the robot to grasp a cube and lift it above a height threshold.
-
-```python
-import gymnasium as gym
-import so101_nexus_maniskill
-
-env = gym.make(
-    "PickCubeLiftSO101-v1",
-    obs_mode="state",
-    control_mode="pd_joint_delta_pos",
-    render_mode="rgb_array",
-)
-
-obs, info = env.reset()
-for _ in range(256):
-    action = env.action_space.sample()
-    obs, reward, terminated, truncated, info = env.step(action)
-    if terminated or truncated:
-        obs, info = env.reset()
-
-env.close()
-```
-
-### MuJoCo — Pick and Place
+### MuJoCo
 
 ```python
 import gymnasium as gym
@@ -136,27 +104,6 @@ env = gym.make(
 obs, info = env.reset()
 ```
 
-### Recording Episodes
-
-Use the `RecordEpisode` wrapper to save trajectories and videos:
-
-```python
-import gymnasium as gym
-from mani_skill.utils.wrappers.record import RecordEpisode
-import so101_nexus_maniskill
-
-env = gym.make("PickCubeLiftSO101-v1", obs_mode="state", render_mode="rgb_array")
-env = RecordEpisode(env, output_dir="videos", save_trajectory=True, video_fps=30)
-
-obs, info = env.reset()
-for _ in range(100):
-    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
-    if terminated or truncated:
-        obs, info = env.reset()
-
-env.close()
-```
-
 ## Environments
 
 ### ManiSkill
@@ -187,10 +134,10 @@ All environments have a maximum episode length of **256 steps**.
 - [ ] Add more randomization options to environments (such as robot color, more objects, environment, etc)
 - [ ] Add a variety of starting poses for the SO-100 and SO-101
 - [X] Add consistent controls for the actions (end-effector, joint positions, etc) across simulation environments.
-- [ ] Add consistency in the appearance of environments 
+- [X] Add consistency in the appearance of environments
 - [ ] Add documentation, with demo videos of each environment
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
-- [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub) 
+- [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 
 
 ## Development
@@ -198,7 +145,7 @@ All environments have a maximum episode length of **256 steps**.
 To contribute or customize SO101-Nexus, clone and install with development dependencies:
 
 ```bash
-git clone --recurse-submodules https://github.com/johnsutor/so101-nexus.git
+git clone https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
 uv sync --package so101-nexus-mujoco
 ```

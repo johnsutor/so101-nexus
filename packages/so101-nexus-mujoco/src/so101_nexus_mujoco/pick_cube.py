@@ -9,29 +9,29 @@ import numpy as np
 from gymnasium import spaces
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.types import CUBE_COLOR_MAP, ControlMode, CubeColorName
+from so101_nexus_core.types import (
+    CUBE_COLOR_MAP,
+    DEFAULT_CUBE_HALF_SIZE,
+    DEFAULT_CUBE_SPAWN_HALF_SIZE,
+    DEFAULT_GOAL_THRESH,
+    DEFAULT_GROUND_COLOR,
+    DEFAULT_LIFT_THRESHOLD,
+    DEFAULT_MAX_GOAL_HEIGHT,
+    SO101_JOINT_NAMES,
+    SO101_REST_QPOS,
+    ControlMode,
+    CubeColorName,
+    compute_normalized_reward,
+)
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
 
-_REST_QPOS = np.array([0.0, -1.5708, 1.5708, 0.66, 0.0, -1.1], dtype=np.float64)
+_REST_QPOS = np.array(SO101_REST_QPOS, dtype=np.float64)
 
 _CUBE_SPAWN_CENTER = np.array([0.15, 0.0], dtype=np.float64)
-_CUBE_SPAWN_HALF_SIZE = 0.05
-_MAX_GOAL_HEIGHT = 0.08
-_GOAL_THRESH = 0.025
-_LIFT_THRESHOLD = 0.05
 
 _N_SUBSTEPS = 10
-
-_JOINT_NAMES = [
-    "shoulder_pan",
-    "shoulder_lift",
-    "elbow_flex",
-    "wrist_flex",
-    "wrist_roll",
-    "gripper",
-]
 
 
 def _build_scene_xml(
@@ -41,6 +41,7 @@ def _build_scene_xml(
     r, g, b, a = cube_color
     hs = cube_half_size
     robot_path = str(_SO101_XML)
+    gr, gg, gb, ga = DEFAULT_GROUND_COLOR
     return f"""\
 <mujoco model="pick_cube_scene">
   <option timestep="0.002" gravity="0 0 -9.81"/>
@@ -48,9 +49,14 @@ def _build_scene_xml(
 
   <include file="{robot_path}"/>
 
+  <visual>
+    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+  </visual>
+
   <worldbody>
-    <light pos="0.2 0.2 0.8" dir="-0.2 -0.2 -0.8" diffuse="0.8 0.8 0.8"/>
-    <geom name="floor" type="plane" size="1 1 0.01" rgba="0.5 0.5 0.5 1"
+    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
+    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+    <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
 
     <body name="cube" pos="0.15 0 {hs}">
@@ -62,7 +68,7 @@ def _build_scene_xml(
     </body>
 
     <body name="goal" mocap="true" pos="0.15 0 {hs + 0.04}">
-      <site name="goal_site" type="sphere" size="{_GOAL_THRESH}"
+      <site name="goal_site" type="sphere" size="{DEFAULT_GOAL_THRESH}"
             rgba="0 1 0 0.5"/>
     </body>
   </worldbody>
@@ -82,7 +88,7 @@ class PickCubeEnv(gymnasium.Env):
     def __init__(
         self,
         cube_color: CubeColorName = "red",
-        cube_half_size: float = 0.0125,
+        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         camera_width: int = 224,
@@ -108,27 +114,41 @@ class PickCubeEnv(gymnasium.Env):
         self.camera_height = camera_height
 
         xml_string = _build_scene_xml(cube_half_size, CUBE_COLOR_MAP[cube_color])
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".xml", dir=_SO101_DIR, delete=True
+        ) as f:
             f.write(xml_string)
             f.flush()
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
         self._joint_ids = np.array(
-            [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, n) for n in _JOINT_NAMES],
+            [
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, n)
+                for n in SO101_JOINT_NAMES
+            ],
             dtype=np.int32,
         )
         self._actuator_ids = np.array(
-            [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in _JOINT_NAMES],
+            [
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
+                for n in SO101_JOINT_NAMES
+            ],
             dtype=np.int32,
         )
         self._cube_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "cube")
-        self._gripper_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "gripper")
+        self._gripper_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "gripper"
+        )
         self._jaw_body_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, "moving_jaw_so101_v1"
         )
-        self._tcp_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
-        self._cube_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "cube_geom")
+        self._tcp_site_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe"
+        )
+        self._cube_geom_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_GEOM, "cube_geom"
+        )
 
         cube_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "cube_joint")
         self._cube_qpos_addr = self.model.jnt_qposadr[cube_joint_id]
@@ -139,9 +159,12 @@ class PickCubeEnv(gymnasium.Env):
         self._gripper_geom_ids = self._get_collision_geoms(self._gripper_body_id)
         self._jaw_geom_ids = self._get_collision_geoms(self._jaw_body_id)
 
-        # Add finger pad geoms for better grasp detection
-        static_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "static_finger_pad")
-        moving_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "moving_finger_pad")
+        static_pad_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_GEOM, "static_finger_pad"
+        )
+        moving_pad_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_GEOM, "moving_finger_pad"
+        )
         if static_pad_id >= 0:
             self._gripper_geom_ids.add(static_pad_id)
         if moving_pad_id >= 0:
@@ -162,7 +185,6 @@ class PickCubeEnv(gymnasium.Env):
                 dtype=np.float32,
             )
         else:
-            # Delta bounds: +-0.05 for arm joints, +-0.2 for gripper (matches ManiSkill)
             delta_low = np.array([-0.05, -0.05, -0.05, -0.05, -0.05, -0.2], dtype=np.float32)
             delta_high = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float32)
             self.action_space = spaces.Box(low=delta_low, high=delta_high, dtype=np.float32)
@@ -178,7 +200,9 @@ class PickCubeEnv(gymnasium.Env):
             )
             self.observation_space = spaces.Dict(
                 {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64),
+                    "state": spaces.Box(
+                        low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64
+                    ),
                     "wrist_camera": spaces.Box(
                         low=0,
                         high=255,
@@ -272,7 +296,7 @@ class PickCubeEnv(gymnasium.Env):
         is_grasped = self._is_grasping()
 
         obj_to_goal_dist = float(np.linalg.norm(obj_pos - goal_pos))
-        is_obj_placed = obj_to_goal_dist <= _GOAL_THRESH
+        is_obj_placed = obj_to_goal_dist <= DEFAULT_GOAL_THRESH
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
 
@@ -290,23 +314,21 @@ class PickCubeEnv(gymnasium.Env):
 
     def _compute_reward(self, info: dict) -> float:
         tcp_to_obj_dist = info["tcp_to_obj_dist"]
-        reaching = 1.0 - float(np.tanh(5.0 * tcp_to_obj_dist))
+        reach_progress = 1.0 - float(np.tanh(5.0 * tcp_to_obj_dist))
 
-        reward = reaching
-
-        is_grasped = info["is_grasped"]
-        reward += is_grasped
+        is_grasped = info["is_grasped"] > 0.5
 
         obj_to_goal_dist = info["obj_to_goal_dist"]
-        placement = 1.0 - float(np.tanh(5.0 * obj_to_goal_dist))
-        reward += placement * is_grasped
+        placement_progress = (1.0 - float(np.tanh(5.0 * obj_to_goal_dist))) if is_grasped else 0.0
 
-        reward += float(info["is_robot_static"]) * float(info["is_obj_placed"])
+        is_complete = info["success"] and info["is_robot_static"]
 
-        if info["success"]:
-            reward = 5.0
-
-        return reward / 5.0
+        return compute_normalized_reward(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=placement_progress,
+            is_complete=is_complete,
+        )
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -321,8 +343,8 @@ class PickCubeEnv(gymnasium.Env):
 
         rng = self.np_random
         cx, cy = _CUBE_SPAWN_CENTER
-        cube_x = cx + rng.uniform(-_CUBE_SPAWN_HALF_SIZE, _CUBE_SPAWN_HALF_SIZE)
-        cube_y = cy + rng.uniform(-_CUBE_SPAWN_HALF_SIZE, _CUBE_SPAWN_HALF_SIZE)
+        cube_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        cube_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
         cube_z = self.cube_half_size
 
         angle = rng.uniform(0, 2 * np.pi)
@@ -334,9 +356,9 @@ class PickCubeEnv(gymnasium.Env):
 
         self._initial_obj_z = cube_z
 
-        goal_x = cx + rng.uniform(-_CUBE_SPAWN_HALF_SIZE, _CUBE_SPAWN_HALF_SIZE)
-        goal_y = cy + rng.uniform(-_CUBE_SPAWN_HALF_SIZE, _CUBE_SPAWN_HALF_SIZE)
-        goal_z = self.cube_half_size + rng.uniform(0, _MAX_GOAL_HEIGHT)
+        goal_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        goal_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        goal_z = self.cube_half_size + rng.uniform(0, DEFAULT_MAX_GOAL_HEIGHT)
 
         self.data.mocap_pos[self._goal_mocap_id] = [goal_x, goal_y, goal_z]
 
@@ -379,7 +401,9 @@ class PickCubeEnv(gymnasium.Env):
         elif self.control_mode == "pd_joint_delta_pos":
             ctrl = np.clip(self._get_current_qpos() + action, self._ctrl_low, self._ctrl_high)
         else:  # pd_joint_target_delta_pos
-            self._prev_target = np.clip(self._prev_target + action, self._ctrl_low, self._ctrl_high)
+            self._prev_target = np.clip(
+                self._prev_target + action, self._ctrl_low, self._ctrl_high
+            )
             ctrl = self._prev_target
 
         self.data.ctrl[self._actuator_ids] = ctrl
@@ -424,23 +448,23 @@ class PickCubeLiftEnv(PickCubeEnv):
         info = super()._get_info()
         lift_height = info["lift_height"]
         is_grasped = info["is_grasped"]
-        info["success"] = (lift_height > _LIFT_THRESHOLD) and (is_grasped > 0.5)
+        info["success"] = (lift_height > DEFAULT_LIFT_THRESHOLD) and (is_grasped > 0.5)
         return info
 
     def _compute_reward(self, info: dict) -> float:
         tcp_to_obj_dist = info["tcp_to_obj_dist"]
-        reaching = 1.0 - float(np.tanh(5.0 * tcp_to_obj_dist))
+        reach_progress = 1.0 - float(np.tanh(5.0 * tcp_to_obj_dist))
 
-        reward = reaching
-
-        is_grasped = info["is_grasped"]
-        reward += is_grasped
+        is_grasped = info["is_grasped"] > 0.5
 
         lift_height = max(info["lift_height"], 0.0)
-        lift_reward = float(np.tanh(5.0 * lift_height))
-        reward += lift_reward * is_grasped
+        lift_progress = float(np.tanh(5.0 * lift_height)) if is_grasped else 0.0
 
-        if info["success"]:
-            reward = 6.0
+        is_complete = info["success"]
 
-        return reward / 6.0
+        return compute_normalized_reward(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=lift_progress,
+            is_complete=is_complete,
+        )
