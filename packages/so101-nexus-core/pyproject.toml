@@ -6,6 +6,9 @@ requires-python = ">=3.10"
 dependencies = ["numpy"]
 license = "Apache-2.0"
 
+[project.optional-dependencies]
+viz = ["Pillow"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/so101_nexus_core"]
 exclude = ["src/so101_nexus_core/assets/**/*"]

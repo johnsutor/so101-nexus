@@ -281,7 +281,7 @@ class PickAndPlaceEnv(BaseEnv):
             builder = self.scene.create_actor_builder()
             builder.add_cylinder_visual(
                 radius=self.target_disc_radius,
-                pose=sapien.Pose(p=[0, 0, 0.001], q=[0, 0.7071068, 0.7071068, 0 ]),
+                pose=sapien.Pose(p=[0, 0, 0.001], q=[0, 0.7071068, 0.7071068, 0]),
                 half_length=0.001,
                 material=sapien.render.RenderMaterial(
                     base_color=target_rgba,

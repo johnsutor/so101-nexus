@@ -17,6 +17,7 @@ conflicts = [
 
 [dependency-groups]
 dev = ["pytest-cov>=7.0.0", "ruff", "ty"]
+visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
 
 [tool.ruff]
 line-length = 100
@@ -44,3 +45,8 @@ exclude_lines = [
     "raise NotImplementedError",
 ]
 show_missing = true
+
+[tool.pytest.ini_options]
+markers = [
+    "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
+]

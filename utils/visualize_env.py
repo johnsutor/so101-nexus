@@ -6,21 +6,69 @@ Renders a short episode with random actions and saves:
 
 Usage:
     pip install -e packages/so101-nexus-core -e packages/so101-nexus-mujoco
-    pip install imageio[ffmpeg]
+    pip install imageio[ffmpeg] Pillow
     python visualize_env.py
 """
 
 from __future__ import annotations
 
 import gymnasium
+import mujoco
 import numpy as np
 
 import so101_nexus_mujoco  # noqa: F401
+from so101_nexus_core.visualization import (
+    CameraView,
+    compose_frame,
+    save_frame_grid,
+    save_video,
+    to_uint8,
+)
 
-ENV_ID = "MuJoCoPickCubeLift-v1"
+ENV_ID = "MuJoCoPickAndPlace-v1"
 NUM_STEPS = 256
 RENDER_WIDTH = 640
 RENDER_HEIGHT = 480
+
+WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
+
+
+def _capture_views(env: gymnasium.Env) -> list[CameraView]:
+    """Capture wrist, top-down, and head-on camera views."""
+    model = env.unwrapped.model
+    data = env.unwrapped.data
+
+    wrist_cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
+    renderer = mujoco.Renderer(model, height=RENDER_HEIGHT, width=RENDER_WIDTH)
+
+    renderer.update_scene(data, camera=wrist_cam_id)
+    wrist_img = renderer.render().copy()
+
+    top_cam = mujoco.MjvCamera()
+    top_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+    top_cam.lookat[:] = WORKSPACE_CENTER
+    top_cam.distance = 0.6
+    top_cam.elevation = -90
+    top_cam.azimuth = 90
+    renderer.update_scene(data, camera=top_cam)
+    top_img = renderer.render().copy()
+
+    head_cam = mujoco.MjvCamera()
+    head_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+    head_cam.lookat[:] = WORKSPACE_CENTER
+    head_cam.distance = 0.6
+    head_cam.elevation = -15
+    head_cam.azimuth = 180
+    renderer.update_scene(data, camera=head_cam)
+    head_img = renderer.render().copy()
+
+    renderer.close()
+
+    return [
+        CameraView(name="wrist_camera", image=to_uint8(wrist_img)),
+        CameraView(name="top_down", image=to_uint8(top_img)),
+        CameraView(name="head_on", image=to_uint8(head_img)),
+    ]
 
 
 def main():
@@ -33,19 +81,28 @@ def main():
     )
     obs, info = env.reset(seed=42)
 
-    frames: list[np.ndarray] = []
-    frame = obs["wrist_camera"]
-    frames.append(frame)
+    views = _capture_views(env)
+    frame = compose_frame(views, tile_w=RENDER_WIDTH // 2, tile_h=RENDER_HEIGHT // 2)
+    frames: list[np.ndarray] = [frame]
 
     print(f"Environment: {ENV_ID}")
     print(f"Action space: {env.action_space}")
-    print(f"Wrist camera frame shape: {frame.shape}")
+    print(f"Composed frame shape: {frame.shape}  (H×W×C)")
     print(f"Running {NUM_STEPS} steps with random actions...")
 
     for step in range(NUM_STEPS):
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
-        frame = obs["wrist_camera"]
+
+        views = _capture_views(env)
+        frame = compose_frame(
+            views,
+            tile_w=RENDER_WIDTH // 2,
+            tile_h=RENDER_HEIGHT // 2,
+            step=step + 1,
+            reward=float(reward),
+            success=bool(info.get("success", False)),
+        )
         frames.append(frame)
 
         if terminated or truncated:
@@ -55,33 +112,14 @@ def main():
     env.close()
     print(f"Collected {len(frames)} frames.")
 
-    # --- Save a grid of sampled frames as a PNG ---
     try:
-        import imageio.v3 as iio
-
-        # Pick up to 16 evenly spaced frames for the grid
-        n_grid = min(16, len(frames))
-        indices = np.linspace(0, len(frames) - 1, n_grid, dtype=int)
-        grid_frames = [frames[i] for i in indices]
-
-        cols = 4
-        rows = (n_grid + cols - 1) // cols
-        h, w, c = grid_frames[0].shape
-        grid = np.zeros((rows * h, cols * w, c), dtype=np.uint8)
-        for idx, f in enumerate(grid_frames):
-            r, col = divmod(idx, cols)
-            grid[r * h : (r + 1) * h, col * w : (col + 1) * w] = f
-
-        iio.imwrite("episode_frames.png", grid)
+        save_frame_grid(frames, "episode_frames.png")
         print("Saved frame grid  -> episode_frames.png")
     except ImportError:
         print("Install imageio to save the frame grid: pip install imageio")
 
-    # --- Save an MP4 video ---
     try:
-        import imageio.v3 as iio
-
-        iio.imwrite("episode.mp4", np.stack(frames), fps=50)
+        save_video(frames, "episode.mp4")
         print("Saved video        -> episode.mp4")
     except ImportError:
         print("Install imageio[ffmpeg] to save the video: pip install imageio[ffmpeg]")
