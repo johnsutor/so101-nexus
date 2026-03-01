@@ -1,4 +1,5 @@
 import gymnasium as gym
+import numpy as np
 import pytest
 import torch
 
@@ -20,50 +21,50 @@ from so101_nexus_maniskill.pick_cube import (
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 GOAL_ENV_IDS = [
-    ("PickCubeGoalSO100-v1", "so100"),
-    ("PickCubeGoalSO101-v1", "so101"),
+    ("ManiSkillPickCubeGoalSO100-v1", "so100"),
+    ("ManiSkillPickCubeGoalSO101-v1", "so101"),
 ]
 LIFT_ENV_IDS = [
-    ("PickCubeLiftSO100-v1", "so100"),
-    ("PickCubeLiftSO101-v1", "so101"),
+    ("ManiSkillPickCubeLiftSO100-v1", "so100"),
+    ("ManiSkillPickCubeLiftSO101-v1", "so101"),
 ]
 ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
 
 
 @pytest.fixture(scope="module")
 def goal_so100_env():
-    env = gym.make("PickCubeGoalSO100-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickCubeGoalSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def goal_so101_env():
-    env = gym.make("PickCubeGoalSO101-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickCubeGoalSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = gym.make("PickCubeLiftSO100-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickCubeLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = gym.make("PickCubeLiftSO101-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickCubeLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 def _get_env(request, env_id):
     mapping = {
-        "PickCubeGoalSO100-v1": "goal_so100_env",
-        "PickCubeGoalSO101-v1": "goal_so101_env",
-        "PickCubeLiftSO100-v1": "lift_so100_env",
-        "PickCubeLiftSO101-v1": "lift_so101_env",
+        "ManiSkillPickCubeGoalSO100-v1": "goal_so100_env",
+        "ManiSkillPickCubeGoalSO101-v1": "goal_so101_env",
+        "ManiSkillPickCubeLiftSO100-v1": "lift_so100_env",
+        "ManiSkillPickCubeLiftSO101-v1": "lift_so101_env",
     }
     return request.getfixturevalue(mapping[env_id])
 
@@ -71,15 +72,15 @@ def _get_env(request, env_id):
 class TestConstructionValidation:
     def test_invalid_cube_color(self):
         with pytest.raises(ValueError, match="cube_color"):
-            gym.make("PickCubeGoal-v1", cube_color="neon", **BASE_KWARGS)
+            gym.make("ManiSkillPickCubeGoal-v1", cube_color="neon", **BASE_KWARGS)
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            gym.make("PickCubeGoal-v1", cube_half_size=0.001, **BASE_KWARGS)
+            gym.make("ManiSkillPickCubeGoal-v1", cube_half_size=0.001, **BASE_KWARGS)
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("PickCubeGoal-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickCubeGoal-v1", robot_uids="panda", **BASE_KWARGS)
 
 
 class TestSharedConstants:
@@ -204,6 +205,18 @@ class TestEpisodeLogic:
         assert (reward <= 1).all()
 
 
+class TestRobotOrientation:
+    @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
+    def test_robot_base_uses_keyframe_rotation(self, request, env_id, robot):
+        """Robot base pose must use the keyframe's Z-rotation so it faces the workspace."""
+        env = _get_env(request, env_id)
+        env.reset()
+        inner = env.unwrapped
+        expected_q = inner.agent.keyframes["rest"].pose.q
+        actual_q = inner.agent.robot.pose.q[0].cpu().numpy()
+        np.testing.assert_allclose(actual_q, expected_q, atol=1e-4)
+
+
 class TestRobotSubclasses:
     def test_so100_goal_env_uses_so100(self, goal_so100_env):
         inner = goal_so100_env.unwrapped
@@ -229,21 +242,21 @@ class TestRobotSubclasses:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("PickCubeGoalSO100-v1", camera_mode="fixed", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="fixed", **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("PickCubeGoalSO100-v1", camera_mode="wrist", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="wrist", **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("PickCubeGoalSO100-v1", camera_mode="both", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="both", **BASE_KWARGS)
         env.reset()
         yield env
         env.close()

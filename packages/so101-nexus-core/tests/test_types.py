@@ -1,6 +1,7 @@
 import pytest
 
 from so101_nexus_core.types import (
+    CUBE_COLOR_MAP,
     DEFAULT_CAMERA_HEIGHT,
     DEFAULT_CAMERA_WIDTH,
     DEFAULT_CUBE_HALF_SIZE,
@@ -10,6 +11,8 @@ from so101_nexus_core.types import (
     DEFAULT_LIFT_THRESHOLD,
     DEFAULT_MAX_EPISODE_STEPS,
     DEFAULT_MAX_GOAL_HEIGHT,
+    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
+    DEFAULT_TARGET_DISC_RADIUS,
     DEFAULT_WRIST_CAM_FOV_RANGE,
     REWARD_WEIGHT_COMPLETION_BONUS,
     REWARD_WEIGHT_GRASPING,
@@ -17,6 +20,8 @@ from so101_nexus_core.types import (
     REWARD_WEIGHT_TASK_OBJECTIVE,
     SO101_JOINT_NAMES,
     SO101_REST_QPOS,
+    TARGET_COLOR_MAP,
+    TargetColorName,
     compute_normalized_reward,
 )
 
@@ -69,6 +74,23 @@ class TestSharedConstants:
             "wrist_roll",
             "gripper",
         ]
+
+
+class TestPickAndPlaceConstants:
+    def test_target_color_name_type_exists(self):
+        assert TargetColorName is not None
+
+    def test_target_color_map_matches_cube_color_map(self):
+        assert TARGET_COLOR_MAP == CUBE_COLOR_MAP
+
+    def test_default_target_disc_radius(self):
+        assert DEFAULT_TARGET_DISC_RADIUS == 0.05
+
+    def test_default_min_cube_target_separation(self):
+        assert DEFAULT_MIN_CUBE_TARGET_SEPARATION == 0.0375
+
+    def test_separation_is_three_times_cube_half_size(self):
+        assert DEFAULT_MIN_CUBE_TARGET_SEPARATION == pytest.approx(3 * DEFAULT_CUBE_HALF_SIZE)
 
 
 class TestRewardWeights:

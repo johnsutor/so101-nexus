@@ -34,11 +34,11 @@ class SO101(BaseAgent):
     keyframes = dict(
         rest=Keyframe(
             qpos=np.array([0, -1.5708, 1.5708, 0.66, 0, -1.1]),
-            pose=sapien.Pose(q=euler2quat(0, 0, np.pi / 2)),
+            pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
         zero=Keyframe(
             qpos=np.array([0.0] * 6),
-            pose=sapien.Pose(q=euler2quat(0, 0, np.pi / 2)),
+            pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
     )
 

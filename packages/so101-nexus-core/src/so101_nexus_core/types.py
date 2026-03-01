@@ -1,6 +1,7 @@
 from typing import Literal
 
 CubeColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
+TargetColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
 
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 
@@ -14,6 +15,11 @@ CUBE_COLOR_MAP: dict[str, list[float]] = {
     "black": [0.0, 0.0, 0.0, 1.0],
     "white": [1.0, 1.0, 1.0, 1.0],
 }
+
+TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
+
+DEFAULT_TARGET_DISC_RADIUS: float = 0.05
+DEFAULT_MIN_CUBE_TARGET_SEPARATION: float = 0.0375
 
 DEFAULT_CUBE_HALF_SIZE: float = 0.0125
 DEFAULT_CUBE_MASS: float = 0.01

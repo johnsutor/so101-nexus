@@ -23,23 +23,24 @@ from so101_nexus_core.types import (
     DEFAULT_CUBE_SPAWN_HALF_SIZE,
     DEFAULT_GOAL_THRESH,
     DEFAULT_GROUND_COLOR,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_GOAL_HEIGHT,
+    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
+    DEFAULT_TARGET_DISC_RADIUS,
     REWARD_WEIGHT_COMPLETION_BONUS,
     REWARD_WEIGHT_GRASPING,
     REWARD_WEIGHT_REACHING,
     REWARD_WEIGHT_TASK_OBJECTIVE,
+    TARGET_COLOR_MAP,
     CubeColorName,
+    TargetColorName,
 )
 from so101_nexus_maniskill.so101_agent import SO101
 
-PICK_CUBE_CONFIGS: dict[str, dict] = {
+PICK_AND_PLACE_CONFIGS: dict[str, dict] = {
     "so100": {
         "cube_half_size": DEFAULT_CUBE_HALF_SIZE,
         "goal_thresh": DEFAULT_GOAL_THRESH,
         "cube_spawn_half_size": DEFAULT_CUBE_SPAWN_HALF_SIZE,
         "cube_spawn_center": (0.15, 0),
-        "max_goal_height": DEFAULT_MAX_GOAL_HEIGHT,
         "base_quat": euler2quat(0, 0, np.pi / 2),
         "sensor_cam_eye_pos": [0.0, 0.3, 0.3],
         "sensor_cam_target_pos": [0.15, 0, 0.02],
@@ -57,7 +58,6 @@ PICK_CUBE_CONFIGS: dict[str, dict] = {
         "goal_thresh": DEFAULT_GOAL_THRESH,
         "cube_spawn_half_size": DEFAULT_CUBE_SPAWN_HALF_SIZE,
         "cube_spawn_center": (0.15, 0),
-        "max_goal_height": DEFAULT_MAX_GOAL_HEIGHT,
         "base_quat": euler2quat(0, 0, 0),
         "sensor_cam_eye_pos": [0.0, 0.3, 0.3],
         "sensor_cam_target_pos": [0.15, 0, 0.02],
@@ -75,24 +75,24 @@ PICK_CUBE_CONFIGS: dict[str, dict] = {
 CameraMode = Literal["fixed", "wrist", "both"]
 
 
-@register_env("ManiSkillPickCubeGoal-v1", max_episode_steps=256)
-class PickCubeEnv(BaseEnv):
-    """Configurable pick-cube environment supporting SO100 and SO101 robots.
+@register_env("ManiSkillPickAndPlace-v1", max_episode_steps=256)
+class PickAndPlaceEnv(BaseEnv):
+    """Pick-and-place environment with a visible coloured target disc on the ground.
 
-    The base class uses **goal-based** success: the cube must be placed within
-    ``goal_thresh`` of a randomised goal site and the robot must be static.
+    The agent must pick up a coloured cube and place it on a differently-coloured
+    disc. Success requires XY proximity to the target and the cube being near
+    ground level while the robot is static.
     """
 
     SUPPORTED_ROBOTS = ["so100", "so101"]
     agent: Union[SO100, SO101]
-
-    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
 
     def __init__(
         self,
         *args,
         robot_uids: str = "so100",
         cube_color: CubeColorName = "red",
+        target_color: TargetColorName = "blue",
         cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         robot_color: tuple[float, float, float, float] | None = None,
         camera_mode: CameraMode = "fixed",
@@ -107,24 +107,35 @@ class PickCubeEnv(BaseEnv):
             raise ValueError(
                 f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
             )
+        if target_color not in TARGET_COLOR_MAP:
+            raise ValueError(
+                f"target_color must be one of {list(TARGET_COLOR_MAP)}, got {target_color!r}"
+            )
+        if cube_color == target_color:
+            raise ValueError(f"cube_color and target_color must differ, both are {cube_color!r}")
         if not (0.01 <= cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
-        if robot_uids not in PICK_CUBE_CONFIGS:
+        if robot_uids not in PICK_AND_PLACE_CONFIGS:
             raise ValueError(
-                f"robot_uids must be one of {list(PICK_CUBE_CONFIGS)}, got {robot_uids!r}"
+                f"robot_uids must be one of {list(PICK_AND_PLACE_CONFIGS)}, got {robot_uids!r}"
             )
 
         self.cube_color_name = cube_color
         self.cube_color_rgba = CUBE_COLOR_MAP[cube_color]
+        self.target_color_name = target_color
+        self.target_color_rgba = TARGET_COLOR_MAP[target_color]
         self.cube_half_size = cube_half_size
+        self.target_disc_radius = DEFAULT_TARGET_DISC_RADIUS
         self.robot_color = robot_color
         self.camera_mode: CameraMode = camera_mode
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.camera_width = camera_width
         self.camera_height = camera_height
-        self._robot_cfg = PICK_CUBE_CONFIGS[robot_uids]
+        self._robot_cfg = PICK_AND_PLACE_CONFIGS[robot_uids]
 
-        self.task_description = f"pick up the small {cube_color} cube"
+        self.task_description = (
+            f"Pick up the small {cube_color} cube and place it on the {target_color} circle"
+        )
 
         if reconfiguration_freq is None:
             reconfiguration_freq = 0
@@ -264,16 +275,24 @@ class PickCubeEnv(BaseEnv):
         self.obj = Actor.merge(self._objs, name="cube")
         self.add_to_state_dict_registry(self.obj)
 
-        self.goal_site = actors.build_sphere(
-            self.scene,
-            radius=self._robot_cfg["goal_thresh"],
-            color=[0, 1, 0, 0.5],
-            name="goal_site",
-            body_type="kinematic",
-            add_collision=False,
-            initial_pose=sapien.Pose(p=[0, 0, 0]),
-        )
-        self._hidden_objects.append(self.goal_site)
+        target_rgba = self.target_color_rgba
+        target_builders: list[Actor] = []
+        for i in range(self.num_envs):
+            builder = self.scene.create_actor_builder()
+            builder.add_cylinder_visual(
+                radius=self.target_disc_radius,
+                pose=sapien.Pose(p=[0, 0, 0.001], q=[0, 0.7071068, 0.7071068, 0 ]),
+                half_length=0.001,
+                material=sapien.render.RenderMaterial(
+                    base_color=target_rgba,
+                ),
+            )
+            builder.initial_pose = sapien.Pose(p=[0, 0, 0], q=[0.7071068, 0.7071068, 0, 0])
+            target = builder.build_kinematic(name=f"target_site-{i}")
+            target_builders.append(target)
+            self.remove_from_state_dict_registry(target)
+        self.target_site = Actor.merge(target_builders, name="target_site")
+        self.add_to_state_dict_registry(self.target_site)
 
         if self.robot_color is not None:
             color = list(self.robot_color)
@@ -305,9 +324,22 @@ class PickCubeEnv(BaseEnv):
             spawn_cx, spawn_cy = cfg["cube_spawn_center"]
             spawn_hs = cfg["cube_spawn_half_size"]
 
+            target_xyz = torch.zeros((b, 3))
+            target_xyz[:, 0] = spawn_cx + (torch.rand(b) * 2 - 1) * spawn_hs
+            target_xyz[:, 1] = spawn_cy + (torch.rand(b) * 2 - 1) * spawn_hs
+            target_xyz[:, 2] = 0.001
+            target_q = torch.tensor([[0.7071068, 0.7071068, 0, 0]], dtype=torch.float32).expand(
+                b, -1
+            )
+            self.target_site.set_pose(Pose.create_from_pq(p=target_xyz, q=target_q))
+
             xyz = torch.zeros((b, 3))
-            xyz[:, 0] = spawn_cx + (torch.rand(b) * 2 - 1) * spawn_hs
-            xyz[:, 1] = spawn_cy + (torch.rand(b) * 2 - 1) * spawn_hs
+            for attempt in range(100):
+                xyz[:, 0] = spawn_cx + (torch.rand(b) * 2 - 1) * spawn_hs
+                xyz[:, 1] = spawn_cy + (torch.rand(b) * 2 - 1) * spawn_hs
+                dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
+                if (dists >= DEFAULT_MIN_CUBE_TARGET_SEPARATION).all():
+                    break
             xyz[:, 2] = self.cube_half_size
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
@@ -316,15 +348,19 @@ class PickCubeEnv(BaseEnv):
                 self._initial_obj_z = torch.zeros(self.num_envs, device=self.device)
             self._initial_obj_z[env_idx] = xyz[:, 2]
 
-            goal_xyz = torch.zeros((b, 3))
-            goal_xyz[:, 0] = spawn_cx + (torch.rand(b) * 2 - 1) * spawn_hs
-            goal_xyz[:, 1] = spawn_cy + (torch.rand(b) * 2 - 1) * spawn_hs
-            goal_xyz[:, 2] = self.cube_half_size + torch.rand(b) * cfg["max_goal_height"]
-            self.goal_site.set_pose(Pose.create_from_pq(p=goal_xyz))
-
     def evaluate(self) -> dict[str, torch.Tensor]:
-        obj_to_goal_dist = torch.linalg.norm(self.obj.pose.p - self.goal_site.pose.p, axis=1)
-        is_obj_placed = obj_to_goal_dist <= self._robot_cfg["goal_thresh"]
+        """Evaluate the current state of the environment.
+
+        Returns
+        -------
+        dict[str, torch.Tensor]
+            Dictionary containing evaluation metrics including distances,
+            grasp state, and success.
+        """
+        obj_to_target_xy = self.obj.pose.p[:, :2] - self.target_site.pose.p[:, :2]
+        obj_to_target_dist = torch.linalg.norm(obj_to_target_xy, axis=1)
+        cube_near_ground = self.obj.pose.p[:, 2] < (self.cube_half_size + 0.01)
+        is_obj_placed = (obj_to_target_dist <= self._robot_cfg["goal_thresh"]) & cube_near_ground
         is_grasped = self.agent.is_grasping(self.obj)
         is_robot_static = self.agent.is_static()
 
@@ -334,7 +370,7 @@ class PickCubeEnv(BaseEnv):
         success = is_obj_placed & is_robot_static
 
         return dict(
-            obj_to_goal_dist=obj_to_goal_dist,
+            obj_to_target_dist=obj_to_target_dist,
             is_obj_placed=is_obj_placed,
             is_grasped=is_grasped,
             is_robot_static=is_robot_static,
@@ -346,24 +382,40 @@ class PickCubeEnv(BaseEnv):
         obs = dict(
             tcp_pose=self.agent.tcp_pose.raw_pose,
             is_grasped=info["is_grasped"],
-            goal_pos=self.goal_site.pose.p,
+            target_pos=self.target_site.pose.p,
         )
         if "state" in self.obs_mode:
             obs.update(
                 obj_pose=self.obj.pose.raw_pose,
                 tcp_to_obj_pos=self.obj.pose.p - self.agent.tcp_pose.p,
-                obj_to_goal_pos=self.goal_site.pose.p - self.obj.pose.p,
+                obj_to_target_pos=self.target_site.pose.p - self.obj.pose.p,
             )
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
+        """Compute dense reward for the pick-and-place task.
+
+        Parameters
+        ----------
+        obs : Any
+            Current observation.
+        action : torch.Tensor
+            Action taken.
+        info : dict
+            Info dict from evaluate().
+
+        Returns
+        -------
+        torch.Tensor
+            Reward tensor in [0, 1].
+        """
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
         reach_progress = 1 - torch.tanh(5 * tcp_to_obj_dist)
 
         is_grasped = info["is_grasped"]
 
-        obj_to_goal_dist = info["obj_to_goal_dist"]
-        placement_progress = (1 - torch.tanh(5 * obj_to_goal_dist)) * is_grasped
+        obj_to_target_dist = info["obj_to_target_dist"]
+        placement_progress = (1 - torch.tanh(5 * obj_to_target_dist)) * is_grasped
 
         is_complete = info["success"] & info["is_robot_static"]
 
@@ -382,90 +434,18 @@ class PickCubeEnv(BaseEnv):
         return self.compute_dense_reward(obs=obs, action=action, info=info)
 
 
-PickCubeGoalEnv = PickCubeEnv
-
-
-@register_env("ManiSkillPickCubeLift-v1", max_episode_steps=256)
-class PickCubeLiftEnv(PickCubeEnv):
-    """Pick-cube with lift-based success: cube must be lifted above threshold while grasped."""
-
-    def evaluate(self) -> dict[str, torch.Tensor]:
-        is_grasped = self.agent.is_grasping(self.obj)
-        is_robot_static = self.agent.is_static()
-
-        obj_z = self.obj.pose.p[:, 2]
-        lift_height = obj_z - self._initial_obj_z
-
-        obj_to_goal_dist = torch.linalg.norm(self.obj.pose.p - self.goal_site.pose.p, axis=1)
-        is_obj_placed = obj_to_goal_dist <= self._robot_cfg["goal_thresh"]
-
-        success = (lift_height > self.LIFT_THRESHOLD) & is_grasped
-
-        return dict(
-            obj_to_goal_dist=obj_to_goal_dist,
-            is_obj_placed=is_obj_placed,
-            is_grasped=is_grasped,
-            is_robot_static=is_robot_static,
-            lift_height=lift_height,
-            success=success,
-        )
-
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        reach_progress = 1 - torch.tanh(5 * tcp_to_obj_dist)
-
-        is_grasped = info["is_grasped"]
-
-        lift_height = info["lift_height"].clamp(min=0.0)
-        lift_progress = torch.tanh(5 * lift_height) * is_grasped
-
-        is_complete = info["success"]
-
-        reward = (
-            REWARD_WEIGHT_REACHING * reach_progress
-            + REWARD_WEIGHT_GRASPING * is_grasped
-            + REWARD_WEIGHT_TASK_OBJECTIVE * lift_progress
-            + REWARD_WEIGHT_COMPLETION_BONUS * is_complete
-        )
-
-        return reward
-
-    def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: dict
-    ) -> torch.Tensor:
-        return self.compute_dense_reward(obs=obs, action=action, info=info)
-
-
-@register_env("ManiSkillPickCubeGoalSO100-v1", max_episode_steps=256)
-class PickCubeGoalSO100Env(PickCubeEnv):
-    """Goal-based pick-cube pre-configured for SO100."""
+@register_env("ManiSkillPickAndPlaceSO100-v1", max_episode_steps=256)
+class PickAndPlaceSO100Env(PickAndPlaceEnv):
+    """Pick-and-place pre-configured for SO100."""
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("robot_uids", "so100")
         super().__init__(*args, **kwargs)
 
 
-@register_env("ManiSkillPickCubeGoalSO101-v1", max_episode_steps=256)
-class PickCubeGoalSO101Env(PickCubeEnv):
-    """Goal-based pick-cube pre-configured for SO101."""
-
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("robot_uids", "so101")
-        super().__init__(*args, **kwargs)
-
-
-@register_env("ManiSkillPickCubeLiftSO100-v1", max_episode_steps=256)
-class PickCubeLiftSO100Env(PickCubeLiftEnv):
-    """Lift-based pick-cube pre-configured for SO100."""
-
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("robot_uids", "so100")
-        super().__init__(*args, **kwargs)
-
-
-@register_env("ManiSkillPickCubeLiftSO101-v1", max_episode_steps=256)
-class PickCubeLiftSO101Env(PickCubeLiftEnv):
-    """Lift-based pick-cube pre-configured for SO101."""
+@register_env("ManiSkillPickAndPlaceSO101-v1", max_episode_steps=256)
+class PickAndPlaceSO101Env(PickAndPlaceEnv):
+    """Pick-and-place pre-configured for SO101."""
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("robot_uids", "so101")
