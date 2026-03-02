@@ -89,7 +89,7 @@ class SO101(BaseAgent):
             pd_joint_pos=pd_joint_pos,
             pd_joint_target_delta_pos=pd_joint_target_delta_pos,
         )
-        return deepcopy_dict(controller_configs)
+        return copy.deepcopy(controller_configs)
 
     def _after_loading_articulation(self) -> None:
         """Cache frequently-accessed link references after the articulation is loaded."""

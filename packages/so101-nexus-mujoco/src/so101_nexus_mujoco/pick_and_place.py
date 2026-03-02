@@ -121,6 +121,29 @@ class PickAndPlaceEnv(gymnasium.Env):
         camera_height: int = 224,
         control_mode: ControlMode = "pd_joint_pos",
     ):
+        """Initialise the pick-and-place environment.
+
+        Parameters
+        ----------
+        cube_color : CubeColorName
+            Colour name for the cube. Must differ from *target_color*.
+        target_color : TargetColorName
+            Colour name for the target disc. Must differ from *cube_color*.
+        cube_half_size : float
+            Half-size of the cube in metres (must be in [0.01, 0.05]).
+        render_mode : str | None
+            Gymnasium render mode (``"rgb_array"``, ``"human"``, or ``None``).
+        camera_mode : {"state_only", "wrist"}
+            Observation type. ``"state_only"`` returns a flat vector;
+            ``"wrist"`` also includes a wrist-camera RGB image.
+        camera_width : int
+            Pixel width of the wrist camera image.
+        camera_height : int
+            Pixel height of the wrist camera image.
+        control_mode : ControlMode
+            Joint control mode (``"pd_joint_pos"``, ``"pd_joint_delta_pos"``,
+            or ``"pd_joint_target_delta_pos"``).
+        """
         if cube_color not in CUBE_COLOR_MAP:
             raise ValueError(
                 f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
@@ -254,6 +277,7 @@ class PickAndPlaceEnv(gymnasium.Env):
         )
 
     def _get_collision_geoms(self, body_id: int) -> set[int]:
+        """Return the set of geom IDs with collision enabled that belong to *body_id*."""
         geom_ids = set()
         for i in range(self.model.ngeom):
             if self.model.geom_bodyid[i] == body_id and self.model.geom_contype[i] != 0:
@@ -261,6 +285,7 @@ class PickAndPlaceEnv(gymnasium.Env):
         return geom_ids
 
     def _get_tcp_pose(self) -> np.ndarray:
+        """Return the TCP pose as a 7-element array ``[x, y, z, qw, qx, qy, qz]``."""
         pos = self.data.site_xpos[self._tcp_site_id].copy()
         mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
         quat = np.zeros(4)
@@ -268,13 +293,16 @@ class PickAndPlaceEnv(gymnasium.Env):
         return np.concatenate([pos, quat])
 
     def _get_cube_pose(self) -> np.ndarray:
+        """Return the cube free-joint pose as a 7-element array ``[x, y, z, qw, qx, qy, qz]``."""
         addr = self._cube_qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
     def _get_target_pos(self) -> np.ndarray:
+        """Return the current target disc position as a 3-element ``[x, y, z]`` array."""
         return self.data.xpos[self._target_body_id].copy()
 
     def _is_grasping(self) -> float:
+        """Return 1.0 if the cube is currently grasped by both gripper fingers, else 0.0."""
         gripper_contact = False
         jaw_contact = False
 
@@ -301,10 +329,16 @@ class PickAndPlaceEnv(gymnasium.Env):
         return 1.0 if (gripper_contact and jaw_contact) else 0.0
 
     def _is_robot_static(self) -> bool:
+        """Return True if all arm joint velocities are below the static threshold."""
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
         return bool(np.all(np.abs(arm_vels) < 0.2))
 
     def _get_obs(self) -> np.ndarray | dict:
+        """Return the current observation.
+
+        In ``"state_only"`` mode returns a flat 24-element array.
+        In ``"wrist"`` mode returns a dict with ``"state"`` and ``"wrist_camera"`` keys.
+        """
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         target_pos = self._get_target_pos()
@@ -323,6 +357,7 @@ class PickAndPlaceEnv(gymnasium.Env):
         return state
 
     def _get_info(self) -> dict:
+        """Return a diagnostic info dict for the current step."""
         tcp_pos = self._get_tcp_pose()[:3]
         obj_pose = self._get_cube_pose()
         obj_pos = obj_pose[:3]
@@ -350,6 +385,7 @@ class PickAndPlaceEnv(gymnasium.Env):
         }
 
     def _compute_reward(self, info: dict) -> float:
+        """Compute the normalised scalar reward for the current step."""
         tcp_to_obj_dist = info["tcp_to_obj_dist"]
         reach_progress = 1.0 - float(np.tanh(5.0 * tcp_to_obj_dist))
 
@@ -368,6 +404,12 @@ class PickAndPlaceEnv(gymnasium.Env):
         )
 
     def reset(self, *, seed=None, options=None):
+        """Reset the environment to a randomised initial state.
+
+        The robot is placed at its rest configuration, and the cube and target
+        disc are spawned at random but sufficiently separated positions within
+        the spawn region.
+        """
         super().reset(seed=seed, options=options)
 
         mujoco.mj_resetData(self.model, self.data)
@@ -431,12 +473,19 @@ class PickAndPlaceEnv(gymnasium.Env):
         return obs, info
 
     def _get_current_qpos(self) -> np.ndarray:
+        """Return the current joint positions for all SO101 joints as a float64 array."""
         return np.array(
             [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
             dtype=np.float64,
         )
 
     def step(self, action):
+        """Advance the simulation by one control step.
+
+        Applies *action* according to the active control mode, runs
+        ``_N_SUBSTEPS`` MuJoCo integration steps, and returns the standard
+        Gymnasium 5-tuple ``(obs, reward, terminated, truncated, info)``.
+        """
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
@@ -460,6 +509,11 @@ class PickAndPlaceEnv(gymnasium.Env):
         return obs, reward, terminated, False, info
 
     def render(self):
+        """Render the scene according to the active ``render_mode``.
+
+        Returns an ``(H, W, 3)`` uint8 array for ``"rgb_array"`` mode, or
+        ``None`` for ``"human"`` and unset modes.
+        """
         if self.render_mode == "rgb_array":
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(self.model, height=480, width=640)
@@ -473,6 +527,7 @@ class PickAndPlaceEnv(gymnasium.Env):
         return None
 
     def close(self):
+        """Release all MuJoCo renderer and viewer resources."""
         if self._wrist_renderer is not None:
             self._wrist_renderer.close()
             self._wrist_renderer = None

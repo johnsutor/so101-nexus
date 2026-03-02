@@ -218,12 +218,14 @@ class TestRobotOrientation:
 class TestTargetDiscOrientation:
     @pytest.mark.parametrize("env_id,robot", ENV_IDS)
     def test_target_disc_lies_flat(self, request, env_id, robot):
-        """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z)."""
+        """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z).
+
+        After rotation, the cylinder's Y-axis should map to Z.
+        Quaternion for 90deg around X: [cos(pi/4), sin(pi/4), 0, 0].
+        """
         env = _get_env(request, env_id)
         env.reset()
         target_q = env.unwrapped.target_site.pose.q[0].cpu().numpy()
-        # After rotation, the cylinder's Y-axis should map to Z.
-        # Quaternion for 90deg around X: [cos(pi/4), sin(pi/4), 0, 0]
         expected_q = np.array([0.7071068, 0.7071068, 0.0, 0.0])
         np.testing.assert_allclose(np.abs(target_q), np.abs(expected_q), atol=1e-3)
 

@@ -6,7 +6,7 @@ import pytest
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-import so101_nexus_mujoco  # noqa: F401
+import so101_nexus_mujoco  # noqa: F401, E402
 from so101_nexus_core.types import (
     DEFAULT_CUBE_HALF_SIZE,
     DEFAULT_CUBE_SPAWN_HALF_SIZE,
