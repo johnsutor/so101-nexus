@@ -26,7 +26,9 @@ Images provided (one per camera angle):
 {camera_name_list}
 
 Verify ALL of the following:
-1. SCENE ELEMENTS: These elements must be visible: {expected_elements}
+1. SCENE ELEMENTS: These elements must be visible: {expected_elements}. There shouldn't be \
+strange visual artifacts and they should not collide with anything else. 
+to (this isn't visual during training).
 2. ROBOT INTEGRITY: The robot arm appears correctly assembled (connected joints, no floating parts)
 3. RENDER QUALITY: The scene is properly lit and rendered \
 (no all-black frames, no major artifacts, no missing textures)
@@ -92,7 +94,7 @@ def verify_scene(
         }
     ]
 
-    kwargs = {"model": model, "messages": messages, "max_tokens": 8192}
+    kwargs = {"model": model, "messages": messages, "max_tokens": 16384}
     if api_base:
         kwargs["api_base"] = api_base
 

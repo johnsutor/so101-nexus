@@ -27,4 +27,4 @@ test-visual-maniskill:
 	uv run --package so101-nexus-maniskill --prerelease=allow --with litellm --with Pillow --with "imageio[ffmpeg]" pytest tests/visual/test_maniskill_visual.py -m visual -v
 
 test-visual-qwen:
-	VISUAL_TEST_MODEL="openai/unsloth/Qwen3_5-35B-A3B-UD-Q4_K_M" VISUAL_TEST_API_BASE="http://127.0.0.1:1337/v1" OPENAI_API_KEY="secret" $(MAKE) test-visual-mujoco
+	VISUAL_TEST_MODEL="openai/unsloth/Qwen3_5-35B-A3B-UD-Q4_K_M" VISUAL_TEST_API_BASE="http://127.0.0.1:1337/v1" OPENAI_API_KEY="secret" $(MAKE) test-visual

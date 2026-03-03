@@ -3,7 +3,7 @@ name = "so101-nexus-core"
 version = "0.1.0"
 description = "Shared assets and types for SO101-Nexus simulation environments"
 requires-python = ">=3.10"
-dependencies = ["numpy"]
+dependencies = ["numpy", "huggingface_hub", "trimesh"]
 license = "Apache-2.0"
 
 [project.optional-dependencies]

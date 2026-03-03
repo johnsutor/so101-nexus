@@ -18,6 +18,9 @@ MANISKILL_SO101_ENVS = [
     "ManiSkillPickCubeGoalSO101-v1",
     "ManiSkillPickCubeLiftSO101-v1",
     "ManiSkillPickAndPlaceSO101-v1",
+    "ManiSkillPickBananaGoalSO101-v1",
+    "ManiSkillPickGolfBallGoalSO101-v1",
+    "ManiSkillPickForkGoalSO101-v1",
 ]
 
 
@@ -41,16 +44,22 @@ class TestManiSkillCaptureInfrastructure:
 
     @pytest.mark.parametrize("env_id", MANISKILL_SO101_ENVS)
     def test_capture_views(self, env_id: str):
-        env = gymnasium.make(
-            env_id,
+        _CUBE_ENVS = {
+            "ManiSkillPickCubeGoalSO101-v1",
+            "ManiSkillPickCubeLiftSO101-v1",
+            "ManiSkillPickAndPlaceSO101-v1",
+        }
+        kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
             camera_mode="both",
-            cube_color="red",
             camera_width=CAMERA_WIDTH,
             camera_height=CAMERA_HEIGHT,
             num_envs=1,
         )
+        if env_id in _CUBE_ENVS:
+            kwargs["cube_color"] = "red"
+        env = gymnasium.make(env_id, **kwargs)
         obs, _ = env.reset(seed=42)
         views = capture_maniskill_views(env, obs)
         env.close()
@@ -71,12 +80,28 @@ ENV_DESCRIPTIONS = {
     "ManiSkillPickAndPlaceSO101-v1": (
         "SO-101 robot arm pick-and-place task in ManiSkill with a colored target disc"
     ),
+    "ManiSkillPickBananaGoalSO101-v1": (
+        "SO-101 robot arm picking up a banana (YCB object) in ManiSkill"
+    ),
+    "ManiSkillPickGolfBallGoalSO101-v1": (
+        "SO-101 robot arm picking up a golf ball (YCB object) in ManiSkill"
+    ),
+    "ManiSkillPickForkGoalSO101-v1": (
+        "SO-101 robot arm picking up a fork (YCB object) in ManiSkill"
+    ),
 }
 
 EXPECTED_ELEMENTS = {
     "ManiSkillPickCubeGoalSO101-v1": "robot arm, red cube, ground plane, goal marker",
     "ManiSkillPickCubeLiftSO101-v1": "robot arm, red cube, ground plane",
     "ManiSkillPickAndPlaceSO101-v1": "robot arm, red cube, ground plane, colored target disc",
+    "ManiSkillPickBananaGoalSO101-v1": (
+        "robot arm, banana-shaped object, ground plane, goal marker"
+    ),
+    "ManiSkillPickGolfBallGoalSO101-v1": (
+        "robot arm, small spherical object, ground plane, goal marker"
+    ),
+    "ManiSkillPickForkGoalSO101-v1": ("robot arm, fork-shaped object, ground plane, goal marker"),
 }
 
 
@@ -86,16 +111,22 @@ class TestManiSkillVisual:
 
     @pytest.mark.parametrize("env_id", MANISKILL_SO101_ENVS)
     def test_env_renders_correctly(self, visual_verifier, env_id: str):
-        env = gymnasium.make(
-            env_id,
+        _CUBE_ENVS = {
+            "ManiSkillPickCubeGoalSO101-v1",
+            "ManiSkillPickCubeLiftSO101-v1",
+            "ManiSkillPickAndPlaceSO101-v1",
+        }
+        kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
             camera_mode="both",
-            cube_color="red",
             camera_width=CAMERA_WIDTH,
             camera_height=CAMERA_HEIGHT,
             num_envs=1,
         )
+        if env_id in _CUBE_ENVS:
+            kwargs["cube_color"] = "red"
+        env = gymnasium.make(env_id, **kwargs)
         obs, _ = env.reset(seed=42)
         views = capture_maniskill_views(env, obs)
         env.close()

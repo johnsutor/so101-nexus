@@ -21,6 +21,9 @@ conflicts = [[
     { package = "so101-nexus-mujoco" },
 ]]
 
+[options]
+prerelease-mode = "allow"
+
 [manifest]
 members = [
     "so101-nexus-core",
@@ -3829,8 +3832,10 @@ name = "so101-nexus-core"
 version = "0.1.0"
 source = { editable = "packages/so101-nexus-core" }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "trimesh" },
 ]
 
 [package.optional-dependencies]
@@ -3840,8 +3845,10 @@ viz = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "pillow", marker = "extra == 'viz'" },
+    { name = "trimesh" },
 ]
 provides-extras = ["viz"]
 
@@ -4248,8 +4255,8 @@ name = "trimesh"
 version = "4.11.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'project-21-so101-nexus-maniskill') or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'project-21-so101-nexus-maniskill') or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1f/41/de14e2fa9b2d99214c60402fc57d2efb201f2925b16d6bee289565901d83/trimesh-4.11.2.tar.gz", hash = "sha256:30fbde5b8dd7c157e7ff4d54286cb35291844fd3f4d0364e8b2727f1b308fb06", size = 835044, upload-time = "2026-02-10T16:00:27.58Z" }
 wheels = [

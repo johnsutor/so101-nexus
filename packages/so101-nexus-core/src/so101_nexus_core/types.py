@@ -5,6 +5,34 @@ TargetColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", 
 
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 
+YcbModelId = Literal[
+    "009_gelatin_box",
+    "011_banana",
+    "030_fork",
+    "031_spoon",
+    "032_knife",
+    "033_spatula",
+    "037_scissors",
+    "040_large_marker",
+    "043_phillips_screwdriver",
+    "058_golf_ball",
+]
+
+YCB_OBJECTS: dict[str, str] = {
+    "009_gelatin_box": "gelatin box",
+    "011_banana": "banana",
+    "030_fork": "fork",
+    "031_spoon": "spoon",
+    "032_knife": "knife",
+    "033_spatula": "spatula",
+    "037_scissors": "scissors",
+    "040_large_marker": "large marker",
+    "043_phillips_screwdriver": "phillips screwdriver",
+    "058_golf_ball": "golf ball",
+}
+
+DEFAULT_YCB_SPAWN_HALF_SIZE: float = 0.05
+
 CUBE_COLOR_MAP: dict[str, list[float]] = {
     "red": [1.0, 0.0, 0.0, 1.0],
     "orange": [1.0, 0.5, 0.0, 1.0],

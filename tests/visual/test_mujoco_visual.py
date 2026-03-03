@@ -21,6 +21,9 @@ MUJOCO_ENVS = [
     "MuJoCoPickCubeGoal-v1",
     "MuJoCoPickCubeLift-v1",
     "MuJoCoPickAndPlace-v1",
+    "MuJoCoPickBananaGoal-v1",
+    "MuJoCoPickGolfBallGoal-v1",
+    "MuJoCoPickForkGoal-v1",
 ]
 
 
@@ -90,12 +93,18 @@ ENV_DESCRIPTIONS = {
     "MuJoCoPickAndPlace-v1": (
         "SO-101 robot arm pick-and-place task in MuJoCo with a colored target disc"
     ),
+    "MuJoCoPickBananaGoal-v1": "SO-101 robot arm picking up a banana (YCB object) in MuJoCo",
+    "MuJoCoPickGolfBallGoal-v1": "SO-101 robot arm picking up a golf ball (YCB object) in MuJoCo",
+    "MuJoCoPickForkGoal-v1": "SO-101 robot arm picking up a fork (YCB object) in MuJoCo",
 }
 
 EXPECTED_ELEMENTS = {
     "MuJoCoPickCubeGoal-v1": "robot arm, red cube, ground plane, goal marker",
     "MuJoCoPickCubeLift-v1": "robot arm, red cube, ground plane",
     "MuJoCoPickAndPlace-v1": "robot arm, red cube, ground plane, colored target disc",
+    "MuJoCoPickBananaGoal-v1": "robot arm, banana-shaped object, ground plane, goal marker",
+    "MuJoCoPickGolfBallGoal-v1": "robot arm, small spherical object, ground plane, goal marker",
+    "MuJoCoPickForkGoal-v1": "robot arm, fork-shaped object, ground plane, goal marker",
 }
 
 
@@ -105,13 +114,15 @@ class TestMuJoCoVisual:
 
     @pytest.mark.parametrize("env_id", MUJOCO_ENVS)
     def test_env_renders_correctly(self, visual_verifier, env_id: str):
-        env = gymnasium.make(
-            env_id,
-            cube_color="red",
+        _CUBE_ENVS = {"MuJoCoPickCubeGoal-v1", "MuJoCoPickCubeLift-v1", "MuJoCoPickAndPlace-v1"}
+        kwargs = dict(
             camera_mode="wrist",
             camera_width=CAMERA_WIDTH,
             camera_height=CAMERA_HEIGHT,
         )
+        if env_id in _CUBE_ENVS:
+            kwargs["cube_color"] = "red"
+        env = gymnasium.make(env_id, **kwargs)
         env.reset(seed=42)
         views = capture_mujoco_views(env)
         env.close()
