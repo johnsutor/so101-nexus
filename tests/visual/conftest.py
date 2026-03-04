@@ -27,8 +27,7 @@ Images provided (one per camera angle):
 
 Verify ALL of the following:
 1. SCENE ELEMENTS: These elements must be visible: {expected_elements}. There shouldn't be \
-strange visual artifacts and they should not collide with anything else. 
-to (this isn't visual during training).
+strange visual artifacts and they should not collide with anything else.
 2. ROBOT INTEGRITY: The robot arm appears correctly assembled (connected joints, no floating parts)
 3. RENDER QUALITY: The scene is properly lit and rendered \
 (no all-black frames, no major artifacts, no missing textures)
@@ -40,7 +39,9 @@ Explanation here in 2-3 sentences.
 
 or:
 VERDICT: FAIL
-Explanation here in 2-3 sentences."""
+Explanation here in 2-3 sentences.
+
+Focus more on the scene rather than the robot; Assume the robot configuration is correct."""
 
 
 def encode_image_base64(img: np.ndarray) -> str:

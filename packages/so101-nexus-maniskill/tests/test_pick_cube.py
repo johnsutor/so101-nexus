@@ -147,6 +147,18 @@ class TestEnvCreation:
         assert env.action_space.shape == (6,)
 
 
+class TestTaskDescription:
+    def test_task_description_starts_with_capital(self):
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", **BASE_KWARGS)
+        assert env.unwrapped.task_description[0].isupper()
+        env.close()
+
+    def test_task_description_includes_color(self):
+        env = gym.make("ManiSkillPickCubeGoal-v1", cube_color="green", **BASE_KWARGS)
+        assert "green" in env.unwrapped.task_description
+        env.close()
+
+
 class TestEpisodeLogic:
     EVALUATE_KEYS = {
         "obj_to_goal_dist",
@@ -155,6 +167,7 @@ class TestEpisodeLogic:
         "is_robot_static",
         "lift_height",
         "success",
+        "tcp_to_obj_dist",
     }
 
     @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)

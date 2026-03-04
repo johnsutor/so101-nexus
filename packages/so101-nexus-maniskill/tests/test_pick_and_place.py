@@ -107,6 +107,7 @@ class TestEpisodeLogic:
         "is_robot_static",
         "lift_height",
         "success",
+        "tcp_to_obj_dist",
     }
 
     @pytest.mark.parametrize("env_id,robot", ENV_IDS)
@@ -150,6 +151,13 @@ class TestEpisodeLogic:
 
 
 class TestTaskDescription:
+    def test_task_description_starts_with_capital(self):
+        env = gym.make(
+            "ManiSkillPickAndPlace-v1", cube_color="red", target_color="blue", **BASE_KWARGS
+        )
+        assert env.unwrapped.task_description[0].isupper()
+        env.close()
+
     def test_includes_cube_color(self):
         env = gym.make(
             "ManiSkillPickAndPlace-v1", cube_color="green", target_color="blue", **BASE_KWARGS

@@ -1,9 +1,12 @@
 from typing import Literal
 
-CubeColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
-TargetColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
+from so101_nexus_core.config import (
+    DEFAULT_ENV_CONFIG,
+    ColorName,
+)
 
-ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+CubeColorName = ColorName
+TargetColorName = ColorName
 
 YcbModelId = Literal[
     "009_gelatin_box",
@@ -18,49 +21,21 @@ YcbModelId = Literal[
     "058_golf_ball",
 ]
 
-YCB_OBJECTS: dict[str, str] = {
-    "009_gelatin_box": "gelatin box",
-    "011_banana": "banana",
-    "030_fork": "fork",
-    "031_spoon": "spoon",
-    "032_knife": "knife",
-    "033_spatula": "spatula",
-    "037_scissors": "scissors",
-    "040_large_marker": "large marker",
-    "043_phillips_screwdriver": "phillips screwdriver",
-    "058_golf_ball": "golf ball",
-}
+DEFAULT_TARGET_DISC_RADIUS: float = DEFAULT_ENV_CONFIG.task.target_disc_radius
+DEFAULT_MIN_CUBE_TARGET_SEPARATION: float = DEFAULT_ENV_CONFIG.task.min_cube_target_separation
 
-DEFAULT_YCB_SPAWN_HALF_SIZE: float = 0.05
+DEFAULT_CUBE_HALF_SIZE: float = DEFAULT_ENV_CONFIG.task.cube_half_size
+DEFAULT_CUBE_MASS: float = DEFAULT_ENV_CONFIG.task.cube_mass
+DEFAULT_GOAL_THRESH: float = DEFAULT_ENV_CONFIG.task.goal_thresh
+DEFAULT_LIFT_THRESHOLD: float = DEFAULT_ENV_CONFIG.task.lift_threshold
+DEFAULT_MAX_GOAL_HEIGHT: float = DEFAULT_ENV_CONFIG.task.max_goal_height
+DEFAULT_CUBE_SPAWN_HALF_SIZE: float = DEFAULT_ENV_CONFIG.task.cube_spawn_half_size
+DEFAULT_MAX_EPISODE_STEPS: int = DEFAULT_ENV_CONFIG.task.max_episode_steps
 
-CUBE_COLOR_MAP: dict[str, list[float]] = {
-    "red": [1.0, 0.0, 0.0, 1.0],
-    "orange": [1.0, 0.5, 0.0, 1.0],
-    "yellow": [1.0, 1.0, 0.0, 1.0],
-    "green": [0.0, 1.0, 0.0, 1.0],
-    "blue": [0.0, 0.0, 1.0, 1.0],
-    "purple": [0.5, 0.0, 0.5, 1.0],
-    "black": [0.0, 0.0, 0.0, 1.0],
-    "white": [1.0, 1.0, 1.0, 1.0],
-}
-
-TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
-
-DEFAULT_TARGET_DISC_RADIUS: float = 0.05
-DEFAULT_MIN_CUBE_TARGET_SEPARATION: float = 0.0375
-
-DEFAULT_CUBE_HALF_SIZE: float = 0.0125
-DEFAULT_CUBE_MASS: float = 0.01
-DEFAULT_GOAL_THRESH: float = 0.025
-DEFAULT_LIFT_THRESHOLD: float = 0.05
-DEFAULT_MAX_GOAL_HEIGHT: float = 0.08
-DEFAULT_CUBE_SPAWN_HALF_SIZE: float = 0.05
-DEFAULT_MAX_EPISODE_STEPS: int = 256
-
-REWARD_WEIGHT_REACHING: float = 0.25
-REWARD_WEIGHT_GRASPING: float = 0.25
-REWARD_WEIGHT_TASK_OBJECTIVE: float = 0.40
-REWARD_WEIGHT_COMPLETION_BONUS: float = 0.10
+REWARD_WEIGHT_REACHING: float = DEFAULT_ENV_CONFIG.reward.reaching
+REWARD_WEIGHT_GRASPING: float = DEFAULT_ENV_CONFIG.reward.grasping
+REWARD_WEIGHT_TASK_OBJECTIVE: float = DEFAULT_ENV_CONFIG.reward.task_objective
+REWARD_WEIGHT_COMPLETION_BONUS: float = DEFAULT_ENV_CONFIG.reward.completion_bonus
 
 SO101_REST_QPOS: list[float] = [0.0, -1.5708, 1.5708, 0.66, 0.0, -1.1]
 SO101_JOINT_NAMES: list[str] = [
@@ -72,11 +47,13 @@ SO101_JOINT_NAMES: list[str] = [
     "gripper",
 ]
 
-DEFAULT_GROUND_COLOR: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
+DEFAULT_GROUND_COLOR: tuple[float, float, float, float] = DEFAULT_ENV_CONFIG.ground_color
 
-DEFAULT_CAMERA_WIDTH: int = 224
-DEFAULT_CAMERA_HEIGHT: int = 224
-DEFAULT_WRIST_CAM_FOV_RANGE: tuple[float, float] = (60.0, 90.0)
+DEFAULT_CAMERA_WIDTH: int = DEFAULT_ENV_CONFIG.camera.width
+DEFAULT_CAMERA_HEIGHT: int = DEFAULT_ENV_CONFIG.camera.height
+DEFAULT_WRIST_CAM_FOV_RANGE: tuple[float, float] = DEFAULT_ENV_CONFIG.camera.wrist_fov_deg_range
+DEFAULT_WRIST_CAM_FOV_DEG_RANGE: tuple[float, float] = DEFAULT_ENV_CONFIG.camera.wrist_fov_deg_range
+DEFAULT_WRIST_CAM_FOV_RAD_RANGE: tuple[float, float] = DEFAULT_ENV_CONFIG.camera.wrist_fov_rad_range
 
 
 def compute_normalized_reward(
@@ -85,24 +62,7 @@ def compute_normalized_reward(
     task_progress: float,
     is_complete: bool,
 ) -> float:
-    """Compute a normalized reward in [0, 1] using the standard reward budget.
-
-    Parameters
-    ----------
-    reach_progress:
-        Fraction of reaching completed, in [0, 1].
-    is_grasped:
-        Whether the object is currently grasped.
-    task_progress:
-        Task-specific progress fraction, in [0, 1] (e.g. lift height or placement accuracy).
-    is_complete:
-        Whether the task objective is fully achieved.
-
-    Returns
-    -------
-    float
-        Reward in [0, 1].
-    """
+    """Compute a normalized reward in [0, 1] using the standard reward budget."""
     return (
         REWARD_WEIGHT_REACHING * reach_progress
         + REWARD_WEIGHT_GRASPING * float(is_grasped)

@@ -180,6 +180,59 @@ class TestRewardBudget:
         assert reward <= REWARD_WEIGHT_REACHING + 1e-6
 
 
+class TestTaskDescription:
+    def test_task_description_exists(self):
+        env = PickCubeEnv(cube_color="red")
+        assert isinstance(env.task_description, str)
+        assert "red" in env.task_description
+        env.close()
+
+    def test_task_description_starts_with_capital(self):
+        env = PickCubeEnv(cube_color="blue")
+        assert env.task_description[0].isupper()
+        env.close()
+
+    def test_task_description_is_instance_attr(self):
+        env = PickCubeEnv()
+        assert "task_description" in env.__dict__
+        env.close()
+
+
+class TestRobotInitQposNoise:
+    def test_noise_param_exists(self):
+        env = PickCubeEnv(robot_init_qpos_noise=0.05)
+        assert env.robot_init_qpos_noise == 0.05
+        env.close()
+
+    def test_noise_produces_different_qpos(self):
+        env = PickCubeEnv(robot_init_qpos_noise=0.02)
+        qpos_list = []
+        for seed in range(5):
+            env.reset(seed=seed)
+            qpos_list.append(env._get_current_qpos().copy())
+        env.close()
+        all_same = all(np.allclose(qpos_list[0], q) for q in qpos_list[1:])
+        assert not all_same
+
+
+class TestLiftThreshold:
+    def test_lift_threshold_class_attr(self):
+        assert hasattr(PickCubeEnv, "LIFT_THRESHOLD")
+        assert PickCubeEnv.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
+
+    def test_lift_threshold_accessible_on_instance(self):
+        env = PickCubeEnv()
+        assert env.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
+        env.close()
+
+
+class TestGoalThreshConfig:
+    def test_goal_thresh_stored(self):
+        env = PickCubeEnv()
+        assert env._goal_thresh == DEFAULT_GOAL_THRESH
+        env.close()
+
+
 class TestCameraModes:
     def test_state_only_returns_flat_array(self):
         env = PickCubeEnv(camera_mode="state_only")
@@ -233,7 +286,7 @@ class TestControlModes:
 
     @pytest.mark.parametrize("mode", ["pd_joint_delta_pos", "pd_joint_target_delta_pos"])
     def test_zero_action_stays_near_rest(self, mode):
-        env = PickCubeEnv(control_mode=mode)
+        env = PickCubeEnv(control_mode=mode, robot_init_qpos_noise=0.0)
         env.reset()
         rest = np.array(SO101_REST_QPOS, dtype=np.float64)
         zero = np.zeros(6, dtype=np.float32)
@@ -244,7 +297,7 @@ class TestControlModes:
         env.close()
 
     def test_target_delta_accumulates(self):
-        env = PickCubeEnv(control_mode="pd_joint_target_delta_pos")
+        env = PickCubeEnv(control_mode="pd_joint_target_delta_pos", robot_init_qpos_noise=0.0)
         env.reset()
         rest = np.array(SO101_REST_QPOS, dtype=np.float64)
         small_delta = np.array([0.01, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)

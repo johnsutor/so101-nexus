@@ -145,6 +145,49 @@ class TestEpisodeLogic:
         assert not info["success"]
 
 
+class TestTaskDescription:
+    def test_task_description_exists(self):
+        env = PickAndPlaceEnv(cube_color="red", target_color="blue")
+        assert isinstance(env.task_description, str)
+        assert "red" in env.task_description
+        assert "blue" in env.task_description
+        env.close()
+
+    def test_task_description_starts_with_capital(self):
+        env = PickAndPlaceEnv()
+        assert env.task_description[0].isupper()
+        env.close()
+
+    def test_task_description_is_instance_attr(self):
+        env = PickAndPlaceEnv()
+        assert "task_description" in env.__dict__
+        env.close()
+
+
+class TestRobotInitQposNoise:
+    def test_noise_param_exists(self):
+        env = PickAndPlaceEnv(robot_init_qpos_noise=0.05)
+        assert env.robot_init_qpos_noise == 0.05
+        env.close()
+
+    def test_noise_produces_different_qpos(self):
+        env = PickAndPlaceEnv(robot_init_qpos_noise=0.02)
+        qpos_list = []
+        for seed in range(5):
+            env.reset(seed=seed)
+            qpos_list.append(env._get_current_qpos().copy())
+        env.close()
+        all_same = all(np.allclose(qpos_list[0], q) for q in qpos_list[1:])
+        assert not all_same
+
+
+class TestGoalThreshConfig:
+    def test_goal_thresh_stored(self):
+        env = PickAndPlaceEnv()
+        assert env._goal_thresh == DEFAULT_GOAL_THRESH
+        env.close()
+
+
 class TestVisibleTarget:
     def test_target_disc_geom_exists(self):
         env = PickAndPlaceEnv()

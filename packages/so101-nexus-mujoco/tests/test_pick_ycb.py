@@ -28,6 +28,14 @@ LIFT_ENV_IDS = [
 ]
 ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
 
+PER_ROBOT_GOAL_IDS = [
+    "MuJoCoPickGolfBallGoalSO101-v1",
+    "MuJoCoPickBananaGoalSO101-v1",
+]
+PER_ROBOT_LIFT_IDS = [
+    "MuJoCoPickGolfBallLiftSO101-v1",
+]
+
 
 @pytest.fixture(scope="module")
 def goal_env():
@@ -109,6 +117,24 @@ class TestEnvCreation:
         env.close()
 
 
+class TestPerRobotEnvIDs:
+    @pytest.mark.parametrize("env_id", PER_ROBOT_GOAL_IDS)
+    def test_per_robot_goal_env_creates(self, env_id):
+        env = gym.make(env_id)
+        assert isinstance(env, gym.Env)
+        obs, info = env.reset()
+        assert isinstance(obs, np.ndarray)
+        env.close()
+
+    @pytest.mark.parametrize("env_id", PER_ROBOT_LIFT_IDS)
+    def test_per_robot_lift_env_creates(self, env_id):
+        env = gym.make(env_id)
+        assert isinstance(env, gym.Env)
+        obs, info = env.reset()
+        assert isinstance(obs, np.ndarray)
+        env.close()
+
+
 class TestObservationVector:
     def test_state_shape(self, goal_env):
         obs, _ = goal_env.reset()
@@ -171,6 +197,49 @@ class TestEpisodeLogic:
     def test_success_false_at_reset(self, goal_env):
         _, info = goal_env.reset()
         assert not info["success"]
+
+
+class TestTaskDescription:
+    def test_task_description_exists(self):
+        env = PickYCBEnv(model_id="058_golf_ball")
+        assert isinstance(env.task_description, str)
+        assert "golf ball" in env.task_description
+        env.close()
+
+    def test_task_description_starts_with_capital(self):
+        env = PickYCBEnv()
+        assert env.task_description[0].isupper()
+        env.close()
+
+
+class TestRobotInitQposNoise:
+    def test_noise_param_exists(self):
+        env = PickYCBEnv(robot_init_qpos_noise=0.05)
+        assert env.robot_init_qpos_noise == 0.05
+        env.close()
+
+    def test_noise_produces_different_qpos(self):
+        env = PickYCBEnv(robot_init_qpos_noise=0.02)
+        qpos_list = []
+        for seed in range(5):
+            env.reset(seed=seed)
+            qpos_list.append(env._get_current_qpos().copy())
+        env.close()
+        all_same = all(np.allclose(qpos_list[0], q) for q in qpos_list[1:])
+        assert not all_same
+
+
+class TestLiftThreshold:
+    def test_lift_threshold_class_attr(self):
+        assert hasattr(PickYCBEnv, "LIFT_THRESHOLD")
+        assert PickYCBEnv.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
+
+
+class TestGoalThreshConfig:
+    def test_goal_thresh_stored(self):
+        env = PickYCBEnv()
+        assert env._goal_thresh == DEFAULT_GOAL_THRESH
+        env.close()
 
 
 class TestCameraModes:
