@@ -11,12 +11,10 @@ from mani_skill.utils.structs.pose import Pose
 from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
     TARGET_COLOR_MAP,
-    CubeColorName,
     PickAndPlaceConfig,
-    TargetColorName,
 )
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_maniskill.base_env import CameraMode, SO101NexusManiSkillBaseEnv
+from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
 
 _DEFAULT_CONFIG = PickAndPlaceConfig()
 PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
@@ -32,36 +30,18 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         *args,
         config: PickAndPlaceConfig = PickAndPlaceConfig(),
         robot_uids: str = "so100",
-        cube_color: CubeColorName = "red",
-        target_color: TargetColorName = "blue",
-        robot_color: tuple[float, float, float, float] | None = None,
-        camera_mode: CameraMode = "fixed",
-        robot_init_qpos_noise: float = 0.02,
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        if cube_color not in CUBE_COLOR_MAP:
-            raise ValueError(
-                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
-            )
-        if target_color not in TARGET_COLOR_MAP:
-            raise ValueError(
-                f"target_color must be one of {list(TARGET_COLOR_MAP)}, got {target_color!r}"
-            )
-        if cube_color == target_color:
-            raise ValueError(f"cube_color and target_color must differ, both are {cube_color!r}")
-        if not (0.01 <= config.cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
-
-        self.cube_color_name = cube_color
-        self.cube_color_rgba = CUBE_COLOR_MAP[cube_color]
-        self.target_color_name = target_color
-        self.target_color_rgba = TARGET_COLOR_MAP[target_color]
+        self.cube_color_name = config.cube_color
+        self.cube_color_rgba = CUBE_COLOR_MAP[config.cube_color]
+        self.target_color_name = config.target_color
+        self.target_color_rgba = TARGET_COLOR_MAP[config.target_color]
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
         self.task_description = (
-            f"Pick up the small {cube_color} cube and place it on the {target_color} circle"
+            f"Pick up the small {config.cube_color} cube and place it on the {config.target_color} circle"
         )
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
@@ -70,13 +50,10 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             config=config,
             robot_uids=robot_uids,
             robot_cfgs=robot_cfgs,
-            robot_color=robot_color,
-            camera_mode=camera_mode,
-            robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         if reconfiguration_freq is None:
-            reconfiguration_freq = 1 if camera_mode in ("wrist", "both") else 0
+            reconfiguration_freq = 1 if config.camera_mode in ("wrist", "both") else 0
 
         super().__init__(
             *args,

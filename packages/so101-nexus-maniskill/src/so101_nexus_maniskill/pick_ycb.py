@@ -12,11 +12,10 @@ from so101_nexus_core.config import (
     YCB_ENV_NAME_MAP,
     YCB_OBJECTS,
     PickYCBConfig,
-    YcbModelId,
 )
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_core.ycb_geometry import get_maniskill_ycb_spawn_z
-from so101_nexus_maniskill.base_env import CameraMode, SO101NexusManiSkillBaseEnv
+from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
 
 _DEFAULT_CONFIG = PickYCBConfig()
 PICK_YCB_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
@@ -32,20 +31,13 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
         *args,
         config: PickYCBConfig = PickYCBConfig(),
         robot_uids: str = "so100",
-        model_id: YcbModelId = "058_golf_ball",
-        robot_color: tuple[float, float, float, float] | None = None,
-        camera_mode: CameraMode = "fixed",
-        robot_init_qpos_noise: float = 0.02,
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        if model_id not in YCB_OBJECTS:
-            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
-
-        self.model_id = model_id
+        self.model_id = config.model_id
         self._obj_spawn_z = 0.0
-        self.task_description = f"Pick up the {YCB_OBJECTS[model_id]}"
+        self.task_description = f"Pick up the {YCB_OBJECTS[config.model_id]}"
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
 
@@ -53,13 +45,10 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
             config=config,
             robot_uids=robot_uids,
             robot_cfgs=robot_cfgs,
-            robot_color=robot_color,
-            camera_mode=camera_mode,
-            robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         if reconfiguration_freq is None:
-            reconfiguration_freq = 1 if camera_mode in ("wrist", "both") else 0
+            reconfiguration_freq = 1 if config.camera_mode in ("wrist", "both") else 0
 
         super().__init__(
             *args,
@@ -208,7 +197,7 @@ for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
             def _make_init(_mid=_model_id, _ruid=_robot_uid, _base=_base_cls):
                 def __init__(self, *args, **kwargs):
                     kwargs.setdefault("robot_uids", _ruid)
-                    kwargs.setdefault("model_id", _mid)
+                    kwargs.setdefault("config", PickYCBConfig(model_id=_mid))
                     _base.__init__(self, *args, **kwargs)
 
                 return __init__
