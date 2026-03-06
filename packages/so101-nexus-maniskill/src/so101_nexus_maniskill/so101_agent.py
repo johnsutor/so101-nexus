@@ -109,7 +109,7 @@ class SO101(BaseAgent):
         return self.tcp_link.pose
 
     def is_grasping(
-        self, object: Actor, min_force: float = 0.5, max_angle: float = 110
+        self, object: Actor | None = None, min_force: float = 0.5, max_angle: float = 110
     ) -> torch.Tensor:
         """Check if the robot is grasping an object.
 
@@ -129,6 +129,9 @@ class SO101(BaseAgent):
             Boolean tensor of shape ``(num_envs,)`` indicating whether each
             environment's robot is grasping *object*.
         """
+        if object is None:
+            return super().is_grasping(object)
+
         l_contact_forces = self.scene.get_pairwise_contact_forces(self.finger1_link, object)
         r_contact_forces = self.scene.get_pairwise_contact_forces(self.finger2_link, object)
         lforce = torch.linalg.norm(l_contact_forces, axis=1)

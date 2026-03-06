@@ -70,6 +70,7 @@ def _build_scene_xml(
 
 class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
+    config: PickAndPlaceConfig
 
     def __init__(
         self,
@@ -152,6 +153,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         )
 
         if self.camera_mode == "wrist":
+            assert self._wrist_renderer is not None
+            assert self._wrist_cam_id is not None
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             return {"state": state, "wrist_camera": self._wrist_renderer.render()}
         return state

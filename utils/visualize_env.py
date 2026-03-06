@@ -12,6 +12,8 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Protocol, cast
+
 import gymnasium
 import mujoco
 import numpy as np
@@ -33,10 +35,16 @@ RENDER_HEIGHT = 480
 WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
 
 
+class _MuJoCoEnvProtocol(Protocol):
+    model: mujoco.MjModel
+    data: mujoco.MjData
+
+
 def _capture_views(env: gymnasium.Env) -> list[CameraView]:
     """Capture wrist, top-down, and head-on camera views."""
-    model = env.unwrapped.model
-    data = env.unwrapped.data
+    mujoco_env = cast(_MuJoCoEnvProtocol, env.unwrapped)
+    model = mujoco_env.model
+    data = mujoco_env.data
 
     wrist_cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
     renderer = mujoco.Renderer(model, height=RENDER_HEIGHT, width=RENDER_WIDTH)

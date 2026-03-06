@@ -16,7 +16,7 @@ conflicts = [
 ]
 
 [dependency-groups]
-dev = ["pytest-cov>=7.0.0", "ruff", "ty"]
+dev = ["hypothesis>=6.140.0", "pytest-cov>=7.0.0", "ruff", "ty"]
 visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
 
 [tool.ruff]
@@ -53,6 +53,13 @@ exclude_lines = [
 show_missing = true
 
 [tool.pytest.ini_options]
+addopts = ["--import-mode=importlib", "-ra"]
+testpaths = [
+    "packages/so101-nexus-core/tests",
+    "packages/so101-nexus-maniskill/tests",
+    "packages/so101-nexus-mujoco/tests",
+    "tests",
+]
 markers = [
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
 ]

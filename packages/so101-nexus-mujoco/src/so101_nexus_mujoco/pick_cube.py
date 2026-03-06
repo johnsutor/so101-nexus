@@ -66,6 +66,7 @@ def _build_scene_xml(
 
 class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
     """MuJoCo pick-cube environment."""
+    config: PickCubeConfig
 
     def __init__(
         self,
@@ -136,6 +137,8 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         state = np.concatenate([tcp_pose, is_grasped, goal_pos, obj_pose, tcp_to_obj, obj_to_goal])
 
         if self.camera_mode == "wrist":
+            assert self._wrist_renderer is not None
+            assert self._wrist_cam_id is not None
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             return {"state": state, "wrist_camera": self._wrist_renderer.render()}
         return state

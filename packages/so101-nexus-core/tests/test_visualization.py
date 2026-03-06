@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from so101_nexus_core import visualization
 from so101_nexus_core.visualization import (
     INFO_BAR_H,
     CameraView,
@@ -24,6 +25,16 @@ from so101_nexus_core.visualization import (
 
 
 class TestToUint8:
+    class _FakeTensor:
+        def __init__(self, arr: np.ndarray):
+            self._arr = arr
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return self._arr
+
     def test_float32_converts(self):
         img = np.random.rand(4, 4, 3).astype(np.float32)
         result = to_uint8(img)
@@ -49,6 +60,12 @@ class TestToUint8:
         assert result[0, 0, 1] == 0
         assert result[0, 0, 2] == 127
 
+    def test_tensor_like_input_uses_cpu_numpy(self):
+        img = self._FakeTensor(np.ones((2, 2, 3), dtype=np.float32))
+        result = to_uint8(img)
+        assert result.dtype == np.uint8
+        assert result.shape == (2, 2, 3)
+
 
 class TestResize:
     def test_output_shape(self):
@@ -60,6 +77,12 @@ class TestResize:
         img = np.zeros((10, 10, 3), dtype=np.uint8)
         result = resize(img, 100, 100)
         assert result.shape == (100, 100, 3)
+
+    def test_nearest_neighbor_fallback_without_pillow(self, monkeypatch):
+        monkeypatch.setattr(visualization, "_PIL_AVAILABLE", False)
+        img = np.arange(4 * 4 * 3, dtype=np.uint8).reshape(4, 4, 3)
+        result = visualization.resize(img, 2, 2)
+        assert result.shape == (2, 2, 3)
 
 
 class TestComposeFrame:
@@ -92,6 +115,19 @@ class TestMakeInfoBar:
         bar = make_info_bar(640, step=1, reward=0.5, success=True)
         assert bar.shape == (INFO_BAR_H, 640, 3)
         assert bar.dtype == np.uint8
+
+    def test_fallback_without_pillow(self, monkeypatch):
+        monkeypatch.setattr(visualization, "_PIL_AVAILABLE", False)
+        bar = visualization.make_info_bar(100, step=1, reward=0.0, success=False)
+        assert bar.shape == (INFO_BAR_H, 100, 3)
+
+
+class TestAddLabel:
+    def test_fallback_without_pillow(self, monkeypatch):
+        monkeypatch.setattr(visualization, "_PIL_AVAILABLE", False)
+        img = np.zeros((4, 4, 3), dtype=np.uint8)
+        out = visualization.add_label(img, "x")
+        assert np.array_equal(out, img)
 
 
 class TestSaveFrameGrid:

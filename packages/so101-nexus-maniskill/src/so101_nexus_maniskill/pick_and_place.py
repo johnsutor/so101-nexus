@@ -25,6 +25,7 @@ PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_
 @register_env("ManiSkillPickAndPlace-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
+    config: PickAndPlaceConfig
 
     def __init__(
         self,

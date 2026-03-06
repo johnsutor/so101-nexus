@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import gymnasium
 import mujoco
@@ -20,6 +20,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     """Shared MuJoCo base class for SO101-Nexus tasks."""
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
+    model: mujoco.MjModel
+    data: mujoco.MjData
+    config: EnvironmentConfig
+    _obj_geom_id: int
+    action_space: spaces.Box
+    observation_space: spaces.Space
+    _wrist_renderer: mujoco.Renderer | None
+    _renderer: mujoco.Renderer | None
+    _viewer: Any | None
     _VALID_CONTROL_MODES: set[str] = {
         "pd_joint_pos",
         "pd_joint_delta_pos",
@@ -217,7 +226,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             dtype=np.float64,
         )
 
-    def reset(self, *, seed=None, options=None):
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
         super().reset(seed=seed, options=options)
         mujoco.mj_resetData(self.model, self.data)
 
@@ -232,7 +243,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         info = self._get_info()
         return obs, info
 
-    def step(self, action):
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
@@ -255,7 +268,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         return obs, reward, terminated, False, info
 
-    def render(self):
+    def render(self) -> np.ndarray | None:
         if self.render_mode == "rgb_array":
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(self.model, height=480, width=640)

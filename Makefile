@@ -13,10 +13,10 @@ typecheck:
 test: test-mujoco test-maniskill
 
 test-mujoco:
-	uv run --package so101-nexus-mujoco pytest packages/so101-nexus-mujoco/tests/ --cov
+	uv run --package so101-nexus-mujoco pytest packages/so101-nexus-mujoco/tests/ --cov=packages/so101-nexus-mujoco/src/so101_nexus_mujoco
 
 test-maniskill:
-	uv run --package so101-nexus-maniskill --prerelease=allow pytest packages/so101-nexus-maniskill/tests/ --cov
+	uv run --package so101-nexus-maniskill --prerelease=allow pytest packages/so101-nexus-maniskill/tests/ --cov=packages/so101-nexus-maniskill/src/so101_nexus_maniskill
 
 test-visual: test-visual-mujoco test-visual-maniskill
 

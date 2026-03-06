@@ -7,12 +7,13 @@ that work across both MuJoCo and ManiSkill backends.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, cast
 
 import numpy as np
 
 try:
     from PIL import Image, ImageDraw
+    from PIL.Image import Resampling
 
     _PIL_AVAILABLE = True
 except ImportError:
@@ -53,7 +54,7 @@ def to_uint8(img) -> np.ndarray:
 def resize(img: np.ndarray, w: int, h: int) -> np.ndarray:
     """Resize an image to (h, w) using Pillow if available, else nearest-neighbor."""
     if _PIL_AVAILABLE:
-        return np.array(Image.fromarray(img).resize((w, h), Image.BILINEAR))
+        return np.array(Image.fromarray(img).resize((w, h), Resampling.BILINEAR))
     ys = (np.arange(h) * img.shape[0] / h).astype(int)
     xs = (np.arange(w) * img.shape[1] / w).astype(int)
     return img[np.ix_(ys, xs)]
@@ -138,7 +139,7 @@ def save_frame_grid(
     import imageio.v3 as iio
 
     n_grid = min(max_frames, len(frames))
-    indices = np.linspace(0, len(frames) - 1, n_grid, dtype=int)
+    indices = cast(list[int], np.linspace(0, len(frames) - 1, n_grid, dtype=int).tolist())
     grid_frames = [frames[i] for i in indices]
 
     rows = (n_grid + cols - 1) // cols

@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Protocol, cast
 
 from so101_nexus_core.config import YCB_OBJECTS
 
 _HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
 _CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"
+
+
+class _ExportableMesh(Protocol):
+    def export(self, file_obj: str, file_type: str | None = None) -> object: ...
+
+    @property
+    def convex_hull(self) -> "_ExportableMesh": ...
 
 
 def _validate_model_id(model_id: str) -> None:
@@ -22,15 +30,19 @@ def get_ycb_mesh_dir(model_id: str) -> Path:
     return _CACHE_DIR / model_id
 
 
-def _convert_glb_to_obj(glb_path: Path, obj_path: Path) -> None:
-    """Convert a GLB mesh to OBJ format using trimesh."""
+def _load_exportable_mesh(glb_path: Path) -> _ExportableMesh:
+    """Load a GLB as a mesh object with `export` and `convex_hull`."""
     import trimesh
 
     scene_or_mesh = trimesh.load(str(glb_path), force="mesh")
     if isinstance(scene_or_mesh, trimesh.Scene):
-        mesh = scene_or_mesh.dump(concatenate=True)
-    else:
-        mesh = scene_or_mesh
+        return cast(_ExportableMesh, scene_or_mesh.dump(concatenate=True))
+    return cast(_ExportableMesh, scene_or_mesh)
+
+
+def _convert_glb_to_obj(glb_path: Path, obj_path: Path) -> None:
+    """Convert a GLB mesh to OBJ format using trimesh."""
+    mesh = _load_exportable_mesh(glb_path)
     mesh.export(str(obj_path), file_type="obj")
 
 
@@ -65,12 +77,8 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh_dir.mkdir(parents=True, exist_ok=True)
     _convert_glb_to_obj(glb_path, visual_path)
 
-    # For collision, create a convex hull from the visual mesh
-    import trimesh
-
-    mesh = trimesh.load(str(glb_path), force="mesh")
-    if isinstance(mesh, trimesh.Scene):
-        mesh = mesh.dump(concatenate=True)
+    # For collision, create a convex hull from the visual mesh.
+    mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")
 

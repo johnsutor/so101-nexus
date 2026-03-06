@@ -10,6 +10,7 @@ from mani_skill.agents.robots.so100.so_100 import SO100
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
@@ -119,7 +120,10 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             configs.append(
                 CameraConfig(
                     "wrist_camera",
-                    sapien.Pose(p=p, q=q),
+                    Pose.create_from_pq(
+                        p=torch.tensor(p, dtype=torch.float32),
+                        q=torch.tensor(q, dtype=torch.float32),
+                    ),
                     self.camera_width,
                     self.camera_height,
                     fov,
@@ -137,8 +141,14 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         pose = sapien_utils.look_at(cfg["human_cam_eye_pos"], cfg["human_cam_target_pos"])
         return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
-    def _load_agent(self, options: dict) -> None:
-        super()._load_agent(options, sapien.Pose(p=[0, 0, 0], q=self._robot_cfg["base_quat"]))
+    def _load_agent(
+        self,
+        options: dict,
+        initial_agent_poses: sapien.Pose | Pose | None = None,
+        build_separate: bool = False,
+    ) -> None:
+        pose = initial_agent_poses or sapien.Pose(p=[0, 0, 0], q=self._robot_cfg["base_quat"])
+        super()._load_agent(options, pose, build_separate)
 
     def _load_lighting(self, options: dict) -> None:
         self.scene.set_ambient_light([0.3, 0.3, 0.3])
@@ -181,7 +191,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         tris = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
         uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
         mat = sapien.render.RenderMaterial()
-        mat.base_color = self.config.ground_color
+        mat.base_color = list(self.config.ground_color)
         shape = sapien.render.RenderShapeTriangleMesh(
             vertices=verts,
             triangles=tris,

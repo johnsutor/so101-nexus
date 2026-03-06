@@ -22,6 +22,7 @@ PICK_CUBE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAU
 @register_env("ManiSkillPickCubeGoal-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickCubeEnv(SO101NexusManiSkillBaseEnv):
     """Configurable pick-cube environment supporting SO100 and SO101 robots."""
+    config: PickCubeConfig
 
     def __init__(
         self,

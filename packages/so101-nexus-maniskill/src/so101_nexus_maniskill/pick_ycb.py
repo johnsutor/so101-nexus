@@ -25,6 +25,7 @@ PICK_YCB_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAUL
 @register_env("ManiSkillPickYCBGoal-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickYCBEnv(SO101NexusManiSkillBaseEnv):
     """Configurable pick-YCB environment supporting SO100 and SO101 robots."""
+    config: PickYCBConfig
 
     def __init__(
         self,
@@ -43,7 +44,7 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
             raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
 
         self.model_id = model_id
-        self._obj_spawn_z: float | None = None
+        self._obj_spawn_z = 0.0
         self.task_description = f"Pick up the {YCB_OBJECTS[model_id]}"
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
@@ -105,11 +106,12 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
             cfg = self._robot_cfg
             spawn_cx, spawn_cy = cfg["cube_spawn_center"]
             spawn_hs = cfg["cube_spawn_half_size"]
+            obj_spawn_z = float(self._obj_spawn_z)
 
             xyz = torch.zeros((b, 3), device=self.device)
             xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
             xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            xyz[:, 2] = self._obj_spawn_z
+            xyz[:, 2] = obj_spawn_z
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
             self._store_initial_obj_z(env_idx, xyz[:, 2])
@@ -118,7 +120,7 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
             goal_xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
             goal_xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
             goal_xyz[:, 2] = (
-                self._obj_spawn_z + torch.rand(b, device=self.device) * cfg["max_goal_height"]
+                obj_spawn_z + torch.rand(b, device=self.device) * cfg["max_goal_height"]
             )
             self.goal_site.set_pose(Pose.create_from_pq(p=goal_xyz))
 
