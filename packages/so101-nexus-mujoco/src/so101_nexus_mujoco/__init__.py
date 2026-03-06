@@ -1,6 +1,6 @@
 import gymnasium
 
-from so101_nexus_core.types import YCB_ENV_NAME_MAP
+from so101_nexus_core.config import YCB_ENV_NAME_MAP
 
 gymnasium.register(
     id="MuJoCoPickCubeGoal-v1",
@@ -20,7 +20,6 @@ gymnasium.register(
     max_episode_steps=256,
 )
 
-# --- YCB generic environments ---
 gymnasium.register(
     id="MuJoCoPickYCBGoal-v1",
     entry_point="so101_nexus_mujoco.pick_ycb:PickYCBEnv",
@@ -33,7 +32,6 @@ gymnasium.register(
     max_episode_steps=256,
 )
 
-# --- YCB per-object environments (with and without per-robot suffix) ---
 for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
     gymnasium.register(
         id=f"MuJoCoPick{_env_name}Goal-v1",

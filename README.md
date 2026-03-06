@@ -21,6 +21,11 @@
 
 SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It supports multiple simulation backends ([ManiSkill](https://github.com/haosulab/ManiSkill), [Genesis](https://genesis-world.readthedocs.io/), and [MuJoCo](https://mujoco.org/)) so that researchers can train and evaluate policies without being locked into a single physics engine. SO101-Nexus integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
 
+## Why
+Robust robot policies should generalize across simulators before being deployed in the real world. Sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
+
+At the same time, there are very few standardized simulation environments available for the SO-100 and SO-101 robot arms. SO101-Nexus addresses this by providing Gymnasium-compatible environments across multiple physics backends, enabling consistent experimentation and benchmarking.
+
 ## Installation
 
 Install only the backend you need:
@@ -140,6 +145,7 @@ All environments have a maximum episode length of **256 steps**.
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
 - [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 - [ ] Make sure there are no type checking errors 
+- [ ] Standardize from radians to degrees
 
 ## Development
 

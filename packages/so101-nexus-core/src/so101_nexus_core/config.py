@@ -1,7 +1,8 @@
 """Canonical, typed configuration objects for SO101-Nexus.
 
-This module provides an immutable, HuggingFace-style configuration surface:
-compose one `EnvironmentConfig` and derive legacy constants/presets from it.
+This module provides an immutable, HuggingFace-style configuration surface.
+Each environment type gets its own config that inherits from a shared base.
+Configs are shared between MuJoCo and ManiSkill backends.
 """
 
 from __future__ import annotations
@@ -12,26 +13,36 @@ from typing import Literal
 import numpy as np
 
 ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
+CubeColorName = ColorName
+TargetColorName = ColorName
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 
+YcbModelId = Literal[
+    "009_gelatin_box",
+    "011_banana",
+    "030_fork",
+    "031_spoon",
+    "032_knife",
+    "033_spatula",
+    "037_scissors",
+    "040_large_marker",
+    "043_phillips_screwdriver",
+    "058_golf_ball",
+]
+
+SO101_JOINT_NAMES: tuple[str, ...] = (
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper",
+)
+
 
 @dataclass(frozen=True)
-class RewardConfig:
-    """Normalized reward budget used by all environments.
-
-    The defaults sum to 1.0 and are interpreted as:
-    reaching + grasping + task objective + completion bonus.
-    """
-
-    reaching: float = 0.25
-    grasping: float = 0.25
-    task_objective: float = 0.40
-    completion_bonus: float = 0.10
-
-
-@dataclass(frozen=True)
-class CameraConfigSpec:
-    """Shared camera defaults across backends."""
+class CameraConfig:
+    """Camera resolution and wrist field-of-view defaults."""
 
     width: int = 224
     height: int = 224
@@ -41,6 +52,50 @@ class CameraConfigSpec:
     def wrist_fov_rad_range(self) -> tuple[float, float]:
         lo, hi = self.wrist_fov_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
+
+
+@dataclass(frozen=True)
+class RobotConfig:
+    """Configurable robot parameters.
+
+    Joint names are intentionally not included here — they are structural
+    identifiers that must match the URDF/MJCF and should not be overridden.
+    """
+
+    rest_qpos: tuple[float, ...] = (0.0, -1.5708, 1.5708, 0.66, 0.0, -1.1)
+
+
+@dataclass(frozen=True)
+class RewardConfig:
+    """Normalized reward budget.
+
+    The four component weights must sum to 1.0. The action_delta_penalty
+    is applied separately: it scales the L2 norm of consecutive action
+    differences and subtracts from the total (inspired by Walk These Ways).
+    """
+
+    reaching: float = 0.25
+    grasping: float = 0.25
+    task_objective: float = 0.40
+    completion_bonus: float = 0.10
+    action_delta_penalty: float = 0.0
+
+    def compute(
+        self,
+        reach_progress: float,
+        is_grasped: bool,
+        task_progress: float,
+        is_complete: bool,
+        action_delta_norm: float = 0.0,
+    ) -> float:
+        """Compute a normalized reward in [0, 1] using this config's weights."""
+        base = (
+            self.reaching * reach_progress
+            + self.grasping * float(is_grasped)
+            + self.task_objective * task_progress
+            + self.completion_bonus * float(is_complete)
+        )
+        return base - self.action_delta_penalty * action_delta_norm
 
 
 @dataclass(frozen=True)
@@ -60,36 +115,49 @@ class RobotCameraPreset:
 
 
 @dataclass(frozen=True)
-class TaskConfig:
-    """Task-space defaults shared by pick, place, and YCB variants."""
+class EnvironmentConfig:
+    """Base config shared by all environments.
 
-    cube_half_size: float = 0.0125
-    cube_mass: float = 0.01
-    goal_thresh: float = 0.025
-    lift_threshold: float = 0.05
-    max_goal_height: float = 0.08
-    cube_spawn_half_size: float = 0.05
-    cube_spawn_center: tuple[float, float] = (0.15, 0.0)
-    target_disc_radius: float = 0.05
-    min_cube_target_separation: float = 0.0375
+    Contains only parameters that every environment needs. Task-specific
+    parameters live in subclass configs (PickCubeConfig, etc.).
+    """
+
+    camera: CameraConfig = CameraConfig()
+    reward: RewardConfig = RewardConfig()
+    robot: RobotConfig = RobotConfig()
+    ground_color: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
     max_episode_steps: int = 256
+    goal_thresh: float = 0.025
+    spawn_half_size: float = 0.05
+    spawn_center: tuple[float, float] = (0.15, 0.0)
 
 
 @dataclass(frozen=True)
-class EnvironmentConfig:
-    """Top-level base package config (HF-style).
+class PickCubeConfig(EnvironmentConfig):
+    """Config for pick-cube and pick-cube-lift environments."""
 
-    Consumers should treat this as the canonical source of defaults and derive
-    backend-specific dictionaries/constants from it.
-    """
-
-    task: TaskConfig = TaskConfig()
-    camera: CameraConfigSpec = CameraConfigSpec()
-    reward: RewardConfig = RewardConfig()
-    ground_color: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
+    cube_half_size: float = 0.0125
+    cube_mass: float = 0.01
+    lift_threshold: float = 0.05
+    max_goal_height: float = 0.08
 
 
-DEFAULT_ENV_CONFIG = EnvironmentConfig()
+@dataclass(frozen=True)
+class PickAndPlaceConfig(EnvironmentConfig):
+    """Config for pick-and-place environments."""
+
+    cube_half_size: float = 0.0125
+    cube_mass: float = 0.01
+    target_disc_radius: float = 0.05
+    min_cube_target_separation: float = 0.0375
+
+
+@dataclass(frozen=True)
+class PickYCBConfig(EnvironmentConfig):
+    """Config for pick-YCB and pick-YCB-lift environments."""
+
+    lift_threshold: float = 0.05
+    max_goal_height: float = 0.08
 
 
 CUBE_COLOR_MAP: dict[str, list[float]] = {

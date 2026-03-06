@@ -7,65 +7,56 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_core.types import (
+from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_EPISODE_STEPS,
     CubeColorName,
+    PickCubeConfig,
 )
+from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import CameraMode, SO101NexusManiSkillBaseEnv
 
-PICK_CUBE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(
-    include_cube_half_size=True,
-    include_max_goal_height=True,
-)
+_DEFAULT_CONFIG = PickCubeConfig()
+PICK_CUBE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env("ManiSkillPickCubeGoal-v1", max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)
+@register_env("ManiSkillPickCubeGoal-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickCubeEnv(SO101NexusManiSkillBaseEnv):
     """Configurable pick-cube environment supporting SO100 and SO101 robots."""
-
-    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
 
     def __init__(
         self,
         *args,
+        config: PickCubeConfig = PickCubeConfig(),
         robot_uids: str = "so100",
         cube_color: CubeColorName = "red",
-        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         robot_color: tuple[float, float, float, float] | None = None,
         camera_mode: CameraMode = "fixed",
         robot_init_qpos_noise: float = 0.02,
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         **kwargs,
     ):
         if cube_color not in CUBE_COLOR_MAP:
             raise ValueError(
                 f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
             )
-        if not (0.01 <= cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
+        if not (0.01 <= config.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
         self.cube_color_name = cube_color
         self.cube_color_rgba = CUBE_COLOR_MAP[cube_color]
-        self.cube_half_size = cube_half_size
+        self.cube_half_size = config.cube_half_size
         self.task_description = f"Pick up the small {cube_color} cube"
 
+        robot_cfgs = build_maniskill_robot_configs(config=config)
+
         self._setup_base(
+            config=config,
             robot_uids=robot_uids,
-            robot_cfgs=PICK_CUBE_CONFIGS,
+            robot_cfgs=robot_cfgs,
             robot_color=robot_color,
             camera_mode=camera_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
-            camera_width=camera_width,
-            camera_height=camera_height,
         )
 
         if reconfiguration_freq is None:
@@ -186,13 +177,13 @@ class PickCubeEnv(SO101NexusManiSkillBaseEnv):
 PickCubeGoalEnv = PickCubeEnv
 
 
-@register_env("ManiSkillPickCubeLift-v1", max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)
+@register_env("ManiSkillPickCubeLift-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickCubeLiftEnv(PickCubeEnv):
     """Pick-cube variant where success is lift height threshold while grasped."""
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         info = super().evaluate()
-        info["success"] = (info["lift_height"] > self.LIFT_THRESHOLD) & info["is_grasped"]
+        info["success"] = (info["lift_height"] > self.config.lift_threshold) & info["is_grasped"]
         return info
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
@@ -220,7 +211,7 @@ def _register_robot_variant(
         base_cls.__init__(self, *args, **kwargs)
 
     cls = type(class_name, (base_cls,), {"__init__": __init__})
-    cls = register_env(env_id, max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)(cls)
+    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
     globals()[class_name] = cls
     return cls
 

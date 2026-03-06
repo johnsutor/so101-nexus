@@ -30,6 +30,12 @@ ignore = ["F403", "F405"]
 [tool.ruff.lint.isort]
 known-first-party = ["so101_nexus_core", "so101_nexus_maniskill", "so101_nexus_mujoco"]
 
+[tool.ty.analysis]
+replace-imports-with-any = ["mujoco", "mujoco.**"]
+
+[tool.ty.src]
+exclude = ["**/tests/**"]
+
 [tool.coverage.run]
 source = ["."]
 omit = [

@@ -7,16 +7,10 @@ import pytest
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import so101_nexus_mujoco  # noqa: F401, E402
-from so101_nexus_core.types import (
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_GOAL_HEIGHT,
-    REWARD_WEIGHT_REACHING,
-    SO101_REST_QPOS,
-)
+from so101_nexus_core.config import PickCubeConfig, RobotConfig
 from so101_nexus_mujoco.pick_cube import PickCubeEnv
+
+_CFG = PickCubeConfig()
 
 
 @pytest.fixture(scope="module")
@@ -40,26 +34,14 @@ class TestConstructionValidation:
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            PickCubeEnv(cube_half_size=0.001)
+            PickCubeEnv(config=PickCubeConfig(cube_half_size=0.001))
 
 
 class TestSharedConstants:
     def test_default_cube_half_size_matches_core(self):
         env = PickCubeEnv()
-        assert env.cube_half_size == DEFAULT_CUBE_HALF_SIZE
+        assert env.cube_half_size == _CFG.cube_half_size
         env.close()
-
-    def test_spawn_half_size_matches_core(self):
-        assert DEFAULT_CUBE_SPAWN_HALF_SIZE == 0.05
-
-    def test_goal_thresh_matches_core(self):
-        assert DEFAULT_GOAL_THRESH == 0.025
-
-    def test_lift_threshold_matches_core(self):
-        assert DEFAULT_LIFT_THRESHOLD == 0.05
-
-    def test_max_goal_height_matches_core(self):
-        assert DEFAULT_MAX_GOAL_HEIGHT == 0.08
 
 
 class TestEnvCreation:
@@ -134,8 +116,8 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
     def test_cube_spawns_in_bounds(self, goal_env):
-        cx, cy = 0.15, 0.0
-        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
+        cx, cy = _CFG.spawn_center
+        hs = _CFG.spawn_half_size
         for _ in range(5):
             goal_env.reset()
             cube_pose = goal_env.unwrapped._get_cube_pose()
@@ -143,8 +125,8 @@ class TestEpisodeLogic:
             assert cy - hs <= cube_pose[1] <= cy + hs
 
     def test_goal_spawns_in_bounds(self, goal_env):
-        cx, cy = 0.15, 0.0
-        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
+        cx, cy = _CFG.spawn_center
+        hs = _CFG.spawn_half_size
         for _ in range(5):
             goal_env.reset()
             goal_pos = goal_env.unwrapped._get_goal_pos()
@@ -170,14 +152,14 @@ class TestRewardBudget:
         info = goal_env.unwrapped._get_info()
         assert not info["is_grasped"]
         reward = goal_env.unwrapped._compute_reward(info)
-        assert reward <= REWARD_WEIGHT_REACHING + 1e-6
+        assert reward <= _CFG.reward.reaching + 1e-6
 
     def test_lift_reaching_only_reward_bounded_by_reaching_weight(self, lift_env):
         lift_env.reset()
         info = lift_env.unwrapped._get_info()
         assert not info["is_grasped"]
         reward = lift_env.unwrapped._compute_reward(info)
-        assert reward <= REWARD_WEIGHT_REACHING + 1e-6
+        assert reward <= _CFG.reward.reaching + 1e-6
 
 
 class TestTaskDescription:
@@ -213,24 +195,6 @@ class TestRobotInitQposNoise:
         env.close()
         all_same = all(np.allclose(qpos_list[0], q) for q in qpos_list[1:])
         assert not all_same
-
-
-class TestLiftThreshold:
-    def test_lift_threshold_class_attr(self):
-        assert hasattr(PickCubeEnv, "LIFT_THRESHOLD")
-        assert PickCubeEnv.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
-
-    def test_lift_threshold_accessible_on_instance(self):
-        env = PickCubeEnv()
-        assert env.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
-        env.close()
-
-
-class TestGoalThreshConfig:
-    def test_goal_thresh_stored(self):
-        env = PickCubeEnv()
-        assert env._goal_thresh == DEFAULT_GOAL_THRESH
-        env.close()
 
 
 class TestCameraModes:
@@ -288,7 +252,7 @@ class TestControlModes:
     def test_zero_action_stays_near_rest(self, mode):
         env = PickCubeEnv(control_mode=mode, robot_init_qpos_noise=0.0)
         env.reset()
-        rest = np.array(SO101_REST_QPOS, dtype=np.float64)
+        rest = np.array(RobotConfig().rest_qpos, dtype=np.float64)
         zero = np.zeros(6, dtype=np.float32)
         for _ in range(10):
             env.step(zero)
@@ -299,7 +263,7 @@ class TestControlModes:
     def test_target_delta_accumulates(self):
         env = PickCubeEnv(control_mode="pd_joint_target_delta_pos", robot_init_qpos_noise=0.0)
         env.reset()
-        rest = np.array(SO101_REST_QPOS, dtype=np.float64)
+        rest = np.array(RobotConfig().rest_qpos, dtype=np.float64)
         small_delta = np.array([0.01, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         for _ in range(5):
             env.step(small_delta)

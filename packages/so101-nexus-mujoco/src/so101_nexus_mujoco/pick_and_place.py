@@ -7,28 +7,18 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.types import (
+from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_CUBE_MASS,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_GROUND_COLOR,
-    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
-    DEFAULT_TARGET_DISC_RADIUS,
     TARGET_COLOR_MAP,
     ControlMode,
     CubeColorName,
+    PickAndPlaceConfig,
     TargetColorName,
-    compute_normalized_reward,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
-_CUBE_SPAWN_CENTER = np.array([0.15, 0.0], dtype=np.float64)
 
 
 def _build_scene_xml(
@@ -36,12 +26,14 @@ def _build_scene_xml(
     cube_color: list[float],
     target_color: list[float],
     target_disc_radius: float,
+    cube_mass: float,
+    ground_color: tuple[float, float, float, float],
 ) -> str:
     r, g, b, a = cube_color
     tr, tg, tb, ta = target_color
     hs = cube_half_size
     robot_path = str(_SO101_XML)
-    gr, gg, gb, ga = DEFAULT_GROUND_COLOR
+    gr, gg, gb, ga = ground_color
     return f"""\
 <mujoco model="pick_and_place_scene">
   <option timestep="0.002" gravity="0 0 -9.81"/>
@@ -62,7 +54,7 @@ def _build_scene_xml(
     <body name="cube" pos="0.15 0 {hs}">
       <freejoint name="cube_joint"/>
       <geom name="cube_geom" type="box" size="{hs} {hs} {hs}"
-            rgba="{r} {g} {b} {a}" mass="{DEFAULT_CUBE_MASS}"
+            rgba="{r} {g} {b} {a}" mass="{cube_mass}"
             contype="1" conaffinity="1" friction="1 0.005 0.0001"
             solref="0.02 1" solimp="0.9 0.95 0.001"/>
     </body>
@@ -81,13 +73,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def __init__(
         self,
+        config: PickAndPlaceConfig = PickAndPlaceConfig(),
         cube_color: CubeColorName = "red",
         target_color: TargetColorName = "blue",
-        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
@@ -101,32 +91,32 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             )
         if cube_color == target_color:
             raise ValueError(f"cube_color and target_color must differ, both are {cube_color!r}")
-        if not (0.01 <= cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
+        if not (0.01 <= config.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
         self._init_common(
+            config=config,
             render_mode=render_mode,
             camera_mode=camera_mode,
-            camera_width=camera_width,
-            camera_height=camera_height,
             control_mode=control_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         self.cube_color_name = cube_color
         self.target_color_name = target_color
-        self.cube_half_size = cube_half_size
-        self.target_disc_radius = DEFAULT_TARGET_DISC_RADIUS
-        self._goal_thresh = DEFAULT_GOAL_THRESH
+        self.cube_half_size = config.cube_half_size
+        self.target_disc_radius = config.target_disc_radius
         self.task_description = (
             f"Pick up the small {cube_color} cube and place it on the {target_color} circle"
         )
 
         xml_string = _build_scene_xml(
-            cube_half_size,
+            config.cube_half_size,
             CUBE_COLOR_MAP[cube_color],
             TARGET_COLOR_MAP[target_color],
-            self.target_disc_radius,
+            config.target_disc_radius,
+            config.cube_mass,
+            config.ground_color,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
@@ -176,7 +166,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         obj_to_target_xy = obj_pos[:2] - target_pos[:2]
         obj_to_target_dist = float(np.linalg.norm(obj_to_target_xy))
         is_obj_placed = (
-            obj_to_target_dist <= self._goal_thresh and obj_pos[2] < self.cube_half_size + 0.01
+            obj_to_target_dist <= self.config.goal_thresh
+            and obj_pos[2] < self.cube_half_size + 0.01
         )
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
@@ -199,27 +190,29 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             (1.0 - float(np.tanh(5.0 * info["obj_to_target_dist"]))) if is_grasped else 0.0
         )
 
-        return compute_normalized_reward(
+        return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
         )
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = _CUBE_SPAWN_CENTER
+        cx, cy = self.config.spawn_center
+        spawn_hs = self.config.spawn_half_size
 
-        target_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        target_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        target_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+        target_y = cy + rng.uniform(-spawn_hs, spawn_hs)
         target_z = 0.001
         self.model.body_pos[self._target_body_id] = [target_x, target_y, target_z]
 
         for _ in range(100):
-            cube_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-            cube_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+            cube_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+            cube_y = cy + rng.uniform(-spawn_hs, spawn_hs)
             dist = np.sqrt((cube_x - target_x) ** 2 + (cube_y - target_y) ** 2)
-            if dist >= DEFAULT_MIN_CUBE_TARGET_SEPARATION:
+            if dist >= self.config.min_cube_target_separation:
                 break
 
         cube_z = self.cube_half_size

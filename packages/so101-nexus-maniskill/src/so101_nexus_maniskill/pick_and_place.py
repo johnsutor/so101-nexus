@@ -8,45 +8,36 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_core.types import (
+from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_MAX_EPISODE_STEPS,
-    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
-    DEFAULT_TARGET_DISC_RADIUS,
     TARGET_COLOR_MAP,
     CubeColorName,
+    PickAndPlaceConfig,
     TargetColorName,
 )
+from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import CameraMode, SO101NexusManiSkillBaseEnv
 
-PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(
-    include_cube_half_size=True,
-    include_max_goal_height=False,
-)
+_DEFAULT_CONFIG = PickAndPlaceConfig()
+PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env("ManiSkillPickAndPlace-v1", max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)
+@register_env("ManiSkillPickAndPlace-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
 
     def __init__(
         self,
         *args,
+        config: PickAndPlaceConfig = PickAndPlaceConfig(),
         robot_uids: str = "so100",
         cube_color: CubeColorName = "red",
         target_color: TargetColorName = "blue",
-        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         robot_color: tuple[float, float, float, float] | None = None,
         camera_mode: CameraMode = "fixed",
         robot_init_qpos_noise: float = 0.02,
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         **kwargs,
     ):
         if cube_color not in CUBE_COLOR_MAP:
@@ -59,27 +50,28 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             )
         if cube_color == target_color:
             raise ValueError(f"cube_color and target_color must differ, both are {cube_color!r}")
-        if not (0.01 <= cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
+        if not (0.01 <= config.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
         self.cube_color_name = cube_color
         self.cube_color_rgba = CUBE_COLOR_MAP[cube_color]
         self.target_color_name = target_color
         self.target_color_rgba = TARGET_COLOR_MAP[target_color]
-        self.cube_half_size = cube_half_size
-        self.target_disc_radius = DEFAULT_TARGET_DISC_RADIUS
+        self.cube_half_size = config.cube_half_size
+        self.target_disc_radius = config.target_disc_radius
         self.task_description = (
             f"Pick up the small {cube_color} cube and place it on the {target_color} circle"
         )
 
+        robot_cfgs = build_maniskill_robot_configs(config=config)
+
         self._setup_base(
+            config=config,
             robot_uids=robot_uids,
-            robot_cfgs=PICK_AND_PLACE_CONFIGS,
+            robot_cfgs=robot_cfgs,
             robot_color=robot_color,
             camera_mode=camera_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
-            camera_width=camera_width,
-            camera_height=camera_height,
         )
 
         if reconfiguration_freq is None:
@@ -151,7 +143,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
                 xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
                 xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
                 dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
-                if (dists >= DEFAULT_MIN_CUBE_TARGET_SEPARATION).all():
+                if (dists >= self.config.min_cube_target_separation).all():
                     break
             xyz[:, 2] = self.cube_half_size
             qs = random_quaternions(b, lock_x=True, lock_y=True)
@@ -221,7 +213,7 @@ def _register_robot_variant(
         PickAndPlaceEnv.__init__(self, *args, **kwargs)
 
     cls = type(class_name, (PickAndPlaceEnv,), {"__init__": __init__})
-    cls = register_env(env_id, max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)(cls)
+    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
     globals()[class_name] = cls
     return cls
 

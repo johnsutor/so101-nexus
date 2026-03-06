@@ -7,12 +7,37 @@ import numpy as np
 import pytest
 
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.config import (
+    CameraConfig,
+    PickAndPlaceConfig,
+    PickCubeConfig,
+    PickYCBConfig,
+)
 from so101_nexus_core.visualization import CameraView, to_uint8
 
 from .conftest import verify_scene
 
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
+_CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+
+_PICK_CUBE_ENVS = {
+    "ManiSkillPickCubeGoalSO101-v1",
+    "ManiSkillPickCubeLiftSO101-v1",
+}
+_PICK_AND_PLACE_ENVS = {
+    "ManiSkillPickAndPlaceSO101-v1",
+}
+
+
+def _env_kwargs(env_id: str) -> dict:
+    """Return config + color kwargs appropriate for *env_id*."""
+    if env_id in _PICK_CUBE_ENVS:
+        return dict(config=PickCubeConfig(camera=_CAM), cube_color="red")
+    if env_id in _PICK_AND_PLACE_ENVS:
+        return dict(config=PickAndPlaceConfig(camera=_CAM), cube_color="red")
+    return dict(config=PickYCBConfig(camera=_CAM))
+
 
 MANISKILL_SO101_ENVS = [
     "ManiSkillPickCubeGoalSO101-v1",
@@ -44,21 +69,13 @@ class TestManiSkillCaptureInfrastructure:
 
     @pytest.mark.parametrize("env_id", MANISKILL_SO101_ENVS)
     def test_capture_views(self, env_id: str):
-        _CUBE_ENVS = {
-            "ManiSkillPickCubeGoalSO101-v1",
-            "ManiSkillPickCubeLiftSO101-v1",
-            "ManiSkillPickAndPlaceSO101-v1",
-        }
         kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
             camera_mode="both",
-            camera_width=CAMERA_WIDTH,
-            camera_height=CAMERA_HEIGHT,
             num_envs=1,
+            **_env_kwargs(env_id),
         )
-        if env_id in _CUBE_ENVS:
-            kwargs["cube_color"] = "red"
         env = gymnasium.make(env_id, **kwargs)
         obs, _ = env.reset(seed=42)
         views = capture_maniskill_views(env, obs)
@@ -111,21 +128,13 @@ class TestManiSkillVisual:
 
     @pytest.mark.parametrize("env_id", MANISKILL_SO101_ENVS)
     def test_env_renders_correctly(self, visual_verifier, env_id: str):
-        _CUBE_ENVS = {
-            "ManiSkillPickCubeGoalSO101-v1",
-            "ManiSkillPickCubeLiftSO101-v1",
-            "ManiSkillPickAndPlaceSO101-v1",
-        }
         kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
             camera_mode="both",
-            camera_width=CAMERA_WIDTH,
-            camera_height=CAMERA_HEIGHT,
             num_envs=1,
+            **_env_kwargs(env_id),
         )
-        if env_id in _CUBE_ENVS:
-            kwargs["cube_color"] = "red"
         env = gymnasium.make(env_id, **kwargs)
         obs, _ = env.reset(seed=42)
         views = capture_maniskill_views(env, obs)

@@ -8,34 +8,28 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_core.types import (
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_EPISODE_STEPS,
+from so101_nexus_core.config import (
     YCB_ENV_NAME_MAP,
     YCB_OBJECTS,
+    PickYCBConfig,
     YcbModelId,
 )
+from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_core.ycb_geometry import get_maniskill_ycb_spawn_z
 from so101_nexus_maniskill.base_env import CameraMode, SO101NexusManiSkillBaseEnv
 
-PICK_YCB_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(
-    include_cube_half_size=False,
-    include_max_goal_height=True,
-)
+_DEFAULT_CONFIG = PickYCBConfig()
+PICK_YCB_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env("ManiSkillPickYCBGoal-v1", max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)
+@register_env("ManiSkillPickYCBGoal-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickYCBEnv(SO101NexusManiSkillBaseEnv):
     """Configurable pick-YCB environment supporting SO100 and SO101 robots."""
-
-    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
 
     def __init__(
         self,
         *args,
+        config: PickYCBConfig = PickYCBConfig(),
         robot_uids: str = "so100",
         model_id: YcbModelId = "058_golf_ball",
         robot_color: tuple[float, float, float, float] | None = None,
@@ -43,8 +37,6 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
         robot_init_qpos_noise: float = 0.02,
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         **kwargs,
     ):
         if model_id not in YCB_OBJECTS:
@@ -54,14 +46,15 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
         self._obj_spawn_z: float | None = None
         self.task_description = f"Pick up the {YCB_OBJECTS[model_id]}"
 
+        robot_cfgs = build_maniskill_robot_configs(config=config)
+
         self._setup_base(
+            config=config,
             robot_uids=robot_uids,
-            robot_cfgs=PICK_YCB_CONFIGS,
+            robot_cfgs=robot_cfgs,
             robot_color=robot_color,
             camera_mode=camera_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
-            camera_width=camera_width,
-            camera_height=camera_height,
         )
 
         if reconfiguration_freq is None:
@@ -182,13 +175,13 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
 PickYCBGoalEnv = PickYCBEnv
 
 
-@register_env("ManiSkillPickYCBLift-v1", max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)
+@register_env("ManiSkillPickYCBLift-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickYCBLiftEnv(PickYCBEnv):
     """Pick-YCB variant where success is lift height threshold while grasped."""
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         info = super().evaluate()
-        info["success"] = (info["lift_height"] > self.LIFT_THRESHOLD) & info["is_grasped"]
+        info["success"] = (info["lift_height"] > self.config.lift_threshold) & info["is_grasped"]
         return info
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
@@ -223,5 +216,5 @@ for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
                 (_base_cls,),
                 {"__init__": _make_init()},
             )
-            _cls = register_env(_env_id, max_episode_steps=DEFAULT_MAX_EPISODE_STEPS)(_cls)
+            _cls = register_env(_env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(_cls)
             globals()[f"Pick{_env_name}{_task}{_robot}Env"] = _cls

@@ -4,12 +4,7 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
-from so101_nexus_core.types import (
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_MAX_GOAL_HEIGHT,
-)
+from so101_nexus_core.config import PickCubeConfig
 from so101_nexus_maniskill.pick_cube import (
     PICK_CUBE_CONFIGS,
     PickCubeGoalSO100Env,
@@ -18,6 +13,7 @@ from so101_nexus_maniskill.pick_cube import (
     PickCubeLiftSO101Env,
 )
 
+_CFG = PickCubeConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 GOAL_ENV_IDS = [
@@ -76,7 +72,11 @@ class TestConstructionValidation:
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            gym.make("ManiSkillPickCubeGoal-v1", cube_half_size=0.001, **BASE_KWARGS)
+            gym.make(
+                "ManiSkillPickCubeGoal-v1",
+                config=PickCubeConfig(cube_half_size=0.001),
+                **BASE_KWARGS,
+            )
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
@@ -86,21 +86,21 @@ class TestConstructionValidation:
 class TestSharedConstants:
     def test_cube_half_size_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["cube_half_size"] == DEFAULT_CUBE_HALF_SIZE, (
+            assert cfg["cube_half_size"] == _CFG.cube_half_size, (
                 f"{robot_key} cube_half_size mismatch"
             )
 
     def test_goal_thresh_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["goal_thresh"] == DEFAULT_GOAL_THRESH
+            assert cfg["goal_thresh"] == _CFG.goal_thresh
 
     def test_spawn_half_size_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["cube_spawn_half_size"] == DEFAULT_CUBE_SPAWN_HALF_SIZE
+            assert cfg["cube_spawn_half_size"] == _CFG.spawn_half_size
 
     def test_max_goal_height_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["max_goal_height"] == DEFAULT_MAX_GOAL_HEIGHT
+            assert cfg["max_goal_height"] == _CFG.max_goal_height
 
     def test_cube_spawn_center_at_origin_relative(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():

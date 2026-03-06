@@ -7,33 +7,29 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.types import (
+from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_CUBE_MASS,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_GROUND_COLOR,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_GOAL_HEIGHT,
     ControlMode,
     CubeColorName,
-    compute_normalized_reward,
+    PickCubeConfig,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
-_CUBE_SPAWN_CENTER = np.array([0.15, 0.0], dtype=np.float64)
 
 
-def _build_scene_xml(cube_half_size: float, cube_color: list[float]) -> str:
+def _build_scene_xml(
+    cube_half_size: float,
+    cube_color: list[float],
+    cube_mass: float,
+    ground_color: tuple[float, float, float, float],
+    goal_thresh: float,
+) -> str:
     r, g, b, a = cube_color
     hs = cube_half_size
     robot_path = str(_SO101_XML)
-    gr, gg, gb, ga = DEFAULT_GROUND_COLOR
+    gr, gg, gb, ga = ground_color
     return f"""\
 <mujoco model="pick_cube_scene">
   <option timestep="0.002" gravity="0 0 -9.81"/>
@@ -54,13 +50,13 @@ def _build_scene_xml(cube_half_size: float, cube_color: list[float]) -> str:
     <body name="cube" pos="0.15 0 {hs}">
       <freejoint name="cube_joint"/>
       <geom name="cube_geom" type="box" size="{hs} {hs} {hs}"
-            rgba="{r} {g} {b} {a}" mass="{DEFAULT_CUBE_MASS}"
+            rgba="{r} {g} {b} {a}" mass="{cube_mass}"
             contype="1" conaffinity="1" friction="1 0.005 0.0001"
             solref="0.02 1" solimp="0.9 0.95 0.001"/>
     </body>
 
     <body name="goal" mocap="true" pos="0.15 0 {hs + 0.04}">
-      <site name="goal_site" type="sphere" size="{DEFAULT_GOAL_THRESH}"
+      <site name="goal_site" type="sphere" size="{goal_thresh}"
             rgba="0 1 0 0.5"/>
     </body>
   </worldbody>
@@ -71,16 +67,12 @@ def _build_scene_xml(cube_half_size: float, cube_color: list[float]) -> str:
 class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
     """MuJoCo pick-cube environment."""
 
-    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
-
     def __init__(
         self,
+        config: PickCubeConfig = PickCubeConfig(),
         cube_color: CubeColorName = "red",
-        cube_half_size: float = DEFAULT_CUBE_HALF_SIZE,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
@@ -88,24 +80,28 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
             raise ValueError(
                 f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
             )
-        if not (0.01 <= cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {cube_half_size}")
+        if not (0.01 <= config.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
         self._init_common(
+            config=config,
             render_mode=render_mode,
             camera_mode=camera_mode,
-            camera_width=camera_width,
-            camera_height=camera_height,
             control_mode=control_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         self.cube_color_name = cube_color
-        self.cube_half_size = cube_half_size
-        self._goal_thresh = DEFAULT_GOAL_THRESH
+        self.cube_half_size = config.cube_half_size
         self.task_description = f"Pick up the small {cube_color} cube"
 
-        xml_string = _build_scene_xml(cube_half_size, CUBE_COLOR_MAP[cube_color])
+        xml_string = _build_scene_xml(
+            config.cube_half_size,
+            CUBE_COLOR_MAP[cube_color],
+            config.cube_mass,
+            config.ground_color,
+            config.goal_thresh,
+        )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
             f.flush()
@@ -152,7 +148,7 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         is_grasped = self._is_grasping()
 
         obj_to_goal_dist = float(np.linalg.norm(obj_pos - goal_pos))
-        is_obj_placed = obj_to_goal_dist <= self._goal_thresh
+        is_obj_placed = obj_to_goal_dist <= self.config.goal_thresh
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
         success = is_obj_placed and is_robot_static
@@ -174,19 +170,21 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
             (1.0 - float(np.tanh(5.0 * info["obj_to_goal_dist"]))) if is_grasped else 0.0
         )
 
-        return compute_normalized_reward(
+        return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
         )
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = _CUBE_SPAWN_CENTER
+        cx, cy = self.config.spawn_center
+        spawn_hs = self.config.spawn_half_size
 
-        cube_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        cube_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        cube_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+        cube_y = cy + rng.uniform(-spawn_hs, spawn_hs)
         cube_z = self.cube_half_size
 
         angle = rng.uniform(0, 2 * np.pi)
@@ -197,9 +195,9 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         self.data.qpos[addr + 3 : addr + 7] = cube_quat
         self._initial_obj_z = cube_z
 
-        goal_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        goal_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        goal_z = self.cube_half_size + rng.uniform(0, DEFAULT_MAX_GOAL_HEIGHT)
+        goal_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+        goal_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+        goal_z = self.cube_half_size + rng.uniform(0, self.config.max_goal_height)
         self.data.mocap_pos[self._goal_mocap_id] = [goal_x, goal_y, goal_z]
 
 
@@ -208,7 +206,7 @@ class PickCubeLiftEnv(PickCubeEnv):
 
     def _get_info(self) -> dict:
         info = super()._get_info()
-        info["success"] = (info["lift_height"] > DEFAULT_LIFT_THRESHOLD) and (
+        info["success"] = (info["lift_height"] > self.config.lift_threshold) and (
             info["is_grasped"] > 0.5
         )
         return info
@@ -218,9 +216,10 @@ class PickCubeLiftEnv(PickCubeEnv):
         is_grasped = info["is_grasped"] > 0.5
         lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
 
-        return compute_normalized_reward(
+        return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=lift_progress,
             is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
         )

@@ -12,38 +12,34 @@ from so101_nexus_core import (
     get_ycb_collision_mesh,
     get_ycb_visual_mesh,
 )
-from so101_nexus_core.types import (
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_GROUND_COLOR,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_GOAL_HEIGHT,
+from so101_nexus_core.config import (
     YCB_OBJECTS,
     ControlMode,
+    PickYCBConfig,
     YcbModelId,
-    compute_normalized_reward,
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
-_CUBE_SPAWN_CENTER = np.array([0.15, 0.0], dtype=np.float64)
 
 
 def _build_ycb_scene_xml(
-    collision_mesh_path: str, visual_mesh_path: str, goal_mode: bool = True
+    collision_mesh_path: str,
+    visual_mesh_path: str,
+    ground_color: tuple[float, float, float, float],
+    goal_thresh: float,
+    goal_mode: bool = True,
 ) -> str:
     robot_path = str(_SO101_XML)
-    gr, gg, gb, ga = DEFAULT_GROUND_COLOR
+    gr, gg, gb, ga = ground_color
 
     goal_xml = ""
     if goal_mode:
         goal_xml = f"""
     <body name="goal" mocap="true" pos="0.15 0 0.04">
-      <site name="goal_site" type="sphere" size="{DEFAULT_GOAL_THRESH}"
+      <site name="goal_site" type="sphere" size="{goal_thresh}"
             rgba="0 1 0 0.5"/>
     </body>"""
 
@@ -86,15 +82,12 @@ def _build_ycb_scene_xml(
 class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
     """MuJoCo pick-YCB environment with goal-placement success."""
 
-    LIFT_THRESHOLD = DEFAULT_LIFT_THRESHOLD
-
     def __init__(
         self,
+        config: PickYCBConfig = PickYCBConfig(),
         model_id: YcbModelId = "058_golf_ball",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
-        camera_width: int = DEFAULT_CAMERA_WIDTH,
-        camera_height: int = DEFAULT_CAMERA_HEIGHT,
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
@@ -102,23 +95,27 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
             raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
 
         self._init_common(
+            config=config,
             render_mode=render_mode,
             camera_mode=camera_mode,
-            camera_width=camera_width,
-            camera_height=camera_height,
             control_mode=control_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         self.model_id = model_id
-        self._goal_thresh = DEFAULT_GOAL_THRESH
         self.task_description = f"Pick up the {YCB_OBJECTS[model_id]}"
 
         ensure_ycb_assets(model_id)
         collision_path = str(get_ycb_collision_mesh(model_id))
         visual_path = str(get_ycb_visual_mesh(model_id))
 
-        xml_string = _build_ycb_scene_xml(collision_path, visual_path, goal_mode=True)
+        xml_string = _build_ycb_scene_xml(
+            collision_path,
+            visual_path,
+            config.ground_color,
+            config.goal_thresh,
+            goal_mode=True,
+        )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
             f.flush()
@@ -172,7 +169,7 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
         is_grasped = self._is_grasping()
 
         obj_to_goal_dist = float(np.linalg.norm(obj_pos - goal_pos))
-        is_obj_placed = obj_to_goal_dist <= self._goal_thresh
+        is_obj_placed = obj_to_goal_dist <= self.config.goal_thresh
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
         success = is_obj_placed and is_robot_static
@@ -194,19 +191,21 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
             (1.0 - float(np.tanh(5.0 * info["obj_to_goal_dist"]))) if is_grasped else 0.0
         )
 
-        return compute_normalized_reward(
+        return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
         )
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = _CUBE_SPAWN_CENTER
+        cx, cy = self.config.spawn_center
+        spawn_hs = self.config.spawn_half_size
 
-        obj_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        obj_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
+        obj_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+        obj_y = cy + rng.uniform(-spawn_hs, spawn_hs)
         obj_z = self._obj_spawn_z
 
         angle = rng.uniform(0, 2 * np.pi)
@@ -219,9 +218,9 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
         self.data.qpos[addr + 3 : addr + 7] = obj_quat
         self._initial_obj_z = obj_z
 
-        goal_x = cx + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        goal_y = cy + rng.uniform(-DEFAULT_CUBE_SPAWN_HALF_SIZE, DEFAULT_CUBE_SPAWN_HALF_SIZE)
-        goal_z = self._obj_spawn_z + rng.uniform(0, DEFAULT_MAX_GOAL_HEIGHT)
+        goal_x = cx + rng.uniform(-spawn_hs, spawn_hs)
+        goal_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+        goal_z = self._obj_spawn_z + rng.uniform(0, self.config.max_goal_height)
         self.data.mocap_pos[self._goal_mocap_id] = [goal_x, goal_y, goal_z]
 
 
@@ -230,7 +229,7 @@ class PickYCBLiftEnv(PickYCBEnv):
 
     def _get_info(self) -> dict:
         info = super()._get_info()
-        info["success"] = (info["lift_height"] > DEFAULT_LIFT_THRESHOLD) and (
+        info["success"] = (info["lift_height"] > self.config.lift_threshold) and (
             info["is_grasped"] > 0.5
         )
         return info
@@ -240,9 +239,10 @@ class PickYCBLiftEnv(PickYCBEnv):
         is_grasped = info["is_grasped"] > 0.5
         lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
 
-        return compute_normalized_reward(
+        return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=lift_progress,
             is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
         )

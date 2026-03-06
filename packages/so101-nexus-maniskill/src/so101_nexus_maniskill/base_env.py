@@ -14,13 +14,7 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.types import (
-    DEFAULT_GROUND_COLOR,
-    REWARD_WEIGHT_COMPLETION_BONUS,
-    REWARD_WEIGHT_GRASPING,
-    REWARD_WEIGHT_REACHING,
-    REWARD_WEIGHT_TASK_OBJECTIVE,
-)
+from so101_nexus_core.config import EnvironmentConfig
 from so101_nexus_maniskill.so101_agent import SO101
 
 CameraMode = Literal["fixed", "wrist", "both"]
@@ -35,28 +29,28 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
     def _setup_base(
         self,
         *,
+        config: EnvironmentConfig,
         robot_uids: str,
         robot_cfgs: dict[str, dict],
         robot_color: tuple[float, float, float, float] | None,
         camera_mode: CameraMode,
         robot_init_qpos_noise: float,
-        camera_width: int,
-        camera_height: int,
     ) -> None:
         if robot_uids not in robot_cfgs:
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
         if camera_mode not in ("fixed", "wrist", "both"):
             raise ValueError(f"camera_mode must be fixed|wrist|both, got {camera_mode!r}")
-        if camera_width <= 0 or camera_height <= 0:
+        if config.camera.width <= 0 or config.camera.height <= 0:
             raise ValueError(
-                f"camera_width and camera_height must be > 0, got {camera_width}x{camera_height}"
+                f"camera dimensions must be > 0, got {config.camera.width}x{config.camera.height}"
             )
 
+        self.config = config
         self.robot_color = robot_color
         self.camera_mode: CameraMode = camera_mode
         self.robot_init_qpos_noise = robot_init_qpos_noise
-        self.camera_width = camera_width
-        self.camera_height = camera_height
+        self.camera_width = config.camera.width
+        self.camera_height = config.camera.height
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
 
@@ -64,20 +58,23 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
     def _reach_progress(dist: torch.Tensor) -> torch.Tensor:
         return 1.0 - torch.tanh(5.0 * dist)
 
-    @staticmethod
     def _assemble_normalized_reward(
+        self,
         *,
         reach_progress: torch.Tensor,
         is_grasped: torch.Tensor,
         task_progress: torch.Tensor,
         is_complete: torch.Tensor,
+        action_delta_norm: float | torch.Tensor = 0.0,
     ) -> torch.Tensor:
-        return (
-            REWARD_WEIGHT_REACHING * reach_progress
-            + REWARD_WEIGHT_GRASPING * is_grasped
-            + REWARD_WEIGHT_TASK_OBJECTIVE * task_progress
-            + REWARD_WEIGHT_COMPLETION_BONUS * is_complete
+        cfg = self.config.reward
+        base = (
+            cfg.reaching * reach_progress
+            + cfg.grasping * is_grasped
+            + cfg.task_objective * task_progress
+            + cfg.completion_bonus * is_complete
         )
+        return base - cfg.action_delta_penalty * action_delta_norm
 
     @property
     def _default_sim_config(self) -> SimConfig:
@@ -184,7 +181,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         tris = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
         uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
         mat = sapien.render.RenderMaterial()
-        mat.base_color = DEFAULT_GROUND_COLOR
+        mat.base_color = self.config.ground_color
         shape = sapien.render.RenderShapeTriangleMesh(
             vertices=verts,
             triangles=tris,

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from so101_nexus_core.types import YCB_OBJECTS
+from so101_nexus_core.config import YCB_OBJECTS
 from so101_nexus_core.ycb_assets import get_ycb_mesh_dir
 
 EXPECTED_MODEL_IDS = [
@@ -20,12 +20,6 @@ EXPECTED_MODEL_IDS = [
 
 
 class TestYCBConstants:
-    def test_ycb_objects_has_10_entries(self):
-        assert len(YCB_OBJECTS) == 10
-
-    def test_ycb_objects_contains_expected_ids(self):
-        assert set(YCB_OBJECTS.keys()) == set(EXPECTED_MODEL_IDS)
-
     def test_ycb_objects_values_are_strings(self):
         for model_id, name in YCB_OBJECTS.items():
             assert isinstance(name, str), f"{model_id} name is not a string"

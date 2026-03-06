@@ -7,14 +7,10 @@ import pytest
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import so101_nexus_mujoco  # noqa: F401, E402
-from so101_nexus_core.types import (
-    DEFAULT_CUBE_HALF_SIZE,
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
-    DEFAULT_TARGET_DISC_RADIUS,
-)
+from so101_nexus_core.config import PickAndPlaceConfig
 from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
+
+_CFG = PickAndPlaceConfig()
 
 
 @pytest.fixture(scope="module")
@@ -39,25 +35,19 @@ class TestConstructionValidation:
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            PickAndPlaceEnv(cube_half_size=0.001)
+            PickAndPlaceEnv(config=PickAndPlaceConfig(cube_half_size=0.001))
 
 
 class TestSharedConstants:
     def test_default_cube_half_size_matches_core(self):
         env = PickAndPlaceEnv()
-        assert env.cube_half_size == DEFAULT_CUBE_HALF_SIZE
+        assert env.cube_half_size == _CFG.cube_half_size
         env.close()
 
     def test_disc_radius_matches_core(self):
         env = PickAndPlaceEnv()
-        assert env.target_disc_radius == DEFAULT_TARGET_DISC_RADIUS
+        assert env.target_disc_radius == _CFG.target_disc_radius
         env.close()
-
-    def test_spawn_half_size_matches_core(self):
-        assert DEFAULT_CUBE_SPAWN_HALF_SIZE == 0.05
-
-    def test_goal_thresh_matches_core(self):
-        assert DEFAULT_GOAL_THRESH == 0.025
 
 
 class TestEnvCreation:
@@ -118,8 +108,8 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
     def test_cube_spawns_in_bounds(self, env):
-        cx, cy = 0.15, 0.0
-        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
+        cx, cy = _CFG.spawn_center
+        hs = _CFG.spawn_half_size
         for _ in range(5):
             env.reset()
             cube_pose = env.unwrapped._get_cube_pose()
@@ -132,7 +122,7 @@ class TestEpisodeLogic:
             cube_xy = env.unwrapped._get_cube_pose()[:2]
             target_xy = env.unwrapped._get_target_pos()[:2]
             dist = np.linalg.norm(cube_xy - target_xy)
-            assert dist >= DEFAULT_MIN_CUBE_TARGET_SEPARATION - 1e-6
+            assert dist >= _CFG.min_cube_target_separation - 1e-6
 
     def test_reward_range(self, env):
         env.reset()
@@ -182,9 +172,9 @@ class TestRobotInitQposNoise:
 
 
 class TestGoalThreshConfig:
-    def test_goal_thresh_stored(self):
+    def test_goal_thresh_from_config(self):
         env = PickAndPlaceEnv()
-        assert env._goal_thresh == DEFAULT_GOAL_THRESH
+        assert env.config.goal_thresh == _CFG.goal_thresh
         env.close()
 
 

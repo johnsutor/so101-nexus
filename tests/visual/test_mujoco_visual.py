@@ -2,20 +2,49 @@
 
 from __future__ import annotations
 
-import gymnasium
-import mujoco
-import numpy as np
-import pytest
+import os
 
-import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core.visualization import CameraView, to_uint8
+os.environ.setdefault("MUJOCO_GL", "egl")
 
-from .conftest import verify_scene
+import gymnasium  # noqa: E402
+import mujoco  # noqa: E402
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+
+import so101_nexus_mujoco  # noqa: F401, E402
+from so101_nexus_core.config import (  # noqa: E402
+    CameraConfig,
+    PickAndPlaceConfig,
+    PickCubeConfig,
+    PickYCBConfig,
+)
+from so101_nexus_core.visualization import CameraView, to_uint8  # noqa: E402
+
+from .conftest import verify_scene  # noqa: E402
 
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
+_CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
 WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
+
+_PICK_CUBE_ENVS = {
+    "MuJoCoPickCubeGoal-v1",
+    "MuJoCoPickCubeLift-v1",
+}
+_PICK_AND_PLACE_ENVS = {
+    "MuJoCoPickAndPlace-v1",
+}
+
+
+def _env_kwargs(env_id: str) -> dict:
+    """Return config + color kwargs appropriate for *env_id*."""
+    if env_id in _PICK_CUBE_ENVS:
+        return dict(config=PickCubeConfig(camera=_CAM), cube_color="red")
+    if env_id in _PICK_AND_PLACE_ENVS:
+        return dict(config=PickAndPlaceConfig(camera=_CAM), cube_color="red")
+    return dict(config=PickYCBConfig(camera=_CAM))
+
 
 MUJOCO_ENVS = [
     "MuJoCoPickCubeGoal-v1",
@@ -71,8 +100,7 @@ class TestMuJoCoCaptureInfrastructure:
         env = gymnasium.make(
             env_id,
             camera_mode="wrist",
-            camera_width=CAMERA_WIDTH,
-            camera_height=CAMERA_HEIGHT,
+            **_env_kwargs(env_id),
         )
         env.reset(seed=42)
         views = capture_mujoco_views(env)
@@ -114,15 +142,11 @@ class TestMuJoCoVisual:
 
     @pytest.mark.parametrize("env_id", MUJOCO_ENVS)
     def test_env_renders_correctly(self, visual_verifier, env_id: str):
-        _CUBE_ENVS = {"MuJoCoPickCubeGoal-v1", "MuJoCoPickCubeLift-v1", "MuJoCoPickAndPlace-v1"}
-        kwargs = dict(
+        env = gymnasium.make(
+            env_id,
             camera_mode="wrist",
-            camera_width=CAMERA_WIDTH,
-            camera_height=CAMERA_HEIGHT,
+            **_env_kwargs(env_id),
         )
-        if env_id in _CUBE_ENVS:
-            kwargs["cube_color"] = "red"
-        env = gymnasium.make(env_id, **kwargs)
         env.reset(seed=42)
         views = capture_mujoco_views(env)
         env.close()

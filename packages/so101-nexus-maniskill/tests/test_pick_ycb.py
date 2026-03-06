@@ -4,13 +4,10 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
-from so101_nexus_core.types import (
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_MAX_GOAL_HEIGHT,
-)
+from so101_nexus_core.config import PickYCBConfig
 from so101_nexus_maniskill.pick_ycb import PICK_YCB_CONFIGS
 
+_CFG = PickYCBConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 GOAL_ENV_IDS = [
@@ -84,15 +81,15 @@ class TestConstructionValidation:
 class TestSharedConstants:
     def test_goal_thresh_matches_core(self):
         for robot_key, cfg in PICK_YCB_CONFIGS.items():
-            assert cfg["goal_thresh"] == DEFAULT_GOAL_THRESH
+            assert cfg["goal_thresh"] == _CFG.goal_thresh
 
     def test_spawn_half_size_matches_core(self):
         for robot_key, cfg in PICK_YCB_CONFIGS.items():
-            assert cfg["cube_spawn_half_size"] == DEFAULT_CUBE_SPAWN_HALF_SIZE
+            assert cfg["cube_spawn_half_size"] == _CFG.spawn_half_size
 
     def test_max_goal_height_matches_core(self):
         for robot_key, cfg in PICK_YCB_CONFIGS.items():
-            assert cfg["max_goal_height"] == DEFAULT_MAX_GOAL_HEIGHT
+            assert cfg["max_goal_height"] == _CFG.max_goal_height
 
     def test_cube_spawn_center_at_origin_relative(self):
         for robot_key, cfg in PICK_YCB_CONFIGS.items():

@@ -4,14 +4,13 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
-from so101_nexus_core.types import (
-    DEFAULT_MIN_CUBE_TARGET_SEPARATION,
-)
+from so101_nexus_core.config import PickAndPlaceConfig
 from so101_nexus_maniskill.pick_and_place import (
     PickAndPlaceSO100Env,
     PickAndPlaceSO101Env,
 )
 
+_CFG = PickAndPlaceConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 ENV_IDS = [
@@ -138,7 +137,7 @@ class TestEpisodeLogic:
             cube_xy = env.unwrapped.obj.pose.p[0, :2].cpu()
             target_xy = env.unwrapped.target_site.pose.p[0, :2].cpu()
             dist = torch.linalg.norm(cube_xy - target_xy).item()
-            assert dist >= DEFAULT_MIN_CUBE_TARGET_SEPARATION - 1e-4
+            assert dist >= _CFG.min_cube_target_separation - 1e-4
 
     @pytest.mark.parametrize("env_id,robot", ENV_IDS)
     def test_reward_range(self, request, env_id, robot):
@@ -226,11 +225,7 @@ class TestRobotOrientation:
 class TestTargetDiscOrientation:
     @pytest.mark.parametrize("env_id,robot", ENV_IDS)
     def test_target_disc_lies_flat(self, request, env_id, robot):
-        """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z).
-
-        After rotation, the cylinder's Y-axis should map to Z.
-        Quaternion for 90deg around X: [cos(pi/4), sin(pi/4), 0, 0].
-        """
+        """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z)."""
         env = _get_env(request, env_id)
         env.reset()
         target_q = env.unwrapped.target_site.pose.q[0].cpu().numpy()

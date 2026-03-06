@@ -7,14 +7,13 @@ import mujoco
 import numpy as np
 from gymnasium import spaces
 
-from so101_nexus_core.types import (
-    DEFAULT_WRIST_CAM_FOV_DEG_RANGE,
+from so101_nexus_core.config import (
     SO101_JOINT_NAMES,
-    SO101_REST_QPOS,
     ControlMode,
+    EnvironmentConfig,
 )
 
-_REST_QPOS = np.array(SO101_REST_QPOS, dtype=np.float64)
+_REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos, dtype=np.float64)
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
@@ -31,10 +30,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _init_common(
         self,
         *,
+        config: EnvironmentConfig,
         render_mode: str | None,
         camera_mode: Literal["state_only", "wrist"],
-        camera_width: int,
-        camera_height: int,
         control_mode: ControlMode,
         robot_init_qpos_noise: float,
     ) -> None:
@@ -43,16 +41,17 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             raise ValueError(f"control_mode must be one of {valid}, got {control_mode!r}")
         if camera_mode not in ("state_only", "wrist"):
             raise ValueError(f"camera_mode must be state_only|wrist, got {camera_mode!r}")
-        if camera_width <= 0 or camera_height <= 0:
+        if config.camera.width <= 0 or config.camera.height <= 0:
             raise ValueError(
-                f"camera_width and camera_height must be > 0, got {camera_width}x{camera_height}"
+                f"camera dimensions must be > 0, got {config.camera.width}x{config.camera.height}"
             )
 
+        self.config = config
         self.control_mode = control_mode
         self.render_mode = render_mode
         self.camera_mode = camera_mode
-        self.camera_width = camera_width
-        self.camera_height = camera_height
+        self.camera_width = config.camera.width
+        self.camera_height = config.camera.height
         self.robot_init_qpos_noise = robot_init_qpos_noise
 
     def _finish_model_setup(self) -> None:
@@ -165,7 +164,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             -0.04 + self.np_random.uniform(-0.01, 0.01),
         ]
 
-        fov_lo, fov_hi = DEFAULT_WRIST_CAM_FOV_DEG_RANGE
+        fov_lo, fov_hi = self.config.camera.wrist_fov_deg_range
         self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
 
     def _get_collision_geoms(self, body_id: int) -> set[int]:

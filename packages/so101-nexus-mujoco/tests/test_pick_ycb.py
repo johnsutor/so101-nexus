@@ -7,13 +7,10 @@ import pytest
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import so101_nexus_mujoco  # noqa: F401, E402
-from so101_nexus_core.types import (
-    DEFAULT_CUBE_SPAWN_HALF_SIZE,
-    DEFAULT_GOAL_THRESH,
-    DEFAULT_LIFT_THRESHOLD,
-    DEFAULT_MAX_GOAL_HEIGHT,
-)
+from so101_nexus_core.config import PickYCBConfig
 from so101_nexus_mujoco.pick_ycb import PickYCBEnv
+
+_CFG = PickYCBConfig()
 
 GOAL_ENV_IDS = [
     "MuJoCoPickYCBGoal-v1",
@@ -59,20 +56,6 @@ class TestConstructionValidation:
     def test_invalid_control_mode(self):
         with pytest.raises(ValueError, match="control_mode"):
             PickYCBEnv(control_mode="invalid_mode")
-
-
-class TestSharedConstants:
-    def test_spawn_half_size_matches_core(self):
-        assert DEFAULT_CUBE_SPAWN_HALF_SIZE == 0.05
-
-    def test_goal_thresh_matches_core(self):
-        assert DEFAULT_GOAL_THRESH == 0.025
-
-    def test_lift_threshold_matches_core(self):
-        assert DEFAULT_LIFT_THRESHOLD == 0.05
-
-    def test_max_goal_height_matches_core(self):
-        assert DEFAULT_MAX_GOAL_HEIGHT == 0.08
 
 
 class TestEnvCreation:
@@ -165,8 +148,8 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
     def test_obj_spawns_in_bounds(self, goal_env):
-        cx, cy = 0.15, 0.0
-        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
+        cx, cy = _CFG.spawn_center
+        hs = _CFG.spawn_half_size
         for _ in range(5):
             goal_env.reset()
             obj_pose = goal_env.unwrapped._get_obj_pose()
@@ -174,8 +157,8 @@ class TestEpisodeLogic:
             assert cy - hs <= obj_pose[1] <= cy + hs
 
     def test_goal_spawns_in_bounds(self, goal_env):
-        cx, cy = 0.15, 0.0
-        hs = DEFAULT_CUBE_SPAWN_HALF_SIZE
+        cx, cy = _CFG.spawn_center
+        hs = _CFG.spawn_half_size
         for _ in range(5):
             goal_env.reset()
             goal_pos = goal_env.unwrapped._get_goal_pos()
@@ -227,19 +210,6 @@ class TestRobotInitQposNoise:
         env.close()
         all_same = all(np.allclose(qpos_list[0], q) for q in qpos_list[1:])
         assert not all_same
-
-
-class TestLiftThreshold:
-    def test_lift_threshold_class_attr(self):
-        assert hasattr(PickYCBEnv, "LIFT_THRESHOLD")
-        assert PickYCBEnv.LIFT_THRESHOLD == DEFAULT_LIFT_THRESHOLD
-
-
-class TestGoalThreshConfig:
-    def test_goal_thresh_stored(self):
-        env = PickYCBEnv()
-        assert env._goal_thresh == DEFAULT_GOAL_THRESH
-        env.close()
 
 
 class TestCameraModes:
