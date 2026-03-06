@@ -150,21 +150,27 @@ class TestEpisodeLogic:
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="red", target_color="blue"), **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1",
+            config=PickAndPlaceConfig(cube_color="red", target_color="blue"),
+            **BASE_KWARGS,
         )
         assert env.unwrapped.task_description[0].isupper()
         env.close()
 
     def test_includes_cube_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="green", target_color="blue"), **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1",
+            config=PickAndPlaceConfig(cube_color="green", target_color="blue"),
+            **BASE_KWARGS,
         )
         assert "green" in env.unwrapped.task_description
         env.close()
 
     def test_includes_target_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="green", target_color="blue"), **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1",
+            config=PickAndPlaceConfig(cube_color="green", target_color="blue"),
+            **BASE_KWARGS,
         )
         assert "blue" in env.unwrapped.task_description
         env.close()
@@ -173,21 +179,33 @@ class TestTaskDescription:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="fixed"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickAndPlaceSO100-v1",
+            config=PickAndPlaceConfig(camera_mode="fixed"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="wrist"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickAndPlaceSO100-v1",
+            config=PickAndPlaceConfig(camera_mode="wrist"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="both"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickAndPlaceSO100-v1",
+            config=PickAndPlaceConfig(camera_mode="both"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()

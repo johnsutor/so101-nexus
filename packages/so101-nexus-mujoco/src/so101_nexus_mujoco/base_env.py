@@ -13,7 +13,7 @@ from so101_nexus_core.config import (
     EnvironmentConfig,
 )
 
-_REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos, dtype=np.float64)
+_REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):

@@ -223,21 +223,33 @@ class TestRobotSubclasses:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("ManiSkillPickGolfBallGoalSO100-v1", config=PickYCBConfig(camera_mode="fixed"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickGolfBallGoalSO100-v1",
+            config=PickYCBConfig(camera_mode="fixed"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("ManiSkillPickGolfBallGoalSO100-v1", config=PickYCBConfig(camera_mode="wrist"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickGolfBallGoalSO100-v1",
+            config=PickYCBConfig(camera_mode="wrist"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("ManiSkillPickGolfBallGoalSO100-v1", config=PickYCBConfig(camera_mode="both"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickGolfBallGoalSO100-v1",
+            config=PickYCBConfig(camera_mode="both"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()

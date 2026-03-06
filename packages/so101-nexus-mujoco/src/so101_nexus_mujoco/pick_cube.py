@@ -66,6 +66,7 @@ def _build_scene_xml(
 
 class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
     """MuJoCo pick-cube environment."""
+
     config: PickCubeConfig
 
     def __init__(

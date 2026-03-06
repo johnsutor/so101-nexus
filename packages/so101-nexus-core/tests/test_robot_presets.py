@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from so101_nexus_core.config import (
+    ROBOT_CAMERA_PRESETS,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickCubeConfig,
@@ -35,3 +37,15 @@ def test_build_maniskill_robot_configs_shape(
     assert so100["wrist_cam_fov_range"][0] < so100["wrist_cam_fov_range"][1]
     assert ("cube_half_size" in so100) is expects_cube_half_size
     assert ("max_goal_height" in so100) is expects_max_goal_height
+
+
+def test_build_maniskill_robot_configs_converts_euler_deg_to_rad():
+    configs = build_maniskill_robot_configs(config=EnvironmentConfig())
+    so100 = configs["so100"]
+    preset = ROBOT_CAMERA_PRESETS["so100"]
+    assert np.array(so100["wrist_cam_euler_center"]) == pytest.approx(
+        np.radians(np.array(preset.wrist_cam_euler_center_deg))
+    )
+    assert np.array(so100["wrist_cam_euler_noise"]) == pytest.approx(
+        np.radians(np.array(preset.wrist_cam_euler_noise_deg))
+    )

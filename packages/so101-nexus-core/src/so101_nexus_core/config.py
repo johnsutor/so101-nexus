@@ -63,7 +63,16 @@ class RobotConfig:
     identifiers that must match the URDF/MJCF and should not be overridden.
     """
 
-    rest_qpos: tuple[float, ...] = (0.0, -1.5708, 1.5708, 0.66, 0.0, -1.1)
+    rest_qpos_deg: tuple[float, ...] = (0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644)
+
+    @property
+    def rest_qpos_rad(self) -> tuple[float, ...]:
+        return tuple(float(np.radians(v)) for v in self.rest_qpos_deg)
+
+    @property
+    def rest_qpos(self) -> tuple[float, ...]:
+        """Backward-compatible alias returning radians."""
+        return self.rest_qpos_rad
 
 
 @dataclass(frozen=True)
@@ -111,8 +120,18 @@ class RobotCameraPreset:
     wrist_camera_mount_link: str
     wrist_cam_pos_center: tuple[float, float, float]
     wrist_cam_pos_noise: tuple[float, float, float]
-    wrist_cam_euler_center: tuple[float, float, float]
-    wrist_cam_euler_noise: tuple[float, float, float]
+    wrist_cam_euler_center_deg: tuple[float, float, float]
+    wrist_cam_euler_noise_deg: tuple[float, float, float]
+
+    @property
+    def wrist_cam_euler_center_rad(self) -> tuple[float, float, float]:
+        x, y, z = self.wrist_cam_euler_center_deg
+        return (float(np.radians(x)), float(np.radians(y)), float(np.radians(z)))
+
+    @property
+    def wrist_cam_euler_noise_rad(self) -> tuple[float, float, float]:
+        x, y, z = self.wrist_cam_euler_noise_deg
+        return (float(np.radians(x)), float(np.radians(y)), float(np.radians(z)))
 
 
 @dataclass(frozen=True)
@@ -204,9 +223,7 @@ class PickYCBConfig(EnvironmentConfig):
     def __post_init__(self):
         super().__post_init__()
         if self.model_id not in YCB_OBJECTS:
-            raise ValueError(
-                f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}"
-            )
+            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
 
 
 CUBE_COLOR_MAP: dict[str, list[float]] = {
@@ -235,7 +252,7 @@ YCB_OBJECTS: dict[str, str] = {
     "058_golf_ball": "golf ball",
 }
 
-YCB_ENV_NAME_MAP: dict[str, str] = {
+YCB_ENV_NAME_MAP: dict[YcbModelId, str] = {
     "009_gelatin_box": "GelatinBox",
     "011_banana": "Banana",
     "030_fork": "Fork",
@@ -261,8 +278,8 @@ ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
         wrist_camera_mount_link="Fixed_Jaw",
         wrist_cam_pos_center=(0.0, -0.045, -0.045),
         wrist_cam_pos_noise=(0.0, 0.015, 0.015),
-        wrist_cam_euler_center=(-np.pi, np.radians(-37.5), np.radians(-90.0)),
-        wrist_cam_euler_noise=(0.0, np.radians(7.5), 0.0),
+        wrist_cam_euler_center_deg=(-180.0, -37.5, -90.0),
+        wrist_cam_euler_noise_deg=(0.0, 7.5, 0.0),
     ),
     "so101": RobotCameraPreset(
         base_quat=(1.0, 0.0, 0.0, 0.0),
@@ -273,7 +290,7 @@ ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
         wrist_camera_mount_link="gripper_link",
         wrist_cam_pos_center=(0.0, 0.04, -0.04),
         wrist_cam_pos_noise=(0.005, 0.01, 0.01),
-        wrist_cam_euler_center=(-np.pi, np.radians(37.5), np.radians(-90.0)),
-        wrist_cam_euler_noise=(0.0, 0.2, 0.0),
+        wrist_cam_euler_center_deg=(-180.0, 37.5, -90.0),
+        wrist_cam_euler_noise_deg=(0.0, 11.4591559026, 0.0),
     ),
 }
