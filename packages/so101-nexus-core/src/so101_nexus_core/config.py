@@ -135,6 +135,14 @@ class EnvironmentConfig:
     robot_color: tuple[float, float, float, float] | None = None
     robot_init_qpos_noise: float = 0.02
 
+    def __post_init__(self):
+        if self.camera_mode not in ("fixed", "wrist", "both"):
+            raise ValueError(f"camera_mode must be fixed|wrist|both, got {self.camera_mode!r}")
+        if self.camera.width <= 0 or self.camera.height <= 0:
+            raise ValueError(
+                f"camera dimensions must be > 0, got {self.camera.width}x{self.camera.height}"
+            )
+
 
 @dataclass(frozen=True)
 class PickCubeConfig(EnvironmentConfig):
@@ -145,6 +153,15 @@ class PickCubeConfig(EnvironmentConfig):
     cube_mass: float = 0.01
     lift_threshold: float = 0.05
     max_goal_height: float = 0.08
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.cube_color not in CUBE_COLOR_MAP:
+            raise ValueError(
+                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {self.cube_color!r}"
+            )
+        if not (0.01 <= self.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
 
 
 @dataclass(frozen=True)
@@ -158,6 +175,23 @@ class PickAndPlaceConfig(EnvironmentConfig):
     target_disc_radius: float = 0.05
     min_cube_target_separation: float = 0.0375
 
+    def __post_init__(self):
+        super().__post_init__()
+        if self.cube_color not in CUBE_COLOR_MAP:
+            raise ValueError(
+                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {self.cube_color!r}"
+            )
+        if self.target_color not in TARGET_COLOR_MAP:
+            raise ValueError(
+                f"target_color must be one of {list(TARGET_COLOR_MAP)}, got {self.target_color!r}"
+            )
+        if self.cube_color == self.target_color:
+            raise ValueError(
+                f"cube_color and target_color must differ, both are {self.cube_color!r}"
+            )
+        if not (0.01 <= self.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+
 
 @dataclass(frozen=True)
 class PickYCBConfig(EnvironmentConfig):
@@ -166,6 +200,13 @@ class PickYCBConfig(EnvironmentConfig):
     model_id: YcbModelId = "058_golf_ball"
     lift_threshold: float = 0.05
     max_goal_height: float = 0.08
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.model_id not in YCB_OBJECTS:
+            raise ValueError(
+                f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}"
+            )
 
 
 CUBE_COLOR_MAP: dict[str, list[float]] = {

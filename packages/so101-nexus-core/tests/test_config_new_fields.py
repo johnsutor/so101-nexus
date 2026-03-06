@@ -1,3 +1,5 @@
+import pytest
+
 from so101_nexus_core.config import (
     EnvironmentConfig,
     PickAndPlaceConfig,
@@ -50,3 +52,37 @@ class TestNewConfigFields:
     def test_robot_color_custom(self):
         cfg = EnvironmentConfig(robot_color=(1.0, 0.0, 0.0, 1.0))
         assert cfg.robot_color == (1.0, 0.0, 0.0, 1.0)
+
+
+class TestConfigValidation:
+    def test_invalid_cube_color_pick_cube(self):
+        with pytest.raises(ValueError, match="cube_color"):
+            PickCubeConfig(cube_color="neon")
+
+    def test_invalid_cube_color_pick_and_place(self):
+        with pytest.raises(ValueError, match="cube_color"):
+            PickAndPlaceConfig(cube_color="neon")
+
+    def test_invalid_target_color(self):
+        with pytest.raises(ValueError, match="target_color"):
+            PickAndPlaceConfig(target_color="neon")
+
+    def test_same_cube_and_target_color(self):
+        with pytest.raises(ValueError, match="must differ"):
+            PickAndPlaceConfig(cube_color="red", target_color="red")
+
+    def test_invalid_model_id(self):
+        with pytest.raises(ValueError, match="model_id"):
+            PickYCBConfig(model_id="invalid_object")
+
+    def test_invalid_camera_mode(self):
+        with pytest.raises(ValueError, match="camera_mode"):
+            EnvironmentConfig(camera_mode="overhead")
+
+    def test_invalid_cube_half_size_too_small(self):
+        with pytest.raises(ValueError, match="cube_half_size"):
+            PickCubeConfig(cube_half_size=0.001)
+
+    def test_invalid_cube_half_size_too_large(self):
+        with pytest.raises(ValueError, match="cube_half_size"):
+            PickCubeConfig(cube_half_size=0.1)
