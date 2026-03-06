@@ -252,7 +252,7 @@ class TestControlModes:
     def test_zero_action_stays_near_rest(self, mode):
         env = PickCubeEnv(control_mode=mode, robot_init_qpos_noise=0.0)
         env.reset()
-        rest = np.array(RobotConfig().rest_qpos, dtype=np.float64)
+        rest = np.array(RobotConfig().rest_qpos_rad, dtype=np.float64)
         zero = np.zeros(6, dtype=np.float32)
         for _ in range(10):
             env.step(zero)
@@ -263,7 +263,7 @@ class TestControlModes:
     def test_target_delta_accumulates(self):
         env = PickCubeEnv(control_mode="pd_joint_target_delta_pos", robot_init_qpos_noise=0.0)
         env.reset()
-        rest = np.array(RobotConfig().rest_qpos, dtype=np.float64)
+        rest = np.array(RobotConfig().rest_qpos_rad, dtype=np.float64)
         small_delta = np.array([0.01, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         for _ in range(5):
             env.step(small_delta)

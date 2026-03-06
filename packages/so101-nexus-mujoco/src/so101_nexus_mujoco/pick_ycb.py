@@ -81,6 +81,7 @@ def _build_ycb_scene_xml(
 
 class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
     """MuJoCo pick-YCB environment with goal-placement success."""
+
     config: PickYCBConfig
 
     def __init__(

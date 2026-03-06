@@ -33,8 +33,8 @@ def build_maniskill_robot_configs(
             "wrist_camera_mount_link": preset.wrist_camera_mount_link,
             "wrist_cam_pos_center": list(preset.wrist_cam_pos_center),
             "wrist_cam_pos_noise": list(preset.wrist_cam_pos_noise),
-            "wrist_cam_euler_center": list(preset.wrist_cam_euler_center),
-            "wrist_cam_euler_noise": list(preset.wrist_cam_euler_noise),
+            "wrist_cam_euler_center": list(preset.wrist_cam_euler_center_rad),
+            "wrist_cam_euler_noise": list(preset.wrist_cam_euler_noise_rad),
             "wrist_cam_fov_range": fov_range,
         }
         if isinstance(config, (PickCubeConfig, PickAndPlaceConfig)):

@@ -150,7 +150,9 @@ class TestTaskDescription:
         env.close()
 
     def test_task_description_includes_color(self):
-        env = gym.make("ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_color="green"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_color="green"), **BASE_KWARGS
+        )
         assert "green" in env.unwrapped.task_description
         env.close()
 
@@ -251,21 +253,33 @@ class TestRobotSubclasses:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="fixed"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickCubeGoalSO100-v1",
+            config=PickCubeConfig(camera_mode="fixed"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="wrist"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickCubeGoalSO100-v1",
+            config=PickCubeConfig(camera_mode="wrist"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="both"), **BASE_KWARGS)
+        env = gym.make(
+            "ManiSkillPickCubeGoalSO100-v1",
+            config=PickCubeConfig(camera_mode="both"),
+            **BASE_KWARGS,
+        )
         env.reset()
         yield env
         env.close()

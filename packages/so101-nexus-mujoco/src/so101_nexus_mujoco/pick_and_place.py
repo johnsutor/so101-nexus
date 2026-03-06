@@ -70,6 +70,7 @@ def _build_scene_xml(
 
 class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
+
     config: PickAndPlaceConfig
 
     def __init__(

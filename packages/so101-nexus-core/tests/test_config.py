@@ -82,14 +82,18 @@ class TestPickAndPlaceInvariants:
 class TestJointInvariants:
     def test_joint_and_rest_lengths_match(self):
         cfg = RobotConfig()
-        assert len(SO101_JOINT_NAMES) == len(cfg.rest_qpos)
+        assert len(SO101_JOINT_NAMES) == len(cfg.rest_qpos_deg)
 
     def test_joint_names_unique(self):
         assert len(set(SO101_JOINT_NAMES)) == len(SO101_JOINT_NAMES)
 
     def test_rest_qpos_finite(self):
         cfg = RobotConfig()
-        assert np.isfinite(np.array(cfg.rest_qpos)).all()
+        assert np.isfinite(np.array(cfg.rest_qpos_deg)).all()
+
+    def test_rest_qpos_deg_rad_consistent(self):
+        cfg = RobotConfig()
+        assert np.array(cfg.rest_qpos_rad) == pytest.approx(np.radians(np.array(cfg.rest_qpos_deg)))
 
 
 class TestYCBMappings:

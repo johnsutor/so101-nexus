@@ -136,16 +136,11 @@ All environments have a maximum episode length of **256 steps**.
 - [x] ManiSkill environments for SO-100 and SO-101
 - [x] MuJoCo environments for SO-101
 - [ ] Genesis environments for SO-100 and SO-101
-- [X] Add consistent controls for the actions (end-effector, joint positions, etc) across simulation environments.
-- [X] Add consistency in the appearance of environments
-- [X] More extensive testing for verifying environments work well. 
 - [ ] Provide code for training basic PPO policy on every environment to ensure they work well.
 - [ ] Add more randomization options to environments (such as robot color, more objects, environment, variety of starting poses, etc)
 - [ ] Add documentation, with demo videos of each environment
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
 - [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
-- [ ] Make sure there are no type checking errors 
-- [ ] Standardize from radians to degrees
 
 ## Development
 

@@ -24,6 +24,7 @@ PICK_YCB_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAUL
 @register_env("ManiSkillPickYCBGoal-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickYCBEnv(SO101NexusManiSkillBaseEnv):
     """Configurable pick-YCB environment supporting SO100 and SO101 robots."""
+
     config: PickYCBConfig
 
     def __init__(
