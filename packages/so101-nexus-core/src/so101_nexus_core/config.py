@@ -16,6 +16,7 @@ ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black
 CubeColorName = ColorName
 TargetColorName = ColorName
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+CameraMode = Literal["fixed", "wrist", "both"]
 
 YcbModelId = Literal[
     "009_gelatin_box",
@@ -130,12 +131,16 @@ class EnvironmentConfig:
     goal_thresh: float = 0.025
     spawn_half_size: float = 0.05
     spawn_center: tuple[float, float] = (0.15, 0.0)
+    camera_mode: CameraMode = "fixed"
+    robot_color: tuple[float, float, float, float] | None = None
+    robot_init_qpos_noise: float = 0.02
 
 
 @dataclass(frozen=True)
 class PickCubeConfig(EnvironmentConfig):
     """Config for pick-cube and pick-cube-lift environments."""
 
+    cube_color: CubeColorName = "red"
     cube_half_size: float = 0.0125
     cube_mass: float = 0.01
     lift_threshold: float = 0.05
@@ -146,6 +151,8 @@ class PickCubeConfig(EnvironmentConfig):
 class PickAndPlaceConfig(EnvironmentConfig):
     """Config for pick-and-place environments."""
 
+    cube_color: CubeColorName = "red"
+    target_color: TargetColorName = "blue"
     cube_half_size: float = 0.0125
     cube_mass: float = 0.01
     target_disc_radius: float = 0.05
@@ -156,6 +163,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
 class PickYCBConfig(EnvironmentConfig):
     """Config for pick-YCB and pick-YCB-lift environments."""
 
+    model_id: YcbModelId = "058_golf_ball"
     lift_threshold: float = 0.05
     max_goal_height: float = 0.08
 
