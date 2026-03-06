@@ -3657,12 +3657,14 @@ name = "scipy"
 version = "1.15.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'linux'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and extra == 'project-18-so101-nexus-mujoco' and extra != 'project-21-so101-nexus-maniskill'",
+    "python_full_version < '3.11' and sys_platform == 'linux' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version < '3.11' and sys_platform == 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version < '3.11' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version < '3.11' and extra != 'project-18-so101-nexus-mujoco' and extra != 'project-21-so101-nexus-maniskill'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and extra == 'project-21-so101-nexus-maniskill') or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0f/37/6964b830433e654ec7485e45a00fc9a27cf868d622838f6b6d9c5ec0d532/scipy-1.15.3.tar.gz", hash = "sha256:eae3cf522bc7df64b42cad3925c876e1b0b6c35c1337c93e12c0f366f55b0eaf", size = 59419214, upload-time = "2025-05-08T16:13:05.955Z" }
 wheels = [
@@ -3718,15 +3720,17 @@ name = "scipy"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform == 'linux'",
-    "python_full_version == '3.11.*' and sys_platform == 'linux'",
-    "python_full_version >= '3.12' and sys_platform == 'win32'",
-    "python_full_version == '3.11.*' and sys_platform == 'win32'",
-    "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version == '3.11.*' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and extra == 'project-18-so101-nexus-mujoco' and extra != 'project-21-so101-nexus-maniskill'",
+    "python_full_version >= '3.12' and sys_platform == 'linux' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version == '3.11.*' and sys_platform == 'linux' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version == '3.11.*' and sys_platform == 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version == '3.11.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill'",
+    "python_full_version >= '3.11' and extra != 'project-18-so101-nexus-mujoco' and extra != 'project-21-so101-nexus-maniskill'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and extra == 'project-21-so101-nexus-maniskill') or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/56/3e/9cca699f3486ce6bc12ff46dc2031f1ec8eb9ccc9a320fdaf925f1417426/scipy-1.17.0.tar.gz", hash = "sha256:2591060c8e648d8b96439e111ac41fd8342fdeff1876be2e19dea3fe8930454e", size = 30396830, upload-time = "2026-01-10T21:34:23.009Z" }
 wheels = [
@@ -3845,6 +3849,8 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
+    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'project-18-so101-nexus-mujoco' and extra == 'project-21-so101-nexus-maniskill')" },
     { name = "trimesh" },
 ]
 
@@ -3858,6 +3864,7 @@ requires-dist = [
     { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "pillow", marker = "extra == 'viz'" },
+    { name = "scipy" },
     { name = "trimesh" },
 ]
 provides-extras = ["viz"]
