@@ -44,17 +44,15 @@ def _get_env(request, env_id):
 class TestConstructionValidation:
     def test_invalid_cube_color(self):
         with pytest.raises(ValueError, match="cube_color"):
-            gym.make("ManiSkillPickAndPlace-v1", cube_color="neon", **BASE_KWARGS)
+            PickAndPlaceConfig(cube_color="neon")
 
     def test_invalid_target_color(self):
         with pytest.raises(ValueError, match="target_color"):
-            gym.make("ManiSkillPickAndPlace-v1", target_color="neon", **BASE_KWARGS)
+            PickAndPlaceConfig(target_color="neon")
 
     def test_same_cube_and_target_color_raises(self):
         with pytest.raises(ValueError, match="must differ"):
-            gym.make(
-                "ManiSkillPickAndPlace-v1", cube_color="red", target_color="red", **BASE_KWARGS
-            )
+            PickAndPlaceConfig(cube_color="red", target_color="red")
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
@@ -152,21 +150,21 @@ class TestEpisodeLogic:
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", cube_color="red", target_color="blue", **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="red", target_color="blue"), **BASE_KWARGS
         )
         assert env.unwrapped.task_description[0].isupper()
         env.close()
 
     def test_includes_cube_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", cube_color="green", target_color="blue", **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="green", target_color="blue"), **BASE_KWARGS
         )
         assert "green" in env.unwrapped.task_description
         env.close()
 
     def test_includes_target_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1", cube_color="green", target_color="blue", **BASE_KWARGS
+            "ManiSkillPickAndPlace-v1", config=PickAndPlaceConfig(cube_color="green", target_color="blue"), **BASE_KWARGS
         )
         assert "blue" in env.unwrapped.task_description
         env.close()
@@ -175,21 +173,21 @@ class TestTaskDescription:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", camera_mode="fixed", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="fixed"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", camera_mode="wrist", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="wrist"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("ManiSkillPickAndPlaceSO100-v1", camera_mode="both", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickAndPlaceSO100-v1", config=PickAndPlaceConfig(camera_mode="both"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()

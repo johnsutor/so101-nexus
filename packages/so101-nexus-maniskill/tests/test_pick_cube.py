@@ -68,15 +68,11 @@ def _get_env(request, env_id):
 class TestConstructionValidation:
     def test_invalid_cube_color(self):
         with pytest.raises(ValueError, match="cube_color"):
-            gym.make("ManiSkillPickCubeGoal-v1", cube_color="neon", **BASE_KWARGS)
+            PickCubeConfig(cube_color="neon")
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            gym.make(
-                "ManiSkillPickCubeGoal-v1",
-                config=PickCubeConfig(cube_half_size=0.001),
-                **BASE_KWARGS,
-            )
+            PickCubeConfig(cube_half_size=0.001)
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
@@ -154,7 +150,7 @@ class TestTaskDescription:
         env.close()
 
     def test_task_description_includes_color(self):
-        env = gym.make("ManiSkillPickCubeGoal-v1", cube_color="green", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_color="green"), **BASE_KWARGS)
         assert "green" in env.unwrapped.task_description
         env.close()
 
@@ -255,21 +251,21 @@ class TestRobotSubclasses:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="fixed", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="fixed"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="wrist", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="wrist"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", camera_mode="both", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeGoalSO100-v1", config=PickCubeConfig(camera_mode="both"), **BASE_KWARGS)
         env.reset()
         yield env
         env.close()
