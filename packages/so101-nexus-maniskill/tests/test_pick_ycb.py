@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import gymnasium as gym
 import numpy as np
 import pytest
 import torch
+from mani_skill import ASSET_DIR
 
 import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.config import PickYCBConfig
@@ -22,37 +25,68 @@ LIFT_ENV_IDS = [
 ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
 
 
+def _has_ycb_assets(asset_root: Path | None = None) -> bool:
+    root = asset_root if asset_root is not None else ASSET_DIR
+    manifest = root / "assets" / "mani_skill2_ycb" / "info_pick_v0.json"
+    return manifest.exists()
+
+
+def _skip_if_missing_ycb_assets() -> None:
+    if _has_ycb_assets():
+        return
+    pytest.skip(
+        f"Missing ManiSkill YCB assets at {ASSET_DIR / 'assets' / 'mani_skill2_ycb' / 'info_pick_v0.json'}"
+    )
+
+
+def _make_ycb_env(env_id: str, **kwargs):
+    _skip_if_missing_ycb_assets()
+    return gym.make(env_id, **kwargs)
+
+
+class TestYCBAssets:
+    def test_has_ycb_assets_false_when_missing_manifest(self, tmp_path):
+        assert not _has_ycb_assets(tmp_path)
+
+    def test_has_ycb_assets_true_when_manifest_exists(self, tmp_path):
+        manifest = tmp_path / "assets" / "mani_skill2_ycb" / "info_pick_v0.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{}", encoding="utf-8")
+
+        assert _has_ycb_assets(tmp_path)
+
+
 @pytest.fixture(scope="module")
 def goal_so100_env():
-    env = gym.make("ManiSkillPickGolfBallGoalSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallGoalSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def goal_so101_env():
-    env = gym.make("ManiSkillPickGolfBallGoalSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallGoalSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = gym.make("ManiSkillPickGolfBallLiftSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = gym.make("ManiSkillPickGolfBallLiftSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def banana_so101_env():
-    env = gym.make("ManiSkillPickBananaGoalSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickBananaGoalSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
@@ -138,7 +172,7 @@ class TestEnvCreation:
 
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
-        env = gym.make("ManiSkillPickGolfBallGoalSO100-v1", **BASE_KWARGS)
+        env = _make_ycb_env("ManiSkillPickGolfBallGoalSO100-v1", **BASE_KWARGS)
         assert env.unwrapped.task_description[0].isupper()
         env.close()
 
@@ -223,7 +257,7 @@ class TestRobotSubclasses:
 class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
-        env = gym.make(
+        env = _make_ycb_env(
             "ManiSkillPickGolfBallGoalSO100-v1",
             config=PickYCBConfig(camera_mode="fixed"),
             **BASE_KWARGS,
@@ -234,7 +268,7 @@ class TestCameraModes:
 
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
-        env = gym.make(
+        env = _make_ycb_env(
             "ManiSkillPickGolfBallGoalSO100-v1",
             config=PickYCBConfig(camera_mode="wrist"),
             **BASE_KWARGS,
@@ -245,7 +279,7 @@ class TestCameraModes:
 
     @pytest.fixture(scope="class")
     def both_cam_env(self):
-        env = gym.make(
+        env = _make_ycb_env(
             "ManiSkillPickGolfBallGoalSO100-v1",
             config=PickYCBConfig(camera_mode="both"),
             **BASE_KWARGS,
