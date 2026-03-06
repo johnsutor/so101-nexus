@@ -35,7 +35,8 @@ def _skip_if_missing_ycb_assets() -> None:
     if _has_ycb_assets():
         return
     pytest.skip(
-        f"Missing ManiSkill YCB assets at {ASSET_DIR / 'assets' / 'mani_skill2_ycb' / 'info_pick_v0.json'}"
+        "Missing ManiSkill YCB assets at "
+        "{ASSET_DIR / 'assets' / 'mani_skill2_ycb' / 'info_pick_v0.json'}"
     )
 
 

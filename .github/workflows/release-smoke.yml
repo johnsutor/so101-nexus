@@ -1,0 +1,81 @@
+name: Release Smoke Test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to install (e.g. 0.1.0 or v0.1.0). Empty = latest."
+        required: false
+        type: string
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: mujoco
+            package: so101-nexus-mujoco
+            env_id: MuJoCoPickCubeGoal-v1
+            apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
+          - backend: maniskill
+            package: so101-nexus-maniskill
+            env_id: ManiSkillPickCubeGoalSO101-v1
+            apt_packages: "mesa-vulkan-drivers libvulkan1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt_packages }}
+
+      - name: Install package from PyPI (with retries)
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+
+          VERSION="${INPUT_VERSION:-}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${RELEASE_TAG:-}"
+          fi
+          VERSION="${VERSION#v}"
+
+          if [ -n "$VERSION" ]; then
+            SPEC="${PACKAGE}==${VERSION}"
+          else
+            SPEC="${PACKAGE}"
+          fi
+
+          echo "Installing ${SPEC}"
+          for i in {1..10}; do
+            if python -m pip install "${SPEC}"; then
+              exit 0
+            fi
+            echo "Install attempt ${i}/10 failed; retrying in 30s..."
+            sleep 30
+          done
+
+          echo "Failed to install ${SPEC} from PyPI after retries."
+          exit 1
+
+      - name: Run backend smoke check
+        env:
+          MUJOCO_GL: egl
+        run: |
+          python .github/scripts/pypi_smoke_check.py \
+            --backend "${{ matrix.backend }}" \
+            --env-id "${{ matrix.env_id }}"
