@@ -37,7 +37,13 @@ from so101_nexus_core.config import (
     PickCubeConfig as PickCubeConfig,
 )
 from so101_nexus_core.config import (
+    PickCubeMultipleConfig as PickCubeMultipleConfig,
+)
+from so101_nexus_core.config import (
     PickYCBConfig as PickYCBConfig,
+)
+from so101_nexus_core.config import (
+    PickYCBMultipleConfig as PickYCBMultipleConfig,
 )
 from so101_nexus_core.config import (
     RewardConfig as RewardConfig,
