@@ -29,6 +29,7 @@ def _make_ycb_env(env_id: str, **kwargs):
     _skip_if_missing_ycb_assets()
     return gym.make(env_id, **kwargs)
 
+
 GOAL_ENV_IDS = [
     ("ManiSkillPickGolfBallMultipleGoalSO100-v1", "so100"),
     ("ManiSkillPickGolfBallMultipleGoalSO101-v1", "so101"),

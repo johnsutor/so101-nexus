@@ -26,6 +26,8 @@ Robust robot policies should generalize across simulators before being deployed 
 
 At the same time, there are very few standardized simulation environments available for the SO-100 and SO-101 robot arms. SO101-Nexus addresses this by providing Gymnasium-compatible environments across multiple physics backends, enabling consistent experimentation and benchmarking.
 
+In addition, SO101-Nexus provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
+
 ## Installation
 
 Install only the backend you need:
@@ -111,25 +113,13 @@ obs, info = env.reset()
 
 ## Environments
 
-### ManiSkill
-
-| Environment | Robot | Task | Description |
-|---|---|---|---|
-| `PickCubeGoal-v1` | Configurable | Place | Place cube at goal position (robot must be static) |
-| `PickCubeGoalSO100-v1` | SO-100 | Place | SO-100 specific goal placement |
-| `PickCubeGoalSO101-v1` | SO-101 | Place | SO-101 specific goal placement |
-| `PickCubeLift-v1` | Configurable | Lift | Grasp and lift cube above 0.05m |
-| `PickCubeLiftSO100-v1` | SO-100 | Lift | SO-100 specific lift task |
-| `PickCubeLiftSO101-v1` | SO-101 | Lift | SO-101 specific lift task |
-
-### MuJoCo
-
-| Environment | Robot | Task | Description |
-|---|---|---|---|
-| `MuJoCoPickCubeGoal-v1` | SO-101 | Place | Place cube at goal position |
-| `MuJoCoPickCubeLift-v1` | SO-101 | Lift | Grasp and lift cube above 0.05m |
-
 All environments have a maximum episode length of **256 steps**.
+
+To list every registered environment ID and run PPO baselines, use [`examples/README.md`](examples/README.md):
+
+```bash
+uv run python examples/list_envs.py
+```
 
 ## Roadmap
 

@@ -3,6 +3,7 @@ name = "so101-nexus-workspace"
 version = "0.2.0"
 description = "Workspace root for SO101-Nexus simulation environments"
 requires-python = ">=3.10"
+dependencies = ["tensorboard>=2.0.0", "wandb>=0.16.0"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
