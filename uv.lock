@@ -21,6 +21,9 @@ conflicts = [[
     { package = "so101-nexus-mujoco" },
 ]]
 
+[options]
+prerelease-mode = "allow"
+
 [manifest]
 members = [
     "so101-nexus-core",
@@ -3843,7 +3846,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/so101-nexus-core" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -3871,7 +3874,7 @@ provides-extras = ["viz"]
 
 [[package]]
 name = "so101-nexus-maniskill"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/so101-nexus-maniskill" }
 dependencies = [
     { name = "mani-skill", marker = "extra == 'project-21-so101-nexus-maniskill'" },
@@ -3908,7 +3911,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-mujoco"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/so101-nexus-mujoco" }
 dependencies = [
     { name = "gymnasium", version = "1.2.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'project-18-so101-nexus-mujoco'" },
@@ -3945,7 +3948,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-workspace"
-version = "0.1.0"
+version = "0.2.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

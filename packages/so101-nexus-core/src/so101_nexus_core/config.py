@@ -226,6 +226,48 @@ class PickYCBConfig(EnvironmentConfig):
             raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
 
 
+@dataclass(frozen=True)
+class PickCubeMultipleConfig(EnvironmentConfig):
+    """Config for pick-cube-multiple environments with distractor cubes."""
+
+    cube_color: CubeColorName = "red"
+    cube_half_size: float = 0.0125
+    cube_mass: float = 0.01
+    lift_threshold: float = 0.05
+    max_goal_height: float = 0.08
+    num_distractors: int = 3
+    min_object_separation: float = 0.04
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.cube_color not in CUBE_COLOR_MAP:
+            raise ValueError(
+                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {self.cube_color!r}"
+            )
+        if not (0.01 <= self.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.num_distractors < 1:
+            raise ValueError(f"num_distractors must be >= 1, got {self.num_distractors}")
+
+
+@dataclass(frozen=True)
+class PickYCBMultipleConfig(EnvironmentConfig):
+    """Config for pick-YCB-multiple environments with distractor YCB objects."""
+
+    model_id: YcbModelId = "058_golf_ball"
+    lift_threshold: float = 0.05
+    max_goal_height: float = 0.08
+    num_distractors: int = 3
+    min_object_separation: float = 0.04
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.model_id not in YCB_OBJECTS:
+            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
+        if self.num_distractors < 1:
+            raise ValueError(f"num_distractors must be >= 1, got {self.num_distractors}")
+
+
 CUBE_COLOR_MAP: dict[str, list[float]] = {
     "red": [1.0, 0.0, 0.0, 1.0],
     "orange": [1.0, 0.5, 0.0, 1.0],
