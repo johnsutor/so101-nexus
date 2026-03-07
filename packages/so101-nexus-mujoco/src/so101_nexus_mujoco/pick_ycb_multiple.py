@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     ControlMode,
     PickYCBMultipleConfig,
     YcbModelId,
+    sample_color,
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
@@ -30,7 +31,7 @@ def _build_ycb_multiple_scene_xml(
     model_ids: list[str],
     collision_paths: list[str],
     visual_paths: list[str],
-    ground_color: tuple[float, float, float, float],
+    ground_color: list[float],
     goal_thresh: float,
 ) -> str:
     robot_path = str(_SO101_XML)
@@ -139,7 +140,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             all_model_ids,
             collision_paths,
             visual_paths,
-            config.ground_color,
+            sample_color(config.ground_colors),
             config.goal_thresh,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:

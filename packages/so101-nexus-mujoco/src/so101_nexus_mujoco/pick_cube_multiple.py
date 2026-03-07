@@ -9,9 +9,10 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import (
     CUBE_COLOR_MAP,
+    ColorName,
     ControlMode,
-    CubeColorName,
     PickCubeMultipleConfig,
+    sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
@@ -56,7 +57,7 @@ def _build_scene_xml(
     cube_half_size: float,
     cube_color: list[float],
     cube_mass: float,
-    ground_color: tuple[float, float, float, float],
+    ground_color: list[float],
     goal_thresh: float,
 ) -> str:
     r, g, b, a = cube_color
@@ -120,7 +121,7 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
     def __init__(
         self,
         config: PickCubeMultipleConfig = PickCubeMultipleConfig(),
-        cube_color: CubeColorName = "red",
+        cube_color: ColorName = "red",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
@@ -154,7 +155,7 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
             config.cube_half_size,
             CUBE_COLOR_MAP[cube_color],
             config.cube_mass,
-            config.ground_color,
+            sample_color(config.ground_colors),
             config.goal_thresh,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:

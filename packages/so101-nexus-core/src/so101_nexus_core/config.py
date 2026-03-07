@@ -261,7 +261,7 @@ class PickYCBConfig(EnvironmentConfig):
 class PickCubeMultipleConfig(EnvironmentConfig):
     """Config for pick-cube-multiple environments with distractor cubes."""
 
-    cube_color: CubeColorName = "red"
+    cube_color: ColorName = "red"
     cube_half_size: float = 0.0125
     cube_mass: float = 0.01
     lift_threshold: float = 0.05
