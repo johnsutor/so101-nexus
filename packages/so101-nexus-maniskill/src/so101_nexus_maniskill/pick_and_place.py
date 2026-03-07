@@ -38,11 +38,16 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         self.target_colors = config.target_colors
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
-        cube_name = config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
-        target_name = config.target_colors if isinstance(config.target_colors, str) else config.target_colors[0]
+        cube_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
+        target_name = (
+            config.target_colors
+            if isinstance(config.target_colors, str)
+            else config.target_colors[0]
+        )
         self.task_description = (
-            f"Pick up the small {cube_name} cube"
-            f" and place it on the {target_name} circle"
+            f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
         )
 
         robot_cfgs = build_maniskill_robot_configs(config=config)

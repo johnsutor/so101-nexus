@@ -87,7 +87,9 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        cube_color_name = config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        cube_color_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
         self.cube_color_name = cube_color_name
         self.cube_half_size = config.cube_half_size
         self.task_description = f"Pick up the small {cube_color_name} cube"

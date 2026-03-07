@@ -13,9 +13,7 @@ from typing import Literal, Union
 
 import numpy as np
 
-ColorName = Literal[
-    "red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"
-]
+ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]
 ColorConfig = Union[ColorName, list[ColorName]]
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 CameraMode = Literal["fixed", "wrist", "both"]
@@ -59,14 +57,10 @@ def _validate_color_config(colors: ColorConfig, field_name: str) -> None:
     names = [colors] if isinstance(colors, str) else colors
     for name in names:
         if name not in COLOR_MAP:
-            raise ValueError(
-                f"{field_name} must be one of {list(COLOR_MAP)}, got {name!r}"
-            )
+            raise ValueError(f"{field_name} must be one of {list(COLOR_MAP)}, got {name!r}")
 
 
-def sample_color(
-    colors: ColorConfig, rng: np.random.Generator | None = None
-) -> list[float]:
+def sample_color(colors: ColorConfig, rng: np.random.Generator | None = None) -> list[float]:
     """Resolve a ColorConfig to an RGBA list. Samples uniformly if given a list."""
     if isinstance(colors, str):
         return COLOR_MAP[colors]
@@ -232,7 +226,9 @@ class PickAndPlaceConfig(EnvironmentConfig):
         super().__post_init__()
         _validate_color_config(self.cube_colors, "cube_colors")
         _validate_color_config(self.target_colors, "target_colors")
-        cube_set = {self.cube_colors} if isinstance(self.cube_colors, str) else set(self.cube_colors)
+        cube_set = (
+            {self.cube_colors} if isinstance(self.cube_colors, str) else set(self.cube_colors)
+        )
         target_set = (
             {self.target_colors} if isinstance(self.target_colors, str) else set(self.target_colors)
         )

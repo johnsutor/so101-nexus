@@ -35,7 +35,9 @@ class PickCubeEnv(SO101NexusManiSkillBaseEnv):
     ):
         self.cube_colors = config.cube_colors
         self.cube_half_size = config.cube_half_size
-        cube_color_name = config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        cube_color_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
         self.task_description = f"Pick up the small {cube_color_name} cube"
 
         robot_cfgs = build_maniskill_robot_configs(config=config)

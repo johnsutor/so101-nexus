@@ -89,8 +89,14 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        cube_name = config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
-        target_name = config.target_colors if isinstance(config.target_colors, str) else config.target_colors[0]
+        cube_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
+        target_name = (
+            config.target_colors
+            if isinstance(config.target_colors, str)
+            else config.target_colors[0]
+        )
         self.cube_color_name = cube_name
         self.target_color_name = target_name
         self.cube_half_size = config.cube_half_size
