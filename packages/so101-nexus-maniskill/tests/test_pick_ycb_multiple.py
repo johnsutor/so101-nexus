@@ -1,6 +1,7 @@
 import gymnasium as gym
 import pytest
 import torch
+from mani_skill import ASSET_DIR
 
 import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.config import YCB_OBJECTS, PickYCBMultipleConfig
@@ -8,6 +9,25 @@ from so101_nexus_maniskill.pick_ycb_multiple import PICK_YCB_MULTIPLE_CONFIGS
 
 _CFG = PickYCBMultipleConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
+
+
+def _has_ycb_assets() -> bool:
+    manifest = ASSET_DIR / "assets" / "mani_skill2_ycb" / "info_pick_v0.json"
+    return manifest.exists()
+
+
+def _skip_if_missing_ycb_assets() -> None:
+    if _has_ycb_assets():
+        return
+    pytest.skip(
+        "Missing ManiSkill YCB assets at "
+        f"{ASSET_DIR / 'assets' / 'mani_skill2_ycb' / 'info_pick_v0.json'}"
+    )
+
+
+def _make_ycb_env(env_id: str, **kwargs):
+    _skip_if_missing_ycb_assets()
+    return gym.make(env_id, **kwargs)
 
 GOAL_ENV_IDS = [
     ("ManiSkillPickGolfBallMultipleGoalSO100-v1", "so100"),
@@ -22,28 +42,28 @@ ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
 
 @pytest.fixture(scope="module")
 def goal_so100_env():
-    env = gym.make("ManiSkillPickGolfBallMultipleGoalSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallMultipleGoalSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def goal_so101_env():
-    env = gym.make("ManiSkillPickGolfBallMultipleGoalSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallMultipleGoalSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = gym.make("ManiSkillPickGolfBallMultipleLiftSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallMultipleLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = gym.make("ManiSkillPickGolfBallMultipleLiftSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickGolfBallMultipleLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
