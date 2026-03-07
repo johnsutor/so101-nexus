@@ -1,11 +1,11 @@
 # Adapted from CleanRL's Atari PPO reference implementation:
 # https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo_atari.py
-# Uses convolutional network for image-based observations with continuous actions.
+# Uses an MLP policy/value network over state observations with continuous actions.
 import os
 import random
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -108,88 +108,43 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-class ManiSkillToGymWrapper(gym.Wrapper):
-    """Convert ManiSkill torch tensor outputs to numpy scalars/arrays for gymnasium."""
-
-    def _to_numpy(self, x):
-        if isinstance(x, torch.Tensor):
-            return x.cpu().numpy()
-        return x
-
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        reward = float(reward)
-        terminated = bool(terminated)
-        truncated = bool(truncated)
-        return obs, reward, terminated, truncated, info
+def is_maniskill_env(env_id: str) -> bool:
+    return env_id.startswith("ManiSkill")
 
 
-class ManiSkillImageExtractor(gym.ObservationWrapper):
-    """Extract RGB image from ManiSkill dict observation and convert to uint8 HWC format.
-
-    ManiSkill observations with obs_mode="rgb" have structure:
-        sensor_data -> <camera_name> -> rgb: shape (1, H, W, 3) uint8
-    This wrapper extracts the image and squeezes the leading batch dim.
-    """
-
-    def __init__(self, env, camera_name=None):
-        super().__init__(env)
-        obs_space = env.observation_space
-        if isinstance(obs_space, gym.spaces.Dict) and "sensor_data" in obs_space.spaces:
-            sensor_spaces = obs_space["sensor_data"]
-            if camera_name is None:
-                camera_name = list(sensor_spaces.spaces.keys())[0]
-            self.camera_name = camera_name
-            rgb_space = sensor_spaces[camera_name]["rgb"]
-            # ManiSkill has shape (1, H, W, C) — squeeze the batch dim
-            shape = rgb_space.shape
-            if len(shape) == 4 and shape[0] == 1:
-                shape = shape[1:]
-            self.observation_space = gym.spaces.Box(low=0, high=255, shape=shape, dtype=np.uint8)
-        else:
-            raise ValueError(
-                "Expected dict observation with 'sensor_data' key. "
-                "Make sure the environment is created with obs_mode='rgb'."
-            )
-
-    def observation(self, obs):
-        img = obs["sensor_data"][self.camera_name]["rgb"]
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy()
-        if img.ndim == 4 and img.shape[0] == 1:
-            img = img[0]
-        if img.dtype == np.float32 or img.dtype == np.float64:
-            img = (img * 255).clip(0, 255).astype(np.uint8)
-        return img
+def extract_state_obs(obs: Any) -> Any:
+    if isinstance(obs, dict) and "state" in obs:
+        return obs["state"]
+    return obs
 
 
-def make_env(env_id, idx, capture_video, run_name, gamma):
+def make_mujoco_env(env_id, idx, capture_video, run_name):
     def thunk():
-        make_kwargs = {}
-        is_maniskill = env_id.startswith("ManiSkill")
-        if is_maniskill:
-            make_kwargs.update(
-                {
-                    "obs_mode": "rgb",
-                    "control_mode": "pd_joint_delta_pos",
-                }
-            )
         if capture_video and idx == 0:
-            env = gym.make(env_id, render_mode="rgb_array", **make_kwargs)
+            env = gym.make(env_id, render_mode="rgb_array")
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
-            env = gym.make(env_id, **make_kwargs)
-        if is_maniskill:
-            env = ManiSkillToGymWrapper(env)
-            env = ManiSkillImageExtractor(env)
+            env = gym.make(env_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = gym.wrappers.ResizeObservation(env, (84, 84))
-        env = gym.wrappers.GrayScaleObservation(env)
-        env = gym.wrappers.FrameStack(env, 4)
-        env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         return env
 
     return thunk
+
+
+def make_env(env_id, idx, capture_video, run_name, gamma):
+    del gamma
+
+    if is_maniskill_env(env_id):
+
+        def thunk():
+            kwargs = {"obs_mode": "state", "control_mode": "pd_joint_delta_pos"}
+            if capture_video and idx == 0:
+                return gym.make(env_id, render_mode="rgb_array", **kwargs)
+            return gym.make(env_id, **kwargs)
+
+        return thunk
+
+    return make_mujoco_env(env_id, idx, capture_video, run_name)
 
 
 def should_log_wandb_video(global_step: int, interval: int) -> bool:
@@ -201,23 +156,18 @@ def frames_to_tchw(frames: np.ndarray) -> np.ndarray:
 
 
 def make_video_eval_env(env_id: str):
-    make_kwargs = {}
-    is_maniskill = env_id.startswith("ManiSkill")
-    if is_maniskill:
-        make_kwargs.update(
-            {
-                "obs_mode": "rgb",
-                "control_mode": "pd_joint_delta_pos",
-            }
+    if is_maniskill_env(env_id):
+        from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+        env = gym.make(
+            env_id,
+            num_envs=1,
+            obs_mode="state",
+            control_mode="pd_joint_delta_pos",
+            render_mode="rgb_array",
         )
-    env = gym.make(env_id, render_mode="rgb_array", **make_kwargs)
-    if is_maniskill:
-        env = ManiSkillToGymWrapper(env)
-        env = ManiSkillImageExtractor(env)
-    env = gym.wrappers.ResizeObservation(env, (84, 84))
-    env = gym.wrappers.GrayScaleObservation(env)
-    env = gym.wrappers.FrameStack(env, 4)
-    return env
+        return ManiSkillVectorEnv(env, auto_reset=True, ignore_terminations=False)
+    return gym.make(env_id, render_mode="rgb_array")
 
 
 def maybe_log_wandb_rollout_video(
@@ -237,6 +187,7 @@ def maybe_log_wandb_rollout_video(
     eval_env = make_video_eval_env(args.env_id)
     frames: list[np.ndarray] = []
     obs, _ = eval_env.reset(seed=run_seed + global_step)
+    obs = extract_state_obs(obs)
     first_frame = eval_env.render()
     if isinstance(first_frame, np.ndarray):
         frames.append(first_frame)
@@ -245,11 +196,17 @@ def maybe_log_wandb_rollout_video(
     max_steps = getattr(eval_env.spec, "max_episode_steps", 512) or 512
     steps = 0
     while not done and steps < max_steps:
-        obs_tensor = torch.tensor(obs, device=device).unsqueeze(0)
+        obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=device)
         with torch.no_grad():
             action, _, _, _ = agent.get_action_and_value(obs_tensor)
-        obs, _, terminated, truncated, _ = eval_env.step(action.cpu().numpy()[0])
-        done = bool(terminated or truncated)
+        step_action = action.cpu().numpy()
+        if not is_maniskill_env(args.env_id):
+            step_action = step_action[0]
+        obs, _, terminated, truncated, _ = eval_env.step(step_action)
+        obs = extract_state_obs(obs)
+        term = bool(torch.as_tensor(terminated).bool().any().item())
+        trunc = bool(torch.as_tensor(truncated).bool().any().item())
+        done = term or trunc
         frame = eval_env.render()
         if isinstance(frame, np.ndarray):
             frames.append(frame)
@@ -279,27 +236,26 @@ class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         self.network = nn.Sequential(
-            layer_init(nn.Conv2d(4, 32, 8, stride=4)),
+            layer_init(nn.Linear(np.prod(envs.single_observation_space.shape), 256)),
             nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
-            nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-            nn.ReLU(),
-            nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 512)),
+            layer_init(nn.Linear(256, 256)),
             nn.ReLU(),
         )
         self.actor_mean = layer_init(
-            nn.Linear(512, np.prod(envs.single_action_space.shape)), std=0.01
+            nn.Linear(256, np.prod(envs.single_action_space.shape)), std=0.01
         )
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
+        self.critic = layer_init(nn.Linear(256, 1), std=1)
 
     def get_value(self, x):
-        return self.critic(self.network(x / 255.0))
+        if len(x.shape) > 2:
+            x = x.view(x.shape[0], -1)
+        return self.critic(self.network(x))
 
     def get_action_and_value(self, x, action=None):
-        hidden = self.network(x / 255.0)
+        if len(x.shape) > 2:
+            x = x.view(x.shape[0], -1)
+        hidden = self.network(x)
         action_mean = self.actor_mean(hidden)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
@@ -346,12 +302,28 @@ if __name__ == "__main__":
 
     # env setup
     import_backend_for_env_id(args.env_id)
-    envs = gym.vector.SyncVectorEnv(
-        [
-            make_env(args.env_id, i, args.capture_video, run_name, args.gamma)
-            for i in range(args.num_envs)
-        ]
-    )
+    if is_maniskill_env(args.env_id):
+        from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
+
+        maniskill_env = gym.make(
+            args.env_id,
+            num_envs=args.num_envs,
+            obs_mode="state",
+            control_mode="pd_joint_delta_pos",
+        )
+        envs = ManiSkillVectorEnv(
+            maniskill_env,
+            auto_reset=True,
+            ignore_terminations=False,
+            record_metrics=True,
+        )
+    else:
+        envs = gym.vector.SyncVectorEnv(
+            [
+                make_mujoco_env(args.env_id, i, args.capture_video, run_name)
+                for i in range(args.num_envs)
+            ]
+        )
     assert isinstance(envs.single_action_space, gym.spaces.Box), (
         "only continuous action space is supported"
     )
@@ -375,7 +347,7 @@ if __name__ == "__main__":
     global_step = 0
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
-    next_obs = torch.Tensor(next_obs).to(device)
+    next_obs = torch.as_tensor(extract_state_obs(next_obs), dtype=torch.float32, device=device)
     next_done = torch.zeros(args.num_envs).to(device)
 
     for iteration in range(1, args.num_iterations + 1):
@@ -399,12 +371,15 @@ if __name__ == "__main__":
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            next_done = np.logical_or(terminations, truncations)
-            rewards[step] = torch.tensor(reward).to(device).view(-1)
-            next_obs, next_done = (
-                torch.Tensor(next_obs).to(device),
-                torch.Tensor(next_done).to(device),
+            next_done = torch.logical_or(
+                torch.as_tensor(terminations, device=device),
+                torch.as_tensor(truncations, device=device),
             )
+            rewards[step] = torch.as_tensor(reward, dtype=torch.float32, device=device).view(-1)
+            next_obs = torch.as_tensor(
+                extract_state_obs(next_obs), dtype=torch.float32, device=device
+            )
+            next_done = next_done.to(dtype=torch.float32)
 
             if "final_info" in infos:
                 for info in infos["final_info"]:
@@ -416,6 +391,14 @@ if __name__ == "__main__":
                         writer.add_scalar(
                             "charts/episodic_length", info["episode"]["l"], global_step
                         )
+            elif "episode" in infos:
+                ep_info = infos["episode"]
+                if "r" in ep_info and "l" in ep_info:
+                    ep_return = float(torch.as_tensor(ep_info["r"]).float().mean().item())
+                    ep_length = float(torch.as_tensor(ep_info["l"]).float().mean().item())
+                    print(f"global_step={global_step}, episodic_return={ep_return}")
+                    writer.add_scalar("charts/episodic_return", ep_return, global_step)
+                    writer.add_scalar("charts/episodic_length", ep_length, global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
