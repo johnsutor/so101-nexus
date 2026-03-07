@@ -59,7 +59,7 @@ import gymnasium as gym
 import so101_nexus_maniskill  # noqa: F401
 
 env = gym.make(
-    "PickCubeGoalSO101-v1",
+    "ManiSkillPickCubeGoalSO101-v1",
     obs_mode="state",
     control_mode="pd_joint_delta_pos",
     render_mode="rgb_array",
@@ -95,18 +95,21 @@ env.close()
 
 ### Parallel Environments
 
-ManiSkill and Genesis backends support batched simulation for large-scale data collection and training:
+ManiSkill and Genesis backends support batched simulation for large-scale data collection and training.
+For ManiSkill, use native `num_envs` batching and (when an algorithm expects Gymnasium `VectorEnv`) the official `ManiSkillVectorEnv` wrapper:
 
 ```python
 import gymnasium as gym
-import so101_nexus_maniskill
+import so101_nexus_maniskill  # noqa: F401
+from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
-env = gym.make(
-    "PickCubeLiftSO101-v1",
+base_env = gym.make(
+    "ManiSkillPickCubeLiftSO101-v1",
     obs_mode="state",
     control_mode="pd_joint_delta_pos",
     num_envs=512,
 )
+env = ManiSkillVectorEnv(base_env, auto_reset=True, ignore_terminations=False)
 
 obs, info = env.reset()
 ```
