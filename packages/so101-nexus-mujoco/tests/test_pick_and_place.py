@@ -21,21 +21,21 @@ def env():
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_color(self):
-        with pytest.raises(ValueError, match="cube_color"):
-            PickAndPlaceEnv(cube_color="neon")
+    def test_invalid_cube_colors(self):
+        with pytest.raises(ValueError, match="cube_colors"):
+            PickAndPlaceConfig(cube_colors="neon")
 
-    def test_invalid_target_color(self):
-        with pytest.raises(ValueError, match="target_color"):
-            PickAndPlaceEnv(target_color="neon")
+    def test_invalid_target_colors(self):
+        with pytest.raises(ValueError, match="target_colors"):
+            PickAndPlaceConfig(target_colors="neon")
 
-    def test_same_cube_and_target_color_raises(self):
-        with pytest.raises(ValueError, match="must differ"):
-            PickAndPlaceEnv(cube_color="red", target_color="red")
+    def test_same_cube_and_target_color_warns(self):
+        with pytest.warns(UserWarning, match="overlap"):
+            PickAndPlaceConfig(cube_colors="red", target_colors="red")
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            PickAndPlaceEnv(config=PickAndPlaceConfig(cube_half_size=0.001))
+            PickAndPlaceConfig(cube_half_size=0.001)
 
 
 class TestSharedConstants:
@@ -137,7 +137,7 @@ class TestEpisodeLogic:
 
 class TestTaskDescription:
     def test_task_description_exists(self):
-        env = PickAndPlaceEnv(cube_color="red", target_color="blue")
+        env = PickAndPlaceEnv(config=PickAndPlaceConfig(cube_colors="red", target_colors="blue"))
         assert isinstance(env.task_description, str)
         assert "red" in env.task_description
         assert "blue" in env.task_description

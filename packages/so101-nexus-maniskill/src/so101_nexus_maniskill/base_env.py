@@ -15,7 +15,7 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.config import CameraMode, EnvironmentConfig
+from so101_nexus_core.config import CameraMode, EnvironmentConfig, sample_color
 from so101_nexus_maniskill.so101_agent import SO101
 
 
@@ -36,7 +36,6 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
 
         self.config = config
-        self.robot_color = config.robot_color
         self.camera_mode: CameraMode = config.camera_mode
         self.robot_init_qpos_noise = config.robot_init_qpos_noise
         self.camera_width = config.camera.width
@@ -180,7 +179,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         tris = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
         uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
         mat = sapien.render.RenderMaterial()
-        mat.base_color = list(self.config.ground_color)
+        mat.base_color = sample_color(self.config.ground_colors)
         shape = sapien.render.RenderShapeTriangleMesh(
             vertices=verts,
             triangles=tris,
@@ -194,9 +193,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             obj.add_component(comp)
 
     def _apply_robot_color_if_needed(self) -> None:
-        if self.robot_color is None:
-            return
-        color = list(self.robot_color)
+        color = sample_color(self.config.robot_colors)
         for link in self.agent.robot.links:
             for obj in link._objs:
                 render_body: RenderBodyComponent = obj.entity.find_component_by_type(

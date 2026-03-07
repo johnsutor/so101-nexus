@@ -42,17 +42,17 @@ def _get_env(request, env_id):
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_color(self):
-        with pytest.raises(ValueError, match="cube_color"):
-            PickAndPlaceConfig(cube_color="neon")
+    def test_invalid_cube_colors(self):
+        with pytest.raises(ValueError, match="cube_colors"):
+            PickAndPlaceConfig(cube_colors="neon")
 
-    def test_invalid_target_color(self):
-        with pytest.raises(ValueError, match="target_color"):
-            PickAndPlaceConfig(target_color="neon")
+    def test_invalid_target_colors(self):
+        with pytest.raises(ValueError, match="target_colors"):
+            PickAndPlaceConfig(target_colors="neon")
 
-    def test_same_cube_and_target_color_raises(self):
-        with pytest.raises(ValueError, match="must differ"):
-            PickAndPlaceConfig(cube_color="red", target_color="red")
+    def test_same_cube_and_target_color_warns(self):
+        with pytest.warns(UserWarning, match="overlap"):
+            PickAndPlaceConfig(cube_colors="red", target_colors="red")
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
@@ -151,7 +151,7 @@ class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
         env = gym.make(
             "ManiSkillPickAndPlace-v1",
-            config=PickAndPlaceConfig(cube_color="red", target_color="blue"),
+            config=PickAndPlaceConfig(cube_colors="red", target_colors="blue"),
             **BASE_KWARGS,
         )
         assert env.unwrapped.task_description[0].isupper()
@@ -160,7 +160,7 @@ class TestTaskDescription:
     def test_includes_cube_color(self):
         env = gym.make(
             "ManiSkillPickAndPlace-v1",
-            config=PickAndPlaceConfig(cube_color="green", target_color="blue"),
+            config=PickAndPlaceConfig(cube_colors="green", target_colors="blue"),
             **BASE_KWARGS,
         )
         assert "green" in env.unwrapped.task_description
@@ -169,7 +169,7 @@ class TestTaskDescription:
     def test_includes_target_color(self):
         env = gym.make(
             "ManiSkillPickAndPlace-v1",
-            config=PickAndPlaceConfig(cube_color="green", target_color="blue"),
+            config=PickAndPlaceConfig(cube_colors="green", target_colors="blue"),
             **BASE_KWARGS,
         )
         assert "blue" in env.unwrapped.task_description

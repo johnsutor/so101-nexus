@@ -31,11 +31,11 @@ _PICK_AND_PLACE_ENVS = {
 
 
 def _env_kwargs(env_id: str) -> dict:
-    """Return config + color kwargs appropriate for *env_id*."""
+    """Return config kwargs appropriate for *env_id*."""
     if env_id in _PICK_CUBE_ENVS:
-        return dict(config=PickCubeConfig(camera=_CAM), cube_color="red")
+        return dict(config=PickCubeConfig(camera=_CAM, cube_colors="red"))
     if env_id in _PICK_AND_PLACE_ENVS:
-        return dict(config=PickAndPlaceConfig(camera=_CAM), cube_color="red")
+        return dict(config=PickAndPlaceConfig(camera=_CAM, cube_colors="red"))
     return dict(config=PickYCBConfig(camera=_CAM))
 
 
