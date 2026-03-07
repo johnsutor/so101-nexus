@@ -138,6 +138,7 @@ All environments have a maximum episode length of **256 steps**.
 - [ ] Genesis environments for SO-100 and SO-101
 - [ ] Provide code for training basic PPO policy on every environment to ensure they work well.
 - [ ] Add more randomization options to environments (such as robot color, more objects, environment, variety of starting poses, etc)
+- [ ] Tasks such as looking at objects, general directional commands, 
 - [ ] Add documentation, with demo videos of each environment
 - [ ] Additional manipulation tasks beyond pick-and-place/lift
 - [ ] Add environments to the [Lerobot Hub](https://huggingface.co/docs/lerobot/en/envhub)

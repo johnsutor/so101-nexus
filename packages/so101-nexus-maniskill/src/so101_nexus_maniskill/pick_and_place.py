@@ -9,9 +9,8 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP,
-    TARGET_COLOR_MAP,
     PickAndPlaceConfig,
+    sample_color,
 )
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
@@ -35,15 +34,20 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        self.cube_color_name = config.cube_color
-        self.cube_color_rgba = CUBE_COLOR_MAP[config.cube_color]
-        self.target_color_name = config.target_color
-        self.target_color_rgba = TARGET_COLOR_MAP[config.target_color]
+        self.cube_colors = config.cube_colors
+        self.target_colors = config.target_colors
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
+        cube_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
+        target_name = (
+            config.target_colors
+            if isinstance(config.target_colors, str)
+            else config.target_colors[0]
+        )
         self.task_description = (
-            f"Pick up the small {config.cube_color} cube"
-            f" and place it on the {config.target_color} circle"
+            f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
         )
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
@@ -73,7 +77,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             cube = actors.build_cube(
                 self.scene,
                 half_size=self.cube_half_size,
-                color=self.cube_color_rgba,
+                color=sample_color(self.cube_colors),
                 name=f"cube-{i}",
                 body_type="dynamic",
                 scene_idxs=[i],
@@ -90,7 +94,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
                 radius=self.target_disc_radius,
                 pose=sapien.Pose(p=[0, 0, 0.001], q=[0, 0.7071068, 0.7071068, 0]),
                 half_length=0.001,
-                material=sapien.render.RenderMaterial(base_color=self.target_color_rgba),
+                material=sapien.render.RenderMaterial(base_color=sample_color(self.target_colors)),
             )
             builder.initial_pose = sapien.Pose(p=[0, 0, 0], q=[0.7071068, 0.7071068, 0, 0])
             target = builder.build_kinematic(name=f"target_site-{i}")

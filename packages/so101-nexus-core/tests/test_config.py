@@ -2,30 +2,19 @@ import numpy as np
 import pytest
 
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP,
+    COLOR_MAP,
     SO101_JOINT_NAMES,
-    TARGET_COLOR_MAP,
     YCB_ENV_NAME_MAP,
     YCB_OBJECTS,
     CameraConfig,
-    ColorName,
-    CubeColorName,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickCubeConfig,
     PickYCBConfig,
     RewardConfig,
     RobotConfig,
-    TargetColorName,
+    sample_color,
 )
-
-
-class TestColorAliases:
-    def test_cube_color_name_alias(self):
-        assert CubeColorName is ColorName
-
-    def test_target_color_name_alias(self):
-        assert TargetColorName is ColorName
 
 
 class TestConfigInheritance:
@@ -106,13 +95,27 @@ class TestYCBMappings:
 
 
 class TestColorMaps:
-    def test_target_color_map_aliases_cube_map(self):
-        assert TARGET_COLOR_MAP == CUBE_COLOR_MAP
-
     def test_rgba_entries_are_valid(self):
-        for rgba in CUBE_COLOR_MAP.values():
+        for rgba in COLOR_MAP.values():
             assert len(rgba) == 4
             assert all(0.0 <= c <= 1.0 for c in rgba)
+
+    def test_gray_in_color_map(self):
+        assert "gray" in COLOR_MAP
+        assert COLOR_MAP["gray"] == [0.5, 0.5, 0.5, 1.0]
+
+
+class TestSampleColor:
+    def test_single_color_returns_rgba(self):
+        assert sample_color("red") == COLOR_MAP["red"]
+
+    def test_list_returns_valid_rgba(self):
+        rng = np.random.default_rng(42)
+        result = sample_color(["red", "blue"], rng)
+        assert result in [COLOR_MAP["red"], COLOR_MAP["blue"]]
+
+    def test_single_element_list(self):
+        assert sample_color(["green"]) == COLOR_MAP["green"]
 
 
 class TestRewardWeights:

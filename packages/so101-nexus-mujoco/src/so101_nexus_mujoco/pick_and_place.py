@@ -8,12 +8,9 @@ import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP,
-    TARGET_COLOR_MAP,
     ControlMode,
-    CubeColorName,
     PickAndPlaceConfig,
-    TargetColorName,
+    sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
@@ -27,7 +24,7 @@ def _build_scene_xml(
     target_color: list[float],
     target_disc_radius: float,
     cube_mass: float,
-    ground_color: tuple[float, float, float, float],
+    ground_color: list[float],
 ) -> str:
     r, g, b, a = cube_color
     tr, tg, tb, ta = target_color
@@ -76,23 +73,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     def __init__(
         self,
         config: PickAndPlaceConfig = PickAndPlaceConfig(),
-        cube_color: CubeColorName = "red",
-        target_color: TargetColorName = "blue",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if cube_color not in CUBE_COLOR_MAP:
-            raise ValueError(
-                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
-            )
-        if target_color not in TARGET_COLOR_MAP:
-            raise ValueError(
-                f"target_color must be one of {list(TARGET_COLOR_MAP)}, got {target_color!r}"
-            )
-        if cube_color == target_color:
-            raise ValueError(f"cube_color and target_color must differ, both are {cube_color!r}")
         if not (0.01 <= config.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
@@ -104,21 +89,29 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self.cube_color_name = cube_color
-        self.target_color_name = target_color
+        cube_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
+        target_name = (
+            config.target_colors
+            if isinstance(config.target_colors, str)
+            else config.target_colors[0]
+        )
+        self.cube_color_name = cube_name
+        self.target_color_name = target_name
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
         self.task_description = (
-            f"Pick up the small {cube_color} cube and place it on the {target_color} circle"
+            f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
         )
 
         xml_string = _build_scene_xml(
             config.cube_half_size,
-            CUBE_COLOR_MAP[cube_color],
-            TARGET_COLOR_MAP[target_color],
+            sample_color(config.cube_colors),
+            sample_color(config.target_colors),
             config.target_disc_radius,
             config.cube_mass,
-            config.ground_color,
+            sample_color(config.ground_colors),
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)

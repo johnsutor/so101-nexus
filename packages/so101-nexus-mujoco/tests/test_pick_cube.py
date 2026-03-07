@@ -28,13 +28,13 @@ def lift_env():
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_color(self):
-        with pytest.raises(ValueError, match="cube_color"):
-            PickCubeEnv(cube_color="neon")
+    def test_invalid_cube_colors(self):
+        with pytest.raises(ValueError, match="cube_colors"):
+            PickCubeEnv(config=PickCubeConfig(cube_colors="neon"))
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
-            PickCubeEnv(config=PickCubeConfig(cube_half_size=0.001))
+            PickCubeConfig(cube_half_size=0.001)
 
 
 class TestSharedConstants:
@@ -164,13 +164,13 @@ class TestRewardBudget:
 
 class TestTaskDescription:
     def test_task_description_exists(self):
-        env = PickCubeEnv(cube_color="red")
+        env = PickCubeEnv(config=PickCubeConfig(cube_colors="red"))
         assert isinstance(env.task_description, str)
         assert "red" in env.task_description
         env.close()
 
     def test_task_description_starts_with_capital(self):
-        env = PickCubeEnv(cube_color="blue")
+        env = PickCubeEnv(config=PickCubeConfig(cube_colors="blue"))
         assert env.task_description[0].isupper()
         env.close()
 

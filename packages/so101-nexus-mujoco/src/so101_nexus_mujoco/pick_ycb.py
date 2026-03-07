@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     ControlMode,
     PickYCBConfig,
     YcbModelId,
+    sample_color,
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
@@ -28,7 +29,7 @@ _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
 def _build_ycb_scene_xml(
     collision_mesh_path: str,
     visual_mesh_path: str,
-    ground_color: tuple[float, float, float, float],
+    ground_color: list[float],
     goal_thresh: float,
     goal_mode: bool = True,
 ) -> str:
@@ -114,7 +115,7 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
         xml_string = _build_ycb_scene_xml(
             collision_path,
             visual_path,
-            config.ground_color,
+            sample_color(config.ground_colors),
             config.goal_thresh,
             goal_mode=True,
         )

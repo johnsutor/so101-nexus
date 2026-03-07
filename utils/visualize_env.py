@@ -82,7 +82,6 @@ def _capture_views(env: gymnasium.Env) -> list[CameraView]:
 def main():
     env = gymnasium.make(
         ENV_ID,
-        cube_color="red",
         camera_mode="wrist",
         camera_width=RENDER_WIDTH,
         camera_height=RENDER_HEIGHT,

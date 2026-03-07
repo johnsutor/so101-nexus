@@ -1,16 +1,13 @@
 from pathlib import Path
 
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP as CUBE_COLOR_MAP,
+    COLOR_MAP as COLOR_MAP,
 )
 from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS as ROBOT_CAMERA_PRESETS,
 )
 from so101_nexus_core.config import (
     SO101_JOINT_NAMES as SO101_JOINT_NAMES,
-)
-from so101_nexus_core.config import (
-    TARGET_COLOR_MAP as TARGET_COLOR_MAP,
 )
 from so101_nexus_core.config import (
     YCB_ENV_NAME_MAP as YCB_ENV_NAME_MAP,
@@ -22,13 +19,13 @@ from so101_nexus_core.config import (
     CameraConfig as CameraConfig,
 )
 from so101_nexus_core.config import (
+    ColorConfig as ColorConfig,
+)
+from so101_nexus_core.config import (
     ColorName as ColorName,
 )
 from so101_nexus_core.config import (
     ControlMode as ControlMode,
-)
-from so101_nexus_core.config import (
-    CubeColorName as CubeColorName,
 )
 from so101_nexus_core.config import (
     EnvironmentConfig as EnvironmentConfig,
@@ -58,10 +55,10 @@ from so101_nexus_core.config import (
     RobotConfig as RobotConfig,
 )
 from so101_nexus_core.config import (
-    TargetColorName as TargetColorName,
+    YcbModelId as YcbModelId,
 )
 from so101_nexus_core.config import (
-    YcbModelId as YcbModelId,
+    sample_color as sample_color,
 )
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"

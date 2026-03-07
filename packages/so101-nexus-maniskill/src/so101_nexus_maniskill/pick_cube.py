@@ -8,8 +8,8 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP,
     PickCubeConfig,
+    sample_color,
 )
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
@@ -33,10 +33,12 @@ class PickCubeEnv(SO101NexusManiSkillBaseEnv):
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        self.cube_color_name = config.cube_color
-        self.cube_color_rgba = CUBE_COLOR_MAP[config.cube_color]
+        self.cube_colors = config.cube_colors
         self.cube_half_size = config.cube_half_size
-        self.task_description = f"Pick up the small {config.cube_color} cube"
+        cube_color_name = (
+            config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        )
+        self.task_description = f"Pick up the small {cube_color_name} cube"
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
 
@@ -65,7 +67,7 @@ class PickCubeEnv(SO101NexusManiSkillBaseEnv):
             cube = actors.build_cube(
                 self.scene,
                 half_size=self.cube_half_size,
-                color=self.cube_color_rgba,
+                color=sample_color(self.cube_colors),
                 name=f"cube-{i}",
                 body_type="dynamic",
                 scene_idxs=[i],
