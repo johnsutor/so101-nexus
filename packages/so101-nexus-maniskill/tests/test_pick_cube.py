@@ -66,9 +66,9 @@ def _get_env(request, env_id):
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_color(self):
-        with pytest.raises(ValueError, match="cube_color"):
-            PickCubeConfig(cube_color="neon")
+    def test_invalid_cube_colors(self):
+        with pytest.raises(ValueError, match="cube_colors"):
+            PickCubeConfig(cube_colors="neon")
 
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
@@ -151,7 +151,7 @@ class TestTaskDescription:
 
     def test_task_description_includes_color(self):
         env = gym.make(
-            "ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_color="green"), **BASE_KWARGS
+            "ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_colors="green"), **BASE_KWARGS
         )
         assert "green" in env.unwrapped.task_description
         env.close()

@@ -49,7 +49,6 @@ def main():
         obs_mode="rgb",
         render_mode="rgb_array",
         camera_mode="both",
-        cube_color="red",
         camera_width=TILE_W,
         camera_height=TILE_H,
         num_envs=1,

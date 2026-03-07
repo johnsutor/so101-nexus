@@ -8,10 +8,9 @@ import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import (
-    CUBE_COLOR_MAP,
     ControlMode,
-    CubeColorName,
     PickCubeConfig,
+    sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
@@ -23,7 +22,7 @@ def _build_scene_xml(
     cube_half_size: float,
     cube_color: list[float],
     cube_mass: float,
-    ground_color: tuple[float, float, float, float],
+    ground_color: list[float],
     goal_thresh: float,
 ) -> str:
     r, g, b, a = cube_color
@@ -72,16 +71,11 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
     def __init__(
         self,
         config: PickCubeConfig = PickCubeConfig(),
-        cube_color: CubeColorName = "red",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if cube_color not in CUBE_COLOR_MAP:
-            raise ValueError(
-                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
-            )
         if not (0.01 <= config.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
@@ -93,15 +87,16 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self.cube_color_name = cube_color
+        cube_color_name = config.cube_colors if isinstance(config.cube_colors, str) else config.cube_colors[0]
+        self.cube_color_name = cube_color_name
         self.cube_half_size = config.cube_half_size
-        self.task_description = f"Pick up the small {cube_color} cube"
+        self.task_description = f"Pick up the small {cube_color_name} cube"
 
         xml_string = _build_scene_xml(
             config.cube_half_size,
-            CUBE_COLOR_MAP[cube_color],
+            sample_color(config.cube_colors),
             config.cube_mass,
-            config.ground_color,
+            sample_color(config.ground_colors),
             config.goal_thresh,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:

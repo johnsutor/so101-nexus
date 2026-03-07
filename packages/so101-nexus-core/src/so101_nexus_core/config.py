@@ -7,14 +7,16 @@ Configs are shared between MuJoCo and ManiSkill backends.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Union
 
 import numpy as np
 
-ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white"]
-CubeColorName = ColorName
-TargetColorName = ColorName
+ColorName = Literal[
+    "red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"
+]
+ColorConfig = Union[ColorName, list[ColorName]]
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 CameraMode = Literal["fixed", "wrist", "both"]
 
@@ -39,6 +41,39 @@ SO101_JOINT_NAMES: tuple[str, ...] = (
     "wrist_roll",
     "gripper",
 )
+
+COLOR_MAP: dict[str, list[float]] = {
+    "red": [1.0, 0.0, 0.0, 1.0],
+    "orange": [1.0, 0.5, 0.0, 1.0],
+    "yellow": [1.0, 1.0, 0.0, 1.0],
+    "green": [0.0, 1.0, 0.0, 1.0],
+    "blue": [0.0, 0.0, 1.0, 1.0],
+    "purple": [0.5, 0.0, 0.5, 1.0],
+    "black": [0.0, 0.0, 0.0, 1.0],
+    "white": [1.0, 1.0, 1.0, 1.0],
+    "gray": [0.5, 0.5, 0.5, 1.0],
+}
+
+
+def _validate_color_config(colors: ColorConfig, field_name: str) -> None:
+    names = [colors] if isinstance(colors, str) else colors
+    for name in names:
+        if name not in COLOR_MAP:
+            raise ValueError(
+                f"{field_name} must be one of {list(COLOR_MAP)}, got {name!r}"
+            )
+
+
+def sample_color(
+    colors: ColorConfig, rng: np.random.Generator | None = None
+) -> list[float]:
+    """Resolve a ColorConfig to an RGBA list. Samples uniformly if given a list."""
+    if isinstance(colors, str):
+        return COLOR_MAP[colors]
+    if rng is None:
+        rng = np.random.default_rng()
+    chosen = rng.choice(colors)
+    return COLOR_MAP[chosen]
 
 
 @dataclass(frozen=True)
@@ -145,13 +180,13 @@ class EnvironmentConfig:
     camera: CameraConfig = CameraConfig()
     reward: RewardConfig = RewardConfig()
     robot: RobotConfig = RobotConfig()
-    ground_color: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
+    ground_colors: ColorConfig = "gray"
     max_episode_steps: int = 256
     goal_thresh: float = 0.025
     spawn_half_size: float = 0.05
     spawn_center: tuple[float, float] = (0.15, 0.0)
     camera_mode: CameraMode = "fixed"
-    robot_color: tuple[float, float, float, float] | None = None
+    robot_colors: ColorConfig = "yellow"
     robot_init_qpos_noise: float = 0.02
 
     def __post_init__(self):
@@ -161,13 +196,15 @@ class EnvironmentConfig:
             raise ValueError(
                 f"camera dimensions must be > 0, got {self.camera.width}x{self.camera.height}"
             )
+        _validate_color_config(self.ground_colors, "ground_colors")
+        _validate_color_config(self.robot_colors, "robot_colors")
 
 
 @dataclass(frozen=True)
 class PickCubeConfig(EnvironmentConfig):
     """Config for pick-cube and pick-cube-lift environments."""
 
-    cube_color: CubeColorName = "red"
+    cube_colors: ColorConfig = "red"
     cube_half_size: float = 0.0125
     cube_mass: float = 0.01
     lift_threshold: float = 0.05
@@ -175,10 +212,7 @@ class PickCubeConfig(EnvironmentConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.cube_color not in CUBE_COLOR_MAP:
-            raise ValueError(
-                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {self.cube_color!r}"
-            )
+        _validate_color_config(self.cube_colors, "cube_colors")
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
 
@@ -187,8 +221,8 @@ class PickCubeConfig(EnvironmentConfig):
 class PickAndPlaceConfig(EnvironmentConfig):
     """Config for pick-and-place environments."""
 
-    cube_color: CubeColorName = "red"
-    target_color: TargetColorName = "blue"
+    cube_colors: ColorConfig = "red"
+    target_colors: ColorConfig = "blue"
     cube_half_size: float = 0.0125
     cube_mass: float = 0.01
     target_disc_radius: float = 0.05
@@ -196,17 +230,18 @@ class PickAndPlaceConfig(EnvironmentConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.cube_color not in CUBE_COLOR_MAP:
-            raise ValueError(
-                f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {self.cube_color!r}"
-            )
-        if self.target_color not in TARGET_COLOR_MAP:
-            raise ValueError(
-                f"target_color must be one of {list(TARGET_COLOR_MAP)}, got {self.target_color!r}"
-            )
-        if self.cube_color == self.target_color:
-            raise ValueError(
-                f"cube_color and target_color must differ, both are {self.cube_color!r}"
+        _validate_color_config(self.cube_colors, "cube_colors")
+        _validate_color_config(self.target_colors, "target_colors")
+        cube_set = {self.cube_colors} if isinstance(self.cube_colors, str) else set(self.cube_colors)
+        target_set = (
+            {self.target_colors} if isinstance(self.target_colors, str) else set(self.target_colors)
+        )
+        overlap = cube_set & target_set
+        if overlap:
+            warnings.warn(
+                f"cube_colors and target_colors overlap on {overlap}; "
+                "the cube and target may be the same color in some episodes",
+                stacklevel=2,
             )
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
@@ -225,19 +260,6 @@ class PickYCBConfig(EnvironmentConfig):
         if self.model_id not in YCB_OBJECTS:
             raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
 
-
-CUBE_COLOR_MAP: dict[str, list[float]] = {
-    "red": [1.0, 0.0, 0.0, 1.0],
-    "orange": [1.0, 0.5, 0.0, 1.0],
-    "yellow": [1.0, 1.0, 0.0, 1.0],
-    "green": [0.0, 1.0, 0.0, 1.0],
-    "blue": [0.0, 0.0, 1.0, 1.0],
-    "purple": [0.5, 0.0, 0.5, 1.0],
-    "black": [0.0, 0.0, 0.0, 1.0],
-    "white": [1.0, 1.0, 1.0, 1.0],
-}
-
-TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
 
 YCB_OBJECTS: dict[str, str] = {
     "009_gelatin_box": "gelatin box",
