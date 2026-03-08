@@ -5,7 +5,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import gymnasium as gym
 import numpy as np
@@ -112,12 +112,6 @@ def is_maniskill_env(env_id: str) -> bool:
     return env_id.startswith("ManiSkill")
 
 
-def extract_state_obs(obs: Any) -> Any:
-    if isinstance(obs, dict) and "state" in obs:
-        return obs["state"]
-    return obs
-
-
 def make_mujoco_env(env_id, idx, capture_video, run_name):
     def thunk():
         if capture_video and idx == 0:
@@ -137,10 +131,14 @@ def make_env(env_id, idx, capture_video, run_name, gamma):
     if is_maniskill_env(env_id):
 
         def thunk():
-            kwargs = {"obs_mode": "state", "control_mode": "pd_joint_delta_pos"}
             if capture_video and idx == 0:
-                return gym.make(env_id, render_mode="rgb_array", **kwargs)
-            return gym.make(env_id, **kwargs)
+                return gym.make(
+                    env_id,
+                    render_mode="rgb_array",
+                    obs_mode="state",
+                    control_mode="pd_joint_delta_pos",
+                )
+            return gym.make(env_id, obs_mode="state", control_mode="pd_joint_delta_pos")
 
         return thunk
 
@@ -185,11 +183,22 @@ def maybe_log_wandb_rollout_video(
         return
 
     eval_env = make_video_eval_env(args.env_id)
+    maniskill = is_maniskill_env(args.env_id)
     frames: list[np.ndarray] = []
+
+    def _to_frame(raw_frame):
+        if isinstance(raw_frame, torch.Tensor):
+            f = raw_frame.cpu().numpy()
+            if f.ndim == 4:
+                f = f[0]
+            return f
+        if isinstance(raw_frame, np.ndarray):
+            return raw_frame
+        return None
+
     obs, _ = eval_env.reset(seed=run_seed + global_step)
-    obs = extract_state_obs(obs)
-    first_frame = eval_env.render()
-    if isinstance(first_frame, np.ndarray):
+    first_frame = _to_frame(eval_env.render())
+    if first_frame is not None:
         frames.append(first_frame)
 
     done = False
@@ -197,18 +206,19 @@ def maybe_log_wandb_rollout_video(
     steps = 0
     while not done and steps < max_steps:
         obs_tensor = torch.as_tensor(obs, dtype=torch.float32, device=device)
+        if obs_tensor.dim() == 1:
+            obs_tensor = obs_tensor.unsqueeze(0)
         with torch.no_grad():
             action, _, _, _ = agent.get_action_and_value(obs_tensor)
         step_action = action.cpu().numpy()
-        if not is_maniskill_env(args.env_id):
+        if not maniskill:
             step_action = step_action[0]
         obs, _, terminated, truncated, _ = eval_env.step(step_action)
-        obs = extract_state_obs(obs)
         term = bool(torch.as_tensor(terminated).bool().any().item())
         trunc = bool(torch.as_tensor(truncated).bool().any().item())
         done = term or trunc
-        frame = eval_env.render()
-        if isinstance(frame, np.ndarray):
+        frame = _to_frame(eval_env.render())
+        if frame is not None:
             frames.append(frame)
         steps += 1
     eval_env.close()
@@ -347,7 +357,7 @@ if __name__ == "__main__":
     global_step = 0
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
-    next_obs = torch.as_tensor(extract_state_obs(next_obs), dtype=torch.float32, device=device)
+    next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=device)
     next_done = torch.zeros(args.num_envs).to(device)
 
     for iteration in range(1, args.num_iterations + 1):
@@ -376,12 +386,22 @@ if __name__ == "__main__":
                 torch.as_tensor(truncations, device=device),
             )
             rewards[step] = torch.as_tensor(reward, dtype=torch.float32, device=device).view(-1)
-            next_obs = torch.as_tensor(
-                extract_state_obs(next_obs), dtype=torch.float32, device=device
-            )
+            next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=device)
             next_done = next_done.to(dtype=torch.float32)
 
-            if "final_info" in infos:
+            if is_maniskill_env(args.env_id):
+                if "final_info" in infos:
+                    mask = infos["_final_info"]
+                    ep = infos["final_info"]["episode"]
+                    done_returns = ep["return"][mask]
+                    done_lengths = ep["episode_len"][mask]
+                    for ret, length in zip(done_returns, done_lengths):
+                        ep_return = float(ret.item())
+                        ep_length = float(length.item())
+                        print(f"global_step={global_step}, episodic_return={ep_return}")
+                        writer.add_scalar("charts/episodic_return", ep_return, global_step)
+                        writer.add_scalar("charts/episodic_length", ep_length, global_step)
+            elif "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
@@ -391,14 +411,6 @@ if __name__ == "__main__":
                         writer.add_scalar(
                             "charts/episodic_length", info["episode"]["l"], global_step
                         )
-            elif "episode" in infos:
-                ep_info = infos["episode"]
-                if "r" in ep_info and "l" in ep_info:
-                    ep_return = float(torch.as_tensor(ep_info["r"]).float().mean().item())
-                    ep_length = float(torch.as_tensor(ep_info["l"]).float().mean().item())
-                    print(f"global_step={global_step}, episodic_return={ep_return}")
-                    writer.add_scalar("charts/episodic_return", ep_return, global_step)
-                    writer.add_scalar("charts/episodic_length", ep_length, global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
