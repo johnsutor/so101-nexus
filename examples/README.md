@@ -14,6 +14,8 @@ For ManiSkill environments:
 uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickCubeGoalSO101-v1 --total-timesteps 200000
 ```
 
+This PPO script now uses ManiSkill's native batched env creation (`gym.make(..., num_envs=N)`) and the official `ManiSkillVectorEnv` adapter instead of custom ManiSkill wrappers.
+
 For MuJoCo environments:
 
 ```bash
