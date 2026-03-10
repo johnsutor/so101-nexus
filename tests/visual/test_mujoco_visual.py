@@ -29,7 +29,6 @@ _CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
 
 _PICK_CUBE_ENVS = {
-    "MuJoCoPickCubeGoal-v1",
     "MuJoCoPickCubeLift-v1",
 }
 _PICK_AND_PLACE_ENVS = {
@@ -47,12 +46,11 @@ def _env_kwargs(env_id: str) -> dict:
 
 
 MUJOCO_ENVS = [
-    "MuJoCoPickCubeGoal-v1",
     "MuJoCoPickCubeLift-v1",
     "MuJoCoPickAndPlace-v1",
-    "MuJoCoPickBananaGoal-v1",
-    "MuJoCoPickGolfBallGoal-v1",
-    "MuJoCoPickForkGoal-v1",
+    "MuJoCoPickBananaLift-v1",
+    "MuJoCoPickGolfBallLift-v1",
+    "MuJoCoPickForkLift-v1",
 ]
 
 
@@ -116,23 +114,21 @@ class TestMuJoCoCaptureInfrastructure:
 
 
 ENV_DESCRIPTIONS = {
-    "MuJoCoPickCubeGoal-v1": "SO-101 robot arm pick-cube-goal task in MuJoCo",
     "MuJoCoPickCubeLift-v1": "SO-101 robot arm pick-cube-lift task in MuJoCo",
     "MuJoCoPickAndPlace-v1": (
         "SO-101 robot arm pick-and-place task in MuJoCo with a colored target disc"
     ),
-    "MuJoCoPickBananaGoal-v1": "SO-101 robot arm picking up a banana (YCB object) in MuJoCo",
-    "MuJoCoPickGolfBallGoal-v1": "SO-101 robot arm picking up a golf ball (YCB object) in MuJoCo",
-    "MuJoCoPickForkGoal-v1": "SO-101 robot arm picking up a fork (YCB object) in MuJoCo",
+    "MuJoCoPickBananaLift-v1": "SO-101 robot arm picking up a banana (YCB object) in MuJoCo",
+    "MuJoCoPickGolfBallLift-v1": "SO-101 robot arm picking up a golf ball (YCB object) in MuJoCo",
+    "MuJoCoPickForkLift-v1": "SO-101 robot arm picking up a fork (YCB object) in MuJoCo",
 }
 
 EXPECTED_ELEMENTS = {
-    "MuJoCoPickCubeGoal-v1": "robot arm, red cube, ground plane, goal marker",
     "MuJoCoPickCubeLift-v1": "robot arm, red cube, ground plane",
     "MuJoCoPickAndPlace-v1": "robot arm, red cube, ground plane, colored target disc",
-    "MuJoCoPickBananaGoal-v1": "robot arm, banana-shaped object, ground plane, goal marker",
-    "MuJoCoPickGolfBallGoal-v1": "robot arm, small spherical object, ground plane, goal marker",
-    "MuJoCoPickForkGoal-v1": "robot arm, fork-shaped object, ground plane, goal marker",
+    "MuJoCoPickBananaLift-v1": "robot arm, banana-shaped object, ground plane",
+    "MuJoCoPickGolfBallLift-v1": "robot arm, small spherical object, ground plane",
+    "MuJoCoPickForkLift-v1": "robot arm, fork-shaped object, ground plane",
 }
 
 

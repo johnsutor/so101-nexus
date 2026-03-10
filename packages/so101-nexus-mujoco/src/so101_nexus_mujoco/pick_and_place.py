@@ -197,17 +197,22 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = self.config.spawn_center
-        spawn_hs = self.config.spawn_half_size
+        min_r = self.config.spawn_min_radius
+        max_r = self.config.spawn_max_radius
+        angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
-        target_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-        target_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+        r_t = rng.uniform(min_r, max_r)
+        theta_t = rng.uniform(-angle_half, angle_half)
+        target_x = r_t * np.cos(theta_t)
+        target_y = r_t * np.sin(theta_t)
         target_z = 0.001
         self.model.body_pos[self._target_body_id] = [target_x, target_y, target_z]
 
         for _ in range(100):
-            cube_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-            cube_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+            r_c = rng.uniform(min_r, max_r)
+            theta_c = rng.uniform(-angle_half, angle_half)
+            cube_x = r_c * np.cos(theta_c)
+            cube_y = r_c * np.sin(theta_c)
             dist = np.sqrt((cube_x - target_x) ** 2 + (cube_y - target_y) ** 2)
             if dist >= self.config.min_cube_target_separation:
                 break

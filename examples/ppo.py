@@ -64,7 +64,7 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "MuJoCoPickCubeGoal-v1"
+    env_id: str = "MuJoCoPickCubeLift-v1"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""

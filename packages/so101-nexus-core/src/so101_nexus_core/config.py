@@ -179,6 +179,9 @@ class EnvironmentConfig:
     goal_thresh: float = 0.025
     spawn_half_size: float = 0.05
     spawn_center: tuple[float, float] = (0.15, 0.0)
+    spawn_min_radius: float = 0.10
+    spawn_max_radius: float = 0.25
+    spawn_angle_half_range_deg: float = 90.0
     camera_mode: CameraMode = "fixed"
     robot_colors: ColorConfig = "yellow"
     robot_init_qpos_noise: float = 0.02

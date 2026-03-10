@@ -570,6 +570,8 @@ def main() -> None:
             frame = s.live_frame
             if frame is None:
                 frame = np.zeros((h, w, 3), dtype=np.uint8)
+            elif frame.shape[0] != h or frame.shape[1] != w:
+                frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_LINEAR)
             n = len(s.episode_actions)
             return (
                 gr.update(value=f"Recording — {n} frames ({n / fps:.1f}s)"),

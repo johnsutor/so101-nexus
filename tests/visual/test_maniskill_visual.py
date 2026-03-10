@@ -22,7 +22,6 @@ CAMERA_HEIGHT = 240
 _CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
 _PICK_CUBE_ENVS = {
-    "ManiSkillPickCubeGoalSO101-v1",
     "ManiSkillPickCubeLiftSO101-v1",
 }
 _PICK_AND_PLACE_ENVS = {
@@ -40,12 +39,11 @@ def _env_kwargs(env_id: str) -> dict:
 
 
 MANISKILL_SO101_ENVS = [
-    "ManiSkillPickCubeGoalSO101-v1",
     "ManiSkillPickCubeLiftSO101-v1",
     "ManiSkillPickAndPlaceSO101-v1",
-    "ManiSkillPickBananaGoalSO101-v1",
-    "ManiSkillPickGolfBallGoalSO101-v1",
-    "ManiSkillPickForkGoalSO101-v1",
+    "ManiSkillPickBananaLiftSO101-v1",
+    "ManiSkillPickGolfBallLiftSO101-v1",
+    "ManiSkillPickForkLiftSO101-v1",
 ]
 
 
@@ -92,33 +90,27 @@ class TestManiSkillCaptureInfrastructure:
 
 
 ENV_DESCRIPTIONS = {
-    "ManiSkillPickCubeGoalSO101-v1": "SO-101 robot arm pick-cube-goal task in ManiSkill",
     "ManiSkillPickCubeLiftSO101-v1": "SO-101 robot arm pick-cube-lift task in ManiSkill",
     "ManiSkillPickAndPlaceSO101-v1": (
         "SO-101 robot arm pick-and-place task in ManiSkill with a colored target disc"
     ),
-    "ManiSkillPickBananaGoalSO101-v1": (
+    "ManiSkillPickBananaLiftSO101-v1": (
         "SO-101 robot arm picking up a banana (YCB object) in ManiSkill"
     ),
-    "ManiSkillPickGolfBallGoalSO101-v1": (
+    "ManiSkillPickGolfBallLiftSO101-v1": (
         "SO-101 robot arm picking up a golf ball (YCB object) in ManiSkill"
     ),
-    "ManiSkillPickForkGoalSO101-v1": (
+    "ManiSkillPickForkLiftSO101-v1": (
         "SO-101 robot arm picking up a fork (YCB object) in ManiSkill"
     ),
 }
 
 EXPECTED_ELEMENTS = {
-    "ManiSkillPickCubeGoalSO101-v1": "robot arm, red cube, ground plane, goal marker",
     "ManiSkillPickCubeLiftSO101-v1": "robot arm, red cube, ground plane",
     "ManiSkillPickAndPlaceSO101-v1": "robot arm, red cube, ground plane, colored target disc",
-    "ManiSkillPickBananaGoalSO101-v1": (
-        "robot arm, banana-shaped object, ground plane, goal marker"
-    ),
-    "ManiSkillPickGolfBallGoalSO101-v1": (
-        "robot arm, small spherical object, ground plane, goal marker"
-    ),
-    "ManiSkillPickForkGoalSO101-v1": ("robot arm, fork-shaped object, ground plane, goal marker"),
+    "ManiSkillPickBananaLiftSO101-v1": "robot arm, banana-shaped object, ground plane",
+    "ManiSkillPickGolfBallLiftSO101-v1": "robot arm, small spherical object, ground plane",
+    "ManiSkillPickForkLiftSO101-v1": "robot arm, fork-shaped object, ground plane",
 }
 
 
