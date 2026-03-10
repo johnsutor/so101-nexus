@@ -175,7 +175,14 @@ def recording_thread(
 
     env = gym.make(env_id, camera_mode="wrist", render_mode="rgb_array")
     try:
-        obs, _ = env.reset()
+        # Read leader arm's current pose to initialize sim robot
+        leader_action = leader.get_action()
+        init_qpos = convert_leader_action(
+            leader_action,
+            joint_names,
+            wrist_roll_offset_deg=wrist_roll_offset_deg,
+        )
+        obs, _ = env.reset(options={"init_qpos": init_qpos})
         state.task_description = getattr(env.unwrapped, "task_description", "")
         state.is_recording = True
         state.clear_episode()
