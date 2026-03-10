@@ -184,8 +184,8 @@ def recording_thread(
         )
         obs, _ = env.reset(options={"init_qpos": init_qpos})
         state.task_description = getattr(env.unwrapped, "task_description", "")
-        state.is_recording = True
         state.clear_episode()
+        state.is_recording = True
 
         frame_duration = 1.0 / fps
         start_time = time.monotonic()

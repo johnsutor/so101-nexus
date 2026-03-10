@@ -159,7 +159,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 )
             )
             self.data.qpos[qpos_addr] = target[i] + noise
-        self.data.ctrl[self._actuator_ids] = target
+        self.data.ctrl[self._actuator_ids] = np.clip(target, self._ctrl_low, self._ctrl_high)
 
     def _randomize_wrist_camera(self) -> None:
         if self.camera_mode != "wrist":
@@ -242,6 +242,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             raw = options.get("init_qpos")
             if raw is not None:
                 init_qpos = np.asarray(raw, dtype=np.float64)
+                if init_qpos.shape != (len(self._joint_ids),):
+                    raise ValueError(
+                        f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
+                    )
 
         self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
