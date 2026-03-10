@@ -175,7 +175,7 @@ class EnvironmentConfig:
     reward: RewardConfig = RewardConfig()
     robot: RobotConfig = RobotConfig()
     ground_colors: ColorConfig = "gray"
-    max_episode_steps: int = 256
+    max_episode_steps: int = 1024
     goal_thresh: float = 0.025
     spawn_half_size: float = 0.05
     spawn_center: tuple[float, float] = (0.15, 0.0)
