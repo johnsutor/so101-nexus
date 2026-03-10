@@ -750,7 +750,7 @@ def main() -> None:
 
         with gr.Group(visible=False) as recording_screen:
             recording_status = gr.Markdown("Starting...")
-            live_feed = gr.Image(label="Live Camera Feed")
+            live_feed = gr.Image(label="Live Camera Feed", height=640)
             stop_btn = gr.Button("Stop Recording", variant="stop")
             rec_timer = gr.Timer(value=0.1)
 
