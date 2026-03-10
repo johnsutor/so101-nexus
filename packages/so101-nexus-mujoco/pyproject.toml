@@ -13,6 +13,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [{ include-group = "test" }]
 test = ["pytest>=7.0.0", "pytest-cov>=7.0.0"]
+teleop = ["lerobot[feetech]>=0.4.0", "gradio>=5.0.0", "plotly>=6.0.0"]
 
 [tool.uv.sources]
 so101-nexus-core = { workspace = true }
