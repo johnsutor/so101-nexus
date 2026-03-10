@@ -154,9 +154,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             noise = (
                 0.0
                 if init_qpos is not None
-                else self.np_random.uniform(
-                    -self.robot_init_qpos_noise, self.robot_init_qpos_noise
-                )
+                else self.np_random.uniform(-self.robot_init_qpos_noise, self.robot_init_qpos_noise)
             )
             self.data.qpos[qpos_addr] = target[i] + noise
         self.data.ctrl[self._actuator_ids] = np.clip(target, self._ctrl_low, self._ctrl_high)
