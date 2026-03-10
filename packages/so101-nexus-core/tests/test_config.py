@@ -61,6 +61,10 @@ class TestConfigConsistency:
         assert rad_lo == pytest.approx(np.radians(deg_lo))
         assert rad_hi == pytest.approx(np.radians(deg_hi))
 
+    def test_default_max_episode_steps_is_1024(self):
+        cfg = EnvironmentConfig()
+        assert cfg.max_episode_steps == 1024
+
 
 class TestPickAndPlaceInvariants:
     def test_separation_covers_cube_diameter(self):
