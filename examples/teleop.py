@@ -183,8 +183,8 @@ def recording_thread(
             wrist_roll_offset_deg=wrist_roll_offset_deg,
         )
         obs, _ = env.reset(options={"init_qpos": init_qpos})
-        state.task_description = getattr(env.unwrapped, "task_description", "")
         state.clear_episode()
+        state.task_description = getattr(env.unwrapped, "task_description", "")
         state.is_recording = True
 
         frame_duration = 1.0 / fps
