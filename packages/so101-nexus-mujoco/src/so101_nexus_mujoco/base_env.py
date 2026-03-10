@@ -147,14 +147,19 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._renderer = None
         self._viewer = None
 
-    def _reset_robot_joints(self) -> None:
+    def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> None:
+        target = init_qpos if init_qpos is not None else _REST_QPOS
         for i, jid in enumerate(self._joint_ids):
             qpos_addr = self.model.jnt_qposadr[jid]
-            self.data.qpos[qpos_addr] = _REST_QPOS[i] + self.np_random.uniform(
-                -self.robot_init_qpos_noise,
-                self.robot_init_qpos_noise,
+            noise = (
+                0.0
+                if init_qpos is not None
+                else self.np_random.uniform(
+                    -self.robot_init_qpos_noise, self.robot_init_qpos_noise
+                )
             )
-        self.data.ctrl[self._actuator_ids] = _REST_QPOS
+            self.data.qpos[qpos_addr] = target[i] + noise
+        self.data.ctrl[self._actuator_ids] = target
 
     def _randomize_wrist_camera(self) -> None:
         if self.camera_mode != "wrist":
@@ -232,11 +237,17 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         super().reset(seed=seed, options=options)
         mujoco.mj_resetData(self.model, self.data)
 
-        self._reset_robot_joints()
+        init_qpos: np.ndarray | None = None
+        if options is not None:
+            raw = options.get("init_qpos")
+            if raw is not None:
+                init_qpos = np.asarray(raw, dtype=np.float64)
+
+        self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
         self._randomize_wrist_camera()
 
-        self._prev_target = _REST_QPOS.copy()
+        self._prev_target = (init_qpos if init_qpos is not None else _REST_QPOS).copy()
         mujoco.mj_forward(self.model, self.data)
 
         obs = self._get_obs()
