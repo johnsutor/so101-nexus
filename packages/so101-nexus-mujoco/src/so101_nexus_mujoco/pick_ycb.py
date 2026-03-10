@@ -46,7 +46,7 @@ def _build_ycb_scene_xml(
 
     return f"""\
 <mujoco model="pick_ycb_scene">
-  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
@@ -70,7 +70,7 @@ def _build_ycb_scene_xml(
       <freejoint name="obj_joint"/>
       <geom name="obj_collision" type="mesh" mesh="ycb_collision"
             mass="0.01" contype="1" conaffinity="1"
-            friction="1 0.005 0.0001" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+            condim="4" friction="1 0.05 0.001" solref="0.01 1" solimp="0.95 0.99 0.001"/>
       <geom name="obj_visual" type="mesh" mesh="ycb_visual"
             contype="0" conaffinity="0" mass="0"/>
     </body>

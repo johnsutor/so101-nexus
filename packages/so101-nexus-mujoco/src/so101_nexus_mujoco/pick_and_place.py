@@ -33,7 +33,7 @@ def _build_scene_xml(
     gr, gg, gb, ga = ground_color
     return f"""\
 <mujoco model="pick_and_place_scene">
-  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
@@ -52,8 +52,8 @@ def _build_scene_xml(
       <freejoint name="cube_joint"/>
       <geom name="cube_geom" type="box" size="{hs} {hs} {hs}"
             rgba="{r} {g} {b} {a}" mass="{cube_mass}"
-            contype="1" conaffinity="1" friction="1 0.005 0.0001"
-            solref="0.02 1" solimp="0.9 0.95 0.001"/>
+            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"
+            solref="0.01 1" solimp="0.95 0.99 0.001"/>
     </body>
 
     <body name="target" pos="0.15 0 0.001">
