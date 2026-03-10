@@ -418,6 +418,8 @@ def main() -> None:
         """Validate inputs and launch the init worker thread."""
         fps, camera_width, camera_height = int(fps), int(camera_width), int(camera_height)
         num_episodes, max_steps, countdown = int(num_episodes), int(max_steps), int(countdown)
+        if max_steps < 1:
+            raise ValueError("Max Steps must be at least 1.")
         wrist_roll_offset_deg = float(wrist_roll_offset_deg)
         repo_id_value = (repo_id or "").strip()
         if not repo_id_value:
