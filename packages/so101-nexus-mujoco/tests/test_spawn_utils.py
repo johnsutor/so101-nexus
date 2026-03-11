@@ -1,0 +1,203 @@
+"""Unit tests for so101_nexus_mujoco.spawn_utils.sample_separated_positions."""
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+
+from so101_nexus_mujoco.spawn_utils import sample_separated_positions
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_rng(seed: int = 42) -> np.random.Generator:
+    return np.random.default_rng(seed)
+
+
+# ---------------------------------------------------------------------------
+# 1. Basic return type and shape
+# ---------------------------------------------------------------------------
+
+def test_return_type_and_shape():
+    rng = _make_rng()
+    count = 4
+    result = sample_separated_positions(
+        rng=rng,
+        count=count,
+        min_r=0.1,
+        max_r=0.3,
+        angle_half=math.pi / 2,
+        min_clearance=0.01,
+        bounding_radii=[0.03] * count,
+    )
+    assert isinstance(result, list)
+    assert len(result) == count
+    for pos in result:
+        assert isinstance(pos, tuple)
+        assert len(pos) == 2
+        assert isinstance(pos[0], float)
+        assert isinstance(pos[1], float)
+
+
+# ---------------------------------------------------------------------------
+# 2. Separation guarantee (objects fit without overlap)
+# ---------------------------------------------------------------------------
+
+def test_separation_guarantee():
+    """Widely-spaced arc; objects must respect the minimum separation contract."""
+    rng = _make_rng(0)
+    count = 3
+    bounding_radii = [0.04, 0.04, 0.04]
+    min_clearance = 0.02
+    result = sample_separated_positions(
+        rng=rng,
+        count=count,
+        min_r=0.05,
+        max_r=0.50,
+        angle_half=math.pi,
+        min_clearance=min_clearance,
+        bounding_radii=bounding_radii,
+        max_attempts=500,
+    )
+    assert len(result) == count
+    for i, (xi, yi) in enumerate(result):
+        for j, (xj, yj) in enumerate(result):
+            if i >= j:
+                continue
+            dist = math.sqrt((xi - xj) ** 2 + (yi - yj) ** 2)
+            required = bounding_radii[i] + bounding_radii[j] + min_clearance
+            assert dist >= required, (
+                f"Positions {i} and {j} overlap: dist={dist:.4f} < required={required:.4f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 3. All positions within radius bounds
+# ---------------------------------------------------------------------------
+
+def test_positions_within_radius_bounds():
+    rng = _make_rng(1)
+    count = 5
+    min_r, max_r = 0.10, 0.40
+    result = sample_separated_positions(
+        rng=rng,
+        count=count,
+        min_r=min_r,
+        max_r=max_r,
+        angle_half=math.pi / 2,
+        min_clearance=0.005,
+        bounding_radii=[0.02] * count,
+        max_attempts=200,
+    )
+    for x, y in result:
+        r = math.sqrt(x**2 + y**2)
+        assert min_r <= r <= max_r, f"Radial distance {r:.4f} out of [{min_r}, {max_r}]"
+
+
+# ---------------------------------------------------------------------------
+# 4. Angle bounds
+# ---------------------------------------------------------------------------
+
+def test_angle_bounds():
+    rng = _make_rng(2)
+    count = 6
+    angle_half = math.pi / 4
+    result = sample_separated_positions(
+        rng=rng,
+        count=count,
+        min_r=0.10,
+        max_r=0.50,
+        angle_half=angle_half,
+        min_clearance=0.005,
+        bounding_radii=[0.02] * count,
+        max_attempts=300,
+    )
+    for x, y in result:
+        theta = math.atan2(y, x)
+        assert -angle_half <= theta <= angle_half, (
+            f"Angle {theta:.4f} rad outside [-{angle_half:.4f}, {angle_half:.4f}]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5. count=0 edge case
+# ---------------------------------------------------------------------------
+
+def test_count_zero_returns_empty():
+    rng = _make_rng()
+    result = sample_separated_positions(
+        rng=rng,
+        count=0,
+        min_r=0.1,
+        max_r=0.3,
+        angle_half=math.pi / 2,
+        min_clearance=0.01,
+        bounding_radii=[],
+    )
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# 6. count=1 edge case
+# ---------------------------------------------------------------------------
+
+def test_count_one_returns_single_position():
+    rng = _make_rng()
+    result = sample_separated_positions(
+        rng=rng,
+        count=1,
+        min_r=0.10,
+        max_r=0.30,
+        angle_half=math.pi / 2,
+        min_clearance=0.01,
+        bounding_radii=[0.05],
+    )
+    assert len(result) == 1
+    x, y = result[0]
+    r = math.sqrt(x**2 + y**2)
+    assert 0.10 <= r <= 0.30
+
+
+# ---------------------------------------------------------------------------
+# 7. Fallback path (max_attempts=1, objects too large to avoid overlap)
+# ---------------------------------------------------------------------------
+
+def test_fallback_still_returns_count_positions():
+    """When max_attempts=1 and objects are too large to separate, the function
+    must still return exactly `count` positions rather than raising."""
+    rng = _make_rng(99)
+    count = 5
+    # Bounding radii so large that two objects can never be placed without overlap
+    result = sample_separated_positions(
+        rng=rng,
+        count=count,
+        min_r=0.05,
+        max_r=0.10,
+        angle_half=math.pi / 6,
+        min_clearance=5.0,       # impossibly large clearance
+        bounding_radii=[1.0] * count,
+        max_attempts=1,
+    )
+    assert len(result) == count
+
+
+# ---------------------------------------------------------------------------
+# 8. Determinism with fixed RNG seed
+# ---------------------------------------------------------------------------
+
+def test_determinism_with_fixed_seed():
+    kwargs = dict(
+        count=4,
+        min_r=0.10,
+        max_r=0.40,
+        angle_half=math.pi / 2,
+        min_clearance=0.02,
+        bounding_radii=[0.04, 0.04, 0.04, 0.04],
+        max_attempts=100,
+    )
+    result_a = sample_separated_positions(rng=_make_rng(7), **kwargs)
+    result_b = sample_separated_positions(rng=_make_rng(7), **kwargs)
+    assert result_a == result_b
