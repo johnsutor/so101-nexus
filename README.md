@@ -59,7 +59,7 @@ import gymnasium as gym
 import so101_nexus_maniskill  # noqa: F401
 
 env = gym.make(
-    "ManiSkillPickCubeGoalSO101-v1",
+    "ManiSkillPickCubeLiftSO101-v1",
     obs_mode="state",
     control_mode="pd_joint_delta_pos",
     render_mode="rgb_array",
@@ -81,7 +81,7 @@ env.close()
 import gymnasium as gym
 import so101_nexus_mujoco  # noqa: F401
 
-env = gym.make("MuJoCoPickCubeGoal-v1", render_mode="rgb_array")
+env = gym.make("MuJoCoPickCubeLift-v1", render_mode="rgb_array")
 
 obs, info = env.reset()
 for _ in range(256):

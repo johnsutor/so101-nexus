@@ -65,19 +65,19 @@ Basic PPO baselines for all SO101-Nexus registered environments, using CleanRL's
 ### Run one environment
 
 ```bash
-uv run python examples/ppo.py --env-id MuJoCoPickCubeGoal-v1 --total-timesteps 200000
+uv run python examples/ppo.py --env-id MuJoCoPickCubeLift-v1 --total-timesteps 200000
 ```
 
 For ManiSkill environments:
 
 ```bash
-uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickCubeGoalSO101-v1 --total-timesteps 200000
+uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickCubeLiftSO101-v1 --total-timesteps 200000
 ```
 
 For MuJoCo environments:
 
 ```bash
-uv run --package so101-nexus-mujoco python examples/ppo.py --env-id MuJoCoPickCubeGoal-v1 --total-timesteps 200000
+uv run --package so101-nexus-mujoco python examples/ppo.py --env-id MuJoCoPickCubeLift-v1 --total-timesteps 200000
 ```
 
 This PPO script now uses ManiSkill's native batched env creation (`gym.make(..., num_envs=N)`) and the official `ManiSkillVectorEnv` adapter instead of custom ManiSkill wrappers.
@@ -101,4 +101,4 @@ done
 
 | env_id | total_timesteps | episodic_return (latest) | notes |
 |---|---:|---:|---|
-| MuJoCoPickCubeGoal-v1 | 200000 | | |
+| MuJoCoPickCubeLift-v1 | 200000 | | |
