@@ -12,33 +12,15 @@ from so101_nexus_mujoco.pick_ycb import PickYCBEnv
 
 _CFG = PickYCBConfig()
 
-GOAL_ENV_IDS = [
-    "MuJoCoPickYCBGoal-v1",
-    "MuJoCoPickBananaGoal-v1",
-    "MuJoCoPickGolfBallGoal-v1",
-    "MuJoCoPickForkGoal-v1",
-]
 LIFT_ENV_IDS = [
     "MuJoCoPickYCBLift-v1",
     "MuJoCoPickBananaLift-v1",
     "MuJoCoPickGolfBallLift-v1",
 ]
-ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
 
-PER_ROBOT_GOAL_IDS = [
-    "MuJoCoPickGolfBallGoalSO101-v1",
-    "MuJoCoPickBananaGoalSO101-v1",
-]
 PER_ROBOT_LIFT_IDS = [
     "MuJoCoPickGolfBallLiftSO101-v1",
 ]
-
-
-@pytest.fixture(scope="module")
-def goal_env():
-    env = gym.make("MuJoCoPickGolfBallGoal-v1")
-    yield env
-    env.close()
 
 
 @pytest.fixture(scope="module")
@@ -59,13 +41,13 @@ class TestConstructionValidation:
 
 
 class TestEnvCreation:
-    @pytest.mark.parametrize("env_id", ALL_ENV_IDS)
+    @pytest.mark.parametrize("env_id", LIFT_ENV_IDS)
     def test_env_creates(self, env_id):
         env = gym.make(env_id)
         assert isinstance(env, gym.Env)
         env.close()
 
-    @pytest.mark.parametrize("env_id", ALL_ENV_IDS)
+    @pytest.mark.parametrize("env_id", LIFT_ENV_IDS)
     def test_env_reset(self, env_id):
         env = gym.make(env_id)
         obs, info = env.reset()
@@ -73,7 +55,7 @@ class TestEnvCreation:
         assert isinstance(info, dict)
         env.close()
 
-    @pytest.mark.parametrize("env_id", ALL_ENV_IDS)
+    @pytest.mark.parametrize("env_id", LIFT_ENV_IDS)
     def test_env_step(self, env_id):
         env = gym.make(env_id)
         env.reset()
@@ -86,14 +68,14 @@ class TestEnvCreation:
         assert isinstance(info, dict)
         env.close()
 
-    @pytest.mark.parametrize("env_id", ALL_ENV_IDS)
+    @pytest.mark.parametrize("env_id", LIFT_ENV_IDS)
     def test_observation_space(self, env_id):
         env = gym.make(env_id)
         obs, _ = env.reset()
         assert env.observation_space.contains(obs)
         env.close()
 
-    @pytest.mark.parametrize("env_id", ALL_ENV_IDS)
+    @pytest.mark.parametrize("env_id", LIFT_ENV_IDS)
     def test_action_space_shape(self, env_id):
         env = gym.make(env_id)
         assert env.action_space.shape == (6,)
@@ -101,14 +83,6 @@ class TestEnvCreation:
 
 
 class TestPerRobotEnvIDs:
-    @pytest.mark.parametrize("env_id", PER_ROBOT_GOAL_IDS)
-    def test_per_robot_goal_env_creates(self, env_id):
-        env = gym.make(env_id)
-        assert isinstance(env, gym.Env)
-        obs, info = env.reset()
-        assert isinstance(obs, np.ndarray)
-        env.close()
-
     @pytest.mark.parametrize("env_id", PER_ROBOT_LIFT_IDS)
     def test_per_robot_lift_env_creates(self, env_id):
         env = gym.make(env_id)
@@ -119,19 +93,13 @@ class TestPerRobotEnvIDs:
 
 
 class TestObservationVector:
-    def test_state_shape(self, goal_env):
-        obs, _ = goal_env.reset()
-        assert obs.shape == (24,)
-
     def test_lift_state_shape(self, lift_env):
         obs, _ = lift_env.reset()
-        assert obs.shape == (24,)
+        assert obs.shape == (18,)
 
 
 class TestEpisodeLogic:
     EXPECTED_INFO_KEYS = {
-        "obj_to_goal_dist",
-        "is_obj_placed",
         "is_grasped",
         "is_robot_static",
         "lift_height",
@@ -139,47 +107,24 @@ class TestEpisodeLogic:
         "tcp_to_obj_dist",
     }
 
-    def test_info_keys_goal(self, goal_env):
-        _, info = goal_env.reset()
-        assert set(info.keys()) == self.EXPECTED_INFO_KEYS
-
     def test_info_keys_lift(self, lift_env):
         _, info = lift_env.reset()
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
-    def test_obj_spawns_in_bounds(self, goal_env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
+    def test_obj_spawns_in_radius_bounds(self, lift_env):
+        min_r = _CFG.spawn_min_radius
+        max_r = _CFG.spawn_max_radius
         for _ in range(5):
-            goal_env.reset()
-            obj_pose = goal_env.unwrapped._get_obj_pose()
-            assert cx - hs <= obj_pose[0] <= cx + hs
-            assert cy - hs <= obj_pose[1] <= cy + hs
-
-    def test_goal_spawns_in_bounds(self, goal_env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
-        for _ in range(5):
-            goal_env.reset()
-            goal_pos = goal_env.unwrapped._get_goal_pos()
-            assert cx - hs <= goal_pos[0] <= cx + hs
-            assert cy - hs <= goal_pos[1] <= cy + hs
-
-    def test_reward_range_goal(self, goal_env):
-        goal_env.reset()
-        action = goal_env.action_space.sample()
-        _, reward, _, _, _ = goal_env.step(action)
-        assert 0.0 <= reward <= 1.0
+            lift_env.reset()
+            obj_pose = lift_env.unwrapped._get_obj_pose()
+            r = float(np.sqrt(obj_pose[0] ** 2 + obj_pose[1] ** 2))
+            assert min_r <= r <= max_r
 
     def test_reward_range_lift(self, lift_env):
         lift_env.reset()
         action = lift_env.action_space.sample()
         _, reward, _, _, _ = lift_env.step(action)
         assert 0.0 <= reward <= 1.0
-
-    def test_success_false_at_reset(self, goal_env):
-        _, info = goal_env.reset()
-        assert not info["success"]
 
 
 class TestTaskDescription:
@@ -217,7 +162,7 @@ class TestCameraModes:
         env = PickYCBEnv(camera_mode="state_only")
         obs, _ = env.reset()
         assert isinstance(obs, np.ndarray)
-        assert obs.shape == (24,)
+        assert obs.shape == (18,)
         env.close()
 
     def test_wrist_mode_returns_dict(self):
@@ -226,7 +171,7 @@ class TestCameraModes:
         assert isinstance(obs, dict)
         assert "state" in obs
         assert "wrist_camera" in obs
-        assert obs["state"].shape == (24,)
+        assert obs["state"].shape == (18,)
         assert obs["wrist_camera"].shape == (224, 224, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
@@ -255,7 +200,7 @@ class TestControlModes:
 
 class TestRenderModes:
     def test_rgb_array(self):
-        env = gym.make("MuJoCoPickGolfBallGoal-v1", render_mode="rgb_array")
+        env = gym.make("MuJoCoPickGolfBallLift-v1", render_mode="rgb_array")
         env.reset()
         frame = env.render()
         assert isinstance(frame, np.ndarray)
