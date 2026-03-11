@@ -8,7 +8,6 @@ import pytest
 
 from so101_nexus_mujoco.spawn_utils import sample_separated_positions
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

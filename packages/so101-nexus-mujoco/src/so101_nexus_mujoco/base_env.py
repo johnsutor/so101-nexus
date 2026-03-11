@@ -338,7 +338,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=lift_progress,
-            is_complete=info["success"],
+            is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
         )
 
