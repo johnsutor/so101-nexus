@@ -21,6 +21,7 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.spawn_utils import sample_separated_positions
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -235,7 +236,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
         total_objects = 1 + self.num_distractors
-        positions = _sample_separated_positions_polar(
+        positions = sample_separated_positions(
             rng,
             total_objects,
             min_r,
@@ -270,36 +271,6 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             d_addr = self._distractor_qpos_addrs[i]
             self.data.qpos[d_addr : d_addr + 3] = [dx, dy, dz]
             self.data.qpos[d_addr + 3 : d_addr + 7] = d_quat
-
-
-def _sample_separated_positions_polar(
-    rng: np.random.Generator,
-    count: int,
-    min_r: float,
-    max_r: float,
-    angle_half: float,
-    min_clearance: float,
-    bounding_radii: list[float],
-    max_attempts: int = 100,
-) -> list[tuple[float, float]]:
-    """Sample 2D positions in a polar arc with bounding-radius-aware separation."""
-    positions: list[tuple[float, float]] = []
-    for idx in range(count):
-        for _ in range(max_attempts):
-            r = rng.uniform(min_r, max_r)
-            theta = rng.uniform(-angle_half, angle_half)
-            x = r * np.cos(theta)
-            y = r * np.sin(theta)
-            if all(
-                np.sqrt((x - px) ** 2 + (y - py) ** 2)
-                >= bounding_radii[idx] + bounding_radii[j] + min_clearance
-                for j, (px, py) in enumerate(positions)
-            ):
-                positions.append((x, y))
-                break
-        else:
-            positions.append((x, y))
-    return positions
 
 
 class PickYCBMultipleLiftEnv(PickYCBMultipleEnv):
