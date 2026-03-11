@@ -108,13 +108,13 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
     def test_cube_spawns_in_bounds(self, env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
+        min_r = _CFG.spawn_min_radius
+        max_r = _CFG.spawn_max_radius
         for _ in range(5):
             env.reset()
-            cube_pose = env.unwrapped._get_cube_pose()
-            assert cx - hs <= cube_pose[0] <= cx + hs
-            assert cy - hs <= cube_pose[1] <= cy + hs
+            cube_pos = env.unwrapped._get_cube_pose()[:2]
+            r = float(np.sqrt(cube_pos[0] ** 2 + cube_pos[1] ** 2))
+            assert min_r <= r <= max_r
 
     def test_minimum_cube_target_separation(self, env):
         for _ in range(10):
