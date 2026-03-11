@@ -14,13 +14,6 @@ _CFG = PickCubeMultipleConfig()
 
 
 @pytest.fixture(scope="module")
-def goal_env():
-    env = gym.make("MuJoCoPickCubeMultipleGoal-v1")
-    yield env
-    env.close()
-
-
-@pytest.fixture(scope="module")
 def lift_env():
     env = gym.make("MuJoCoPickCubeMultipleLift-v1")
     yield env
@@ -42,30 +35,12 @@ class TestConstructionValidation:
 
 
 class TestEnvCreation:
-    def test_goal_env_creates(self, goal_env):
-        assert isinstance(goal_env, gym.Env)
-
     def test_lift_env_creates(self, lift_env):
         assert isinstance(lift_env, gym.Env)
-
-    def test_goal_env_reset(self, goal_env):
-        obs, info = goal_env.reset()
-        assert isinstance(obs, np.ndarray)
-        assert isinstance(info, dict)
 
     def test_lift_env_reset(self, lift_env):
         obs, info = lift_env.reset()
         assert isinstance(obs, np.ndarray)
-        assert isinstance(info, dict)
-
-    def test_goal_env_step(self, goal_env):
-        goal_env.reset()
-        action = goal_env.action_space.sample()
-        obs, reward, terminated, truncated, info = goal_env.step(action)
-        assert isinstance(obs, np.ndarray)
-        assert reward is not None
-        assert isinstance(terminated, bool)
-        assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
     def test_lift_env_step(self, lift_env):
@@ -78,16 +53,9 @@ class TestEnvCreation:
         assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
-    def test_observation_space_goal(self, goal_env):
-        obs, _ = goal_env.reset()
-        assert goal_env.observation_space.contains(obs)
-
     def test_observation_space_lift(self, lift_env):
         obs, _ = lift_env.reset()
         assert lift_env.observation_space.contains(obs)
-
-    def test_action_space_shape_goal(self, goal_env):
-        assert goal_env.action_space.shape == (6,)
 
     def test_action_space_shape_lift(self, lift_env):
         assert lift_env.action_space.shape == (6,)
@@ -95,8 +63,6 @@ class TestEnvCreation:
 
 class TestEpisodeLogic:
     EXPECTED_INFO_KEYS = {
-        "obj_to_goal_dist",
-        "is_obj_placed",
         "is_grasped",
         "is_robot_static",
         "lift_height",
@@ -104,28 +70,18 @@ class TestEpisodeLogic:
         "tcp_to_obj_dist",
     }
 
-    def test_info_keys_goal(self, goal_env):
-        _, info = goal_env.reset()
-        assert set(info.keys()) == self.EXPECTED_INFO_KEYS
-
     def test_info_keys_lift(self, lift_env):
         _, info = lift_env.reset()
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
-    def test_target_spawns_in_bounds(self, goal_env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
+    def test_target_spawns_in_radius_bounds(self, lift_env):
+        min_r = _CFG.spawn_min_radius
+        max_r = _CFG.spawn_max_radius
         for _ in range(5):
-            goal_env.reset()
-            cube_pose = goal_env.unwrapped._get_cube_pose()
-            assert cx - hs <= cube_pose[0] <= cx + hs
-            assert cy - hs <= cube_pose[1] <= cy + hs
-
-    def test_reward_range_goal(self, goal_env):
-        goal_env.reset()
-        action = goal_env.action_space.sample()
-        _, reward, _, _, _ = goal_env.step(action)
-        assert 0.0 <= reward <= 1.0
+            lift_env.reset()
+            cube_pose = lift_env.unwrapped._get_cube_pose()
+            r = float(np.sqrt(cube_pose[0] ** 2 + cube_pose[1] ** 2))
+            assert min_r <= r <= max_r
 
     def test_reward_range_lift(self, lift_env):
         lift_env.reset()
