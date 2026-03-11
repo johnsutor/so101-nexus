@@ -124,8 +124,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
             raise ValueError(
                 f"cube_color must be one of {list(CUBE_COLOR_MAP)}, got {cube_color!r}"
             )
-        if not (0.01 <= config.cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
 
         self._init_common(
             config=config,

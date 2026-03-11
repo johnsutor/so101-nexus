@@ -78,9 +78,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if not (0.01 <= config.cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
-
         self._init_common(
             config=config,
             render_mode=render_mode,
