@@ -153,6 +153,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             return {"state": state, "wrist_camera": self._wrist_renderer.render()}
         return state
 
+    def _state_obs_size(self) -> int:
+        # tcp_pose(7) + is_grasped(1) + target_pos(3) + obj_pose(7) + tcp_to_obj(3) + obj_to_target(3)
+        return 24
+
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
         obj_pose = self._get_cube_pose()
