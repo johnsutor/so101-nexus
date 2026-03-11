@@ -196,9 +196,7 @@ class EnvironmentConfig:
         _validate_color_config(self.ground_colors, "ground_colors")
         _validate_color_config(self.robot_colors, "robot_colors")
         if self.spawn_min_radius < 0:
-            raise ValueError(
-                f"spawn_min_radius must be >= 0, got {self.spawn_min_radius}"
-            )
+            raise ValueError(f"spawn_min_radius must be >= 0, got {self.spawn_min_radius}")
         if self.spawn_max_radius <= self.spawn_min_radius:
             raise ValueError(
                 f"spawn_max_radius ({self.spawn_max_radius}) must be > "

@@ -1,4 +1,5 @@
 """Unit tests for so101_nexus_mujoco.spawn_utils.sample_separated_positions."""
+
 from __future__ import annotations
 
 import math
@@ -8,19 +9,14 @@ import pytest
 
 from so101_nexus_mujoco.spawn_utils import sample_separated_positions
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _make_rng(seed: int = 42) -> np.random.Generator:
+    """Create a reproducible NumPy random generator for spawn sampling tests."""
     return np.random.default_rng(seed)
 
 
-# ---------------------------------------------------------------------------
-# 1. Basic return type and shape
-# ---------------------------------------------------------------------------
-
 def test_return_type_and_shape():
+    """Sampling should return one XY tuple per requested object."""
     rng = _make_rng()
     count = 4
     result = sample_separated_positions(
@@ -40,10 +36,6 @@ def test_return_type_and_shape():
         assert isinstance(pos[0], float)
         assert isinstance(pos[1], float)
 
-
-# ---------------------------------------------------------------------------
-# 2. Separation guarantee (objects fit without overlap)
-# ---------------------------------------------------------------------------
 
 def test_separation_guarantee():
     """Widely-spaced arc; objects must respect the minimum separation contract."""
@@ -73,11 +65,8 @@ def test_separation_guarantee():
             )
 
 
-# ---------------------------------------------------------------------------
-# 3. All positions within radius bounds
-# ---------------------------------------------------------------------------
-
 def test_positions_within_radius_bounds():
+    """Every sampled point should remain inside the requested radial band."""
     rng = _make_rng(1)
     count = 5
     min_r, max_r = 0.10, 0.40
@@ -96,11 +85,8 @@ def test_positions_within_radius_bounds():
         assert min_r <= r <= max_r, f"Radial distance {r:.4f} out of [{min_r}, {max_r}]"
 
 
-# ---------------------------------------------------------------------------
-# 4. Angle bounds
-# ---------------------------------------------------------------------------
-
 def test_angle_bounds():
+    """Every sampled point should remain inside the requested angular band."""
     rng = _make_rng(2)
     count = 6
     angle_half = math.pi / 4
@@ -121,11 +107,8 @@ def test_angle_bounds():
         )
 
 
-# ---------------------------------------------------------------------------
-# 5. count=0 edge case
-# ---------------------------------------------------------------------------
-
 def test_count_zero_returns_empty():
+    """Requesting zero objects should produce an empty result."""
     rng = _make_rng()
     result = sample_separated_positions(
         rng=rng,
@@ -139,11 +122,8 @@ def test_count_zero_returns_empty():
     assert result == []
 
 
-# ---------------------------------------------------------------------------
-# 6. count=1 edge case
-# ---------------------------------------------------------------------------
-
 def test_count_one_returns_single_position():
+    """Requesting one object should still honor the radial bounds."""
     rng = _make_rng()
     result = sample_separated_positions(
         rng=rng,
@@ -160,32 +140,24 @@ def test_count_one_returns_single_position():
     assert 0.10 <= r <= 0.30
 
 
-# ---------------------------------------------------------------------------
-# 7. Fallback path (max_attempts=1, objects too large to avoid overlap)
-# ---------------------------------------------------------------------------
-
 def test_fallback_still_returns_count_positions():
     """When max_attempts=1 and objects are too large to separate, the function
-    must still return exactly `count` positions rather than raising."""
+    must still return exactly `count` positions rather than raising.
+    """
     rng = _make_rng(99)
     count = 5
-    # Bounding radii so large that two objects can never be placed without overlap
     result = sample_separated_positions(
         rng=rng,
         count=count,
         min_r=0.05,
         max_r=0.10,
         angle_half=math.pi / 6,
-        min_clearance=5.0,       # impossibly large clearance
+        min_clearance=5.0,
         bounding_radii=[1.0] * count,
         max_attempts=1,
     )
     assert len(result) == count
 
-
-# ---------------------------------------------------------------------------
-# 9. max_attempts=0 edge case
-# ---------------------------------------------------------------------------
 
 def test_max_attempts_zero_raises():
     """max_attempts must be at least 1; passing 0 should raise ValueError."""
@@ -203,11 +175,8 @@ def test_max_attempts_zero_raises():
         )
 
 
-# ---------------------------------------------------------------------------
-# 8. Determinism with fixed RNG seed
-# ---------------------------------------------------------------------------
-
 def test_determinism_with_fixed_seed():
+    """A fixed RNG seed should produce the same spawn sequence every time."""
     kwargs = dict(
         count=4,
         min_r=0.10,

@@ -82,7 +82,7 @@ def _build_ycb_multiple_scene_xml(
 
 
 class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
-    """MuJoCo pick-YCB environment with distractor YCB objects."""
+    """MuJoCo pick-YCB environment with one target object and distractors."""
 
     config: PickYCBMultipleConfig
 
@@ -113,17 +113,14 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             f"Pick up the {YCB_OBJECTS[model_id]} from among {config.num_distractors} distractors"
         )
 
-        # Sample distractor model IDs (excluding target)
         other_ids = [mid for mid in YCB_OBJECTS if mid != model_id]
         rng = np.random.default_rng()
         self.distractor_model_ids: list[str] = list(
             rng.choice(other_ids, size=config.num_distractors, replace=True)
         )
 
-        # All model IDs: target first, then distractors
         all_model_ids = [model_id] + self.distractor_model_ids
 
-        # Download assets and collect paths
         collision_paths: list[str] = []
         visual_paths: list[str] = []
         for mid in all_model_ids:
@@ -143,7 +140,6 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        # Compute rest poses and bounding radii for all objects
         self._all_rest_quats: list[np.ndarray] = []
         self._all_spawn_zs: list[float] = []
         self._all_bounding_radii: list[float] = []
@@ -160,11 +156,9 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             rest_quat, spawn_z = get_mujoco_ycb_rest_pose(verts)
             self._all_rest_quats.append(rest_quat)
             self._all_spawn_zs.append(spawn_z)
-            # Bounding radius from XY extents of the mesh
             xy_extent = np.ptp(verts[:, :2], axis=0)
             self._all_bounding_radii.append(float(np.linalg.norm(xy_extent) / 2))
 
-        # Target object IDs
         self._obj_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "ycb_target_collision"
         )
@@ -173,7 +167,6 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         )
         self._obj_qpos_addr = self.model.jnt_qposadr[target_joint_id]
 
-        # Distractor IDs
         self._distractor_qpos_addrs: list[int] = []
         for i in range(config.num_distractors):
             joint_id = mujoco.mj_name2id(
@@ -188,6 +181,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         return self.data.qpos[addr : addr + 7].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
+        """Return proprioception together with the target YCB object state."""
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         obj_pose = self._get_obj_pose()
@@ -221,6 +215,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         return self._reach_only_reward(info)
 
     def _task_reset(self) -> None:
+        """Spawn the target object and distractors at separated XY poses."""
         rng = self.np_random
         min_r = self.config.spawn_min_radius
         max_r = self.config.spawn_max_radius
@@ -237,7 +232,6 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             self._all_bounding_radii,
         )
 
-        # Place target
         obj_x, obj_y = positions[0]
         obj_z = self._all_spawn_zs[0]
         angle = rng.uniform(0, 2 * np.pi)
@@ -250,7 +244,6 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         self.data.qpos[addr + 3 : addr + 7] = obj_quat
         self._initial_obj_z = obj_z
 
-        # Place distractors
         for i in range(self.num_distractors):
             dx, dy = positions[1 + i]
             dz = self._all_spawn_zs[1 + i]

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import importlib
 import io
 import sys
 import tempfile
@@ -66,9 +67,9 @@ def check_robot_env_mismatch(env_id: str, robot_type: str) -> str | None:
 def import_backend_for_env_id(env_id: str) -> None:
     """Import the simulator backend that matches the *env_id* prefix."""
     if env_id.startswith("ManiSkill"):
-        import so101_nexus_maniskill  # noqa: F401
+        importlib.import_module("so101_nexus_maniskill")
     elif env_id.startswith("MuJoCo"):
-        import so101_nexus_mujoco  # noqa: F401
+        importlib.import_module("so101_nexus_mujoco")
     else:
         raise ValueError("env_id must start with 'ManiSkill' or 'MuJoCo'")
 
@@ -175,7 +176,6 @@ def recording_thread(
 
     env = gym.make(env_id, camera_mode="wrist", render_mode="rgb_array")
     try:
-        # Read leader arm's current pose to initialize sim robot
         leader_action = leader.get_action()
         init_qpos = convert_leader_action(
             leader_action,

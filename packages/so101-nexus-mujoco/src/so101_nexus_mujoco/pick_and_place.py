@@ -66,7 +66,7 @@ def _build_scene_xml(
 
 
 class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
-    """Pick-and-place environment with a visible coloured target disc on the ground."""
+    """Pick-and-place environment with a cube target and a visible goal marker."""
 
     config: PickAndPlaceConfig
 
@@ -133,6 +133,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return self.data.xpos[self._target_body_id].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
+        """Return proprioception plus cube and goal geometry, with an optional wrist image."""
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         target_pos = self._get_target_pos()
@@ -151,8 +152,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return state
 
     def _state_obs_size(self) -> int:
-        # tcp_pose(7) + is_grasped(1) + target_pos(3) + obj_pose(7)
-        # + tcp_to_obj(3) + obj_to_target(3)
+        """Return the flat state observation size used by ``_get_obs``."""
         return 24
 
     def _get_info(self) -> dict:

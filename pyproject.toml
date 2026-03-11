@@ -37,8 +37,30 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W"]
-ignore = ["F403", "F405"]
+select = [
+    "E",
+    "F",
+    "I",
+    "W",
+    "D",       
+    "ERA",     
+    "PLR2044", 
+    "PGH004",  
+]
+ignore = [
+    "F403",
+    "F405",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = ["D"]
+".github/**/*.py" = ["D"]
+"examples/**/*.py" = ["D"]
+
+
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ruff.lint.isort]
 known-first-party = ["so101_nexus_core", "so101_nexus_maniskill", "so101_nexus_mujoco"]

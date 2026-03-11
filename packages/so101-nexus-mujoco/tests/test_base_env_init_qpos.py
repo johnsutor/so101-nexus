@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 
 
@@ -9,7 +11,7 @@ def test_reset_uses_init_qpos_from_options():
     """Env reset should set joints to the provided init_qpos, not REST_QPOS."""
     import gymnasium as gym
 
-    import so101_nexus_mujoco  # noqa: F401 — registers envs
+    importlib.import_module("so101_nexus_mujoco")
 
     env = gym.make("MuJoCoPickCubeLift-v1", camera_mode="wrist", render_mode="rgb_array")
     try:
@@ -25,7 +27,7 @@ def test_reset_without_init_qpos_uses_rest_pose():
     """Without init_qpos, reset should use the default REST_QPOS (within noise)."""
     import gymnasium as gym
 
-    import so101_nexus_mujoco  # noqa: F401
+    importlib.import_module("so101_nexus_mujoco")
     from so101_nexus_core.config import EnvironmentConfig
 
     rest = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
@@ -33,7 +35,6 @@ def test_reset_without_init_qpos_uses_rest_pose():
     try:
         obs, _ = env.reset(seed=0)
         actual_qpos = env.unwrapped._get_current_qpos()
-        # Should be close to rest pose (within default noise 0.02 rad)
         np.testing.assert_allclose(actual_qpos, rest, atol=0.025)
     finally:
         env.close()

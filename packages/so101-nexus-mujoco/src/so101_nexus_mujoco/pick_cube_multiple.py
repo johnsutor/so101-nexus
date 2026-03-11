@@ -78,7 +78,7 @@ def _build_scene_xml(
 
 
 class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
-    """MuJoCo pick-cube environment with distractor cubes."""
+    """MuJoCo pick-cube environment with one target cube and distractors."""
 
     config: PickCubeMultipleConfig
 
@@ -125,7 +125,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        # Target cube IDs
         self._cube_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "cube_target")
         self._obj_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "cube_target_geom"
@@ -135,7 +134,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
         )
         self._cube_qpos_addr = self.model.jnt_qposadr[cube_joint_id]
 
-        # Distractor IDs
         self._distractor_geom_ids: list[int] = []
         self._distractor_qpos_addrs: list[int] = []
         for i in range(config.num_distractors):
@@ -155,6 +153,7 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
         return self.data.qpos[addr : addr + 7].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
+        """Return proprioception together with the target cube state."""
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         obj_pose = self._get_cube_pose()
@@ -188,6 +187,7 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
         return self._reach_only_reward(info)
 
     def _task_reset(self) -> None:
+        """Spawn the target cube and distractors at separated XY positions."""
         rng = self.np_random
         min_r = self.config.spawn_min_radius
         max_r = self.config.spawn_max_radius
@@ -200,7 +200,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
             rng, total_objects, min_r, max_r, angle_half, self.min_object_separation, bounding_radii
         )
 
-        # Place target cube
         cube_x, cube_y = positions[0]
         cube_z = self.cube_half_size
         angle = rng.uniform(0, 2 * np.pi)
@@ -211,7 +210,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
         self.data.qpos[addr + 3 : addr + 7] = cube_quat
         self._initial_obj_z = cube_z
 
-        # Place distractors with random colors
         distractor_colors = [c for c in CUBE_COLOR_MAP if c != self.cube_color_name]
         for i in range(self.num_distractors):
             dx, dy = positions[1 + i]
@@ -223,7 +221,6 @@ class PickCubeMultipleEnv(SO101NexusMuJoCoBaseEnv):
             self.data.qpos[d_addr : d_addr + 3] = [dx, dy, dz]
             self.data.qpos[d_addr + 3 : d_addr + 7] = d_quat
 
-            # Randomize distractor color
             color_name = distractor_colors[rng.integers(len(distractor_colors))]
             rgba = CUBE_COLOR_MAP[color_name]
             self.model.geom_rgba[self._distractor_geom_ids[i]] = rgba

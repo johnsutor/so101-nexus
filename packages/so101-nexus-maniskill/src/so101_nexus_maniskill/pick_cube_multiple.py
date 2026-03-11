@@ -24,7 +24,7 @@ PICK_CUBE_MULTIPLE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(conf
     max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
 )
 class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
-    """Pick-cube-multiple environment where success is lift height threshold while grasped."""
+    """Pick the target cube from distractors and succeed once it is lifted while grasped."""
 
     config: PickCubeMultipleConfig
 
@@ -67,9 +67,9 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         )
 
     def _load_scene(self, options: dict) -> None:
+        """Build one merged target cube actor and one merged actor per distractor slot."""
         self._build_ground()
 
-        # Build target cubes (one per env, merged)
         objs: list[Actor] = []
         for i in range(self.num_envs):
             cube = actors.build_cube(
@@ -85,7 +85,6 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         self.obj = Actor.merge(objs, name="cube_target")
         self.add_to_state_dict_registry(self.obj)
 
-        # Build distractor cubes
         distractor_color_names = [c for c in CUBE_COLOR_MAP if c != self.cube_color_name]
         self.distractors: list[Actor] = []
         for d in range(self.num_distractors):
@@ -109,6 +108,7 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         self._apply_robot_color_if_needed()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
+        """Reset robots and sample separated target and distractor cube poses."""
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx)
@@ -121,7 +121,6 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
             total_objects = 1 + self.num_distractors
             cube_radius = self.cube_half_size * np.sqrt(2)
 
-            # Sample separated positions for all objects per env
             all_xyz = torch.zeros((b, total_objects, 3), device=self.device)
             for bi in range(b):
                 positions = _sample_separated_positions_polar_np(
@@ -137,13 +136,11 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
                     all_xyz[bi, oi, 1] = py
                     all_xyz[bi, oi, 2] = self.cube_half_size
 
-            # Set target pose
             target_xyz = all_xyz[:, 0]
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
             self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
-            # Set distractor poses
             for d in range(self.num_distractors):
                 d_xyz = all_xyz[:, 1 + d]
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)

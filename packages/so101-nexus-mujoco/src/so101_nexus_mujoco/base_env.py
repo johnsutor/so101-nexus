@@ -331,9 +331,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
         reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
         is_grasped = info["is_grasped"] > 0.5
-        lift_progress = (
-            float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
-        )
+        lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
         return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,

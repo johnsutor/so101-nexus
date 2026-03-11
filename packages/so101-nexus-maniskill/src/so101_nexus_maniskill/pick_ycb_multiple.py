@@ -27,7 +27,7 @@ PICK_YCB_MULTIPLE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(confi
     max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
 )
 class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
-    """Pick-YCB-multiple environment where success is lift height threshold while grasped."""
+    """Pick the target YCB object from distractors and lift it while grasped."""
 
     config: PickYCBMultipleConfig
 
@@ -50,7 +50,6 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
             f" {config.num_distractors} distractors"
         )
 
-        # Sample distractor model IDs (excluding target)
         other_ids = [mid for mid in YCB_OBJECTS if mid != config.model_id]
         rng = np.random.default_rng()
         self.distractor_model_ids: list[str] = list(
@@ -84,9 +83,9 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         ]
 
     def _load_scene(self, options: dict) -> None:
+        """Build one merged target actor and one merged actor per distractor slot."""
         self._build_ground()
 
-        # Build target YCB object
         objs: list[Actor] = []
         for i in range(self.num_envs):
             builder = actors.get_actor_builder(self.scene, id=f"ycb:{self.model_id}")
@@ -98,7 +97,6 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         self.obj = Actor.merge(objs, name="ycb_target")
         self.add_to_state_dict_registry(self.obj)
 
-        # Build distractor YCB objects
         self.distractors: list[Actor] = []
         for d in range(self.num_distractors):
             d_objs: list[Actor] = []
@@ -118,6 +116,7 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
         self._apply_robot_color_if_needed()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
+        """Reset robots and sample separated target and distractor YCB poses."""
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx)
@@ -134,7 +133,6 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
             for dz in self._distractor_spawn_zs:
                 bounding_radii.append(float(dz))
 
-            # Sample separated positions for all objects per env
             all_xy = []
             for _ in range(b):
                 positions = _sample_separated_positions_polar_np(
@@ -147,7 +145,6 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
                 )
                 all_xy.append(positions)
 
-            # Set target pose
             target_xyz = torch.zeros((b, 3), device=self.device)
             for bi in range(b):
                 target_xyz[bi, 0] = all_xy[bi][0][0]
@@ -157,7 +154,6 @@ class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
             self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
-            # Set distractor poses
             for d in range(self.num_distractors):
                 d_xyz = torch.zeros((b, 3), device=self.device)
                 for bi in range(b):
@@ -238,7 +234,6 @@ def _sample_separated_positions_polar_np(
     return positions
 
 
-# Register per-YCB-object and per-robot variants
 for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
     for _robot in ["SO100", "SO101"]:
         _env_id = f"ManiSkillPick{_env_name}MultipleLift{_robot}-v1"
