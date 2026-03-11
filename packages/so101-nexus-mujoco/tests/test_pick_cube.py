@@ -14,13 +14,6 @@ _CFG = PickCubeConfig()
 
 
 @pytest.fixture(scope="module")
-def goal_env():
-    env = gym.make("MuJoCoPickCubeGoal-v1")
-    yield env
-    env.close()
-
-
-@pytest.fixture(scope="module")
 def lift_env():
     env = gym.make("MuJoCoPickCubeLift-v1")
     yield env
@@ -45,30 +38,12 @@ class TestSharedConstants:
 
 
 class TestEnvCreation:
-    def test_goal_env_creates(self, goal_env):
-        assert isinstance(goal_env, gym.Env)
-
     def test_lift_env_creates(self, lift_env):
         assert isinstance(lift_env, gym.Env)
-
-    def test_goal_env_reset(self, goal_env):
-        obs, info = goal_env.reset()
-        assert isinstance(obs, np.ndarray)
-        assert isinstance(info, dict)
 
     def test_lift_env_reset(self, lift_env):
         obs, info = lift_env.reset()
         assert isinstance(obs, np.ndarray)
-        assert isinstance(info, dict)
-
-    def test_goal_env_step(self, goal_env):
-        goal_env.reset()
-        action = goal_env.action_space.sample()
-        obs, reward, terminated, truncated, info = goal_env.step(action)
-        assert isinstance(obs, np.ndarray)
-        assert reward is not None
-        assert isinstance(terminated, bool)
-        assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
     def test_lift_env_step(self, lift_env):
@@ -81,16 +56,9 @@ class TestEnvCreation:
         assert isinstance(truncated, bool)
         assert isinstance(info, dict)
 
-    def test_observation_space_goal(self, goal_env):
-        obs, _ = goal_env.reset()
-        assert goal_env.observation_space.contains(obs)
-
     def test_observation_space_lift(self, lift_env):
         obs, _ = lift_env.reset()
         assert lift_env.observation_space.contains(obs)
-
-    def test_action_space_shape_goal(self, goal_env):
-        assert goal_env.action_space.shape == (6,)
 
     def test_action_space_shape_lift(self, lift_env):
         assert lift_env.action_space.shape == (6,)
@@ -98,8 +66,6 @@ class TestEnvCreation:
 
 class TestEpisodeLogic:
     EXPECTED_INFO_KEYS = {
-        "obj_to_goal_dist",
-        "is_obj_placed",
         "is_grasped",
         "is_robot_static",
         "lift_height",
@@ -107,37 +73,18 @@ class TestEpisodeLogic:
         "tcp_to_obj_dist",
     }
 
-    def test_info_keys_goal(self, goal_env):
-        _, info = goal_env.reset()
-        assert set(info.keys()) == self.EXPECTED_INFO_KEYS
-
     def test_info_keys_lift(self, lift_env):
         _, info = lift_env.reset()
         assert set(info.keys()) == self.EXPECTED_INFO_KEYS
 
-    def test_cube_spawns_in_bounds(self, goal_env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
+    def test_cube_spawns_in_radius_bounds(self, lift_env):
+        min_r = _CFG.spawn_min_radius
+        max_r = _CFG.spawn_max_radius
         for _ in range(5):
-            goal_env.reset()
-            cube_pose = goal_env.unwrapped._get_cube_pose()
-            assert cx - hs <= cube_pose[0] <= cx + hs
-            assert cy - hs <= cube_pose[1] <= cy + hs
-
-    def test_goal_spawns_in_bounds(self, goal_env):
-        cx, cy = _CFG.spawn_center
-        hs = _CFG.spawn_half_size
-        for _ in range(5):
-            goal_env.reset()
-            goal_pos = goal_env.unwrapped._get_goal_pos()
-            assert cx - hs <= goal_pos[0] <= cx + hs
-            assert cy - hs <= goal_pos[1] <= cy + hs
-
-    def test_reward_range_goal(self, goal_env):
-        goal_env.reset()
-        action = goal_env.action_space.sample()
-        _, reward, _, _, _ = goal_env.step(action)
-        assert 0.0 <= reward <= 1.0
+            lift_env.reset()
+            cube_pose = lift_env.unwrapped._get_cube_pose()
+            r = float(np.sqrt(cube_pose[0] ** 2 + cube_pose[1] ** 2))
+            assert min_r <= r <= max_r
 
     def test_reward_range_lift(self, lift_env):
         lift_env.reset()
@@ -147,13 +94,6 @@ class TestEpisodeLogic:
 
 
 class TestRewardBudget:
-    def test_goal_reaching_only_reward_bounded_by_reaching_weight(self, goal_env):
-        goal_env.reset()
-        info = goal_env.unwrapped._get_info()
-        assert not info["is_grasped"]
-        reward = goal_env.unwrapped._compute_reward(info)
-        assert reward <= _CFG.reward.reaching + 1e-6
-
     def test_lift_reaching_only_reward_bounded_by_reaching_weight(self, lift_env):
         lift_env.reset()
         info = lift_env.unwrapped._get_info()
@@ -202,7 +142,7 @@ class TestCameraModes:
         env = PickCubeEnv(camera_mode="state_only")
         obs, _ = env.reset()
         assert isinstance(obs, np.ndarray)
-        assert obs.shape == (24,)
+        assert obs.shape == (18,)
         env.close()
 
     def test_wrist_mode_returns_dict(self):
@@ -211,7 +151,7 @@ class TestCameraModes:
         assert isinstance(obs, dict)
         assert "state" in obs
         assert "wrist_camera" in obs
-        assert obs["state"].shape == (24,)
+        assert obs["state"].shape == (18,)
         assert obs["wrist_camera"].shape == (224, 224, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
@@ -280,7 +220,7 @@ class TestControlModes:
 
 class TestRenderModes:
     def test_rgb_array(self):
-        env = gym.make("MuJoCoPickCubeGoal-v1", render_mode="rgb_array")
+        env = gym.make("MuJoCoPickCubeLift-v1", render_mode="rgb_array")
         env.reset()
         frame = env.render()
         assert isinstance(frame, np.ndarray)
