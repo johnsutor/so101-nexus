@@ -315,6 +315,33 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._viewer.close()
             self._viewer = None
 
+    def _reach_only_reward(self, info: dict) -> float:
+        """Reach-only reward: tanh distance shaping toward the object with no task progress."""
+        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        is_grasped = info["is_grasped"] > 0.5
+        return self.config.reward.compute(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=0.0,
+            is_complete=info.get("success", False),
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+        )
+
+    def _lift_reward(self, info: dict) -> float:
+        """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
+        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        is_grasped = info["is_grasped"] > 0.5
+        lift_progress = (
+            float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
+        )
+        return self.config.reward.compute(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=lift_progress,
+            is_complete=info["success"],
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+        )
+
     def _task_reset(self) -> None:
         raise NotImplementedError
 

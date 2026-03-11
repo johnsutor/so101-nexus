@@ -140,16 +140,7 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         }
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
-        is_grasped = info["is_grasped"] > 0.5
-
-        return self.config.reward.compute(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=0.0,
-            is_complete=info.get("success", False),
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-        )
+        return self._reach_only_reward(info)
 
     def _task_reset(self) -> None:
         rng = self.np_random
@@ -183,14 +174,4 @@ class PickCubeLiftEnv(PickCubeEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
-        is_grasped = info["is_grasped"] > 0.5
-        lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
-
-        return self.config.reward.compute(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=lift_progress,
-            is_complete=info["success"],
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-        )
+        return self._lift_reward(info)
