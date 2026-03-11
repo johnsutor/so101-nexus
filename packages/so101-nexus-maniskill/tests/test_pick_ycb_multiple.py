@@ -30,29 +30,11 @@ def _make_ycb_env(env_id: str, **kwargs):
     return gym.make(env_id, **kwargs)
 
 
-GOAL_ENV_IDS = [
-    ("ManiSkillPickGolfBallMultipleGoalSO100-v1", "so100"),
-    ("ManiSkillPickGolfBallMultipleGoalSO101-v1", "so101"),
-]
 LIFT_ENV_IDS = [
     ("ManiSkillPickGolfBallMultipleLiftSO100-v1", "so100"),
     ("ManiSkillPickGolfBallMultipleLiftSO101-v1", "so101"),
 ]
-ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
-
-
-@pytest.fixture(scope="module")
-def goal_so100_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallMultipleGoalSO100-v1", **BASE_KWARGS)
-    yield env
-    env.close()
-
-
-@pytest.fixture(scope="module")
-def goal_so101_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallMultipleGoalSO101-v1", **BASE_KWARGS)
-    yield env
-    env.close()
+ALL_ENV_IDS = LIFT_ENV_IDS
 
 
 @pytest.fixture(scope="module")
@@ -71,8 +53,6 @@ def lift_so101_env():
 
 def _get_env(request, env_id):
     mapping = {
-        "ManiSkillPickGolfBallMultipleGoalSO100-v1": "goal_so100_env",
-        "ManiSkillPickGolfBallMultipleGoalSO101-v1": "goal_so101_env",
         "ManiSkillPickGolfBallMultipleLiftSO100-v1": "lift_so100_env",
         "ManiSkillPickGolfBallMultipleLiftSO101-v1": "lift_so101_env",
     }
@@ -125,10 +105,7 @@ class TestEnvCreation:
 
 class TestEpisodeLogic:
     EVALUATE_KEYS = {
-        "obj_to_goal_dist",
-        "is_obj_placed",
         "is_grasped",
-        "is_robot_static",
         "lift_height",
         "success",
         "tcp_to_obj_dist",
@@ -142,24 +119,15 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EVALUATE_KEYS
 
     @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
-    def test_target_spawns_in_bounds(self, request, env_id, robot):
+    def test_target_spawns_in_radius_bounds(self, request, env_id, robot):
         env = _get_env(request, env_id)
         env.reset()
         cfg = PICK_YCB_MULTIPLE_CONFIGS[robot]
-        cx, cy = cfg["cube_spawn_center"]
-        hs = cfg["cube_spawn_half_size"]
+        min_r = cfg["spawn_min_radius"]
+        max_r = cfg["spawn_max_radius"]
         obj_p = env.unwrapped.obj.pose.p[0].cpu()
-        assert cx - hs <= obj_p[0].item() <= cx + hs
-        assert cy - hs <= obj_p[1].item() <= cy + hs
-
-    @pytest.mark.parametrize("env_id,robot", GOAL_ENV_IDS)
-    def test_reward_range_goal(self, request, env_id, robot):
-        env = _get_env(request, env_id)
-        env.reset()
-        action = env.action_space.sample()
-        _, reward, _, _, _ = env.step(action)
-        assert (reward >= 0).all()
-        assert (reward <= 1).all()
+        r = float(torch.sqrt(obj_p[0] ** 2 + obj_p[1] ** 2))
+        assert min_r <= r <= max_r
 
     @pytest.mark.parametrize("env_id,robot", LIFT_ENV_IDS)
     def test_reward_range_lift(self, request, env_id, robot):
@@ -172,20 +140,20 @@ class TestEpisodeLogic:
 
 
 class TestMultipleObjects:
-    def test_correct_number_of_distractors(self, goal_so100_env):
-        inner = goal_so100_env.unwrapped
+    def test_correct_number_of_distractors(self, lift_so100_env):
+        inner = lift_so100_env.unwrapped
         assert len(inner.distractors) == _CFG.num_distractors
 
-    def test_distractor_models_differ_from_target(self, goal_so100_env):
-        inner = goal_so100_env.unwrapped
+    def test_distractor_models_differ_from_target(self, lift_so100_env):
+        inner = lift_so100_env.unwrapped
         for mid in inner.distractor_model_ids:
             assert mid != inner.model_id
             assert mid in YCB_OBJECTS
 
 
 class TestTaskDescription:
-    def test_task_description_starts_with_capital(self, goal_so100_env):
-        assert goal_so100_env.unwrapped.task_description[0].isupper()
+    def test_task_description_starts_with_capital(self, lift_so100_env):
+        assert lift_so100_env.unwrapped.task_description[0].isupper()
 
-    def test_task_description_includes_object_name(self, goal_so100_env):
-        assert "golf ball" in goal_so100_env.unwrapped.task_description
+    def test_task_description_includes_object_name(self, lift_so100_env):
+        assert "golf ball" in lift_so100_env.unwrapped.task_description
