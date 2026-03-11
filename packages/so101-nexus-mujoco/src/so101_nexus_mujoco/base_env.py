@@ -128,7 +128,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             )
             self.observation_space = spaces.Dict(
                 {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64),
+                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64),
                     "wrist_camera": spaces.Box(
                         low=0,
                         high=255,
@@ -141,7 +141,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._wrist_cam_id = None
             self._wrist_renderer = None
             self.observation_space = spaces.Box(
-                low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64
+                low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
             )
 
         self._renderer = None
@@ -185,6 +185,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             if self.model.geom_bodyid[i] == body_id and self.model.geom_contype[i] != 0:
                 geom_ids.add(i)
         return geom_ids
+
+    def _state_obs_size(self) -> int:
+        """Return the dimensionality of the flat state observation vector.
+
+        Default: tcp_pose(7) + is_grasped(1) + obj_pose(7) + tcp_to_obj(3) = 18.
+        Subclasses that add or remove fields should override this method.
+        """
+        return 18
 
     def _get_tcp_pose(self) -> np.ndarray:
         pos = self.data.site_xpos[self._tcp_site_id].copy()
@@ -277,7 +285,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         obs = self._get_obs()
         info = self._get_info()
         reward = self._compute_reward(info)
-        terminated = bool(info["success"])
+        terminated = bool(info.get("success", False))
 
         return obs, reward, terminated, False, info
 
