@@ -20,6 +20,8 @@ def sample_separated_positions(
     already-placed bounding circle. Falls back to the last sampled position if no
     valid placement is found within the attempt budget.
     """
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
     positions: list[tuple[float, float]] = []
     for idx in range(count):
         for _ in range(max_attempts):

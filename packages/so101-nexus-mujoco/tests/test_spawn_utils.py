@@ -185,6 +185,26 @@ def test_fallback_still_returns_count_positions():
 
 
 # ---------------------------------------------------------------------------
+# 9. max_attempts=0 edge case
+# ---------------------------------------------------------------------------
+
+def test_max_attempts_zero_raises():
+    """max_attempts must be at least 1; passing 0 should raise ValueError."""
+    rng = _make_rng(0)
+    with pytest.raises(ValueError, match="max_attempts"):
+        sample_separated_positions(
+            rng=rng,
+            count=2,
+            min_r=0.1,
+            max_r=0.3,
+            angle_half=math.pi / 2,
+            min_clearance=0.01,
+            bounding_radii=[0.02, 0.02],
+            max_attempts=0,
+        )
+
+
+# ---------------------------------------------------------------------------
 # 8. Determinism with fixed RNG seed
 # ---------------------------------------------------------------------------
 
