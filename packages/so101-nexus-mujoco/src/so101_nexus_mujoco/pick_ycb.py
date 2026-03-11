@@ -125,8 +125,6 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
         obj_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "obj_joint")
         self._obj_qpos_addr = self.model.jnt_qposadr[obj_joint_id]
 
-        self._goal_pos = np.zeros(3)
-
         self._finish_model_setup()
 
     def _get_obj_pose(self) -> np.ndarray:
