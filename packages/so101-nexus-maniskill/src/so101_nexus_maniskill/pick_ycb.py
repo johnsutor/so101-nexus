@@ -134,7 +134,10 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=torch.zeros_like(reach_progress),
-            is_complete=info.get("success", torch.zeros(len(reach_progress), dtype=torch.bool, device=self.device)),
+            is_complete=info.get(
+                "success",
+                torch.zeros(len(reach_progress), dtype=torch.bool, device=self.device),
+            ),
         )
 
 

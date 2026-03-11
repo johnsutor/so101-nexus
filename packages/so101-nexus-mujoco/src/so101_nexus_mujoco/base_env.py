@@ -128,7 +128,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             )
             self.observation_space = spaces.Dict(
                 {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64),
+                    "state": spaces.Box(
+                        low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
+                    ),
                     "wrist_camera": spaces.Box(
                         low=0,
                         high=255,
