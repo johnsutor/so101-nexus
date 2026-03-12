@@ -191,8 +191,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         self.model.cam_pos0[self._wrist_cam_id] = [
             self.np_random.uniform(-cam.wrist_cam_pos_x_noise, cam.wrist_cam_pos_x_noise),
-            cam.wrist_cam_pos_y_center + self.np_random.uniform(-cam.wrist_cam_pos_y_noise, cam.wrist_cam_pos_y_noise),
-            cam.wrist_cam_pos_z_center + self.np_random.uniform(-cam.wrist_cam_pos_z_noise, cam.wrist_cam_pos_z_noise),
+            cam.wrist_cam_pos_y_center
+            + self.np_random.uniform(-cam.wrist_cam_pos_y_noise, cam.wrist_cam_pos_y_noise),
+            cam.wrist_cam_pos_z_center
+            + self.np_random.uniform(-cam.wrist_cam_pos_z_noise, cam.wrist_cam_pos_z_noise),
         ]
 
         fov_lo, fov_hi = cam.wrist_fov_deg_range
@@ -362,7 +364,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _reach_only_reward(self, info: dict) -> float:
         """Reach-only reward: tanh distance shaping toward the object with no task progress."""
-        reach_progress = 1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"]))
+        reach_progress = 1.0 - float(
+            np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"])
+        )
         is_grasped = info["is_grasped"] > 0.5
         return self.config.reward.compute(
             reach_progress=reach_progress,

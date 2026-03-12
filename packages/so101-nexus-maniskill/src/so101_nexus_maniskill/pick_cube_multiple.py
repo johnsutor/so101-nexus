@@ -178,7 +178,10 @@ class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
-        lift_progress = torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0)) * is_grasped
+        lift_progress = (
+            torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0))
+            * is_grasped
+        )
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
