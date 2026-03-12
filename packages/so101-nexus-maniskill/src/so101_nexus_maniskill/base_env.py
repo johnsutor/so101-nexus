@@ -18,6 +18,9 @@ from transforms3d.euler import euler2quat
 from so101_nexus_core.config import CameraMode, EnvironmentConfig, sample_color
 from so101_nexus_maniskill.so101_agent import SO101
 
+# Fixed sensor camera field-of-view: 60 degrees expressed in radians.
+_SENSOR_CAM_FOV_RAD: float = float(np.radians(60.0))
+
 
 class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
@@ -86,7 +89,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                     pose,
                     self.camera_width,
                     self.camera_height,
-                    np.pi / 3,
+                    _SENSOR_CAM_FOV_RAD,
                     0.01,
                     100,
                 )
