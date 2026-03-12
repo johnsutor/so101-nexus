@@ -187,10 +187,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         }
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        reach_progress = 1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"]))
         is_grasped = info["is_grasped"] > 0.5
         placement_progress = (
-            (1.0 - float(np.tanh(5.0 * info["obj_to_target_dist"]))) if is_grasped else 0.0
+            (1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * info["obj_to_target_dist"]))) if is_grasped else 0.0
         )
 
         return self.config.reward.compute(
