@@ -197,3 +197,13 @@ class TestRewardCompute:
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
         assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+def test_robot_config_grasp_force_threshold_default():
+    cfg = RobotConfig()
+    assert cfg.grasp_force_threshold == pytest.approx(0.5)
+
+
+def test_robot_config_static_vel_threshold_default():
+    cfg = RobotConfig()
+    assert cfg.static_vel_threshold == pytest.approx(0.2)

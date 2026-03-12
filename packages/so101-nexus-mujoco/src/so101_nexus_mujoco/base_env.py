@@ -260,7 +260,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             mujoco.mj_contactForce(self.model, self.data, i, force_buf)
             normal_force = abs(force_buf[0])
 
-            if normal_force >= 0.5:
+            if normal_force >= self.config.robot.grasp_force_threshold:
                 if other in self._gripper_geom_ids:
                     gripper_contact = True
                 if other in self._jaw_geom_ids:
@@ -274,7 +274,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         Uses ``config.robot.static_vel_threshold`` as the cutoff.
         """
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
-        return bool(np.all(np.abs(arm_vels) < 0.2))
+        return bool(np.all(np.abs(arm_vels) < self.config.robot.static_vel_threshold))
 
     def _get_current_qpos(self) -> np.ndarray:
         """Return the current joint positions for all controlled joints."""

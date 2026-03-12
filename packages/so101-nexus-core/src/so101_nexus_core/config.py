@@ -104,6 +104,8 @@ class RobotConfig:
     """
 
     rest_qpos_deg: tuple[float, ...] = (0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644)
+    grasp_force_threshold: float = 0.5
+    static_vel_threshold: float = 0.2
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
