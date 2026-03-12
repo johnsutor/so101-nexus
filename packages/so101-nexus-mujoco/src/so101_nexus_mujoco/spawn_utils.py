@@ -39,3 +39,21 @@ def sample_separated_positions(
         else:
             positions.append((x, y))
     return positions
+
+
+def random_yaw_quat(rng: np.random.Generator) -> np.ndarray:
+    """Sample a unit quaternion with uniformly random yaw about the Z axis.
+
+    Parameters
+    ----------
+    rng : np.random.Generator
+        Source of randomness.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(4,)`` quaternion ``[w, x, y, z]`` representing a rotation
+        purely about the Z axis by an angle drawn uniformly from ``[0, 2π)``.
+    """
+    angle_rad = rng.uniform(0.0, 2.0 * np.pi)
+    return np.array([np.cos(angle_rad / 2.0), 0.0, 0.0, np.sin(angle_rad / 2.0)])

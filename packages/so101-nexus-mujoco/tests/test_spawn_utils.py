@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from so101_nexus_mujoco.spawn_utils import sample_separated_positions
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
 
 def _make_rng(seed: int = 42) -> np.random.Generator:
@@ -189,3 +189,36 @@ def test_determinism_with_fixed_seed():
     result_a = sample_separated_positions(rng=_make_rng(7), **kwargs)
     result_b = sample_separated_positions(rng=_make_rng(7), **kwargs)
     assert result_a == result_b
+
+
+class TestRandomYawQuat:
+    """Tests for random_yaw_quat."""
+
+    def _make_rng(self, seed: int = 0) -> np.random.Generator:
+        return np.random.default_rng(seed)
+
+    def test_returns_unit_quaternion(self):
+        """Result should be a unit quaternion."""
+        rng = self._make_rng()
+        q = random_yaw_quat(rng)
+        assert abs(np.linalg.norm(q) - 1.0) < 1e-9
+
+    def test_shape_is_4(self):
+        """Result should be shape (4,)."""
+        rng = self._make_rng()
+        q = random_yaw_quat(rng)
+        assert q.shape == (4,)
+
+    def test_zero_roll_and_pitch(self):
+        """x and y components of the quaternion must be zero (pure yaw)."""
+        rng = self._make_rng(42)
+        for _ in range(50):
+            q = random_yaw_quat(rng)
+            assert abs(q[1]) < 1e-9, "x component should be zero"
+            assert abs(q[2]) < 1e-9, "y component should be zero"
+
+    def test_reproducible_with_seed(self):
+        """Same seed produces same quaternion."""
+        q1 = random_yaw_quat(self._make_rng(7))
+        q2 = random_yaw_quat(self._make_rng(7))
+        np.testing.assert_array_equal(q1, q2)
