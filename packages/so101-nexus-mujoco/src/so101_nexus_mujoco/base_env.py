@@ -345,7 +345,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             return None
         return None
 
-    def close(self):
+    def close(self) -> None:
         """Release MuJoCo renderers and viewer resources."""
         if self._wrist_renderer is not None:
             self._wrist_renderer.close()
@@ -385,7 +385,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _task_reset(self) -> None:
         raise NotImplementedError
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
         raise NotImplementedError
 
     def _get_info(self) -> dict:

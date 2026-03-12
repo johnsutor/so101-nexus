@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import sapien
@@ -30,7 +30,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         *,
         config: EnvironmentConfig,
         robot_uids: str,
-        robot_cfgs: dict[str, dict],
+        robot_cfgs: dict[str, dict[str, Any]],
     ) -> None:
         if robot_uids not in robot_cfgs:
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
@@ -224,8 +224,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     def compute_normalized_dense_reward(
         self,
-        obs,
+        obs: dict[str, torch.Tensor] | torch.Tensor,
         action: torch.Tensor,
-        info: dict,
+        info: dict[str, Any],
     ) -> torch.Tensor:
         return self.compute_dense_reward(obs=obs, action=action, info=info)

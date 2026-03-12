@@ -32,14 +32,14 @@ class CameraView:
     image: np.ndarray
 
 
-def scalar(val) -> float:
+def scalar(val: float | np.ndarray | object) -> float:
     """Extract a Python scalar from a tensor, array, or plain number."""
     if hasattr(val, "item"):
         return val.item()
     return float(np.asarray(val).squeeze())
 
 
-def to_uint8(img) -> np.ndarray:
+def to_uint8(img: np.ndarray | object) -> np.ndarray:
     """Convert a camera image (tensor, float32 array, or uint8) to uint8 numpy."""
     if hasattr(img, "cpu"):
         img = img.cpu().numpy()
