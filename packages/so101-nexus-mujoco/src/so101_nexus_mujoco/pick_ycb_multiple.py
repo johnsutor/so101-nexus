@@ -1,3 +1,8 @@
+"""MuJoCo pick-YCB environment with distractor objects.
+
+Provides PickYCBMultipleEnv and PickYCBMultipleLiftEnv. One YCB object is the
+target; the rest are distractors the robot must avoid.
+"""
 from __future__ import annotations
 
 import tempfile

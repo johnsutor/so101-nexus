@@ -1,3 +1,7 @@
+"""MuJoCo pick-and-place environment.
+
+Provides PickAndPlaceEnv where the robot must move a cube to a visible disc target.
+"""
 from __future__ import annotations
 
 import tempfile
