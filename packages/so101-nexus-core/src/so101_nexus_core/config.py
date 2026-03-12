@@ -72,15 +72,26 @@ def sample_color(colors: ColorConfig, rng: np.random.Generator | None = None) ->
 
 @dataclass(frozen=True)
 class CameraConfig:
-    """Camera resolution and wrist field-of-view defaults."""
+    """Camera resolution, wrist field-of-view, and wrist mount randomization defaults."""
 
     width: int = 224
     height: int = 224
     wrist_fov_deg_range: tuple[float, float] = (60.0, 90.0)
+    wrist_pitch_deg_range: tuple[float, float] = (-34.4, 0.0)
+    wrist_cam_pos_x_noise: float = 0.005
+    wrist_cam_pos_y_center: float = 0.04
+    wrist_cam_pos_y_noise: float = 0.01
+    wrist_cam_pos_z_center: float = -0.04
+    wrist_cam_pos_z_noise: float = 0.01
 
     @property
     def wrist_fov_rad_range(self) -> tuple[float, float]:
         lo, hi = self.wrist_fov_deg_range
+        return (float(np.radians(lo)), float(np.radians(hi)))
+
+    @property
+    def wrist_pitch_rad_range(self) -> tuple[float, float]:
+        lo, hi = self.wrist_pitch_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
 
 
