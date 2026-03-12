@@ -1,3 +1,9 @@
+"""Spawning utilities for MuJoCo SO101-Nexus environments.
+
+Provides helpers for placing objects in the workspace without overlap
+and for sampling random object orientations.
+"""
+
 from __future__ import annotations
 
 import numpy as np
