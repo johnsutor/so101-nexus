@@ -26,7 +26,7 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus_mujoco.spawn_utils import sample_separated_positions
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -239,8 +239,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
 
         obj_x, obj_y = positions[0]
         obj_z = self._all_spawn_zs[0]
-        angle = rng.uniform(0, 2 * np.pi)
-        yaw_quat = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+        yaw_quat = random_yaw_quat(rng)
         obj_quat = np.zeros(4)
         mujoco.mju_mulQuat(obj_quat, yaw_quat, self._all_rest_quats[0])
 
@@ -252,8 +251,7 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
         for i in range(self.num_distractors):
             dx, dy = positions[1 + i]
             dz = self._all_spawn_zs[1 + i]
-            d_angle = rng.uniform(0, 2 * np.pi)
-            d_yaw = np.array([np.cos(d_angle / 2), 0, 0, np.sin(d_angle / 2)])
+            d_yaw = random_yaw_quat(rng)
             d_quat = np.zeros(4)
             mujoco.mju_mulQuat(d_quat, d_yaw, self._all_rest_quats[1 + i])
 

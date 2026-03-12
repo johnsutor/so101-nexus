@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -224,8 +225,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
                 break
 
         cube_z = self.cube_half_size
-        angle = rng.uniform(0, 2 * np.pi)
-        cube_quat = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+        cube_quat = random_yaw_quat(rng)
 
         addr = self._cube_qpos_addr
         self.data.qpos[addr : addr + 3] = [cube_x, cube_y, cube_z]

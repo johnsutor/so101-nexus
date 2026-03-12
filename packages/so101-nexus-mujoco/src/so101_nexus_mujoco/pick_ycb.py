@@ -26,6 +26,7 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -181,8 +182,7 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
         obj_y = r * np.sin(theta)
         obj_z = self._obj_spawn_z
 
-        angle = rng.uniform(0, 2 * np.pi)
-        yaw_quat = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+        yaw_quat = random_yaw_quat(rng)
         obj_quat = np.zeros(4)
         mujoco.mju_mulQuat(obj_quat, yaw_quat, self._obj_rest_quat)
 
