@@ -178,8 +178,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """
         if self.camera_mode != "wrist":
             return
-        pitch = self.np_random.uniform(-0.6, 0.0)
-        euler = np.array([pitch, 0.0, 2 * np.pi])
+        cam = self.config.camera
+        pitch_lo_rad, pitch_hi_rad = cam.wrist_pitch_rad_range
+        pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
+        # Yaw is fixed at 0; roll is fixed at 0.
+        euler = np.array([pitch_rad, 0.0, 0.0])
         quat = np.zeros(4)
         mujoco.mju_euler2Quat(quat, euler, "XYZ")
         mat = np.zeros(9)
@@ -187,12 +190,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.model.cam_mat0[self._wrist_cam_id] = mat
 
         self.model.cam_pos0[self._wrist_cam_id] = [
-            self.np_random.uniform(-0.005, 0.005),
-            0.04 + self.np_random.uniform(-0.01, 0.01),
-            -0.04 + self.np_random.uniform(-0.01, 0.01),
+            self.np_random.uniform(-cam.wrist_cam_pos_x_noise, cam.wrist_cam_pos_x_noise),
+            cam.wrist_cam_pos_y_center + self.np_random.uniform(-cam.wrist_cam_pos_y_noise, cam.wrist_cam_pos_y_noise),
+            cam.wrist_cam_pos_z_center + self.np_random.uniform(-cam.wrist_cam_pos_z_noise, cam.wrist_cam_pos_z_noise),
         ]
 
-        fov_lo, fov_hi = self.config.camera.wrist_fov_deg_range
+        fov_lo, fov_hi = cam.wrist_fov_deg_range
         self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
 
     def _get_collision_geoms(self, body_id: int) -> set[int]:
