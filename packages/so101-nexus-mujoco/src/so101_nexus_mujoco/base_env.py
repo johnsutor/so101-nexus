@@ -362,7 +362,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _reach_only_reward(self, info: dict) -> float:
         """Reach-only reward: tanh distance shaping toward the object with no task progress."""
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        reach_progress = 1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"]))
         is_grasped = info["is_grasped"] > 0.5
         return self.config.reward.compute(
             reach_progress=reach_progress,
@@ -374,9 +374,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _lift_reward(self, info: dict) -> float:
         """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        scale = self.config.reward.tanh_shaping_scale
+        reach_progress = 1.0 - float(np.tanh(scale * info["tcp_to_obj_dist"]))
         is_grasped = info["is_grasped"] > 0.5
-        lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
+        lift_progress = float(np.tanh(scale * max(info["lift_height"], 0.0))) if is_grasped else 0.0
         return self.config.reward.compute(
             reach_progress=reach_progress,
             is_grasped=is_grasped,

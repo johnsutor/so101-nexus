@@ -129,6 +129,7 @@ class RewardConfig:
     task_objective: float = 0.40
     completion_bonus: float = 0.10
     action_delta_penalty: float = 0.0
+    tanh_shaping_scale: float = 5.0
 
     def compute(
         self,

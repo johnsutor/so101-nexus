@@ -46,9 +46,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
 
-    @staticmethod
-    def _reach_progress(dist: torch.Tensor) -> torch.Tensor:
-        return 1.0 - torch.tanh(5.0 * dist)
+    def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
+        return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
     def _assemble_normalized_reward(
         self,

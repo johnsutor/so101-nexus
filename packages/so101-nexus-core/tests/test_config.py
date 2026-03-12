@@ -193,3 +193,7 @@ class TestRewardCompute:
         base = r.compute(1.0, True, 1.0, True)
         with_delta = r.compute(1.0, True, 1.0, True, action_delta_norm=5.0)
         assert base == pytest.approx(with_delta)
+
+    def test_reward_config_tanh_shaping_scale_default(self):
+        cfg = RewardConfig()
+        assert cfg.tanh_shaping_scale == pytest.approx(5.0)
