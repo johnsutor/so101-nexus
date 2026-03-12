@@ -3,6 +3,7 @@
 Provides PickCubeMultipleEnv and PickCubeMultipleLiftEnv. One cube is the
 target; the rest are distractors rendered with distinct colors.
 """
+
 from __future__ import annotations
 
 import tempfile

@@ -3,6 +3,7 @@
 Provides PickCubeEnv (reach-only reward) and PickCubeLiftEnv (lift-to-success)
 backed by a single-cube MuJoCo scene.
 """
+
 from __future__ import annotations
 
 import tempfile
