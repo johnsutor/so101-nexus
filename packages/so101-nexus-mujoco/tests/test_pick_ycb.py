@@ -14,26 +14,20 @@ _CFG = PickYCBConfig()
 
 LIFT_ENV_IDS = [
     "MuJoCoPickYCBLift-v1",
-    "MuJoCoPickBananaLift-v1",
-    "MuJoCoPickGolfBallLift-v1",
-]
-
-PER_ROBOT_LIFT_IDS = [
-    "MuJoCoPickGolfBallLiftSO101-v1",
 ]
 
 
 @pytest.fixture(scope="module")
 def lift_env():
-    env = gym.make("MuJoCoPickGolfBallLift-v1")
+    env = gym.make("MuJoCoPickYCBLift-v1")
     yield env
     env.close()
 
 
 class TestConstructionValidation:
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBEnv(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBEnv(config=PickYCBConfig(available_model_ids=("invalid_object",)))
 
     def test_invalid_control_mode(self):
         with pytest.raises(ValueError, match="control_mode"):
@@ -82,16 +76,6 @@ class TestEnvCreation:
         env.close()
 
 
-class TestPerRobotEnvIDs:
-    @pytest.mark.parametrize("env_id", PER_ROBOT_LIFT_IDS)
-    def test_per_robot_lift_env_creates(self, env_id):
-        env = gym.make(env_id)
-        assert isinstance(env, gym.Env)
-        obs, info = env.reset()
-        assert isinstance(obs, np.ndarray)
-        env.close()
-
-
 class TestObservationVector:
     def test_lift_state_shape(self, lift_env):
         obs, _ = lift_env.reset()
@@ -129,7 +113,8 @@ class TestEpisodeLogic:
 
 class TestTaskDescription:
     def test_task_description_exists(self):
-        env = PickYCBEnv(model_id="058_golf_ball")
+        cfg = PickYCBConfig(available_model_ids=("058_golf_ball",))
+        env = PickYCBEnv(config=cfg)
         assert isinstance(env.task_description, str)
         assert "golf ball" in env.task_description
         env.close()
@@ -200,7 +185,7 @@ class TestControlModes:
 
 class TestRenderModes:
     def test_rgb_array(self):
-        env = gym.make("MuJoCoPickGolfBallLift-v1", render_mode="rgb_array")
+        env = gym.make("MuJoCoPickYCBLift-v1", render_mode="rgb_array")
         env.reset()
         frame = env.render()
         assert isinstance(frame, np.ndarray)

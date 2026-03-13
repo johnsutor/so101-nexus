@@ -21,9 +21,9 @@ def lift_env():
 
 
 class TestConstructionValidation:
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBMultipleEnv(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBMultipleConfig(available_model_ids=("invalid_object",))
 
     def test_invalid_num_distractors(self):
         with pytest.raises(ValueError, match="num_distractors"):
@@ -92,22 +92,18 @@ class TestMultipleObjects:
         env.close()
 
     def test_distractor_models_differ_from_target(self):
-        env = PickYCBMultipleEnv(model_id="058_golf_ball")
+        cfg = PickYCBMultipleConfig(available_model_ids=tuple(YCB_OBJECTS.keys()))
+        env = PickYCBMultipleEnv(config=cfg)
         for mid in env.distractor_model_ids:
-            assert mid != "058_golf_ball"
+            assert mid != env.model_id
             assert mid in YCB_OBJECTS
-        env.close()
-
-    def test_per_ycb_multiple_lift_creates(self):
-        env = gym.make("MuJoCoPickGolfBallMultipleLift-v1")
-        obs, info = env.reset()
-        assert isinstance(obs, np.ndarray)
         env.close()
 
 
 class TestTaskDescription:
     def test_task_description_exists(self):
-        env = PickYCBMultipleEnv(model_id="058_golf_ball")
+        cfg = PickYCBMultipleConfig(available_model_ids=("058_golf_ball",))
+        env = PickYCBMultipleEnv(config=cfg)
         assert isinstance(env.task_description, str)
         assert "golf ball" in env.task_description
         env.close()

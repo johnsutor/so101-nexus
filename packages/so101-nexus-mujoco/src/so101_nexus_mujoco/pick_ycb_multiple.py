@@ -22,7 +22,6 @@ from so101_nexus_core.config import (
     YCB_OBJECTS,
     ControlMode,
     PickYCBMultipleConfig,
-    YcbModelId,
     sample_color,
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
@@ -95,15 +94,11 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
     def __init__(
         self,
         config: PickYCBMultipleConfig = PickYCBMultipleConfig(),
-        model_id: YcbModelId = "058_golf_ball",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if model_id not in YCB_OBJECTS:
-            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
-
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -112,20 +107,24 @@ class PickYCBMultipleEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self.model_id = model_id
+        rng = np.random.default_rng()
+        available = list(config.available_model_ids)
+        self.model_id = str(rng.choice(available))
         self.num_distractors = config.num_distractors
         self.min_object_separation = config.min_object_separation
         self.task_description = (
-            f"Pick up the {YCB_OBJECTS[model_id]} from among {config.num_distractors} distractors"
+            f"Pick up the {YCB_OBJECTS[self.model_id]} from among"
+            f" {config.num_distractors} distractors"
         )
 
-        other_ids = [mid for mid in YCB_OBJECTS if mid != model_id]
-        rng = np.random.default_rng()
+        distractor_pool = [mid for mid in available if mid != self.model_id]
+        if not distractor_pool:
+            distractor_pool = available
         self.distractor_model_ids: list[str] = list(
-            rng.choice(other_ids, size=config.num_distractors, replace=True)
+            rng.choice(distractor_pool, size=config.num_distractors, replace=True)
         )
 
-        all_model_ids = [model_id] + self.distractor_model_ids
+        all_model_ids = [self.model_id] + self.distractor_model_ids
 
         collision_paths: list[str] = []
         visual_paths: list[str] = []

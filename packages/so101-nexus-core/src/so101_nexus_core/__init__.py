@@ -55,6 +55,9 @@ from so101_nexus_core.config import (
     RobotConfig as RobotConfig,
 )
 from so101_nexus_core.config import (
+    YCBEnvironmentConfig as YCBEnvironmentConfig,
+)
+from so101_nexus_core.config import (
     YcbModelId as YcbModelId,
 )
 from so101_nexus_core.config import (

@@ -22,7 +22,6 @@ from so101_nexus_core.config import (
     YCB_OBJECTS,
     ControlMode,
     PickYCBConfig,
-    YcbModelId,
     sample_color,
 )
 from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
@@ -84,15 +83,11 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
     def __init__(
         self,
         config: PickYCBConfig = PickYCBConfig(),
-        model_id: YcbModelId = "058_golf_ball",
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if model_id not in YCB_OBJECTS:
-            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
-
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -101,12 +96,13 @@ class PickYCBEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self.model_id = model_id
-        self.task_description = f"Pick up the {YCB_OBJECTS[model_id]}"
+        rng = np.random.default_rng()
+        self.model_id = str(rng.choice(list(config.available_model_ids)))
+        self.task_description = f"Pick up the {YCB_OBJECTS[self.model_id]}"
 
-        ensure_ycb_assets(model_id)
-        collision_path = str(get_ycb_collision_mesh(model_id))
-        visual_path = str(get_ycb_visual_mesh(model_id))
+        ensure_ycb_assets(self.model_id)
+        collision_path = str(get_ycb_collision_mesh(self.model_id))
+        visual_path = str(get_ycb_visual_mesh(self.model_id))
 
         xml_string = _build_ycb_scene_xml(
             collision_path,

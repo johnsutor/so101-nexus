@@ -5,6 +5,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig,
     PickCubeConfig,
     PickYCBConfig,
+    YCB_OBJECTS,
 )
 
 
@@ -37,13 +38,13 @@ class TestNewConfigFields:
         cfg = PickAndPlaceConfig()
         assert cfg.target_colors == "blue"
 
-    def test_pick_ycb_has_model_id(self):
+    def test_pick_ycb_has_available_model_ids(self):
         cfg = PickYCBConfig()
-        assert cfg.model_id == "058_golf_ball"
+        assert set(cfg.available_model_ids) == set(YCB_OBJECTS.keys())
 
-    def test_pick_ycb_custom_model(self):
-        cfg = PickYCBConfig(model_id="011_banana")
-        assert cfg.model_id == "011_banana"
+    def test_pick_ycb_custom_available_model_ids(self):
+        cfg = PickYCBConfig(available_model_ids=("011_banana",))
+        assert cfg.available_model_ids == ("011_banana",)
 
     def test_camera_mode_custom(self):
         cfg = EnvironmentConfig(camera_mode="wrist")
@@ -83,9 +84,13 @@ class TestConfigValidation:
         with pytest.warns(UserWarning, match="overlap"):
             PickAndPlaceConfig(cube_colors="red", target_colors="red")
 
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBConfig(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBConfig(available_model_ids=("invalid_object",))
+
+    def test_empty_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBConfig(available_model_ids=())
 
     def test_invalid_camera_mode(self):
         with pytest.raises(ValueError, match="camera_mode"):
