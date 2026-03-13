@@ -1,3 +1,8 @@
+"""MuJoCo pick-and-place environment.
+
+Provides PickAndPlaceEnv where the robot must move a cube to a visible disc target.
+"""
+
 from __future__ import annotations
 
 import tempfile
@@ -13,6 +18,7 @@ from so101_nexus_core.config import (
     sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -66,7 +72,7 @@ def _build_scene_xml(
 
 
 class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
-    """Pick-and-place environment with a visible coloured target disc on the ground."""
+    """Pick-and-place environment with a cube target and a visible goal marker."""
 
     config: PickAndPlaceConfig
 
@@ -78,9 +84,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if not (0.01 <= config.cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
-
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -136,6 +139,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return self.data.xpos[self._target_body_id].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
+        """Return proprioception plus cube and goal geometry, with an optional wrist image."""
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
         target_pos = self._get_target_pos()
@@ -152,6 +156,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             return {"state": state, "wrist_camera": self._wrist_renderer.render()}
         return state
+
+    def _state_obs_size(self) -> int:
+        """Return the flat state observation size used by ``_get_obs``."""
+        return 24
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
@@ -181,10 +189,17 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         }
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
+        reach_progress = 1.0 - float(
+            np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"])
+        )
         is_grasped = info["is_grasped"] > 0.5
         placement_progress = (
-            (1.0 - float(np.tanh(5.0 * info["obj_to_target_dist"]))) if is_grasped else 0.0
+            (
+                1.0
+                - float(np.tanh(self.config.reward.tanh_shaping_scale * info["obj_to_target_dist"]))
+            )
+            if is_grasped
+            else 0.0
         )
 
         return self.config.reward.compute(
@@ -197,24 +212,28 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = self.config.spawn_center
-        spawn_hs = self.config.spawn_half_size
+        min_r = self.config.spawn_min_radius
+        max_r = self.config.spawn_max_radius
+        angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
-        target_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-        target_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+        r_t = rng.uniform(min_r, max_r)
+        theta_t = rng.uniform(-angle_half, angle_half)
+        target_x = r_t * np.cos(theta_t)
+        target_y = r_t * np.sin(theta_t)
         target_z = 0.001
         self.model.body_pos[self._target_body_id] = [target_x, target_y, target_z]
 
         for _ in range(100):
-            cube_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-            cube_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+            r_c = rng.uniform(min_r, max_r)
+            theta_c = rng.uniform(-angle_half, angle_half)
+            cube_x = r_c * np.cos(theta_c)
+            cube_y = r_c * np.sin(theta_c)
             dist = np.sqrt((cube_x - target_x) ** 2 + (cube_y - target_y) ** 2)
             if dist >= self.config.min_cube_target_separation:
                 break
 
         cube_z = self.cube_half_size
-        angle = rng.uniform(0, 2 * np.pi)
-        cube_quat = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+        cube_quat = random_yaw_quat(rng)
 
         addr = self._cube_qpos_addr
         self.data.qpos[addr : addr + 3] = [cube_x, cube_y, cube_z]

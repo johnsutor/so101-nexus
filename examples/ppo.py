@@ -1,6 +1,11 @@
-# Adapted from CleanRL's Atari PPO reference implementation:
-# https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo_atari.py
-# Uses an MLP policy/value network over state observations with continuous actions.
+"""Train PPO agents on SO101-Nexus environments.
+
+This script adapts CleanRL's PPO training loop to the SO101-Nexus MuJoCo and
+ManiSkill environments. It uses an MLP actor-critic over state observations
+with continuous actions.
+"""
+
+import importlib
 import os
 import random
 import time
@@ -18,13 +23,12 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def import_backend_for_env_id(env_id: str) -> None:
+    """Import the simulator package needed to register *env_id*."""
     if env_id.startswith("ManiSkill"):
-        import so101_nexus_maniskill  # noqa: F401
-
+        importlib.import_module("so101_nexus_maniskill")
         return
     if env_id.startswith("MuJoCo"):
-        import so101_nexus_mujoco  # noqa: F401
-
+        importlib.import_module("so101_nexus_mujoco")
         return
     raise ValueError(
         "env_id must start with 'ManiSkill' or 'MuJoCo' "
@@ -63,8 +67,7 @@ class Args:
     hf_entity: str = ""
     """the user or org name of the model repository from the Hugging Face Hub"""
 
-    # Algorithm specific arguments
-    env_id: str = "MuJoCoPickCubeGoal-v1"
+    env_id: str = "MuJoCoPickCubeLift-v1"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
@@ -99,7 +102,6 @@ class Args:
     target_kl: Optional[float] = None
     """the target KL divergence threshold"""
 
-    # to be filled in runtime
     batch_size: int = 0
     """the batch size (computed in runtime)"""
     minibatch_size: int = 0
@@ -109,10 +111,13 @@ class Args:
 
 
 def is_maniskill_env(env_id: str) -> bool:
+    """Return whether *env_id* targets a ManiSkill backend."""
     return env_id.startswith("ManiSkill")
 
 
 def make_mujoco_env(env_id, idx, capture_video, run_name):
+    """Build a thunk that creates one MuJoCo environment instance."""
+
     def thunk():
         if capture_video and idx == 0:
             env = gym.make(env_id, render_mode="rgb_array")
@@ -126,6 +131,7 @@ def make_mujoco_env(env_id, idx, capture_video, run_name):
 
 
 def make_env(env_id, idx, capture_video, run_name, gamma):
+    """Build an environment factory compatible with the selected backend."""
     del gamma
 
     if is_maniskill_env(env_id):
@@ -146,14 +152,17 @@ def make_env(env_id, idx, capture_video, run_name, gamma):
 
 
 def should_log_wandb_video(global_step: int, interval: int) -> bool:
+    """Return whether the current step should trigger rollout video logging."""
     return interval > 0 and global_step > 0 and (global_step % interval == 0)
 
 
 def frames_to_tchw(frames: np.ndarray) -> np.ndarray:
+    """Convert NHWC image frames to the TCHW layout expected by Weights & Biases."""
     return np.transpose(frames, (0, 3, 1, 2))
 
 
 def make_video_eval_env(env_id: str):
+    """Create a single-environment evaluator configured for video rendering."""
     if is_maniskill_env(env_id):
         from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 
@@ -177,6 +186,7 @@ def maybe_log_wandb_rollout_video(
     global_step: int,
     run_seed: int,
 ) -> None:
+    """Run a short evaluation rollout and upload it to Weights & Biases when enabled."""
     if wandb_module is None or not args.track or not args.wandb_log_video:
         return
     if not should_log_wandb_video(global_step=global_step, interval=args.video_log_interval):
@@ -237,12 +247,15 @@ def maybe_log_wandb_rollout_video(
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    """Apply orthogonal initialization to a linear layer and return it."""
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
 
 class Agent(nn.Module):
+    """Simple MLP actor-critic used by the PPO training loop."""
+
     def __init__(self, envs):
         super().__init__()
         self.network = nn.Sequential(
@@ -283,8 +296,6 @@ if __name__ == "__main__":
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     wandb = None
     if args.track:
-        import importlib
-
         wandb = importlib.import_module("wandb")
         wandb.init(
             project=args.wandb_project_name,
@@ -302,7 +313,6 @@ if __name__ == "__main__":
         % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -310,7 +320,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
-    # env setup
     import_backend_for_env_id(args.env_id)
     if is_maniskill_env(args.env_id):
         from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
@@ -345,7 +354,6 @@ if __name__ == "__main__":
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
-    # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + obs_shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + action_shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -353,7 +361,6 @@ if __name__ == "__main__":
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
     values = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
-    # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
@@ -361,7 +368,6 @@ if __name__ == "__main__":
     next_done = torch.zeros(args.num_envs).to(device)
 
     for iteration in range(1, args.num_iterations + 1):
-        # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * args.learning_rate
@@ -372,14 +378,12 @@ if __name__ == "__main__":
             obs[step] = next_obs
             dones[step] = next_done
 
-            # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
 
-            # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
             next_done = torch.logical_or(
                 torch.as_tensor(terminations, device=device),
@@ -412,7 +416,6 @@ if __name__ == "__main__":
                             "charts/episodic_length", info["episode"]["l"], global_step
                         )
 
-        # bootstrap value if not done
         with torch.no_grad():
             next_value = agent.get_value(next_obs).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
@@ -430,7 +433,6 @@ if __name__ == "__main__":
                 )
             returns = advantages + values
 
-        # flatten the batch
         b_obs = obs.reshape((-1,) + obs_shape)
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1,) + action_shape)
@@ -438,7 +440,6 @@ if __name__ == "__main__":
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
-        # Optimizing the policy and value network
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         for epoch in range(args.update_epochs):
@@ -454,7 +455,6 @@ if __name__ == "__main__":
                 ratio = logratio.exp()
 
                 with torch.no_grad():
-                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
                     old_approx_kl = (-logratio).mean()
                     approx_kl = ((ratio - 1) - logratio).mean()
                     clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
@@ -465,14 +465,12 @@ if __name__ == "__main__":
                         mb_advantages.std() + 1e-8
                     )
 
-                # Policy loss
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(
                     ratio, 1 - args.clip_coef, 1 + args.clip_coef
                 )
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
-                # Value loss
                 newvalue = newvalue.view(-1)
                 if args.clip_vloss:
                     v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
@@ -502,7 +500,6 @@ if __name__ == "__main__":
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        # TRY NOT TO MODIFY: record rewards for plotting purposes
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)

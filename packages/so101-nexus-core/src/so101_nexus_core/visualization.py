@@ -7,7 +7,7 @@ that work across both MuJoCo and ManiSkill backends.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence, cast
+from typing import Any, Sequence, cast
 
 import numpy as np
 
@@ -32,14 +32,14 @@ class CameraView:
     image: np.ndarray
 
 
-def scalar(val) -> float:
+def scalar(val: Any) -> float:
     """Extract a Python scalar from a tensor, array, or plain number."""
     if hasattr(val, "item"):
         return val.item()
     return float(np.asarray(val).squeeze())
 
 
-def to_uint8(img) -> np.ndarray:
+def to_uint8(img: Any) -> np.ndarray:
     """Convert a camera image (tensor, float32 array, or uint8) to uint8 numpy."""
     if hasattr(img, "cpu"):
         img = img.cpu().numpy()

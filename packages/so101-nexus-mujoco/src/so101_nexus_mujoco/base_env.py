@@ -128,7 +128,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             )
             self.observation_space = spaces.Dict(
                 {
-                    "state": spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64),
+                    "state": spaces.Box(
+                        low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
+                    ),
                     "wrist_camera": spaces.Box(
                         low=0,
                         high=255,
@@ -141,13 +143,22 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._wrist_cam_id = None
             self._wrist_renderer = None
             self.observation_space = spaces.Box(
-                low=-np.inf, high=np.inf, shape=(24,), dtype=np.float64
+                low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
             )
 
         self._renderer = None
         self._viewer = None
 
     def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> None:
+        """Reset arm joints to a target configuration with optional noise.
+
+        Parameters
+        ----------
+        init_qpos : np.ndarray or None
+            If provided, joints are set to this exact configuration (no noise).
+            If None, joints are reset to the default rest pose with Gaussian noise
+            scaled by ``robot_init_qpos_noise``.
+        """
         target = init_qpos if init_qpos is not None else _REST_QPOS
         for i, jid in enumerate(self._joint_ids):
             qpos_addr = self.model.jnt_qposadr[jid]
@@ -160,10 +171,18 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.data.ctrl[self._actuator_ids] = np.clip(target, self._ctrl_low, self._ctrl_high)
 
     def _randomize_wrist_camera(self) -> None:
+        """Randomize wrist camera pose and field of view for domain randomization.
+
+        No-ops when ``camera_mode`` is not ``"wrist"``. Pitch, position, and FOV
+        are sampled uniformly from the ranges defined in ``config.camera``.
+        """
         if self.camera_mode != "wrist":
             return
-        pitch = self.np_random.uniform(-0.6, 0.0)
-        euler = np.array([pitch, 0.0, 2 * np.pi])
+        cam = self.config.camera
+        pitch_lo_rad, pitch_hi_rad = cam.wrist_pitch_rad_range
+        pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
+        # Yaw is fixed at 0; roll is fixed at 0.
+        euler = np.array([pitch_rad, 0.0, 0.0])
         quat = np.zeros(4)
         mujoco.mju_euler2Quat(quat, euler, "XYZ")
         mat = np.zeros(9)
@@ -171,22 +190,45 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.model.cam_mat0[self._wrist_cam_id] = mat
 
         self.model.cam_pos0[self._wrist_cam_id] = [
-            self.np_random.uniform(-0.005, 0.005),
-            0.04 + self.np_random.uniform(-0.01, 0.01),
-            -0.04 + self.np_random.uniform(-0.01, 0.01),
+            self.np_random.uniform(-cam.wrist_cam_pos_x_noise, cam.wrist_cam_pos_x_noise),
+            cam.wrist_cam_pos_y_center
+            + self.np_random.uniform(-cam.wrist_cam_pos_y_noise, cam.wrist_cam_pos_y_noise),
+            cam.wrist_cam_pos_z_center
+            + self.np_random.uniform(-cam.wrist_cam_pos_z_noise, cam.wrist_cam_pos_z_noise),
         ]
 
-        fov_lo, fov_hi = self.config.camera.wrist_fov_deg_range
+        fov_lo, fov_hi = cam.wrist_fov_deg_range
         self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
 
     def _get_collision_geoms(self, body_id: int) -> set[int]:
+        """Return the set of collision geometry IDs attached to a body.
+
+        Parameters
+        ----------
+        body_id : int
+            MuJoCo body ID to query.
+
+        Returns
+        -------
+        set[int]
+            IDs of all geoms with non-zero ``contype`` attached to ``body_id``.
+        """
         geom_ids = set()
         for i in range(self.model.ngeom):
             if self.model.geom_bodyid[i] == body_id and self.model.geom_contype[i] != 0:
                 geom_ids.add(i)
         return geom_ids
 
+    def _state_obs_size(self) -> int:
+        """Return the dimensionality of the flat state observation vector.
+
+        Default: tcp_pose(7) + is_grasped(1) + obj_pose(7) + tcp_to_obj(3) = 18.
+        Subclasses that add or remove fields should override this method.
+        """
+        return 18
+
     def _get_tcp_pose(self) -> np.ndarray:
+        """Return the tool-centre-point pose as a 7-vector [x, y, z, qw, qx, qy, qz]."""
         pos = self.data.site_xpos[self._tcp_site_id].copy()
         mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
         quat = np.zeros(4)
@@ -194,6 +236,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return np.concatenate([pos, quat])
 
     def _is_grasping(self) -> float:
+        """Return 1.0 if the gripper and jaw are both in contact with the target object.
+
+        Uses ``config.robot.grasp_force_threshold`` to filter low-force contacts.
+
+        Returns
+        -------
+        float
+            1.0 when a two-sided grasp is detected, 0.0 otherwise.
+        """
         gripper_contact = False
         jaw_contact = False
 
@@ -211,7 +262,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             mujoco.mj_contactForce(self.model, self.data, i, force_buf)
             normal_force = abs(force_buf[0])
 
-            if normal_force >= 0.5:
+            if normal_force >= self.config.robot.grasp_force_threshold:
                 if other in self._gripper_geom_ids:
                     gripper_contact = True
                 if other in self._jaw_geom_ids:
@@ -220,10 +271,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return 1.0 if (gripper_contact and jaw_contact) else 0.0
 
     def _is_robot_static(self) -> bool:
+        """Return True if all arm joints are below the static velocity threshold.
+
+        Uses ``config.robot.static_vel_threshold`` as the cutoff.
+        """
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
-        return bool(np.all(np.abs(arm_vels) < 0.2))
+        return bool(np.all(np.abs(arm_vels) < self.config.robot.static_vel_threshold))
 
     def _get_current_qpos(self) -> np.ndarray:
+        """Return the current joint positions for all controlled joints."""
         return np.array(
             [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
             dtype=np.float64,
@@ -277,7 +333,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         obs = self._get_obs()
         info = self._get_info()
         reward = self._compute_reward(info)
-        terminated = bool(info["success"])
+        terminated = bool(info.get("success", False))
 
         return obs, reward, terminated, False, info
 
@@ -294,7 +350,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             return None
         return None
 
-    def close(self):
+    def close(self) -> None:
+        """Release MuJoCo renderers and viewer resources."""
         if self._wrist_renderer is not None:
             self._wrist_renderer.close()
             self._wrist_renderer = None
@@ -305,10 +362,38 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._viewer.close()
             self._viewer = None
 
+    def _reach_only_reward(self, info: dict) -> float:
+        """Reach-only reward: tanh distance shaping toward the object with no task progress."""
+        reach_progress = 1.0 - float(
+            np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"])
+        )
+        is_grasped = info["is_grasped"] > 0.5
+        return self.config.reward.compute(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=0.0,
+            is_complete=info.get("success", False),
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+        )
+
+    def _lift_reward(self, info: dict) -> float:
+        """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
+        scale = self.config.reward.tanh_shaping_scale
+        reach_progress = 1.0 - float(np.tanh(scale * info["tcp_to_obj_dist"]))
+        is_grasped = info["is_grasped"] > 0.5
+        lift_progress = float(np.tanh(scale * max(info["lift_height"], 0.0))) if is_grasped else 0.0
+        return self.config.reward.compute(
+            reach_progress=reach_progress,
+            is_grasped=is_grasped,
+            task_progress=lift_progress,
+            is_complete=info.get("success", False),
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+        )
+
     def _task_reset(self) -> None:
         raise NotImplementedError
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
         raise NotImplementedError
 
     def _get_info(self) -> dict:

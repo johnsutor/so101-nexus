@@ -50,7 +50,8 @@ def ensure_ycb_assets(model_id: str) -> Path:
     """Download YCB mesh assets from HuggingFace if not already cached.
 
     Downloads from the ai-habitat/ycb dataset and converts GLB meshes
-    to OBJ format for use with MuJoCo and ManiSkill.
+    to OBJ format for use with MuJoCo and ManiSkill. The visual mesh is
+    exported directly and the collision mesh is derived from its convex hull.
 
     Returns the directory containing the model's mesh files.
     """
@@ -77,7 +78,6 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh_dir.mkdir(parents=True, exist_ok=True)
     _convert_glb_to_obj(glb_path, visual_path)
 
-    # For collision, create a convex hull from the visual mesh.
     mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")

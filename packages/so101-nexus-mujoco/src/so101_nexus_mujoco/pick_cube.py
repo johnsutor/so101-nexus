@@ -1,3 +1,9 @@
+"""MuJoCo pick-cube environment.
+
+Provides PickCubeEnv (reach-only reward) and PickCubeLiftEnv (lift-to-success)
+backed by a single-cube MuJoCo scene.
+"""
+
 from __future__ import annotations
 
 import tempfile
@@ -13,6 +19,7 @@ from so101_nexus_core.config import (
     sample_color,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -23,7 +30,6 @@ def _build_scene_xml(
     cube_color: list[float],
     cube_mass: float,
     ground_color: list[float],
-    goal_thresh: float,
 ) -> str:
     r, g, b, a = cube_color
     hs = cube_half_size
@@ -53,11 +59,6 @@ def _build_scene_xml(
             contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"
             solref="0.01 1" solimp="0.95 0.99 0.001"/>
     </body>
-
-    <body name="goal" mocap="true" pos="0.15 0 {hs + 0.04}">
-      <site name="goal_site" type="sphere" size="{goal_thresh}"
-            rgba="0 1 0 0.5"/>
-    </body>
   </worldbody>
 </mujoco>
 """
@@ -76,9 +77,6 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if not (0.01 <= config.cube_half_size <= 0.05):
-            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {config.cube_half_size}")
-
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -99,7 +97,6 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
             sample_color(config.cube_colors),
             config.cube_mass,
             sample_color(config.ground_colors),
-            config.goal_thresh,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
@@ -113,26 +110,18 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         cube_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "cube_joint")
         self._cube_qpos_addr = self.model.jnt_qposadr[cube_joint_id]
 
-        goal_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "goal")
-        self._goal_mocap_id = self.model.body_mocapid[goal_body_id]
-
         self._finish_model_setup()
 
     def _get_cube_pose(self) -> np.ndarray:
         addr = self._cube_qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
-    def _get_goal_pos(self) -> np.ndarray:
-        return self.data.mocap_pos[self._goal_mocap_id].copy()
-
     def _get_obs(self) -> np.ndarray | dict:
         tcp_pose = self._get_tcp_pose()
         is_grasped = np.array([self._is_grasping()])
-        goal_pos = self._get_goal_pos()
         obj_pose = self._get_cube_pose()
         tcp_to_obj = obj_pose[:3] - tcp_pose[:3]
-        obj_to_goal = goal_pos - obj_pose[:3]
-        state = np.concatenate([tcp_pose, is_grasped, goal_pos, obj_pose, tcp_to_obj, obj_to_goal])
+        state = np.concatenate([tcp_pose, is_grasped, obj_pose, tcp_to_obj])
 
         if self.camera_mode == "wrist":
             assert self._wrist_renderer is not None
@@ -145,61 +134,39 @@ class PickCubeEnv(SO101NexusMuJoCoBaseEnv):
         tcp_pos = self._get_tcp_pose()[:3]
         obj_pose = self._get_cube_pose()
         obj_pos = obj_pose[:3]
-        goal_pos = self._get_goal_pos()
         is_grasped = self._is_grasping()
 
-        obj_to_goal_dist = float(np.linalg.norm(obj_pos - goal_pos))
-        is_obj_placed = obj_to_goal_dist <= self.config.goal_thresh
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
-        success = is_obj_placed and is_robot_static
 
         return {
-            "obj_to_goal_dist": obj_to_goal_dist,
-            "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
             "is_robot_static": is_robot_static,
             "lift_height": lift_height,
-            "success": success,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
         }
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
-        is_grasped = info["is_grasped"] > 0.5
-        placement_progress = (
-            (1.0 - float(np.tanh(5.0 * info["obj_to_goal_dist"]))) if is_grasped else 0.0
-        )
-
-        return self.config.reward.compute(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=placement_progress,
-            is_complete=info["success"],
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-        )
+        return self._reach_only_reward(info)
 
     def _task_reset(self) -> None:
         rng = self.np_random
-        cx, cy = self.config.spawn_center
-        spawn_hs = self.config.spawn_half_size
+        min_r = self.config.spawn_min_radius
+        max_r = self.config.spawn_max_radius
+        angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
-        cube_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-        cube_y = cy + rng.uniform(-spawn_hs, spawn_hs)
+        r = rng.uniform(min_r, max_r)
+        theta = rng.uniform(-angle_half, angle_half)
+        cube_x = r * np.cos(theta)
+        cube_y = r * np.sin(theta)
         cube_z = self.cube_half_size
 
-        angle = rng.uniform(0, 2 * np.pi)
-        cube_quat = np.array([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+        cube_quat = random_yaw_quat(rng)
 
         addr = self._cube_qpos_addr
         self.data.qpos[addr : addr + 3] = [cube_x, cube_y, cube_z]
         self.data.qpos[addr + 3 : addr + 7] = cube_quat
         self._initial_obj_z = cube_z
-
-        goal_x = cx + rng.uniform(-spawn_hs, spawn_hs)
-        goal_y = cy + rng.uniform(-spawn_hs, spawn_hs)
-        goal_z = self.cube_half_size + rng.uniform(0, self.config.max_goal_height)
-        self.data.mocap_pos[self._goal_mocap_id] = [goal_x, goal_y, goal_z]
 
 
 class PickCubeLiftEnv(PickCubeEnv):
@@ -213,14 +180,4 @@ class PickCubeLiftEnv(PickCubeEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(np.tanh(5.0 * info["tcp_to_obj_dist"]))
-        is_grasped = info["is_grasped"] > 0.5
-        lift_progress = float(np.tanh(5.0 * max(info["lift_height"], 0.0))) if is_grasped else 0.0
-
-        return self.config.reward.compute(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=lift_progress,
-            is_complete=info["success"],
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-        )
+        return self._lift_reward(info)

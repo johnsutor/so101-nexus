@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from so101_nexus_core.config import (
@@ -27,6 +28,9 @@ def build_maniskill_robot_configs(
             "goal_thresh": config.goal_thresh,
             "cube_spawn_half_size": config.spawn_half_size,
             "cube_spawn_center": config.spawn_center,
+            "spawn_min_radius": config.spawn_min_radius,
+            "spawn_max_radius": config.spawn_max_radius,
+            "spawn_angle_half_range": math.radians(config.spawn_angle_half_range_deg),
             "base_quat": tuple(preset.base_quat),
             "sensor_cam_eye_pos": list(preset.sensor_cam_eye_pos),
             "sensor_cam_target_pos": list(preset.sensor_cam_target_pos),

@@ -122,6 +122,28 @@ class TestSampleColor:
         assert sample_color(["green"]) == COLOR_MAP["green"]
 
 
+class TestCameraConfigWristParams:
+    def test_camera_config_wrist_pitch_defaults(self):
+        cam = CameraConfig()
+        lo, hi = cam.wrist_pitch_deg_range
+        assert lo == pytest.approx(-34.4, abs=0.1)
+        assert hi == pytest.approx(0.0)
+
+    def test_camera_config_wrist_pitch_rad_range(self):
+        cam = CameraConfig()
+        lo_rad, hi_rad = cam.wrist_pitch_rad_range
+        assert lo_rad == pytest.approx(np.radians(-34.4), abs=0.001)
+        assert hi_rad == pytest.approx(0.0)
+
+    def test_camera_config_wrist_cam_pos_defaults(self):
+        cam = CameraConfig()
+        assert cam.wrist_cam_pos_x_noise == pytest.approx(0.005)
+        assert cam.wrist_cam_pos_y_center == pytest.approx(0.04)
+        assert cam.wrist_cam_pos_y_noise == pytest.approx(0.01)
+        assert cam.wrist_cam_pos_z_center == pytest.approx(-0.04)
+        assert cam.wrist_cam_pos_z_noise == pytest.approx(0.01)
+
+
 class TestRewardWeights:
     def test_weights_sum_to_one(self):
         reward = RewardConfig()
@@ -171,3 +193,17 @@ class TestRewardCompute:
         base = r.compute(1.0, True, 1.0, True)
         with_delta = r.compute(1.0, True, 1.0, True, action_delta_norm=5.0)
         assert base == pytest.approx(with_delta)
+
+    def test_reward_config_tanh_shaping_scale_default(self):
+        cfg = RewardConfig()
+        assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+def test_robot_config_grasp_force_threshold_default():
+    cfg = RobotConfig()
+    assert cfg.grasp_force_threshold == pytest.approx(0.5)
+
+
+def test_robot_config_static_vel_threshold_default():
+    cfg = RobotConfig()
+    assert cfg.static_vel_threshold == pytest.approx(0.2)

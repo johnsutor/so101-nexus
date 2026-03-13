@@ -7,8 +7,6 @@ import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.config import PickCubeConfig
 from so101_nexus_maniskill.pick_cube import (
     PICK_CUBE_CONFIGS,
-    PickCubeGoalSO100Env,
-    PickCubeGoalSO101Env,
     PickCubeLiftSO100Env,
     PickCubeLiftSO101Env,
 )
@@ -16,29 +14,11 @@ from so101_nexus_maniskill.pick_cube import (
 _CFG = PickCubeConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
-GOAL_ENV_IDS = [
-    ("ManiSkillPickCubeGoalSO100-v1", "so100"),
-    ("ManiSkillPickCubeGoalSO101-v1", "so101"),
-]
 LIFT_ENV_IDS = [
     ("ManiSkillPickCubeLiftSO100-v1", "so100"),
     ("ManiSkillPickCubeLiftSO101-v1", "so101"),
 ]
-ALL_ENV_IDS = GOAL_ENV_IDS + LIFT_ENV_IDS
-
-
-@pytest.fixture(scope="module")
-def goal_so100_env():
-    env = gym.make("ManiSkillPickCubeGoalSO100-v1", **BASE_KWARGS)
-    yield env
-    env.close()
-
-
-@pytest.fixture(scope="module")
-def goal_so101_env():
-    env = gym.make("ManiSkillPickCubeGoalSO101-v1", **BASE_KWARGS)
-    yield env
-    env.close()
+ALL_ENV_IDS = LIFT_ENV_IDS
 
 
 @pytest.fixture(scope="module")
@@ -57,8 +37,6 @@ def lift_so101_env():
 
 def _get_env(request, env_id):
     mapping = {
-        "ManiSkillPickCubeGoalSO100-v1": "goal_so100_env",
-        "ManiSkillPickCubeGoalSO101-v1": "goal_so101_env",
         "ManiSkillPickCubeLiftSO100-v1": "lift_so100_env",
         "ManiSkillPickCubeLiftSO101-v1": "lift_so101_env",
     }
@@ -76,7 +54,7 @@ class TestConstructionValidation:
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("ManiSkillPickCubeGoal-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickCubeLiftSO100-v1", robot_uids="panda", **BASE_KWARGS)
 
 
 class TestSharedConstants:
@@ -86,23 +64,13 @@ class TestSharedConstants:
                 f"{robot_key} cube_half_size mismatch"
             )
 
-    def test_goal_thresh_matches_core(self):
+    def test_spawn_min_radius_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["goal_thresh"] == _CFG.goal_thresh
+            assert cfg["spawn_min_radius"] == _CFG.spawn_min_radius
 
-    def test_spawn_half_size_matches_core(self):
+    def test_spawn_max_radius_matches_core(self):
         for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["cube_spawn_half_size"] == _CFG.spawn_half_size
-
-    def test_max_goal_height_matches_core(self):
-        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["max_goal_height"] == _CFG.max_goal_height
-
-    def test_cube_spawn_center_at_origin_relative(self):
-        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            cx, cy = cfg["cube_spawn_center"]
-            assert cx == pytest.approx(0.15), f"{robot_key} spawn center x mismatch"
-            assert cy == pytest.approx(0.0), f"{robot_key} spawn center y mismatch"
+            assert cfg["spawn_max_radius"] == _CFG.spawn_max_radius
 
 
 class TestEnvCreation:
@@ -123,8 +91,7 @@ class TestEnvCreation:
         env = _get_env(request, env_id)
         env.reset()
         action = env.action_space.sample()
-        result = env.step(action)
-        obs, reward, terminated, truncated, info = result
+        obs, reward, terminated, truncated, info = env.step(action)
         assert isinstance(obs, torch.Tensor)
         assert reward is not None
         assert isinstance(terminated, (bool, torch.Tensor))
@@ -145,13 +112,13 @@ class TestEnvCreation:
 
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
-        env = gym.make("ManiSkillPickCubeGoalSO100-v1", **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeLiftSO100-v1", **BASE_KWARGS)
         assert env.unwrapped.task_description[0].isupper()
         env.close()
 
     def test_task_description_includes_color(self):
         env = gym.make(
-            "ManiSkillPickCubeGoal-v1", config=PickCubeConfig(cube_colors="green"), **BASE_KWARGS
+            "ManiSkillPickCubeLiftSO100-v1", config=PickCubeConfig(cube_colors="green"), **BASE_KWARGS
         )
         assert "green" in env.unwrapped.task_description
         env.close()
@@ -159,10 +126,7 @@ class TestTaskDescription:
 
 class TestEpisodeLogic:
     EVALUATE_KEYS = {
-        "obj_to_goal_dist",
-        "is_obj_placed",
         "is_grasped",
-        "is_robot_static",
         "lift_height",
         "success",
         "tcp_to_obj_dist",
@@ -176,35 +140,15 @@ class TestEpisodeLogic:
         assert set(info.keys()) == self.EVALUATE_KEYS
 
     @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
-    def test_cube_spawns_in_bounds(self, request, env_id, robot):
+    def test_cube_spawns_in_radius_bounds(self, request, env_id, robot):
         env = _get_env(request, env_id)
         env.reset()
         cfg = PICK_CUBE_CONFIGS[robot]
-        cx, cy = cfg["cube_spawn_center"]
-        hs = cfg["cube_spawn_half_size"]
+        min_r = cfg["spawn_min_radius"]
+        max_r = cfg["spawn_max_radius"]
         cube_p = env.unwrapped.obj.pose.p[0].cpu()
-        assert cx - hs <= cube_p[0].item() <= cx + hs
-        assert cy - hs <= cube_p[1].item() <= cy + hs
-
-    @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
-    def test_goal_spawns_in_bounds(self, request, env_id, robot):
-        env = _get_env(request, env_id)
-        env.reset()
-        cfg = PICK_CUBE_CONFIGS[robot]
-        cx, cy = cfg["cube_spawn_center"]
-        hs = cfg["cube_spawn_half_size"]
-        goal_p = env.unwrapped.goal_site.pose.p[0].cpu()
-        assert cx - hs <= goal_p[0].item() <= cx + hs
-        assert cy - hs <= goal_p[1].item() <= cy + hs
-
-    @pytest.mark.parametrize("env_id,robot", GOAL_ENV_IDS)
-    def test_reward_range_goal(self, request, env_id, robot):
-        env = _get_env(request, env_id)
-        obs, info = env.reset()
-        action = env.action_space.sample()
-        _, reward, _, _, _ = env.step(action)
-        assert (reward >= 0).all()
-        assert (reward <= 1).all()
+        r = float(torch.sqrt(cube_p[0] ** 2 + cube_p[1] ** 2))
+        assert min_r <= r <= max_r
 
     @pytest.mark.parametrize("env_id,robot", LIFT_ENV_IDS)
     def test_reward_range_lift(self, request, env_id, robot):
@@ -229,16 +173,6 @@ class TestRobotOrientation:
 
 
 class TestRobotSubclasses:
-    def test_so100_goal_env_uses_so100(self, goal_so100_env):
-        inner = goal_so100_env.unwrapped
-        assert isinstance(inner, PickCubeGoalSO100Env)
-        assert inner.robot_uids == "so100"
-
-    def test_so101_goal_env_uses_so101(self, goal_so101_env):
-        inner = goal_so101_env.unwrapped
-        assert isinstance(inner, PickCubeGoalSO101Env)
-        assert inner.robot_uids == "so101"
-
     def test_so100_lift_env_uses_so100(self, lift_so100_env):
         inner = lift_so100_env.unwrapped
         assert isinstance(inner, PickCubeLiftSO100Env)
@@ -254,7 +188,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeGoalSO100-v1",
+            "ManiSkillPickCubeLiftSO100-v1",
             config=PickCubeConfig(camera_mode="fixed"),
             **BASE_KWARGS,
         )
@@ -265,7 +199,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeGoalSO100-v1",
+            "ManiSkillPickCubeLiftSO100-v1",
             config=PickCubeConfig(camera_mode="wrist"),
             **BASE_KWARGS,
         )
@@ -276,7 +210,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def both_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeGoalSO100-v1",
+            "ManiSkillPickCubeLiftSO100-v1",
             config=PickCubeConfig(camera_mode="both"),
             **BASE_KWARGS,
         )
@@ -301,12 +235,12 @@ class TestCameraModes:
 
 
 class TestNoTable:
-    def test_no_table_scene_builder(self, goal_so101_env):
-        inner = goal_so101_env.unwrapped
+    def test_no_table_scene_builder(self, lift_so101_env):
+        inner = lift_so101_env.unwrapped
         assert not hasattr(inner, "table_scene"), "Should not have a table_scene attribute"
 
-    def test_robot_base_at_origin(self, goal_so101_env):
-        inner = goal_so101_env.unwrapped
+    def test_robot_base_at_origin(self, lift_so101_env):
+        inner = lift_so101_env.unwrapped
         inner.reset()
         base_pos = inner.agent.robot.pose.p[0].cpu()
         assert base_pos[0].item() == pytest.approx(0.0, abs=0.01)

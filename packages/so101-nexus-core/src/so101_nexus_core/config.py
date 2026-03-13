@@ -8,7 +8,7 @@ Configs are shared between MuJoCo and ManiSkill backends.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Union
 
 import numpy as np
@@ -70,17 +70,68 @@ def sample_color(colors: ColorConfig, rng: np.random.Generator | None = None) ->
     return COLOR_MAP[chosen]
 
 
+CUBE_COLOR_MAP: dict[str, list[float]] = {
+    "red": [1.0, 0.0, 0.0, 1.0],
+    "orange": [1.0, 0.5, 0.0, 1.0],
+    "yellow": [1.0, 1.0, 0.0, 1.0],
+    "green": [0.0, 1.0, 0.0, 1.0],
+    "blue": [0.0, 0.0, 1.0, 1.0],
+    "purple": [0.5, 0.0, 0.5, 1.0],
+    "black": [0.0, 0.0, 0.0, 1.0],
+    "white": [1.0, 1.0, 1.0, 1.0],
+}
+
+TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
+
+YCB_OBJECTS: dict[str, str] = {
+    "009_gelatin_box": "gelatin box",
+    "011_banana": "banana",
+    "030_fork": "fork",
+    "031_spoon": "spoon",
+    "032_knife": "knife",
+    "033_spatula": "spatula",
+    "037_scissors": "scissors",
+    "040_large_marker": "large marker",
+    "043_phillips_screwdriver": "phillips screwdriver",
+    "058_golf_ball": "golf ball",
+}
+
+YCB_ENV_NAME_MAP: dict[YcbModelId, str] = {
+    "009_gelatin_box": "GelatinBox",
+    "011_banana": "Banana",
+    "030_fork": "Fork",
+    "031_spoon": "Spoon",
+    "032_knife": "Knife",
+    "033_spatula": "Spatula",
+    "037_scissors": "Scissors",
+    "040_large_marker": "LargeMarker",
+    "043_phillips_screwdriver": "PhillipsScrewdriver",
+    "058_golf_ball": "GolfBall",
+}
+
+
 @dataclass(frozen=True)
 class CameraConfig:
-    """Camera resolution and wrist field-of-view defaults."""
+    """Camera resolution, wrist field-of-view, and wrist mount randomization defaults."""
 
     width: int = 224
     height: int = 224
     wrist_fov_deg_range: tuple[float, float] = (60.0, 90.0)
+    wrist_pitch_deg_range: tuple[float, float] = (-34.4, 0.0)
+    wrist_cam_pos_x_noise: float = 0.005
+    wrist_cam_pos_y_center: float = 0.04
+    wrist_cam_pos_y_noise: float = 0.01
+    wrist_cam_pos_z_center: float = -0.04
+    wrist_cam_pos_z_noise: float = 0.01
 
     @property
     def wrist_fov_rad_range(self) -> tuple[float, float]:
         lo, hi = self.wrist_fov_deg_range
+        return (float(np.radians(lo)), float(np.radians(hi)))
+
+    @property
+    def wrist_pitch_rad_range(self) -> tuple[float, float]:
+        lo, hi = self.wrist_pitch_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
 
 
@@ -93,6 +144,8 @@ class RobotConfig:
     """
 
     rest_qpos_deg: tuple[float, ...] = (0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644)
+    grasp_force_threshold: float = 0.5
+    static_vel_threshold: float = 0.2
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
@@ -118,6 +171,7 @@ class RewardConfig:
     task_objective: float = 0.40
     completion_bonus: float = 0.10
     action_delta_penalty: float = 0.0
+    tanh_shaping_scale: float = 5.0
 
     def compute(
         self,
@@ -179,6 +233,9 @@ class EnvironmentConfig:
     goal_thresh: float = 0.025
     spawn_half_size: float = 0.05
     spawn_center: tuple[float, float] = (0.15, 0.0)
+    spawn_min_radius: float = 0.10
+    spawn_max_radius: float = 0.25
+    spawn_angle_half_range_deg: float = 90.0
     camera_mode: CameraMode = "fixed"
     robot_colors: ColorConfig = "yellow"
     robot_init_qpos_noise: float = 0.02
@@ -192,6 +249,18 @@ class EnvironmentConfig:
             )
         _validate_color_config(self.ground_colors, "ground_colors")
         _validate_color_config(self.robot_colors, "robot_colors")
+        if self.spawn_min_radius < 0:
+            raise ValueError(f"spawn_min_radius must be >= 0, got {self.spawn_min_radius}")
+        if self.spawn_max_radius <= self.spawn_min_radius:
+            raise ValueError(
+                f"spawn_max_radius ({self.spawn_max_radius}) must be > "
+                f"spawn_min_radius ({self.spawn_min_radius})"
+            )
+        if not (0.0 <= self.spawn_angle_half_range_deg <= 180.0):
+            raise ValueError(
+                f"spawn_angle_half_range_deg must be in [0, 180], "
+                f"got {self.spawn_angle_half_range_deg}"
+            )
 
 
 @dataclass(frozen=True)
@@ -244,17 +313,36 @@ class PickAndPlaceConfig(EnvironmentConfig):
 
 
 @dataclass(frozen=True)
-class PickYCBConfig(EnvironmentConfig):
-    """Config for pick-YCB and pick-YCB-lift environments."""
+class YCBEnvironmentConfig(EnvironmentConfig):
+    """Base config for all YCB-object environments.
 
-    model_id: YcbModelId = "058_golf_ball"
-    lift_threshold: float = 0.05
-    max_goal_height: float = 0.08
+    Stores the pool of YCB objects that may appear in an episode.
+    Task-specific configs (PickYCBConfig, etc.) inherit from this class,
+    making it the shared anchor for future look/push YCB tasks as well.
+    """
+
+    available_model_ids: tuple[YcbModelId, ...] = field(
+        default_factory=lambda: tuple(YCB_OBJECTS.keys())
+    )
 
     def __post_init__(self):
         super().__post_init__()
-        if self.model_id not in YCB_OBJECTS:
-            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
+        if not self.available_model_ids:
+            raise ValueError("available_model_ids must not be empty")
+        for mid in self.available_model_ids:
+            if mid not in YCB_OBJECTS:
+                raise ValueError(
+                    f"available_model_ids contains invalid model_id {mid!r}. "
+                    f"Must be one of {list(YCB_OBJECTS)}"
+                )
+
+
+@dataclass(frozen=True)
+class PickYCBConfig(YCBEnvironmentConfig):
+    """Config for pick-YCB and pick-YCB-lift environments."""
+
+    lift_threshold: float = 0.05
+    max_goal_height: float = 0.08
 
 
 @dataclass(frozen=True)
@@ -282,10 +370,9 @@ class PickCubeMultipleConfig(EnvironmentConfig):
 
 
 @dataclass(frozen=True)
-class PickYCBMultipleConfig(EnvironmentConfig):
+class PickYCBMultipleConfig(YCBEnvironmentConfig):
     """Config for pick-YCB-multiple environments with distractor YCB objects."""
 
-    model_id: YcbModelId = "058_golf_ball"
     lift_threshold: float = 0.05
     max_goal_height: float = 0.08
     num_distractors: int = 3
@@ -293,50 +380,8 @@ class PickYCBMultipleConfig(EnvironmentConfig):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.model_id not in YCB_OBJECTS:
-            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {self.model_id!r}")
         if self.num_distractors < 1:
             raise ValueError(f"num_distractors must be >= 1, got {self.num_distractors}")
-
-
-CUBE_COLOR_MAP: dict[str, list[float]] = {
-    "red": [1.0, 0.0, 0.0, 1.0],
-    "orange": [1.0, 0.5, 0.0, 1.0],
-    "yellow": [1.0, 1.0, 0.0, 1.0],
-    "green": [0.0, 1.0, 0.0, 1.0],
-    "blue": [0.0, 0.0, 1.0, 1.0],
-    "purple": [0.5, 0.0, 0.5, 1.0],
-    "black": [0.0, 0.0, 0.0, 1.0],
-    "white": [1.0, 1.0, 1.0, 1.0],
-}
-
-TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
-
-YCB_OBJECTS: dict[str, str] = {
-    "009_gelatin_box": "gelatin box",
-    "011_banana": "banana",
-    "030_fork": "fork",
-    "031_spoon": "spoon",
-    "032_knife": "knife",
-    "033_spatula": "spatula",
-    "037_scissors": "scissors",
-    "040_large_marker": "large marker",
-    "043_phillips_screwdriver": "phillips screwdriver",
-    "058_golf_ball": "golf ball",
-}
-
-YCB_ENV_NAME_MAP: dict[YcbModelId, str] = {
-    "009_gelatin_box": "GelatinBox",
-    "011_banana": "Banana",
-    "030_fork": "Fork",
-    "031_spoon": "Spoon",
-    "032_knife": "Knife",
-    "033_spatula": "Spatula",
-    "037_scissors": "Scissors",
-    "040_large_marker": "LargeMarker",
-    "043_phillips_screwdriver": "PhillipsScrewdriver",
-    "058_golf_ball": "GolfBall",
-}
 
 
 SQRT_HALF = float(np.sqrt(0.5))

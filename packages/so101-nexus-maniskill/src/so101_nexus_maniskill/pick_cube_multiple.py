@@ -19,12 +19,8 @@ _DEFAULT_CONFIG = PickCubeMultipleConfig()
 PICK_CUBE_MULTIPLE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env(
-    "ManiSkillPickCubeMultipleGoal-v1",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
-)
-class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
-    """Configurable pick-cube-multiple environment supporting SO100 and SO101 robots."""
+class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
+    """Pick the target cube from distractors and succeed once it is lifted while grasped."""
 
     config: PickCubeMultipleConfig
 
@@ -67,9 +63,9 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
         )
 
     def _load_scene(self, options: dict) -> None:
+        """Build one merged target cube actor and one merged actor per distractor slot."""
         self._build_ground()
 
-        # Build target cubes (one per env, merged)
         objs: list[Actor] = []
         for i in range(self.num_envs):
             cube = actors.build_cube(
@@ -85,7 +81,6 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
         self.obj = Actor.merge(objs, name="cube_target")
         self.add_to_state_dict_registry(self.obj)
 
-        # Build distractor cubes
         distractor_color_names = [c for c in CUBE_COLOR_MAP if c != self.cube_color_name]
         self.distractors: list[Actor] = []
         for d in range(self.num_distractors):
@@ -106,38 +101,29 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
             self.add_to_state_dict_registry(distractor)
             self.distractors.append(distractor)
 
-        # Goal sphere
-        self.goal_site = actors.build_sphere(
-            self.scene,
-            radius=self._robot_cfg["goal_thresh"],
-            color=[0, 1, 0, 0.5],
-            name="goal_site",
-            body_type="kinematic",
-            add_collision=False,
-        )
-        self._hidden_objects.append(self.goal_site)
         self._apply_robot_color_if_needed()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
+        """Reset robots and sample separated target and distractor cube poses."""
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx)
 
             cfg = self._robot_cfg
-            spawn_cx, spawn_cy = cfg["cube_spawn_center"]
-            spawn_hs = cfg["cube_spawn_half_size"]
+            min_r = cfg["spawn_min_radius"]
+            max_r = cfg["spawn_max_radius"]
+            angle_half = cfg["spawn_angle_half_range"]
 
             total_objects = 1 + self.num_distractors
             cube_radius = self.cube_half_size * np.sqrt(2)
 
-            # Sample separated positions for all objects per env
             all_xyz = torch.zeros((b, total_objects, 3), device=self.device)
             for bi in range(b):
-                positions = _sample_separated_positions_np(
+                positions = _sample_separated_positions_polar_np(
                     total_objects,
-                    spawn_cx,
-                    spawn_cy,
-                    spawn_hs,
+                    min_r,
+                    max_r,
+                    angle_half,
                     self.min_object_separation,
                     [cube_radius] * total_objects,
                 )
@@ -146,43 +132,26 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
                     all_xyz[bi, oi, 1] = py
                     all_xyz[bi, oi, 2] = self.cube_half_size
 
-            # Set target pose
             target_xyz = all_xyz[:, 0]
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
             self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
-            # Set distractor poses
             for d in range(self.num_distractors):
                 d_xyz = all_xyz[:, 1 + d]
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)
                 self.distractors[d].set_pose(Pose.create_from_pq(p=d_xyz, q=d_qs))
 
-            # Set goal pose
-            goal_xyz = torch.zeros((b, 3), device=self.device)
-            goal_xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            goal_xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            goal_xyz[:, 2] = (
-                self.cube_half_size + torch.rand(b, device=self.device) * cfg["max_goal_height"]
-            )
-            self.goal_site.set_pose(Pose.create_from_pq(p=goal_xyz))
-
     def evaluate(self) -> dict[str, torch.Tensor]:
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        obj_to_goal_dist = torch.linalg.norm(self.obj.pose.p - self.goal_site.pose.p, axis=1)
-        is_obj_placed = obj_to_goal_dist <= self._robot_cfg["goal_thresh"]
         is_grasped = self.agent.is_grasping(self.obj)
-        is_robot_static = self.agent.is_static()
 
         obj_z = self.obj.pose.p[:, 2]
         lift_height = obj_z - self._initial_obj_z
-        success = is_obj_placed & is_robot_static
+        success = (lift_height > self.config.lift_threshold) & is_grasped
 
         return {
-            "obj_to_goal_dist": obj_to_goal_dist,
-            "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
-            "is_robot_static": is_robot_static,
             "lift_height": lift_height,
             "success": success,
             "tcp_to_obj_dist": tcp_to_obj_dist,
@@ -192,14 +161,12 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
         obs = {
             "tcp_pose": self.agent.tcp_pose.raw_pose,
             "is_grasped": info["is_grasped"],
-            "goal_pos": self.goal_site.pose.p,
         }
         if "state" in self.obs_mode:
             obs.update(
                 {
                     "obj_pose": self.obj.pose.raw_pose,
                     "tcp_to_obj_pos": self.obj.pose.p - self.agent.tcp_pose.p,
-                    "obj_to_goal_pos": self.goal_site.pose.p - self.obj.pose.p,
                 }
             )
         return obs
@@ -207,35 +174,10 @@ class PickCubeMultipleEnv(SO101NexusManiSkillBaseEnv):
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
-        placement_progress = self._reach_progress(info["obj_to_goal_dist"]) * is_grasped
-
-        return self._assemble_normalized_reward(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=placement_progress,
-            is_complete=info["success"],
+        lift_progress = (
+            torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0))
+            * is_grasped
         )
-
-
-PickCubeMultipleGoalEnv = PickCubeMultipleEnv
-
-
-@register_env(
-    "ManiSkillPickCubeMultipleLift-v1",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
-)
-class PickCubeMultipleLiftEnv(PickCubeMultipleEnv):
-    """Pick-cube-multiple variant where success is lift height threshold while grasped."""
-
-    def evaluate(self) -> dict[str, torch.Tensor]:
-        info = super().evaluate()
-        info["success"] = (info["lift_height"] > self.config.lift_threshold) & info["is_grasped"]
-        return info
-
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
-        is_grasped = info["is_grasped"]
-        lift_progress = torch.tanh(5.0 * info["lift_height"].clamp(min=0.0)) * is_grasped
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
@@ -245,21 +187,23 @@ class PickCubeMultipleLiftEnv(PickCubeMultipleEnv):
         )
 
 
-def _sample_separated_positions_np(
+def _sample_separated_positions_polar_np(
     count: int,
-    cx: float,
-    cy: float,
-    spawn_hs: float,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
     min_clearance: float,
     bounding_radii: list[float],
     max_attempts: int = 100,
 ) -> list[tuple[float, float]]:
-    """Sample 2D positions with bounding-radius-aware separation (numpy RNG)."""
+    """Sample 2D positions in a polar arc with bounding-radius-aware separation."""
     positions: list[tuple[float, float]] = []
     for idx in range(count):
         for _ in range(max_attempts):
-            x = cx + np.random.uniform(-spawn_hs, spawn_hs)
-            y = cy + np.random.uniform(-spawn_hs, spawn_hs)
+            r = np.random.uniform(min_r, max_r)
+            theta = np.random.uniform(-angle_half, angle_half)
+            x = r * np.cos(theta)
+            y = r * np.sin(theta)
             if all(
                 np.sqrt((x - px) ** 2 + (y - py) ** 2)
                 >= bounding_radii[idx] + bounding_radii[j] + min_clearance
@@ -289,18 +233,6 @@ def _register_robot_variant(
     return cls
 
 
-PickCubeMultipleGoalSO100Env = _register_robot_variant(
-    class_name="PickCubeMultipleGoalSO100Env",
-    env_id="ManiSkillPickCubeMultipleGoalSO100-v1",
-    base_cls=PickCubeMultipleEnv,
-    robot_uid="so100",
-)
-PickCubeMultipleGoalSO101Env = _register_robot_variant(
-    class_name="PickCubeMultipleGoalSO101Env",
-    env_id="ManiSkillPickCubeMultipleGoalSO101-v1",
-    base_cls=PickCubeMultipleEnv,
-    robot_uid="so101",
-)
 PickCubeMultipleLiftSO100Env = _register_robot_variant(
     class_name="PickCubeMultipleLiftSO100Env",
     env_id="ManiSkillPickCubeMultipleLiftSO100-v1",

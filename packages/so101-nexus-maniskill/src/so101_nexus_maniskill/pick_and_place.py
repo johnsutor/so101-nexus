@@ -19,7 +19,6 @@ _DEFAULT_CONFIG = PickAndPlaceConfig()
 PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env("ManiSkillPickAndPlace-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
 
@@ -110,12 +109,15 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             self._reset_robot(env_idx)
 
             cfg = self._robot_cfg
-            spawn_cx, spawn_cy = cfg["cube_spawn_center"]
-            spawn_hs = cfg["cube_spawn_half_size"]
+            min_r = cfg["spawn_min_radius"]
+            max_r = cfg["spawn_max_radius"]
+            angle_half = cfg["spawn_angle_half_range"]
 
+            r_t = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
+            theta_t = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
             target_xyz = torch.zeros((b, 3), device=self.device)
-            target_xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            target_xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
+            target_xyz[:, 0] = r_t * torch.cos(theta_t)
+            target_xyz[:, 1] = r_t * torch.sin(theta_t)
             target_xyz[:, 2] = 0.001
             target_q = torch.tensor([[0.7071068, 0.7071068, 0.0, 0.0]], device=self.device).expand(
                 b, -1
@@ -124,8 +126,10 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
 
             xyz = torch.zeros((b, 3), device=self.device)
             for _ in range(100):
-                xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-                xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
+                r_c = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
+                theta_c = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
+                xyz[:, 0] = r_c * torch.cos(theta_c)
+                xyz[:, 1] = r_c * torch.sin(theta_c)
                 dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
                 if (dists >= self.config.min_cube_target_separation).all():
                     break
@@ -190,13 +194,14 @@ def _register_robot_variant(
     *,
     class_name: str,
     env_id: str,
+    base_cls: type,
     robot_uid: str,
 ) -> type:
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("robot_uids", robot_uid)
-        PickAndPlaceEnv.__init__(self, *args, **kwargs)
+        base_cls.__init__(self, *args, **kwargs)
 
-    cls = type(class_name, (PickAndPlaceEnv,), {"__init__": __init__})
+    cls = type(class_name, (base_cls,), {"__init__": __init__})
     cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
     globals()[class_name] = cls
     return cls
@@ -205,10 +210,12 @@ def _register_robot_variant(
 PickAndPlaceSO100Env = _register_robot_variant(
     class_name="PickAndPlaceSO100Env",
     env_id="ManiSkillPickAndPlaceSO100-v1",
+    base_cls=PickAndPlaceEnv,
     robot_uid="so100",
 )
 PickAndPlaceSO101Env = _register_robot_variant(
     class_name="PickAndPlaceSO101Env",
     env_id="ManiSkillPickAndPlaceSO101-v1",
+    base_cls=PickAndPlaceEnv,
     robot_uid="so101",
 )

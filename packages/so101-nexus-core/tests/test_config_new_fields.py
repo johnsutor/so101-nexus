@@ -1,6 +1,7 @@
 import pytest
 
 from so101_nexus_core.config import (
+    YCB_OBJECTS,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickCubeConfig,
@@ -37,13 +38,13 @@ class TestNewConfigFields:
         cfg = PickAndPlaceConfig()
         assert cfg.target_colors == "blue"
 
-    def test_pick_ycb_has_model_id(self):
+    def test_pick_ycb_has_available_model_ids(self):
         cfg = PickYCBConfig()
-        assert cfg.model_id == "058_golf_ball"
+        assert set(cfg.available_model_ids) == set(YCB_OBJECTS.keys())
 
-    def test_pick_ycb_custom_model(self):
-        cfg = PickYCBConfig(model_id="011_banana")
-        assert cfg.model_id == "011_banana"
+    def test_pick_ycb_custom_available_model_ids(self):
+        cfg = PickYCBConfig(available_model_ids=("011_banana",))
+        assert cfg.available_model_ids == ("011_banana",)
 
     def test_camera_mode_custom(self):
         cfg = EnvironmentConfig(camera_mode="wrist")
@@ -83,9 +84,13 @@ class TestConfigValidation:
         with pytest.warns(UserWarning, match="overlap"):
             PickAndPlaceConfig(cube_colors="red", target_colors="red")
 
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBConfig(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBConfig(available_model_ids=("invalid_object",))
+
+    def test_empty_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBConfig(available_model_ids=())
 
     def test_invalid_camera_mode(self):
         with pytest.raises(ValueError, match="camera_mode"):
@@ -110,3 +115,36 @@ class TestConfigValidation:
     def test_invalid_robot_color(self):
         with pytest.raises(ValueError, match="robot_colors"):
             EnvironmentConfig(robot_colors="magenta")
+
+    def test_spawn_min_radius_negative_raises(self):
+        with pytest.raises(ValueError, match="spawn_min_radius"):
+            EnvironmentConfig(spawn_min_radius=-0.01)
+
+    def test_spawn_max_radius_le_min_raises(self):
+        with pytest.raises(ValueError, match="spawn_max_radius"):
+            EnvironmentConfig(spawn_min_radius=0.3, spawn_max_radius=0.1)
+
+    def test_spawn_max_radius_equal_min_raises(self):
+        with pytest.raises(ValueError, match="spawn_max_radius"):
+            EnvironmentConfig(spawn_min_radius=0.2, spawn_max_radius=0.2)
+
+    def test_spawn_angle_negative_raises(self):
+        with pytest.raises(ValueError, match="spawn_angle_half_range_deg"):
+            EnvironmentConfig(spawn_angle_half_range_deg=-1.0)
+
+    def test_spawn_angle_over_180_raises(self):
+        with pytest.raises(ValueError, match="spawn_angle_half_range_deg"):
+            EnvironmentConfig(spawn_angle_half_range_deg=181.0)
+
+    def test_spawn_angle_zero_ok(self):
+        cfg = EnvironmentConfig(spawn_angle_half_range_deg=0.0)
+        assert cfg.spawn_angle_half_range_deg == 0.0
+
+    def test_spawn_angle_180_ok(self):
+        cfg = EnvironmentConfig(spawn_angle_half_range_deg=180.0)
+        assert cfg.spawn_angle_half_range_deg == 180.0
+
+    def test_valid_spawn_radius_ok(self):
+        cfg = EnvironmentConfig(spawn_min_radius=0.05, spawn_max_radius=0.30)
+        assert cfg.spawn_min_radius == 0.05
+        assert cfg.spawn_max_radius == 0.30

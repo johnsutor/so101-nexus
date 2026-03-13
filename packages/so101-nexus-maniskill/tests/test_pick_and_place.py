@@ -56,7 +56,7 @@ class TestConstructionValidation:
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("ManiSkillPickAndPlace-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickAndPlaceSO100-v1", robot_uids="panda", **BASE_KWARGS)
 
 
 class TestEnvCreation:
@@ -150,7 +150,7 @@ class TestEpisodeLogic:
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1",
+            "ManiSkillPickAndPlaceSO100-v1",
             config=PickAndPlaceConfig(cube_colors="red", target_colors="blue"),
             **BASE_KWARGS,
         )
@@ -159,7 +159,7 @@ class TestTaskDescription:
 
     def test_includes_cube_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1",
+            "ManiSkillPickAndPlaceSO100-v1",
             config=PickAndPlaceConfig(cube_colors="green", target_colors="blue"),
             **BASE_KWARGS,
         )
@@ -168,7 +168,7 @@ class TestTaskDescription:
 
     def test_includes_target_color(self):
         env = gym.make(
-            "ManiSkillPickAndPlace-v1",
+            "ManiSkillPickAndPlaceSO100-v1",
             config=PickAndPlaceConfig(cube_colors="green", target_colors="blue"),
             **BASE_KWARGS,
         )

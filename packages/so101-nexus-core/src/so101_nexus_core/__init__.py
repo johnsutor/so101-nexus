@@ -10,9 +10,6 @@ from so101_nexus_core.config import (
     SO101_JOINT_NAMES as SO101_JOINT_NAMES,
 )
 from so101_nexus_core.config import (
-    YCB_ENV_NAME_MAP as YCB_ENV_NAME_MAP,
-)
-from so101_nexus_core.config import (
     YCB_OBJECTS as YCB_OBJECTS,
 )
 from so101_nexus_core.config import (
@@ -53,6 +50,9 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.config import (
     RobotConfig as RobotConfig,
+)
+from so101_nexus_core.config import (
+    YCBEnvironmentConfig as YCBEnvironmentConfig,
 )
 from so101_nexus_core.config import (
     YcbModelId as YcbModelId,

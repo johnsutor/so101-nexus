@@ -10,7 +10,6 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
 from so101_nexus_core.config import (
-    YCB_ENV_NAME_MAP,
     YCB_OBJECTS,
     PickYCBMultipleConfig,
 )
@@ -22,12 +21,8 @@ _DEFAULT_CONFIG = PickYCBMultipleConfig()
 PICK_YCB_MULTIPLE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env(
-    "ManiSkillPickYCBMultipleGoal-v1",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
-)
-class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
-    """Configurable pick-YCB-multiple environment supporting SO100 and SO101 robots."""
+class PickYCBMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
+    """Pick the target YCB object from distractors and lift it while grasped."""
 
     config: PickYCBMultipleConfig
 
@@ -40,21 +35,23 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        self.model_id = config.model_id
+        rng = np.random.default_rng()
+        available = list(config.available_model_ids)
+        self.model_id = str(rng.choice(available))
         self.num_distractors = config.num_distractors
         self.min_object_separation = config.min_object_separation
         self._obj_spawn_z = 0.0
         self._distractor_spawn_zs: list[float] = []
         self.task_description = (
-            f"Pick up the {YCB_OBJECTS[config.model_id]} from among"
+            f"Pick up the {YCB_OBJECTS[self.model_id]} from among"
             f" {config.num_distractors} distractors"
         )
 
-        # Sample distractor model IDs (excluding target)
-        other_ids = [mid for mid in YCB_OBJECTS if mid != config.model_id]
-        rng = np.random.default_rng()
+        distractor_pool = [mid for mid in available if mid != self.model_id]
+        if not distractor_pool:
+            distractor_pool = available
         self.distractor_model_ids: list[str] = list(
-            rng.choice(other_ids, size=config.num_distractors, replace=True)
+            rng.choice(distractor_pool, size=config.num_distractors, replace=True)
         )
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
@@ -84,9 +81,9 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
         ]
 
     def _load_scene(self, options: dict) -> None:
+        """Build one merged target actor and one merged actor per distractor slot."""
         self._build_ground()
 
-        # Build target YCB object
         objs: list[Actor] = []
         for i in range(self.num_envs):
             builder = actors.get_actor_builder(self.scene, id=f"ycb:{self.model_id}")
@@ -98,7 +95,6 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
         self.obj = Actor.merge(objs, name="ycb_target")
         self.add_to_state_dict_registry(self.obj)
 
-        # Build distractor YCB objects
         self.distractors: list[Actor] = []
         for d in range(self.num_distractors):
             d_objs: list[Actor] = []
@@ -115,50 +111,38 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
             self.add_to_state_dict_registry(distractor)
             self.distractors.append(distractor)
 
-        # Goal sphere
-        self.goal_site = actors.build_sphere(
-            self.scene,
-            radius=self._robot_cfg["goal_thresh"],
-            color=[0, 1, 0, 0.5],
-            name="goal_site",
-            body_type="kinematic",
-            add_collision=False,
-        )
-        self._hidden_objects.append(self.goal_site)
         self._apply_robot_color_if_needed()
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
+        """Reset robots and sample separated target and distractor YCB poses."""
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx)
 
             cfg = self._robot_cfg
-            spawn_cx, spawn_cy = cfg["cube_spawn_center"]
-            spawn_hs = cfg["cube_spawn_half_size"]
+            min_r = cfg["spawn_min_radius"]
+            max_r = cfg["spawn_max_radius"]
+            angle_half = cfg["spawn_angle_half_range"]
             obj_spawn_z = float(self._obj_spawn_z)
 
             total_objects = 1 + self.num_distractors
 
-            # Compute bounding radii from spawn Z as proxy for object extent
-            # (spawn_z roughly correlates with half-height; use it as radius estimate)
             bounding_radii = [obj_spawn_z]
             for dz in self._distractor_spawn_zs:
                 bounding_radii.append(float(dz))
 
-            # Sample separated positions for all objects per env
             all_xy = []
             for _ in range(b):
-                positions = _sample_separated_positions_np(
+                positions = _sample_separated_positions_polar_np(
                     total_objects,
-                    spawn_cx,
-                    spawn_cy,
-                    spawn_hs,
+                    min_r,
+                    max_r,
+                    angle_half,
                     self.min_object_separation,
                     bounding_radii,
                 )
                 all_xy.append(positions)
 
-            # Set target pose
             target_xyz = torch.zeros((b, 3), device=self.device)
             for bi in range(b):
                 target_xyz[bi, 0] = all_xy[bi][0][0]
@@ -168,7 +152,6 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
             self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
-            # Set distractor poses
             for d in range(self.num_distractors):
                 d_xyz = torch.zeros((b, 3), device=self.device)
                 for bi in range(b):
@@ -178,31 +161,16 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)
                 self.distractors[d].set_pose(Pose.create_from_pq(p=d_xyz, q=d_qs))
 
-            # Set goal pose
-            goal_xyz = torch.zeros((b, 3), device=self.device)
-            goal_xyz[:, 0] = spawn_cx + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            goal_xyz[:, 1] = spawn_cy + (torch.rand(b, device=self.device) * 2 - 1) * spawn_hs
-            goal_xyz[:, 2] = (
-                obj_spawn_z + torch.rand(b, device=self.device) * cfg["max_goal_height"]
-            )
-            self.goal_site.set_pose(Pose.create_from_pq(p=goal_xyz))
-
     def evaluate(self) -> dict[str, torch.Tensor]:
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        obj_to_goal_dist = torch.linalg.norm(self.obj.pose.p - self.goal_site.pose.p, axis=1)
-        is_obj_placed = obj_to_goal_dist <= self._robot_cfg["goal_thresh"]
         is_grasped = self.agent.is_grasping(self.obj)
-        is_robot_static = self.agent.is_static()
 
         obj_z = self.obj.pose.p[:, 2]
         lift_height = obj_z - self._initial_obj_z
-        success = is_obj_placed & is_robot_static
+        success = (lift_height > self.config.lift_threshold) & is_grasped
 
         return {
-            "obj_to_goal_dist": obj_to_goal_dist,
-            "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
-            "is_robot_static": is_robot_static,
             "lift_height": lift_height,
             "success": success,
             "tcp_to_obj_dist": tcp_to_obj_dist,
@@ -212,14 +180,12 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
         obs = {
             "tcp_pose": self.agent.tcp_pose.raw_pose,
             "is_grasped": info["is_grasped"],
-            "goal_pos": self.goal_site.pose.p,
         }
         if "state" in self.obs_mode:
             obs.update(
                 {
                     "obj_pose": self.obj.pose.raw_pose,
                     "tcp_to_obj_pos": self.obj.pose.p - self.agent.tcp_pose.p,
-                    "obj_to_goal_pos": self.goal_site.pose.p - self.obj.pose.p,
                 }
             )
         return obs
@@ -227,35 +193,10 @@ class PickYCBMultipleEnv(SO101NexusManiSkillBaseEnv):
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
-        placement_progress = self._reach_progress(info["obj_to_goal_dist"]) * is_grasped
-
-        return self._assemble_normalized_reward(
-            reach_progress=reach_progress,
-            is_grasped=is_grasped,
-            task_progress=placement_progress,
-            is_complete=info["success"],
+        lift_progress = (
+            torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0))
+            * is_grasped
         )
-
-
-PickYCBMultipleGoalEnv = PickYCBMultipleEnv
-
-
-@register_env(
-    "ManiSkillPickYCBMultipleLift-v1",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
-)
-class PickYCBMultipleLiftEnv(PickYCBMultipleEnv):
-    """Pick-YCB-multiple variant where success is lift height threshold while grasped."""
-
-    def evaluate(self) -> dict[str, torch.Tensor]:
-        info = super().evaluate()
-        info["success"] = (info["lift_height"] > self.config.lift_threshold) & info["is_grasped"]
-        return info
-
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
-        is_grasped = info["is_grasped"]
-        lift_progress = torch.tanh(5.0 * info["lift_height"].clamp(min=0.0)) * is_grasped
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
@@ -265,21 +206,23 @@ class PickYCBMultipleLiftEnv(PickYCBMultipleEnv):
         )
 
 
-def _sample_separated_positions_np(
+def _sample_separated_positions_polar_np(
     count: int,
-    cx: float,
-    cy: float,
-    spawn_hs: float,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
     min_clearance: float,
     bounding_radii: list[float],
     max_attempts: int = 100,
 ) -> list[tuple[float, float]]:
-    """Sample 2D positions with bounding-radius-aware separation."""
+    """Sample 2D positions in a polar arc with bounding-radius-aware separation."""
     positions: list[tuple[float, float]] = []
     for idx in range(count):
         for _ in range(max_attempts):
-            x = cx + np.random.uniform(-spawn_hs, spawn_hs)
-            y = cy + np.random.uniform(-spawn_hs, spawn_hs)
+            r = np.random.uniform(min_r, max_r)
+            theta = np.random.uniform(-angle_half, angle_half)
+            x = r * np.cos(theta)
+            y = r * np.sin(theta)
             if all(
                 np.sqrt((x - px) ** 2 + (y - py) ** 2)
                 >= bounding_radii[idx] + bounding_radii[j] + min_clearance
@@ -292,25 +235,32 @@ def _sample_separated_positions_np(
     return positions
 
 
-# Register per-YCB-object and per-robot variants
-for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
-    for _task, _base_cls in [("Goal", PickYCBMultipleEnv), ("Lift", PickYCBMultipleLiftEnv)]:
-        for _robot in ["SO100", "SO101"]:
-            _env_id = f"ManiSkillPick{_env_name}Multiple{_task}{_robot}-v1"
-            _robot_uid = _robot.lower()
+def _register_robot_variant(
+    *,
+    class_name: str,
+    env_id: str,
+    base_cls: type,
+    robot_uid: str,
+) -> type:
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("robot_uids", robot_uid)
+        base_cls.__init__(self, *args, **kwargs)
 
-            def _make_init(_mid=_model_id, _ruid=_robot_uid, _base=_base_cls):
-                def __init__(self, *args, **kwargs):
-                    kwargs.setdefault("robot_uids", _ruid)
-                    kwargs.setdefault("config", PickYCBMultipleConfig(model_id=_mid))
-                    _base.__init__(self, *args, **kwargs)
+    cls = type(class_name, (base_cls,), {"__init__": __init__})
+    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
+    globals()[class_name] = cls
+    return cls
 
-                return __init__
 
-            _cls = type(
-                f"Pick{_env_name}Multiple{_task}{_robot}Env",
-                (_base_cls,),
-                {"__init__": _make_init()},
-            )
-            _cls = register_env(_env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(_cls)
-            globals()[f"Pick{_env_name}Multiple{_task}{_robot}Env"] = _cls
+PickYCBMultipleLiftSO100Env = _register_robot_variant(
+    class_name="PickYCBMultipleLiftSO100Env",
+    env_id="ManiSkillPickYCBMultipleLiftSO100-v1",
+    base_cls=PickYCBMultipleLiftEnv,
+    robot_uid="so100",
+)
+PickYCBMultipleLiftSO101Env = _register_robot_variant(
+    class_name="PickYCBMultipleLiftSO101Env",
+    env_id="ManiSkillPickYCBMultipleLiftSO101-v1",
+    base_cls=PickYCBMultipleLiftEnv,
+    robot_uid="so101",
+)

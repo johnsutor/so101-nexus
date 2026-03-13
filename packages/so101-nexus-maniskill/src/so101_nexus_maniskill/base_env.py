@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import sapien
@@ -18,6 +18,9 @@ from transforms3d.euler import euler2quat
 from so101_nexus_core.config import CameraMode, EnvironmentConfig, sample_color
 from so101_nexus_maniskill.so101_agent import SO101
 
+# Fixed sensor camera field-of-view: 60 degrees expressed in radians.
+_SENSOR_CAM_FOV_RAD: float = float(np.radians(60.0))
+
 
 class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
@@ -30,7 +33,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         *,
         config: EnvironmentConfig,
         robot_uids: str,
-        robot_cfgs: dict[str, dict],
+        robot_cfgs: dict[str, dict[str, Any]],
     ) -> None:
         if robot_uids not in robot_cfgs:
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
@@ -43,9 +46,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
 
-    @staticmethod
-    def _reach_progress(dist: torch.Tensor) -> torch.Tensor:
-        return 1.0 - torch.tanh(5.0 * dist)
+    def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
+        return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
     def _assemble_normalized_reward(
         self,
@@ -86,7 +88,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                     pose,
                     self.camera_width,
                     self.camera_height,
-                    np.pi / 3,
+                    _SENSOR_CAM_FOV_RAD,
                     0.01,
                     100,
                 )
@@ -224,8 +226,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     def compute_normalized_dense_reward(
         self,
-        obs,
+        obs: dict[str, torch.Tensor] | torch.Tensor,
         action: torch.Tensor,
-        info: dict,
+        info: dict[str, Any],
     ) -> torch.Tensor:
         return self.compute_dense_reward(obs=obs, action=action, info=info)
