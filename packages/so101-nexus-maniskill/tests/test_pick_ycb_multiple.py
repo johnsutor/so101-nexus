@@ -156,4 +156,5 @@ class TestTaskDescription:
         assert lift_so100_env.unwrapped.task_description[0].isupper()
 
     def test_task_description_includes_object_name(self, lift_so100_env):
-        assert "golf ball" in lift_so100_env.unwrapped.task_description
+        inner = lift_so100_env.unwrapped
+        assert any(name in inner.task_description for name in YCB_OBJECTS.values())

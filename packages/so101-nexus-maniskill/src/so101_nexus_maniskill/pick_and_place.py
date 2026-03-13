@@ -194,13 +194,14 @@ def _register_robot_variant(
     *,
     class_name: str,
     env_id: str,
+    base_cls: type,
     robot_uid: str,
 ) -> type:
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("robot_uids", robot_uid)
-        PickAndPlaceEnv.__init__(self, *args, **kwargs)
+        base_cls.__init__(self, *args, **kwargs)
 
-    cls = type(class_name, (PickAndPlaceEnv,), {"__init__": __init__})
+    cls = type(class_name, (base_cls,), {"__init__": __init__})
     cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
     globals()[class_name] = cls
     return cls
@@ -209,10 +210,12 @@ def _register_robot_variant(
 PickAndPlaceSO100Env = _register_robot_variant(
     class_name="PickAndPlaceSO100Env",
     env_id="ManiSkillPickAndPlaceSO100-v1",
+    base_cls=PickAndPlaceEnv,
     robot_uid="so100",
 )
 PickAndPlaceSO101Env = _register_robot_variant(
     class_name="PickAndPlaceSO101Env",
     env_id="ManiSkillPickAndPlaceSO101-v1",
+    base_cls=PickAndPlaceEnv,
     robot_uid="so101",
 )
