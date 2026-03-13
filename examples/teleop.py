@@ -16,12 +16,13 @@ from __future__ import annotations
 import argparse
 import datetime
 import importlib
+import inspect
 import io
 import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol, cast
 
 import cv2
@@ -167,6 +168,8 @@ def recording_thread(
     max_steps: int,
     countdown: int,
     wrist_roll_offset_deg: float,
+    camera_width: int,
+    camera_height: int,
 ) -> None:
     """Background thread that runs the countdown then records frames at *fps*."""
     for i in range(countdown, 0, -1):
@@ -174,7 +177,12 @@ def recording_thread(
         time.sleep(1.0)
     state.countdown_value = 0
 
-    env = gym.make(env_id, camera_mode="wrist", render_mode="rgb_array")
+    env = gym.make(
+        env_id,
+        camera_mode="wrist",
+        render_mode="rgb_array",
+        **_recording_env_kwargs(env_id, camera_width, camera_height),
+    )
     try:
         leader_action = leader.get_action()
         init_qpos = convert_leader_action(
@@ -301,6 +309,32 @@ def _enter_to_start_script() -> str:
 })();
 </script>
 """
+
+
+def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) -> dict:
+    """Return ``gym.make`` kwargs for teleop recording with the requested camera size."""
+    import_backend_for_env_id(env_id)
+    spec = gym.spec(env_id)
+    kwargs = dict(spec.kwargs)
+
+    entry_point = spec.entry_point
+    if isinstance(entry_point, str):
+        module_name, attr_name = entry_point.split(":")
+        env_ctor = getattr(importlib.import_module(module_name), attr_name)
+    else:
+        env_ctor = entry_point
+
+    signature_target = env_ctor.__init__ if inspect.isclass(env_ctor) else env_ctor
+    config_param = inspect.signature(signature_target).parameters.get("config")
+    if config_param is None or config_param.default is inspect.Parameter.empty:
+        return kwargs
+
+    base_config = config_param.default
+    kwargs["config"] = replace(
+        base_config,
+        camera=replace(base_config.camera, width=camera_width, height=camera_height),
+    )
+    return kwargs
 
 
 def main() -> None:
@@ -531,6 +565,8 @@ def main() -> None:
                 session["max_steps"],
                 session["countdown"],
                 session["wrist_roll_offset_deg"],
+                session["camera_width"],
+                session["camera_height"],
             ),
             daemon=True,
         ).start()

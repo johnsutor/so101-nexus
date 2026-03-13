@@ -1,11 +1,11 @@
 import pytest
 
 from so101_nexus_core.config import (
+    YCB_OBJECTS,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickCubeConfig,
     PickYCBConfig,
-    YCB_OBJECTS,
 )
 
 
