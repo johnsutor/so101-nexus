@@ -57,7 +57,7 @@ class TestConstructionValidation:
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("ManiSkillPickCubeMultipleLift-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickCubeMultipleLiftSO100-v1", robot_uids="panda", **BASE_KWARGS)
 
 
 class TestSharedConstants:
@@ -158,7 +158,7 @@ class TestTaskDescription:
 
     def test_task_description_includes_color(self):
         cfg = PickCubeMultipleConfig(cube_color="green")
-        env = gym.make("ManiSkillPickCubeMultipleLift-v1", config=cfg, **BASE_KWARGS)
+        env = gym.make("ManiSkillPickCubeMultipleLiftSO100-v1", config=cfg, **BASE_KWARGS)
         assert "green" in env.unwrapped.task_description
         env.close()
 
