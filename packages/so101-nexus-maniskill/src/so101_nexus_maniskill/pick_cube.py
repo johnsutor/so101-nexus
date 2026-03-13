@@ -140,7 +140,6 @@ class PickCubeEnv(SO101NexusManiSkillBaseEnv):
         )
 
 
-@register_env("ManiSkillPickCubeLift-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickCubeLiftEnv(PickCubeEnv):
     """Pick-cube variant where success is lift height threshold while grasped."""
 

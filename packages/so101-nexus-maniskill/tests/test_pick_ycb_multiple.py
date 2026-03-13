@@ -31,38 +31,38 @@ def _make_ycb_env(env_id: str, **kwargs):
 
 
 LIFT_ENV_IDS = [
-    ("ManiSkillPickGolfBallMultipleLiftSO100-v1", "so100"),
-    ("ManiSkillPickGolfBallMultipleLiftSO101-v1", "so101"),
+    ("ManiSkillPickYCBMultipleLiftSO100-v1", "so100"),
+    ("ManiSkillPickYCBMultipleLiftSO101-v1", "so101"),
 ]
 ALL_ENV_IDS = LIFT_ENV_IDS
 
 
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallMultipleLiftSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickYCBMultipleLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallMultipleLiftSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickYCBMultipleLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 def _get_env(request, env_id):
     mapping = {
-        "ManiSkillPickGolfBallMultipleLiftSO100-v1": "lift_so100_env",
-        "ManiSkillPickGolfBallMultipleLiftSO101-v1": "lift_so101_env",
+        "ManiSkillPickYCBMultipleLiftSO100-v1": "lift_so100_env",
+        "ManiSkillPickYCBMultipleLiftSO101-v1": "lift_so101_env",
     }
     return request.getfixturevalue(mapping[env_id])
 
 
 class TestConstructionValidation:
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBMultipleConfig(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBMultipleConfig(available_model_ids=("invalid_object",))
 
     def test_invalid_num_distractors(self):
         with pytest.raises(ValueError, match="num_distractors"):

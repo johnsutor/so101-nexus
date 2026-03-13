@@ -14,8 +14,8 @@ _CFG = PickYCBConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 LIFT_ENV_IDS = [
-    ("ManiSkillPickGolfBallLiftSO100-v1", "so100"),
-    ("ManiSkillPickGolfBallLiftSO101-v1", "so101"),
+    ("ManiSkillPickYCBLiftSO100-v1", "so100"),
+    ("ManiSkillPickYCBLiftSO101-v1", "so101"),
 ]
 ALL_ENV_IDS = LIFT_ENV_IDS
 
@@ -42,22 +42,22 @@ def _make_ycb_env(env_id: str, **kwargs):
 
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallLiftSO100-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickYCBLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = _make_ycb_env("ManiSkillPickGolfBallLiftSO101-v1", **BASE_KWARGS)
+    env = _make_ycb_env("ManiSkillPickYCBLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 def _get_env(request, env_id):
     mapping = {
-        "ManiSkillPickGolfBallLiftSO100-v1": "lift_so100_env",
-        "ManiSkillPickGolfBallLiftSO101-v1": "lift_so101_env",
+        "ManiSkillPickYCBLiftSO100-v1": "lift_so100_env",
+        "ManiSkillPickYCBLiftSO101-v1": "lift_so101_env",
     }
     return request.getfixturevalue(mapping[env_id])
 
@@ -74,13 +74,13 @@ class TestYCBAssets:
 
 
 class TestConstructionValidation:
-    def test_invalid_model_id(self):
-        with pytest.raises(ValueError, match="model_id"):
-            PickYCBConfig(model_id="invalid_object")
+    def test_invalid_available_model_ids(self):
+        with pytest.raises(ValueError, match="available_model_ids"):
+            PickYCBConfig(available_model_ids=("invalid_object",))
 
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("ManiSkillPickYCBLift-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickYCBLiftSO100-v1", robot_uids="panda", **BASE_KWARGS)
 
 
 class TestSharedConstants:
@@ -132,7 +132,7 @@ class TestEnvCreation:
 
 class TestTaskDescription:
     def test_task_description_starts_with_capital(self):
-        env = _make_ycb_env("ManiSkillPickGolfBallLiftSO100-v1", **BASE_KWARGS)
+        env = _make_ycb_env("ManiSkillPickYCBLiftSO100-v1", **BASE_KWARGS)
         assert env.unwrapped.task_description[0].isupper()
         env.close()
 
@@ -198,7 +198,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
         env = _make_ycb_env(
-            "ManiSkillPickGolfBallLiftSO100-v1",
+            "ManiSkillPickYCBLiftSO100-v1",
             config=PickYCBConfig(camera_mode="fixed"),
             **BASE_KWARGS,
         )
@@ -209,7 +209,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
         env = _make_ycb_env(
-            "ManiSkillPickGolfBallLiftSO100-v1",
+            "ManiSkillPickYCBLiftSO100-v1",
             config=PickYCBConfig(camera_mode="wrist"),
             **BASE_KWARGS,
         )
@@ -220,7 +220,7 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def both_cam_env(self):
         env = _make_ycb_env(
-            "ManiSkillPickGolfBallLiftSO100-v1",
+            "ManiSkillPickYCBLiftSO100-v1",
             config=PickYCBConfig(camera_mode="both"),
             **BASE_KWARGS,
         )

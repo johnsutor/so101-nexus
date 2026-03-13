@@ -1,5 +1,6 @@
 from typing import Any
 
+import numpy as np
 import sapien
 import torch
 from mani_skill.envs.utils.randomization.pose import random_quaternions
@@ -9,7 +10,6 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
 from so101_nexus_core.config import (
-    YCB_ENV_NAME_MAP,
     YCB_OBJECTS,
     PickYCBConfig,
 )
@@ -35,9 +35,10 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        self.model_id = config.model_id
+        rng = np.random.default_rng()
+        self.model_id = str(rng.choice(list(config.available_model_ids)))
         self._obj_spawn_z = 0.0
-        self.task_description = f"Pick up the {YCB_OBJECTS[config.model_id]}"
+        self.task_description = f"Pick up the {YCB_OBJECTS[self.model_id]}"
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
 
@@ -141,7 +142,6 @@ class PickYCBEnv(SO101NexusManiSkillBaseEnv):
         )
 
 
-@register_env("ManiSkillPickYCBLift-v1", max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)
 class PickYCBLiftEnv(PickYCBEnv):
     """Pick-YCB variant where success is lift height threshold while grasped."""
 
@@ -166,23 +166,32 @@ class PickYCBLiftEnv(PickYCBEnv):
         )
 
 
-for _model_id, _env_name in YCB_ENV_NAME_MAP.items():
-    for _robot in ["SO100", "SO101"]:
-        _env_id = f"ManiSkillPick{_env_name}Lift{_robot}-v1"
-        _robot_uid = _robot.lower()
+def _register_robot_variant(
+    *,
+    class_name: str,
+    env_id: str,
+    base_cls: type,
+    robot_uid: str,
+) -> type:
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("robot_uids", robot_uid)
+        base_cls.__init__(self, *args, **kwargs)
 
-        def _make_init(_mid=_model_id, _ruid=_robot_uid):
-            def __init__(self, *args, **kwargs):
-                kwargs.setdefault("robot_uids", _ruid)
-                kwargs.setdefault("config", PickYCBConfig(model_id=_mid))
-                PickYCBLiftEnv.__init__(self, *args, **kwargs)
+    cls = type(class_name, (base_cls,), {"__init__": __init__})
+    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
+    globals()[class_name] = cls
+    return cls
 
-            return __init__
 
-        _cls = type(
-            f"Pick{_env_name}Lift{_robot}Env",
-            (PickYCBLiftEnv,),
-            {"__init__": _make_init()},
-        )
-        _cls = register_env(_env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(_cls)
-        globals()[f"Pick{_env_name}Lift{_robot}Env"] = _cls
+PickYCBLiftSO100Env = _register_robot_variant(
+    class_name="PickYCBLiftSO100Env",
+    env_id="ManiSkillPickYCBLiftSO100-v1",
+    base_cls=PickYCBLiftEnv,
+    robot_uid="so100",
+)
+PickYCBLiftSO101Env = _register_robot_variant(
+    class_name="PickYCBLiftSO101Env",
+    env_id="ManiSkillPickYCBLiftSO101-v1",
+    base_cls=PickYCBLiftEnv,
+    robot_uid="so101",
+)

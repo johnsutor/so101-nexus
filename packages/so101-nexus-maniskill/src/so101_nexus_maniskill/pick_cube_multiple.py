@@ -19,10 +19,6 @@ _DEFAULT_CONFIG = PickCubeMultipleConfig()
 PICK_CUBE_MULTIPLE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
-@register_env(
-    "ManiSkillPickCubeMultipleLift-v1",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
-)
 class PickCubeMultipleLiftEnv(SO101NexusManiSkillBaseEnv):
     """Pick the target cube from distractors and succeed once it is lifted while grasped."""
 
