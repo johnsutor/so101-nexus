@@ -63,6 +63,12 @@ from so101_nexus_core.config import (
 from so101_nexus_core.config import (
     sample_color as sample_color,
 )
+from so101_nexus_core.objects import (  # noqa: F401
+    SceneObject,
+    CubeObject,
+    MeshObject,
+    YCBObject,
+)
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SO_ARM100_DIR = ASSETS_DIR / "SO-ARM100"
