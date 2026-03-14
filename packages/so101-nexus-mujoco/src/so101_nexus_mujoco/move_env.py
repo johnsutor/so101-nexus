@@ -9,7 +9,7 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.config import ControlMode, EnvironmentConfig
+from so101_nexus_core.config import ControlMode, EnvironmentConfig, sample_color
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -111,8 +111,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
             control_mode=control_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
-
-        from so101_nexus_core.config import sample_color  # noqa: PLC0415
 
         ground_rgba = sample_color(config.ground_colors)
         xml_string = _build_move_scene_xml(ground_rgba)

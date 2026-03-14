@@ -9,7 +9,7 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.config import COLOR_MAP, ControlMode, EnvironmentConfig
+from so101_nexus_core.config import COLOR_MAP, ControlMode, EnvironmentConfig, sample_color
 from so101_nexus_core.objects import CubeObject, SceneObject
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
@@ -121,12 +121,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        from so101_nexus_core.config import sample_color  # noqa: PLC0415
-
-        # Sample a fixed target object for the lifetime of this env instance.
-        rng = np.random.default_rng()
-        obj_idx = int(rng.integers(len(config.objects)))
-        self._target_obj: CubeObject = config.objects[obj_idx]  # type: ignore[assignment]
+        # Use the first (and typically only) target object from config.
+        self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
 
         ground_rgba = sample_color(config.ground_colors)
         xml_string = _build_look_at_scene_xml(self._target_obj, ground_rgba)
