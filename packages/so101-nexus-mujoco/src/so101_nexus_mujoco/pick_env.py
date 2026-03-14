@@ -16,10 +16,10 @@ import numpy as np
 
 from so101_nexus_core import (
     ensure_ycb_assets,
+    get_mujoco_ycb_rest_pose,
     get_so101_simulation_dir,
     get_ycb_collision_mesh,
     get_ycb_visual_mesh,
-    get_mujoco_ycb_rest_pose,
 )
 from so101_nexus_core.config import (
     COLOR_MAP,
@@ -52,20 +52,7 @@ def _cube_xml_body(slot_name: str, obj: CubeObject) -> str:
         f'            rgba="{r} {g} {b} {a}" mass="{obj.mass}"\n'
         f'            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"\n'
         f'            solref="0.01 1" solimp="0.95 0.99 0.001"/>\n'
-        f'    </body>\n'
-    )
-
-
-def _ycb_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
-    return (
-        f'    <body name="{slot_name}" pos="0.15 0 0.01">\n'
-        f'      <freejoint name="{slot_name}_joint"/>\n'
-        f'      <geom name="{slot_name}_collision" type="mesh" mesh="pick_coll_{asset_index}"\n'
-        f'            mass="{mass}" contype="1" conaffinity="1"\n'
-        f'            condim="4" friction="1 0.05 0.001" solref="0.01 1" solimp="0.95 0.99 0.001"/>\n'
-        f'      <geom name="{slot_name}_visual" type="mesh" mesh="pick_vis_{asset_index}"\n'
-        f'            contype="0" conaffinity="0" mass="0"/>\n'
-        f'    </body>\n'
+        f"    </body>\n"
     )
 
 
@@ -73,12 +60,15 @@ def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
     return (
         f'    <body name="{slot_name}" pos="0.15 0 0.01">\n'
         f'      <freejoint name="{slot_name}_joint"/>\n'
-        f'      <geom name="{slot_name}_collision" type="mesh" mesh="pick_coll_{asset_index}"\n'
+        f'      <geom name="{slot_name}_collision" type="mesh" '
+        f'mesh="pick_coll_{asset_index}"\n'
         f'            mass="{mass}" contype="1" conaffinity="1"\n'
-        f'            condim="4" friction="1 0.05 0.001" solref="0.01 1" solimp="0.95 0.99 0.001"/>\n'
-        f'      <geom name="{slot_name}_visual" type="mesh" mesh="pick_vis_{asset_index}"\n'
+        f'            condim="4" friction="1 0.05 0.001" solref="0.01 1"\n'
+        f'            solimp="0.95 0.99 0.001"/>\n'
+        f'      <geom name="{slot_name}_visual" type="mesh" '
+        f'mesh="pick_vis_{asset_index}"\n'
         f'            contype="0" conaffinity="0" mass="0"/>\n'
-        f'    </body>\n'
+        f"    </body>\n"
     )
 
 
@@ -111,7 +101,7 @@ def _build_scene_xml(
             asset_entries += f'    <mesh name="pick_coll_{i}" file="{collision_path}"/>\n'
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
             mass = obj.mass_override if obj.mass_override is not None else 0.01
-            body_entries += _ycb_xml_body(slot, i, mass)
+            body_entries += _mesh_xml_body(slot, i, mass)
         elif isinstance(obj, MeshObject):
             asset_entries += (
                 f'    <mesh name="pick_coll_{i}" file="{obj.collision_mesh_path}"'
@@ -204,12 +194,14 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
 
     def __init__(
         self,
-        config: PickConfig = PickConfig(),
+        config: PickConfig | None = None,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ) -> None:
+        if config is None:
+            config = PickConfig()
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -247,9 +239,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         for slot, obj in zip(slot_names, scene_objects):
             geom_name = _primary_geom_name(slot, obj)
             geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
-            joint_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{slot}_joint"
-            )
+            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{slot}_joint")
             qpos_addr = self.model.jnt_qposadr[joint_id]
 
             if isinstance(obj, (YCBObject, MeshObject)):

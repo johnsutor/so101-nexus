@@ -1,9 +1,10 @@
 """Tests for the unified MuJoCo PickEnv / PickLiftEnv."""
 
-import pytest
 import gymnasium as gym
+import pytest
+
 import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core import PickConfig, CubeObject, YCBObject
+from so101_nexus_core import CubeObject, PickConfig, YCBObject
 
 
 @pytest.fixture(scope="module")
