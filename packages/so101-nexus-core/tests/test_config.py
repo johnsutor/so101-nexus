@@ -42,6 +42,13 @@ class TestConfigInheritance:
         cfg = PickCubeConfig(reward=RewardConfig(action_delta_penalty=0.01))
         assert cfg.reward.action_delta_penalty == 0.01
 
+    def test_configs_are_mutable(self):
+        cfg = PickCubeConfig()
+        cfg.max_episode_steps = 512
+        assert cfg.max_episode_steps == 512
+        cfg.cube_half_size = 0.02
+        assert cfg.cube_half_size == 0.02
+
 
 class TestConfigConsistency:
     def test_spawn_defaults_shape(self):
@@ -197,6 +204,72 @@ class TestRewardCompute:
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
         assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+class TestEnergyPenalty:
+    def test_energy_penalty_zero_no_op(self):
+        r = RewardConfig(energy_penalty=0.0)
+        base = r.compute(1.0, True, 1.0, True, energy_norm=0.0)
+        with_energy = r.compute(1.0, True, 1.0, True, energy_norm=5.0)
+        assert base == pytest.approx(with_energy)
+
+    def test_energy_penalty_nonzero_reduces_reward(self):
+        r = RewardConfig(energy_penalty=0.05)
+        base = r.compute(1.0, True, 1.0, True, energy_norm=0.0)
+        penalized = r.compute(1.0, True, 1.0, True, energy_norm=2.0)
+        assert penalized < base
+        assert base - penalized == pytest.approx(0.05 * 2.0)
+
+    def test_energy_penalty_default_is_zero(self):
+        r = RewardConfig()
+        assert r.energy_penalty == 0.0
+
+    def test_energy_and_action_delta_penalties_additive(self):
+        r = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.05)
+        base = r.compute(1.0, True, 1.0, True, action_delta_norm=0.0, energy_norm=0.0)
+        penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=1.0, energy_norm=2.0)
+        expected_reduction = 0.1 * 1.0 + 0.05 * 2.0
+        assert base - penalized == pytest.approx(expected_reduction)
+
+
+class TestPickConfig:
+    def test_default_single_cube(self):
+        pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
+        from so101_nexus_core.config import PickConfig
+        cfg = PickConfig()
+        assert len(cfg.objects) == 1
+        assert cfg.n_distractors == 0
+
+    def test_multi_object_with_distractors(self):
+        pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
+        from so101_nexus_core.config import PickConfig
+        from so101_nexus_core.objects import CubeObject
+        objs = [CubeObject() for _ in range(4)]
+        cfg = PickConfig(objects=objs, n_distractors=2)
+        assert len(cfg.objects) == 4
+        assert cfg.n_distractors == 2
+
+    def test_invalid_pool_size_raises(self):
+        pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
+        from so101_nexus_core.config import PickConfig
+        from so101_nexus_core.objects import CubeObject
+        with pytest.raises(ValueError, match="objects pool must have at least"):
+            PickConfig(objects=[CubeObject()], n_distractors=2)
+
+    def test_negative_distractors_raises(self):
+        pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
+        from so101_nexus_core.config import PickConfig
+        with pytest.raises(ValueError, match="n_distractors must be >= 0"):
+            PickConfig(n_distractors=-1)
+
+    def test_single_scene_object_wrapped_in_list(self):
+        pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
+        from so101_nexus_core.config import PickConfig
+        from so101_nexus_core.objects import CubeObject
+        obj = CubeObject()
+        cfg = PickConfig(objects=obj)
+        assert isinstance(cfg.objects, list)
+        assert len(cfg.objects) == 1
 
 
 def test_robot_config_grasp_force_threshold_default():
