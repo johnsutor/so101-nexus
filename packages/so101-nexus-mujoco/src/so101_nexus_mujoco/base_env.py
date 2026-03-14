@@ -17,7 +17,14 @@ _REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
-    """Shared MuJoCo base class for SO101-Nexus tasks."""
+    """Shared MuJoCo base class for SO101-Nexus tasks.
+
+    Notes
+    -----
+    ``_is_grasping()`` requires ``_obj_geom_id`` to be set by the subclass.
+    Primitive envs without a graspable object (``ReachEnv``, ``LookAtEnv``,
+    ``MoveEnv``) must **never** call ``_is_grasping()``.
+    """
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
     model: mujoco.MjModel
@@ -392,6 +399,27 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
         )
+
+    def _reach_to_target_reward(self, tcp_pos: np.ndarray, target_pos: np.ndarray) -> float:
+        """Tanh-shaped reward for reaching a 3-D target position.
+
+        Returns a value in [0, 1]. Does not call _is_grasping() — safe for
+        object-free envs.
+        """
+        dist = float(np.linalg.norm(tcp_pos - target_pos))
+        return 1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * dist))
+
+    def _orientation_toward_reward(self, current_dir: np.ndarray, target_dir: np.ndarray) -> float:
+        """Cosine-similarity reward for aligning a direction vector with a target.
+
+        Returns a value in [0, 1]. Does not call _is_grasping() — safe for
+        object-free envs.
+        """
+        cos_sim = float(
+            np.dot(current_dir, target_dir)
+            / (np.linalg.norm(current_dir) * np.linalg.norm(target_dir) + 1e-8)
+        )
+        return (cos_sim + 1.0) / 2.0
 
     def _task_reset(self) -> None:
         raise NotImplementedError
