@@ -57,6 +57,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         task_progress: torch.Tensor,
         is_complete: torch.Tensor,
         action_delta_norm: float | torch.Tensor = 0.0,
+        energy_norm: float | torch.Tensor = 0.0,
     ) -> torch.Tensor:
         cfg = self.config.reward
         base = (
@@ -65,7 +66,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             + cfg.task_objective * task_progress
             + cfg.completion_bonus * is_complete
         )
-        return base - cfg.action_delta_penalty * action_delta_norm
+        return base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
 
     @property
     def _default_sim_config(self) -> SimConfig:

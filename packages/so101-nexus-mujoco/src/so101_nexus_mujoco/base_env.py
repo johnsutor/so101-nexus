@@ -332,6 +332,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         obs = self._get_obs()
         info = self._get_info()
+        info["energy_norm"] = float(np.linalg.norm(action))
         reward = self._compute_reward(info)
         terminated = bool(info.get("success", False))
 
@@ -374,6 +375,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             task_progress=0.0,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
 
     def _lift_reward(self, info: dict) -> float:
@@ -388,6 +390,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             task_progress=lift_progress,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
 
     def _task_reset(self) -> None:
