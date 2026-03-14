@@ -1,8 +1,10 @@
+"""MuJoCo backend for SO101-Nexus: registers all MuJoCo Gymnasium environments."""
+
 import gymnasium
 
 gymnasium.register(
-    id="MuJoCoPickCubeLift-v1",
-    entry_point="so101_nexus_mujoco.pick_cube:PickCubeLiftEnv",
+    id="MuJoCoPickLift-v1",
+    entry_point="so101_nexus_mujoco.pick_env:PickLiftEnv",
     max_episode_steps=1024,
 )
 
@@ -13,19 +15,19 @@ gymnasium.register(
 )
 
 gymnasium.register(
-    id="MuJoCoPickCubeMultipleLift-v1",
-    entry_point="so101_nexus_mujoco.pick_cube_multiple:PickCubeMultipleLiftEnv",
-    max_episode_steps=1024,
+    id="MuJoCoReach-v1",
+    entry_point="so101_nexus_mujoco.reach_env:ReachEnv",
+    max_episode_steps=512,
 )
 
 gymnasium.register(
-    id="MuJoCoPickYCBMultipleLift-v1",
-    entry_point="so101_nexus_mujoco.pick_ycb_multiple:PickYCBMultipleLiftEnv",
-    max_episode_steps=1024,
+    id="MuJoCoLookAt-v1",
+    entry_point="so101_nexus_mujoco.look_at_env:LookAtEnv",
+    max_episode_steps=256,
 )
 
 gymnasium.register(
-    id="MuJoCoPickYCBLift-v1",
-    entry_point="so101_nexus_mujoco.pick_ycb:PickYCBLiftEnv",
-    max_episode_steps=1024,
+    id="MuJoCoMove-v1",
+    entry_point="so101_nexus_mujoco.move_env:MoveEnv",
+    max_episode_steps=256,
 )

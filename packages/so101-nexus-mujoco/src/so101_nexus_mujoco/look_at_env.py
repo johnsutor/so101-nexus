@@ -1,0 +1,217 @@
+"""Primitive look-at environment for SO-101."""
+
+from __future__ import annotations
+
+import tempfile
+from typing import Literal
+
+import mujoco
+import numpy as np
+
+from so101_nexus_core import get_so101_simulation_dir
+from so101_nexus_core.config import COLOR_MAP, ControlMode, EnvironmentConfig, sample_color
+from so101_nexus_core.objects import CubeObject, SceneObject
+from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+
+_SO101_DIR = get_so101_simulation_dir()
+_SO101_XML = _SO101_DIR / "so101_new_calib.xml"
+
+
+def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
+    """Build MuJoCo XML string for the look-at scene (robot + floor + target object).
+
+    Only CubeObject is supported for the look-at target; the cube is placed as
+    a static visual/collision body so the robot can orient toward it.
+    """
+    robot_path = str(_SO101_XML)
+    gr, gg, gb, ga = ground_rgba
+    hs = obj.half_size
+    cr, cg, cb, ca = COLOR_MAP[obj.color]
+    return f"""\
+<mujoco model="look_at_scene">
+  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
+  <compiler angle="radian"/>
+
+  <include file="{robot_path}"/>
+
+  <visual>
+    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+  </visual>
+
+  <worldbody>
+    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
+    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+    <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
+          pos="0 0 0" contype="1" conaffinity="1"/>
+    <body name="look_target" pos="0.15 0 {hs}">
+      <freejoint name="look_target_joint"/>
+      <geom name="look_target_geom" type="box" size="{hs} {hs} {hs}"
+            rgba="{cr} {cg} {cb} {ca}" mass="{obj.mass}"
+            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"/>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+
+class LookAtConfig(EnvironmentConfig):
+    """Config for the look-at primitive task.
+
+    Args:
+        objects: Object(s) to sample as the look-at target. Accepts a single
+            SceneObject, a list, or None (defaults to [CubeObject()]).
+            A single object is automatically wrapped in a list. Only
+            CubeObject targets are currently supported.
+        orientation_success_threshold_deg: Max angular error in degrees for success.
+            Defaults to 5.73 degrees (≈ 0.1 radians).
+        **kwargs: Forwarded to EnvironmentConfig.
+    """
+
+    def __init__(
+        self,
+        objects: list[SceneObject] | SceneObject | None = None,
+        orientation_success_threshold_deg: float = 5.73,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        if objects is None:
+            self.objects: list[SceneObject] = [CubeObject()]
+        elif isinstance(objects, SceneObject):
+            self.objects = [objects]
+        else:
+            self.objects = list(objects)
+        self.orientation_success_threshold_deg = orientation_success_threshold_deg
+        for obj in self.objects:
+            if not isinstance(obj, CubeObject):
+                raise TypeError(
+                    f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
+                )
+
+    @property
+    def _orientation_success_threshold_rad(self) -> float:
+        """Orientation success threshold converted to radians (internal use only)."""
+        return float(np.radians(self.orientation_success_threshold_deg))
+
+
+class LookAtEnv(SO101NexusMuJoCoBaseEnv):
+    """LookAt primitive: orient the wrist camera toward a sampled target object.
+
+    Obs (10,): tcp_pose(7) + gaze_to_target(3).
+    Info: orientation_error (radians), success.
+    task_description is auto-generated: "Look at the <repr(obj)>."
+
+    DO NOT call _is_grasping() in this env — there is no graspable object
+    (the object is present for visual targeting, not grasping).
+    """
+
+    config: LookAtConfig
+
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
+
+    def __init__(
+        self,
+        config: LookAtConfig | None = None,
+        render_mode: str | None = None,
+        camera_mode: Literal["state_only", "wrist"] = "state_only",
+        control_mode: ControlMode = "pd_joint_pos",
+        robot_init_qpos_noise: float = 0.02,
+    ) -> None:
+        if config is None:
+            config = LookAtConfig()
+        self._init_common(
+            config=config,
+            render_mode=render_mode,
+            camera_mode=camera_mode,
+            control_mode=control_mode,
+            robot_init_qpos_noise=robot_init_qpos_noise,
+        )
+
+        # Use the first (and typically only) target object from config.
+        self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
+
+        ground_rgba = sample_color(config.ground_colors)
+        xml_string = _build_look_at_scene_xml(self._target_obj, ground_rgba)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
+            f.write(xml_string)
+            f.flush()
+            self.model = mujoco.MjModel.from_xml_path(f.name)
+        self.data = mujoco.MjData(self.model)
+
+        self._look_target_joint_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_JOINT, "look_target_joint"
+        )
+        self._look_target_qpos_addr = self.model.jnt_qposadr[self._look_target_joint_id]
+        self._target_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
+        )
+
+        self._task_description: str = f"Look at the {repr(self._target_obj)}."
+
+        self._finish_model_setup()
+
+    @property
+    def task_description(self) -> str:
+        """Return the current episode task description."""
+        return self._task_description
+
+    def _state_obs_size(self) -> int:
+        return 10
+
+    def _task_reset(self) -> None:
+        # Place the object randomly in the workspace in front of the robot.
+        half = self.config.spawn_half_size
+        cx, cy = self.config.spawn_center
+        x = cx + self.np_random.uniform(-half, half)
+        y = cy + self.np_random.uniform(-half, half)
+        obj = self._target_obj
+        spawn_z = obj.half_size
+        addr = self._look_target_qpos_addr
+        self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
+        self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
+
+    def _get_target_pos(self) -> np.ndarray:
+        """Return the current world position of the look-at target body."""
+        return self.data.xpos[self._target_body_id].copy()
+
+    def _get_tcp_forward(self) -> np.ndarray:
+        """Return the TCP z-axis (forward / gaze direction) in world frame."""
+        mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
+        # Third column of the rotation matrix = local z-axis in world frame.
+        return mat[:, 2].copy()
+
+    def _get_obs(self) -> np.ndarray:
+        tcp_pose = self._get_tcp_pose()
+        target_pos = self._get_target_pos()
+        gaze_to_target = target_pos - tcp_pose[:3]
+        norm = float(np.linalg.norm(gaze_to_target))
+        if norm > 1e-8:
+            gaze_to_target = gaze_to_target / norm
+        return np.concatenate([tcp_pose, gaze_to_target])
+
+    def _get_info(self) -> dict:
+        tcp_forward = self._get_tcp_forward()
+        target_pos = self._get_target_pos()
+        tcp_pos = self._get_tcp_pose()[:3]
+        to_target = target_pos - tcp_pos
+        norm = float(np.linalg.norm(to_target))
+        if norm > 1e-8:
+            to_target = to_target / norm
+        # Angular error in [0, pi]
+        cos_sim = float(np.dot(tcp_forward, to_target) / (np.linalg.norm(tcp_forward) + 1e-8))
+        cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
+        orientation_error = float(np.arccos(cos_sim))
+        threshold_rad: float = self.config._orientation_success_threshold_rad
+        return {
+            "orientation_error": orientation_error,
+            "success": orientation_error < threshold_rad,
+        }
+
+    def _compute_reward(self, info: dict) -> float:
+        tcp_forward = self._get_tcp_forward()
+        target_pos = self._get_target_pos()
+        tcp_pos = self._get_tcp_pose()[:3]
+        to_target = target_pos - tcp_pos
+        orient = self._orientation_toward_reward(tcp_forward, to_target)
+        completion_bonus = self.config.reward.completion_bonus
+        bonus = completion_bonus if info.get("success", False) else 0.0
+        return (1.0 - completion_bonus) * orient + bonus

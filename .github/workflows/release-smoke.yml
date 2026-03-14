@@ -23,7 +23,7 @@ jobs:
             apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
           - backend: maniskill
             package: so101-nexus-maniskill
-            env_id: ManiSkillPickCubeGoalSO101-v1
+            env_id: ManiSkillPickLiftSO101-v1
             apt_packages: "mesa-vulkan-drivers libvulkan1"
 
     steps:

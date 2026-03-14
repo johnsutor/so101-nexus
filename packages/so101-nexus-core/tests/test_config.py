@@ -4,23 +4,20 @@ import pytest
 from so101_nexus_core.config import (
     COLOR_MAP,
     SO101_JOINT_NAMES,
-    YCB_ENV_NAME_MAP,
-    YCB_OBJECTS,
     CameraConfig,
     EnvironmentConfig,
     PickAndPlaceConfig,
-    PickCubeConfig,
-    PickYCBConfig,
+    PickConfig,
     RewardConfig,
     RobotConfig,
     sample_color,
 )
+from so101_nexus_core.objects import CubeObject
 
 
 class TestConfigInheritance:
-    def test_pick_cube_inherits_base_defaults(self):
-        cfg = PickCubeConfig(cube_half_size=0.02, max_episode_steps=512)
-        assert cfg.cube_half_size == 0.02
+    def test_pick_config_inherits_base_defaults(self):
+        cfg = PickConfig(max_episode_steps=512)
         assert cfg.max_episode_steps == 512
         assert cfg.goal_thresh == 0.025
 
@@ -29,18 +26,23 @@ class TestConfigInheritance:
         assert cfg.goal_thresh == 0.025
         assert cfg.spawn_half_size == 0.05
 
-    def test_pick_ycb_inherits_base_defaults(self):
-        cfg = PickYCBConfig()
+    def test_pick_config_goal_thresh(self):
+        cfg = PickConfig()
         assert cfg.goal_thresh == 0.025
 
     def test_custom_camera(self):
-        cfg = PickCubeConfig(camera=CameraConfig(width=128, height=128))
+        cfg = PickConfig(camera=CameraConfig(width=128, height=128))
         assert cfg.camera.width == 128
         assert cfg.camera.height == 128
 
     def test_custom_reward(self):
-        cfg = PickCubeConfig(reward=RewardConfig(action_delta_penalty=0.01))
+        cfg = PickConfig(reward=RewardConfig(action_delta_penalty=0.01))
         assert cfg.reward.action_delta_penalty == 0.01
+
+    def test_configs_are_mutable(self):
+        cfg = PickConfig()
+        cfg.max_episode_steps = 512
+        assert cfg.max_episode_steps == 512
 
 
 class TestConfigConsistency:
@@ -87,15 +89,6 @@ class TestJointInvariants:
     def test_rest_qpos_deg_rad_consistent(self):
         cfg = RobotConfig()
         assert np.array(cfg.rest_qpos_rad) == pytest.approx(np.radians(np.array(cfg.rest_qpos_deg)))
-
-
-class TestYCBMappings:
-    def test_ycb_env_map_has_same_keys_as_objects(self):
-        assert set(YCB_ENV_NAME_MAP.keys()) == set(YCB_OBJECTS.keys())
-
-    def test_ycb_labels_are_non_empty(self):
-        assert all(v for v in YCB_OBJECTS.values())
-        assert all(v for v in YCB_ENV_NAME_MAP.values())
 
 
 class TestColorMaps:
@@ -197,6 +190,59 @@ class TestRewardCompute:
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
         assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+class TestEnergyPenalty:
+    def test_energy_penalty_zero_no_op(self):
+        r = RewardConfig(energy_penalty=0.0)
+        base = r.compute(1.0, True, 1.0, True, energy_norm=0.0)
+        with_energy = r.compute(1.0, True, 1.0, True, energy_norm=5.0)
+        assert base == pytest.approx(with_energy)
+
+    def test_energy_penalty_nonzero_reduces_reward(self):
+        r = RewardConfig(energy_penalty=0.05)
+        base = r.compute(1.0, True, 1.0, True, energy_norm=0.0)
+        penalized = r.compute(1.0, True, 1.0, True, energy_norm=2.0)
+        assert penalized < base
+        assert base - penalized == pytest.approx(0.05 * 2.0)
+
+    def test_energy_penalty_default_is_zero(self):
+        r = RewardConfig()
+        assert r.energy_penalty == 0.0
+
+    def test_energy_and_action_delta_penalties_additive(self):
+        r = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.05)
+        base = r.compute(1.0, True, 1.0, True, action_delta_norm=0.0, energy_norm=0.0)
+        penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=1.0, energy_norm=2.0)
+        expected_reduction = 0.1 * 1.0 + 0.05 * 2.0
+        assert base - penalized == pytest.approx(expected_reduction)
+
+
+class TestPickConfig:
+    def test_default_single_cube(self):
+        cfg = PickConfig()
+        assert len(cfg.objects) == 1
+        assert cfg.n_distractors == 0
+
+    def test_multi_object_with_distractors(self):
+        objs = [CubeObject() for _ in range(4)]
+        cfg = PickConfig(objects=objs, n_distractors=2)
+        assert len(cfg.objects) == 4
+        assert cfg.n_distractors == 2
+
+    def test_invalid_pool_size_raises(self):
+        with pytest.raises(ValueError, match="objects pool must have at least"):
+            PickConfig(objects=[CubeObject()], n_distractors=2)
+
+    def test_negative_distractors_raises(self):
+        with pytest.raises(ValueError, match="n_distractors must be >= 0"):
+            PickConfig(n_distractors=-1)
+
+    def test_single_scene_object_wrapped_in_list(self):
+        obj = CubeObject()
+        cfg = PickConfig(objects=obj)
+        assert isinstance(cfg.objects, list)
+        assert len(cfg.objects) == 1
 
 
 def test_robot_config_grasp_force_threshold_default():

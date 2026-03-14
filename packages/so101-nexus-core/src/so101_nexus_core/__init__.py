@@ -1,3 +1,5 @@
+"""Public API for the so101-nexus-core package."""
+
 from pathlib import Path
 
 from so101_nexus_core.config import (
@@ -16,6 +18,9 @@ from so101_nexus_core.config import (
     CameraConfig as CameraConfig,
 )
 from so101_nexus_core.config import (
+    CameraMode as CameraMode,
+)
+from so101_nexus_core.config import (
     ColorConfig as ColorConfig,
 )
 from so101_nexus_core.config import (
@@ -31,16 +36,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig as PickAndPlaceConfig,
 )
 from so101_nexus_core.config import (
-    PickCubeConfig as PickCubeConfig,
-)
-from so101_nexus_core.config import (
-    PickCubeMultipleConfig as PickCubeMultipleConfig,
-)
-from so101_nexus_core.config import (
-    PickYCBConfig as PickYCBConfig,
-)
-from so101_nexus_core.config import (
-    PickYCBMultipleConfig as PickYCBMultipleConfig,
+    PickConfig as PickConfig,
 )
 from so101_nexus_core.config import (
     RewardConfig as RewardConfig,
@@ -52,13 +48,16 @@ from so101_nexus_core.config import (
     RobotConfig as RobotConfig,
 )
 from so101_nexus_core.config import (
-    YCBEnvironmentConfig as YCBEnvironmentConfig,
-)
-from so101_nexus_core.config import (
     YcbModelId as YcbModelId,
 )
 from so101_nexus_core.config import (
     sample_color as sample_color,
+)
+from so101_nexus_core.objects import (  # noqa: F401
+    CubeObject,
+    MeshObject,
+    SceneObject,
+    YCBObject,
 )
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"

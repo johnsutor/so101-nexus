@@ -8,7 +8,7 @@
 
 <p align="center">
     <a href="https://github.com/johnsutor/so101-nexus/blob/main/LICENSE.md"><img alt="License" src="https://img.shields.io/github/license/johnsutor/so101-nexus.svg?color=blue"></a>
-    <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
+    <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue"></a>
     <a href="https://github.com/haosulab/ManiSkill"><img alt="ManiSkill" src="https://img.shields.io/badge/backend-ManiSkill-orange"></a>
     <a href="https://genesis-world.readthedocs.io/"><img alt="Genesis" src="https://img.shields.io/badge/backend-Genesis-purple"></a>
     <a href="https://mujoco.org/"><img alt="MuJoCo" src="https://img.shields.io/badge/backend-MuJoCo-green"></a>
@@ -81,7 +81,7 @@ env.close()
 import gymnasium as gym
 import so101_nexus_mujoco  # noqa: F401
 
-env = gym.make("MuJoCoPickCubeLift-v1", render_mode="rgb_array")
+env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
 
 obs, info = env.reset()
 for _ in range(256):

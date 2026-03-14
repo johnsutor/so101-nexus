@@ -1,3 +1,5 @@
+"""ManiSkill agent definition for the SO101 robot arm."""
+
 import copy
 
 import numpy as np
@@ -19,6 +21,8 @@ _URDF_DIR = get_so101_simulation_dir()
 
 @register_agent()
 class SO101(BaseAgent):
+    """ManiSkill agent wrapping the SO101 robot arm URDF."""
+
     uid = "so101"
     urdf_path = str(_URDF_DIR / "so101_new_calib.urdf")
     urdf_config = dict(

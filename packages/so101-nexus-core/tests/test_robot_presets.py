@@ -7,8 +7,7 @@ from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS,
     EnvironmentConfig,
     PickAndPlaceConfig,
-    PickCubeConfig,
-    PickYCBConfig,
+    PickConfig,
 )
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 
@@ -18,8 +17,7 @@ from so101_nexus_core.robot_presets import build_maniskill_robot_configs
     [
         (EnvironmentConfig(), False, False),
         (PickAndPlaceConfig(), True, False),
-        (PickCubeConfig(), True, True),
-        (PickYCBConfig(), False, True),
+        (PickConfig(), False, True),
     ],
 )
 def test_build_maniskill_robot_configs_shape(

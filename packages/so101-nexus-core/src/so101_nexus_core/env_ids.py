@@ -4,20 +4,13 @@ from __future__ import annotations
 
 
 def all_registered_env_ids() -> list[str]:
+    """Return a list of all registered SO101-Nexus environment IDs."""
     return [
-        "MuJoCoPickCubeLift-v1",
+        "MuJoCoPickLift-v1",
         "MuJoCoPickAndPlace-v1",
-        "MuJoCoPickCubeMultipleLift-v1",
-        "MuJoCoPickYCBLift-v1",
-        "MuJoCoPickYCBMultipleLift-v1",
-        "ManiSkillPickCubeLiftSO100-v1",
-        "ManiSkillPickAndPlaceSO100-v1",
-        "ManiSkillPickCubeMultipleLiftSO100-v1",
-        "ManiSkillPickYCBLiftSO100-v1",
-        "ManiSkillPickYCBMultipleLiftSO100-v1",
-        "ManiSkillPickCubeLiftSO101-v1",
-        "ManiSkillPickAndPlaceSO101-v1",
-        "ManiSkillPickCubeMultipleLiftSO101-v1",
-        "ManiSkillPickYCBLiftSO101-v1",
-        "ManiSkillPickYCBMultipleLiftSO101-v1",
+        "MuJoCoReach-v1",
+        "MuJoCoLookAt-v1",
+        "MuJoCoMove-v1",
+        "ManiSkillPickLiftSO100-v1",
+        "ManiSkillPickLiftSO101-v1",
     ]

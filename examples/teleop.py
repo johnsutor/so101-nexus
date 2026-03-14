@@ -22,7 +22,7 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 import cv2
@@ -326,14 +326,48 @@ def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) ->
 
     signature_target = env_ctor.__init__ if inspect.isclass(env_ctor) else env_ctor
     config_param = inspect.signature(signature_target).parameters.get("config")
-    if config_param is None or config_param.default is inspect.Parameter.empty:
+    if config_param is None:
         return kwargs
 
+    # If there's a default config, use it; otherwise try to create one from the type annotation
     base_config = config_param.default
-    kwargs["config"] = replace(
-        base_config,
-        camera=replace(base_config.camera, width=camera_width, height=camera_height),
-    )
+    if base_config is None:
+        # Find the config class from type annotations (as string)
+        config_class_name = None
+        for cls in inspect.getmro(env_ctor):
+            if hasattr(cls, "__annotations__") and "config" in cls.__annotations__:
+                config_class_name = cls.__annotations__["config"]
+                break
+
+        if isinstance(config_class_name, str):
+            # Try to resolve the string to a class
+            try:
+                # Import so101_nexus_core.config to get config classes
+                from so101_nexus_core import config as config_module
+
+                config_class = getattr(config_module, config_class_name, None)
+                if config_class is not None:
+                    base_config = config_class()
+            except Exception:
+                pass
+
+        if base_config is None:
+            return kwargs
+
+    if not hasattr(base_config, "camera"):
+        return kwargs
+
+    # Create a new camera config with updated dimensions by copying all attributes
+    camera_attrs = vars(base_config.camera).copy()
+    camera_attrs["width"] = camera_width
+    camera_attrs["height"] = camera_height
+    updated_camera = base_config.camera.__class__(**camera_attrs)
+
+    # Create a new config with updated camera by copying all attributes
+    config_attrs = vars(base_config).copy()
+    config_attrs["camera"] = updated_camera
+    updated_config = base_config.__class__(**config_attrs)
+    kwargs["config"] = updated_config
     return kwargs
 
 
@@ -655,12 +689,13 @@ def main() -> None:
             frame = {
                 "observation.state": s.episode_states[i].astype(np.float32),
                 "action": actions[i].astype(np.float32),
+                "task": s.task_description,
             }
             if s.episode_images:
                 frame["observation.images.wrist_cam"] = s.episode_images[i]
             dataset.add_frame(frame)
 
-        dataset.save_episode(task=s.task_description)
+        dataset.save_episode()
         s.episodes_completed += 1
         s.clear_episode()
 

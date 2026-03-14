@@ -13,7 +13,7 @@ def test_reset_uses_init_qpos_from_options():
 
     importlib.import_module("so101_nexus_mujoco")
 
-    env = gym.make("MuJoCoPickCubeLift-v1", camera_mode="wrist", render_mode="rgb_array")
+    env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist", render_mode="rgb_array")
     try:
         custom_qpos = np.array([0.1, -0.5, 0.8, 0.2, 0.0, 0.05], dtype=np.float64)
         obs, _ = env.reset(options={"init_qpos": custom_qpos})
@@ -31,7 +31,7 @@ def test_reset_without_init_qpos_uses_rest_pose():
     from so101_nexus_core.config import EnvironmentConfig
 
     rest = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
-    env = gym.make("MuJoCoPickCubeLift-v1", camera_mode="wrist", render_mode="rgb_array")
+    env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist", render_mode="rgb_array")
     try:
         obs, _ = env.reset(seed=0)
         actual_qpos = env.unwrapped._get_current_qpos()

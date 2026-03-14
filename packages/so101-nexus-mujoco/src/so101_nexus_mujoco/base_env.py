@@ -1,3 +1,5 @@
+"""MuJoCo base environment for SO101-Nexus simulation tasks."""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -17,7 +19,14 @@ _REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
-    """Shared MuJoCo base class for SO101-Nexus tasks."""
+    """Shared MuJoCo base class for SO101-Nexus tasks.
+
+    Notes
+    -----
+    ``_is_grasping()`` requires ``_obj_geom_id`` to be set by the subclass.
+    Primitive envs without a graspable object (``ReachEnv``, ``LookAtEnv``,
+    ``MoveEnv``) must **never** call ``_is_grasping()``.
+    """
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
     model: mujoco.MjModel
@@ -288,6 +297,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
+        """Reset the environment and return the initial observation and info."""
         super().reset(seed=seed, options=options)
         mujoco.mj_resetData(self.model, self.data)
 
@@ -315,6 +325,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
+        """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
@@ -332,12 +343,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         obs = self._get_obs()
         info = self._get_info()
+        info["energy_norm"] = float(np.linalg.norm(action))
         reward = self._compute_reward(info)
         terminated = bool(info.get("success", False))
 
         return obs, reward, terminated, False, info
 
     def render(self) -> np.ndarray | None:
+        """Render the current frame and return an RGB array, or None."""
         if self.render_mode == "rgb_array":
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(self.model, height=480, width=640)
@@ -374,6 +387,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             task_progress=0.0,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
 
     def _lift_reward(self, info: dict) -> float:
@@ -388,7 +402,29 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             task_progress=lift_progress,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
+
+    def _reach_to_target_reward(self, tcp_pos: np.ndarray, target_pos: np.ndarray) -> float:
+        """Tanh-shaped reward for reaching a 3-D target position.
+
+        Returns a value in [0, 1]. Does not call _is_grasping() — safe for
+        object-free envs.
+        """
+        dist = float(np.linalg.norm(tcp_pos - target_pos))
+        return 1.0 - float(np.tanh(self.config.reward.tanh_shaping_scale * dist))
+
+    def _orientation_toward_reward(self, current_dir: np.ndarray, target_dir: np.ndarray) -> float:
+        """Cosine-similarity reward for aligning a direction vector with a target.
+
+        Returns a value in [0, 1]. Does not call _is_grasping() — safe for
+        object-free envs.
+        """
+        cos_sim = float(
+            np.dot(current_dir, target_dir)
+            / (np.linalg.norm(current_dir) * np.linalg.norm(target_dir) + 1e-8)
+        )
+        return (cos_sim + 1.0) / 2.0
 
     def _task_reset(self) -> None:
         raise NotImplementedError

@@ -1,11 +1,8 @@
 import pytest
 
 from so101_nexus_core.config import (
-    YCB_OBJECTS,
     EnvironmentConfig,
     PickAndPlaceConfig,
-    PickCubeConfig,
-    PickYCBConfig,
 )
 
 
@@ -22,14 +19,6 @@ class TestNewConfigFields:
         cfg = EnvironmentConfig()
         assert cfg.robot_init_qpos_noise == 0.02
 
-    def test_pick_cube_has_cube_colors(self):
-        cfg = PickCubeConfig()
-        assert cfg.cube_colors == "red"
-
-    def test_pick_cube_custom_color(self):
-        cfg = PickCubeConfig(cube_colors="green")
-        assert cfg.cube_colors == "green"
-
     def test_pick_and_place_has_cube_colors(self):
         cfg = PickAndPlaceConfig()
         assert cfg.cube_colors == "red"
@@ -37,14 +26,6 @@ class TestNewConfigFields:
     def test_pick_and_place_has_target_colors(self):
         cfg = PickAndPlaceConfig()
         assert cfg.target_colors == "blue"
-
-    def test_pick_ycb_has_available_model_ids(self):
-        cfg = PickYCBConfig()
-        assert set(cfg.available_model_ids) == set(YCB_OBJECTS.keys())
-
-    def test_pick_ycb_custom_available_model_ids(self):
-        cfg = PickYCBConfig(available_model_ids=("011_banana",))
-        assert cfg.available_model_ids == ("011_banana",)
 
     def test_camera_mode_custom(self):
         cfg = EnvironmentConfig(camera_mode="wrist")
@@ -62,16 +43,8 @@ class TestNewConfigFields:
         cfg = EnvironmentConfig(robot_colors=["red", "blue"])
         assert cfg.robot_colors == ["red", "blue"]
 
-    def test_pick_cube_list_colors(self):
-        cfg = PickCubeConfig(cube_colors=["red", "blue"])
-        assert cfg.cube_colors == ["red", "blue"]
-
 
 class TestConfigValidation:
-    def test_invalid_cube_colors_pick_cube(self):
-        with pytest.raises(ValueError, match="cube_colors"):
-            PickCubeConfig(cube_colors="neon")
-
     def test_invalid_cube_colors_pick_and_place(self):
         with pytest.raises(ValueError, match="cube_colors"):
             PickAndPlaceConfig(cube_colors="neon")
@@ -84,29 +57,9 @@ class TestConfigValidation:
         with pytest.warns(UserWarning, match="overlap"):
             PickAndPlaceConfig(cube_colors="red", target_colors="red")
 
-    def test_invalid_available_model_ids(self):
-        with pytest.raises(ValueError, match="available_model_ids"):
-            PickYCBConfig(available_model_ids=("invalid_object",))
-
-    def test_empty_available_model_ids(self):
-        with pytest.raises(ValueError, match="available_model_ids"):
-            PickYCBConfig(available_model_ids=())
-
     def test_invalid_camera_mode(self):
         with pytest.raises(ValueError, match="camera_mode"):
             EnvironmentConfig(camera_mode="overhead")
-
-    def test_invalid_cube_half_size_too_small(self):
-        with pytest.raises(ValueError, match="cube_half_size"):
-            PickCubeConfig(cube_half_size=0.001)
-
-    def test_invalid_cube_half_size_too_large(self):
-        with pytest.raises(ValueError, match="cube_half_size"):
-            PickCubeConfig(cube_half_size=0.1)
-
-    def test_invalid_color_in_list(self):
-        with pytest.raises(ValueError, match="cube_colors"):
-            PickCubeConfig(cube_colors=["red", "neon"])
 
     def test_invalid_ground_color(self):
         with pytest.raises(ValueError, match="ground_colors"):

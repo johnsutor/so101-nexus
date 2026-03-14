@@ -67,7 +67,7 @@ class Args:
     hf_entity: str = ""
     """the user or org name of the model repository from the Hugging Face Hub"""
 
-    env_id: str = "MuJoCoPickCubeLift-v1"
+    env_id: str = "MuJoCoPickLift-v1"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""
@@ -442,6 +442,7 @@ if __name__ == "__main__":
 
         b_inds = np.arange(args.batch_size)
         clipfracs = []
+        approx_kl = old_approx_kl = pg_loss = v_loss = entropy_loss = torch.tensor(0.0)
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):
