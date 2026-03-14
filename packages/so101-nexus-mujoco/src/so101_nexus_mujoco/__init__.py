@@ -1,31 +1,13 @@
 import gymnasium
 
 gymnasium.register(
-    id="MuJoCoPickCubeLift-v1",
-    entry_point="so101_nexus_mujoco.pick_cube:PickCubeLiftEnv",
+    id="MuJoCoPickLift-v1",
+    entry_point="so101_nexus_mujoco.pick_env:PickLiftEnv",
     max_episode_steps=1024,
 )
 
 gymnasium.register(
     id="MuJoCoPickAndPlace-v1",
     entry_point="so101_nexus_mujoco.pick_and_place:PickAndPlaceEnv",
-    max_episode_steps=1024,
-)
-
-gymnasium.register(
-    id="MuJoCoPickCubeMultipleLift-v1",
-    entry_point="so101_nexus_mujoco.pick_cube_multiple:PickCubeMultipleLiftEnv",
-    max_episode_steps=1024,
-)
-
-gymnasium.register(
-    id="MuJoCoPickYCBMultipleLift-v1",
-    entry_point="so101_nexus_mujoco.pick_ycb_multiple:PickYCBMultipleLiftEnv",
-    max_episode_steps=1024,
-)
-
-gymnasium.register(
-    id="MuJoCoPickYCBLift-v1",
-    entry_point="so101_nexus_mujoco.pick_ycb:PickYCBLiftEnv",
     max_episode_steps=1024,
 )
