@@ -2,7 +2,7 @@
 name = "so101-nexus-workspace"
 version = "0.2.0"
 description = "Workspace root for SO101-Nexus simulation environments"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
@@ -30,11 +30,11 @@ conflicts = [
 [dependency-groups]
 dev = ["hypothesis>=6.140.0", "pytest-cov>=7.0.0", "ruff", "ty"]
 visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
-teleop = ["lerobot[feetech]>=0.4.0", "gradio>=5.0.0", "plotly>=6.0.0"]
+teleop = ["lerobot[feetech]>=0.5.0", "gradio>=5.0.0", "plotly>=6.0.0"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [

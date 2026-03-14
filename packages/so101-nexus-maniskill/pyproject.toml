@@ -2,7 +2,7 @@
 name = "so101-nexus-maniskill"
 version = "0.2.0"
 description = "ManiSkill simulation environments for the SO-101 robot arm"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = ["so101-nexus-core==0.2.0", "mani_skill", "setuptools<82"]
 license = "Apache-2.0"
 
