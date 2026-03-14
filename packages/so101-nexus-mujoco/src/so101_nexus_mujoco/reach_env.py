@@ -76,6 +76,8 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
     DO NOT call _is_grasping() in this env — there is no graspable object.
     """
 
+    config: ReachConfig
+
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
     task_description = "Move the robot's end-effector to the target position."
 
@@ -116,7 +118,7 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         return 10
 
     def _task_reset(self) -> None:
-        half = self.config.target_workspace_half_extent  # type: ignore[attr-defined]
+        half = self.config.target_workspace_half_extent
         center = np.array([0.15, 0.0, 0.15])
         self._target_pos = center + self.np_random.uniform(-half, half, size=3)
         # Keep target above floor
@@ -133,7 +135,7 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         dist = float(np.linalg.norm(self._target_pos - tcp_pos))
         return {
             "tcp_to_target_dist": dist,
-            "success": dist < self.config.success_threshold,  # type: ignore[attr-defined]
+            "success": dist < self.config.success_threshold,
         }
 
     def _compute_reward(self, info: dict) -> float:

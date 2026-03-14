@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "packages/so101-nexus-core/src",
+    "packages/so101-nexus-mujoco/src",
+    "packages/so101-nexus-maniskill/src"
+  ]
+}

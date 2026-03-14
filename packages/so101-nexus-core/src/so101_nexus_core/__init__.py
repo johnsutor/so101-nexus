@@ -18,6 +18,9 @@ from so101_nexus_core.config import (
     CameraConfig as CameraConfig,
 )
 from so101_nexus_core.config import (
+    CameraMode as CameraMode,
+)
+from so101_nexus_core.config import (
     ColorConfig as ColorConfig,
 )
 from so101_nexus_core.config import (

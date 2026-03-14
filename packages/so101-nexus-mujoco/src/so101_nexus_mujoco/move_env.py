@@ -89,6 +89,8 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     DO NOT call _is_grasping() in this env — there is no graspable object.
     """
 
+    config: MoveConfig
+
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
     def __init__(
@@ -128,8 +130,9 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     @property
     def task_description(self) -> str:
         """Return a description of the current move task."""
-        cfg: MoveConfig = self.config  # type: ignore[assignment]
-        return f"Move the end-effector {cfg.direction} by {cfg.target_distance:.2f} m."
+        return (
+            f"Move the end-effector {self.config.direction} by {self.config.target_distance:.2f} m."
+        )
 
     def _state_obs_size(self) -> int:
         return 10
@@ -140,8 +143,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         # call mj_forward here to ensure site positions are updated.
         mujoco.mj_forward(self.model, self.data)
         initial_tcp_pos = self.data.site_xpos[self._tcp_site_id].copy()
-        cfg: MoveConfig = self.config  # type: ignore[assignment]
-        self._target_pos = initial_tcp_pos + self._dir_vec * cfg.target_distance
+        self._target_pos = initial_tcp_pos + self._dir_vec * self.config.target_distance
         # Keep target above floor
         self._target_pos[2] = max(self._target_pos[2], 0.02)
         self.model.site_pos[self._move_target_site_id] = self._target_pos
@@ -154,10 +156,9 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
         dist = float(np.linalg.norm(self._target_pos - tcp_pos))
-        cfg: MoveConfig = self.config  # type: ignore[assignment]
         return {
             "tcp_to_target_dist": dist,
-            "success": dist < cfg.success_threshold,
+            "success": dist < self.config.success_threshold,
         }
 
     def _compute_reward(self, info: dict) -> float:

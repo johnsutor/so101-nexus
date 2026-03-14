@@ -442,6 +442,7 @@ if __name__ == "__main__":
 
         b_inds = np.arange(args.batch_size)
         clipfracs = []
+        approx_kl = old_approx_kl = pg_loss = v_loss = entropy_loss = torch.tensor(0.0)
         for epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):

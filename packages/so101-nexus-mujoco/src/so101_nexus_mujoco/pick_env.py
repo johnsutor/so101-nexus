@@ -254,10 +254,10 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 xy_extent = np.ptp(verts[:, :2], axis=0)
                 bounding_radius = float(np.linalg.norm(xy_extent) / 2)
             else:
-                # CubeObject
+                assert isinstance(obj, CubeObject)
                 rest_quat = np.array([1.0, 0.0, 0.0, 0.0])
-                spawn_z = obj.half_size  # type: ignore[union-attr]
-                bounding_radius = _cube_bounding_radius(obj)  # type: ignore[arg-type]
+                spawn_z = obj.half_size
+                bounding_radius = _cube_bounding_radius(obj)
 
             self._slots.append(
                 _SlotInfo(

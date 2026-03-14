@@ -104,6 +104,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     (the object is present for visual targeting, not grasping).
     """
 
+    config: LookAtConfig
+
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
     def __init__(
@@ -198,7 +200,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         cos_sim = float(np.dot(tcp_forward, to_target) / (np.linalg.norm(tcp_forward) + 1e-8))
         cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
         orientation_error = float(np.arccos(cos_sim))
-        threshold_rad: float = self.config._orientation_success_threshold_rad  # type: ignore[attr-defined]
+        threshold_rad: float = self.config._orientation_success_threshold_rad
         return {
             "orientation_error": orientation_error,
             "success": orientation_error < threshold_rad,

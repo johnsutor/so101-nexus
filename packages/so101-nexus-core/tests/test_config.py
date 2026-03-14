@@ -4,8 +4,6 @@ import pytest
 from so101_nexus_core.config import (
     COLOR_MAP,
     SO101_JOINT_NAMES,
-    YCB_ENV_NAME_MAP,
-    YCB_OBJECTS,
     CameraConfig,
     EnvironmentConfig,
     PickAndPlaceConfig,
@@ -91,15 +89,6 @@ class TestJointInvariants:
     def test_rest_qpos_deg_rad_consistent(self):
         cfg = RobotConfig()
         assert np.array(cfg.rest_qpos_rad) == pytest.approx(np.radians(np.array(cfg.rest_qpos_deg)))
-
-
-class TestYCBMappings:
-    def test_ycb_env_map_has_same_keys_as_objects(self):
-        assert set(YCB_ENV_NAME_MAP.keys()) == set(YCB_OBJECTS.keys())
-
-    def test_ycb_labels_are_non_empty(self):
-        assert all(v for v in YCB_OBJECTS.values())
-        assert all(v for v in YCB_ENV_NAME_MAP.values())
 
 
 class TestColorMaps:
