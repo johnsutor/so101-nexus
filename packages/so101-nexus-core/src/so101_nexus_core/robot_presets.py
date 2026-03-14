@@ -9,6 +9,7 @@ from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS,
     EnvironmentConfig,
     PickAndPlaceConfig,
+    PickConfig,
     PickCubeConfig,
     PickCubeMultipleConfig,
     PickYCBConfig,
@@ -46,7 +47,14 @@ def build_maniskill_robot_configs(
         if isinstance(config, (PickCubeConfig, PickAndPlaceConfig, PickCubeMultipleConfig)):
             cfg["cube_half_size"] = config.cube_half_size
         if isinstance(
-            config, (PickCubeConfig, PickYCBConfig, PickCubeMultipleConfig, PickYCBMultipleConfig)
+            config,
+            (
+                PickConfig,
+                PickCubeConfig,
+                PickYCBConfig,
+                PickCubeMultipleConfig,
+                PickYCBMultipleConfig,
+            ),
         ):
             cfg["max_goal_height"] = config.max_goal_height
         configs[uid] = cfg

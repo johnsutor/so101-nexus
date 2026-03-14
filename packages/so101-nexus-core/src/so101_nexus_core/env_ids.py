@@ -10,4 +10,6 @@ def all_registered_env_ids() -> list[str]:
         "MuJoCoReach-v1",
         "MuJoCoLookAt-v1",
         "MuJoCoMove-v1",
+        "ManiSkillPickLiftSO100-v1",
+        "ManiSkillPickLiftSO101-v1",
     ]

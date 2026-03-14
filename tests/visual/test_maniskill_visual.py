@@ -10,9 +10,9 @@ import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.config import (
     CameraConfig,
     PickAndPlaceConfig,
-    PickCubeConfig,
-    PickYCBConfig,
+    PickConfig,
 )
+from so101_nexus_core.objects import CubeObject
 from so101_nexus_core.visualization import CameraView, to_uint8
 
 from .conftest import verify_scene
@@ -21,8 +21,8 @@ CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 _CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
-_PICK_CUBE_ENVS = {
-    "ManiSkillPickCubeLiftSO101-v1",
+_PICK_LIFT_ENVS = {
+    "ManiSkillPickLiftSO101-v1",
 }
 _PICK_AND_PLACE_ENVS = {
     "ManiSkillPickAndPlaceSO101-v1",
@@ -31,19 +31,16 @@ _PICK_AND_PLACE_ENVS = {
 
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
-    if env_id in _PICK_CUBE_ENVS:
-        return dict(config=PickCubeConfig(camera=_CAM, cube_colors="red"))
+    if env_id in _PICK_LIFT_ENVS:
+        return dict(config=PickConfig(objects=[CubeObject(color="red")], camera=_CAM))
     if env_id in _PICK_AND_PLACE_ENVS:
         return dict(config=PickAndPlaceConfig(camera=_CAM, cube_colors="red"))
-    return dict(config=PickYCBConfig(camera=_CAM))
+    return dict(config=PickConfig(camera=_CAM))
 
 
 MANISKILL_SO101_ENVS = [
-    "ManiSkillPickCubeLiftSO101-v1",
+    "ManiSkillPickLiftSO101-v1",
     "ManiSkillPickAndPlaceSO101-v1",
-    "ManiSkillPickBananaLiftSO101-v1",
-    "ManiSkillPickGolfBallLiftSO101-v1",
-    "ManiSkillPickForkLiftSO101-v1",
 ]
 
 
@@ -90,27 +87,15 @@ class TestManiSkillCaptureInfrastructure:
 
 
 ENV_DESCRIPTIONS = {
-    "ManiSkillPickCubeLiftSO101-v1": "SO-101 robot arm pick-cube-lift task in ManiSkill",
+    "ManiSkillPickLiftSO101-v1": "SO-101 robot arm pick-and-lift task in ManiSkill",
     "ManiSkillPickAndPlaceSO101-v1": (
         "SO-101 robot arm pick-and-place task in ManiSkill with a colored target disc"
-    ),
-    "ManiSkillPickBananaLiftSO101-v1": (
-        "SO-101 robot arm picking up a banana (YCB object) in ManiSkill"
-    ),
-    "ManiSkillPickGolfBallLiftSO101-v1": (
-        "SO-101 robot arm picking up a golf ball (YCB object) in ManiSkill"
-    ),
-    "ManiSkillPickForkLiftSO101-v1": (
-        "SO-101 robot arm picking up a fork (YCB object) in ManiSkill"
     ),
 }
 
 EXPECTED_ELEMENTS = {
-    "ManiSkillPickCubeLiftSO101-v1": "robot arm, red cube, ground plane",
+    "ManiSkillPickLiftSO101-v1": "robot arm, red cube, ground plane",
     "ManiSkillPickAndPlaceSO101-v1": "robot arm, red cube, ground plane, colored target disc",
-    "ManiSkillPickBananaLiftSO101-v1": "robot arm, banana-shaped object, ground plane",
-    "ManiSkillPickGolfBallLiftSO101-v1": "robot arm, small spherical object, ground plane",
-    "ManiSkillPickForkLiftSO101-v1": "robot arm, fork-shaped object, ground plane",
 }
 
 

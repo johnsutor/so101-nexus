@@ -1,76 +1,79 @@
+"""Tests for the unified ManiSkill pick environment (PickEnv / PickLiftEnv)."""
+
+from pathlib import Path
+
 import gymnasium as gym
-import numpy as np
 import pytest
 import torch
+from mani_skill import ASSET_DIR
 
 import so101_nexus_maniskill  # noqa: F401
-from so101_nexus_core.config import PickCubeConfig
-from so101_nexus_maniskill.pick_cube import (
-    PICK_CUBE_CONFIGS,
-    PickCubeLiftSO100Env,
-    PickCubeLiftSO101Env,
+from so101_nexus_core.config import PickConfig
+from so101_nexus_core.objects import CubeObject, YCBObject
+from so101_nexus_maniskill.pick_env import (
+    PickLiftSO100Env,
+    PickLiftSO101Env,
 )
 
-_CFG = PickCubeConfig()
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
 LIFT_ENV_IDS = [
-    ("ManiSkillPickCubeLiftSO100-v1", "so100"),
-    ("ManiSkillPickCubeLiftSO101-v1", "so101"),
+    ("ManiSkillPickLiftSO100-v1", "so100"),
+    ("ManiSkillPickLiftSO101-v1", "so101"),
 ]
 ALL_ENV_IDS = LIFT_ENV_IDS
 
 
+def _has_ycb_assets(asset_root: Path | None = None) -> bool:
+    root = asset_root if asset_root is not None else ASSET_DIR
+    manifest = root / "assets" / "mani_skill2_ycb" / "info_pick_v0.json"
+    return manifest.exists()
+
+
 @pytest.fixture(scope="module")
 def lift_so100_env():
-    env = gym.make("ManiSkillPickCubeLiftSO100-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickLiftSO100-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 @pytest.fixture(scope="module")
 def lift_so101_env():
-    env = gym.make("ManiSkillPickCubeLiftSO101-v1", **BASE_KWARGS)
+    env = gym.make("ManiSkillPickLiftSO101-v1", **BASE_KWARGS)
     yield env
     env.close()
 
 
 def _get_env(request, env_id):
     mapping = {
-        "ManiSkillPickCubeLiftSO100-v1": "lift_so100_env",
-        "ManiSkillPickCubeLiftSO101-v1": "lift_so101_env",
+        "ManiSkillPickLiftSO100-v1": "lift_so100_env",
+        "ManiSkillPickLiftSO101-v1": "lift_so101_env",
     }
     return request.getfixturevalue(mapping[env_id])
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_colors(self):
-        with pytest.raises(ValueError, match="cube_colors"):
-            PickCubeConfig(cube_colors="neon")
-
-    def test_invalid_cube_half_size(self):
-        with pytest.raises(ValueError, match="cube_half_size"):
-            PickCubeConfig(cube_half_size=0.001)
-
     def test_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
-            gym.make("ManiSkillPickCubeLiftSO100-v1", robot_uids="panda", **BASE_KWARGS)
+            gym.make("ManiSkillPickLiftSO100-v1", robot_uids="panda", **BASE_KWARGS)
 
+    def test_empty_objects_raises(self):
+        with pytest.raises(ValueError, match="objects must not be empty"):
+            PickConfig(objects=[])
 
-class TestSharedConstants:
-    def test_cube_half_size_matches_core(self):
-        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["cube_half_size"] == _CFG.cube_half_size, (
-                f"{robot_key} cube_half_size mismatch"
-            )
+    def test_mesh_object_raises_not_supported(self):
+        """MeshObject is not supported on the ManiSkill backend."""
+        from so101_nexus_core.objects import MeshObject
 
-    def test_spawn_min_radius_matches_core(self):
-        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["spawn_min_radius"] == _CFG.spawn_min_radius
-
-    def test_spawn_max_radius_matches_core(self):
-        for robot_key, cfg in PICK_CUBE_CONFIGS.items():
-            assert cfg["spawn_max_radius"] == _CFG.spawn_max_radius
+        obj = MeshObject(
+            collision_mesh_path="/tmp/fake.obj",
+            visual_mesh_path="/tmp/fake.obj",
+            mass=0.01,
+            name="fake mesh",
+        )
+        cfg = PickConfig(objects=[obj])
+        with pytest.raises(TypeError, match="Unsupported object type"):
+            gym.make("ManiSkillPickLiftSO100-v1", config=cfg, **BASE_KWARGS)
 
 
 class TestEnvCreation:
@@ -111,15 +114,15 @@ class TestEnvCreation:
 
 
 class TestTaskDescription:
-    def test_task_description_starts_with_capital(self):
-        env = gym.make("ManiSkillPickCubeLiftSO100-v1", **BASE_KWARGS)
-        assert env.unwrapped.task_description[0].isupper()
-        env.close()
+    def test_task_description_nonempty(self, lift_so100_env):
+        assert lift_so100_env.unwrapped.task_description
 
-    def test_task_description_includes_color(self):
-        env = gym.make(
-            "ManiSkillPickCubeLiftSO100-v1", config=PickCubeConfig(cube_colors="green"), **BASE_KWARGS
-        )
+    def test_task_description_starts_with_capital(self, lift_so100_env):
+        assert lift_so100_env.unwrapped.task_description[0].isupper()
+
+    def test_task_description_cube_includes_color(self):
+        cfg = PickConfig(objects=[CubeObject(color="green")])
+        env = gym.make("ManiSkillPickLiftSO100-v1", config=cfg, **BASE_KWARGS)
         assert "green" in env.unwrapped.task_description
         env.close()
 
@@ -139,17 +142,6 @@ class TestEpisodeLogic:
         info = env.unwrapped.evaluate()
         assert set(info.keys()) == self.EVALUATE_KEYS
 
-    @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
-    def test_cube_spawns_in_radius_bounds(self, request, env_id, robot):
-        env = _get_env(request, env_id)
-        env.reset()
-        cfg = PICK_CUBE_CONFIGS[robot]
-        min_r = cfg["spawn_min_radius"]
-        max_r = cfg["spawn_max_radius"]
-        cube_p = env.unwrapped.obj.pose.p[0].cpu()
-        r = float(torch.sqrt(cube_p[0] ** 2 + cube_p[1] ** 2))
-        assert min_r <= r <= max_r
-
     @pytest.mark.parametrize("env_id,robot", LIFT_ENV_IDS)
     def test_reward_range_lift(self, request, env_id, robot):
         env = _get_env(request, env_id)
@@ -159,11 +151,23 @@ class TestEpisodeLogic:
         assert (reward >= 0).all()
         assert (reward <= 1).all()
 
+    @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
+    def test_obj_spawns_in_radius_bounds(self, request, env_id, robot):
+        env = _get_env(request, env_id)
+        env.reset()
+        inner = env.unwrapped
+        min_r = inner._robot_cfg["spawn_min_radius"]
+        max_r = inner._robot_cfg["spawn_max_radius"]
+        obj_p = inner.obj.pose.p[0].cpu()
+        r = float(torch.sqrt(obj_p[0] ** 2 + obj_p[1] ** 2))
+        assert min_r <= r <= max_r
+
 
 class TestRobotOrientation:
     @pytest.mark.parametrize("env_id,robot", ALL_ENV_IDS)
     def test_robot_base_uses_keyframe_rotation(self, request, env_id, robot):
-        """Robot base pose must use the keyframe's Z-rotation so it faces the workspace."""
+        import numpy as np
+
         env = _get_env(request, env_id)
         env.reset()
         inner = env.unwrapped
@@ -175,12 +179,12 @@ class TestRobotOrientation:
 class TestRobotSubclasses:
     def test_so100_lift_env_uses_so100(self, lift_so100_env):
         inner = lift_so100_env.unwrapped
-        assert isinstance(inner, PickCubeLiftSO100Env)
+        assert isinstance(inner, PickLiftSO100Env)
         assert inner.robot_uids == "so100"
 
     def test_so101_lift_env_uses_so101(self, lift_so101_env):
         inner = lift_so101_env.unwrapped
-        assert isinstance(inner, PickCubeLiftSO101Env)
+        assert isinstance(inner, PickLiftSO101Env)
         assert inner.robot_uids == "so101"
 
 
@@ -188,8 +192,8 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def fixed_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeLiftSO100-v1",
-            config=PickCubeConfig(camera_mode="fixed"),
+            "ManiSkillPickLiftSO100-v1",
+            config=PickConfig(camera_mode="fixed"),
             **BASE_KWARGS,
         )
         env.reset()
@@ -199,8 +203,8 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def wrist_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeLiftSO100-v1",
-            config=PickCubeConfig(camera_mode="wrist"),
+            "ManiSkillPickLiftSO100-v1",
+            config=PickConfig(camera_mode="wrist"),
             **BASE_KWARGS,
         )
         env.reset()
@@ -210,8 +214,8 @@ class TestCameraModes:
     @pytest.fixture(scope="class")
     def both_cam_env(self):
         env = gym.make(
-            "ManiSkillPickCubeLiftSO100-v1",
-            config=PickCubeConfig(camera_mode="both"),
+            "ManiSkillPickLiftSO100-v1",
+            config=PickConfig(camera_mode="both"),
             **BASE_KWARGS,
         )
         env.reset()
@@ -246,3 +250,21 @@ class TestNoTable:
         assert base_pos[0].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[1].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[2].item() == pytest.approx(0.0, abs=0.01)
+
+
+class TestYCBObjects:
+    """Tests for YCB object support in the unified pick env."""
+
+    def test_ycb_object_skips_if_assets_missing(self):
+        if not _has_ycb_assets():
+            pytest.skip(
+                "Missing ManiSkill YCB assets at "
+                f"{ASSET_DIR / 'assets' / 'mani_skill2_ycb' / 'info_pick_v0.json'}"
+            )
+        ycb_obj = YCBObject(model_id="011_banana")
+        cfg = PickConfig(objects=[ycb_obj])
+        env = gym.make("ManiSkillPickLiftSO100-v1", config=cfg, **BASE_KWARGS)
+        obs, info = env.reset()
+        assert isinstance(obs, torch.Tensor)
+        assert "banana" in env.unwrapped.task_description.lower()
+        env.close()
