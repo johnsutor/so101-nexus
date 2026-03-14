@@ -44,6 +44,7 @@ def _extract_views(obs: dict) -> list[CameraView]:
 
 
 def main():
+    """Run a short ManiSkill rollout and save a tiled camera view to disk."""
     env = gymnasium.make(
         ENV_ID,
         obs_mode="rgb",

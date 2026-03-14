@@ -23,7 +23,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, cast, get_type_hints
+from typing import Protocol, cast
 
 import cv2
 import gymnasium as gym
@@ -344,6 +344,7 @@ def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) ->
             try:
                 # Import so101_nexus_core.config to get config classes
                 from so101_nexus_core import config as config_module
+
                 config_class = getattr(config_module, config_class_name, None)
                 if config_class is not None:
                     base_config = config_class()

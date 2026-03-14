@@ -6,6 +6,7 @@ these classes to instantiate simulator objects. No simulator imports here.
 The ``__repr__`` of each class emits a natural-language description that
 environments use to auto-generate task description strings.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -73,9 +74,7 @@ class YCBObject(SceneObject):
         mass_override: float | None = None,
     ) -> None:
         if model_id not in YCB_OBJECTS:
-            raise ValueError(
-                f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}"
-            )
+            raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
         if mass_override is not None and mass_override <= 0:
             raise ValueError(f"mass_override must be positive, got {mass_override}")
         self.model_id = model_id

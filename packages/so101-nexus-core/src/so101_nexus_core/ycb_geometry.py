@@ -1,3 +1,5 @@
+"""YCB mesh geometry helpers for stable spawn poses across simulation backends."""
+
 from __future__ import annotations
 
 import json

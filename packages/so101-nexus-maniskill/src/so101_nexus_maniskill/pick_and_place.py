@@ -1,3 +1,5 @@
+"""ManiSkill pick-and-place task environment for SO101-Nexus."""
+
 from typing import Any
 
 import sapien
@@ -139,6 +141,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             self._store_initial_obj_z(env_idx, xyz[:, 2])
 
     def evaluate(self) -> dict[str, torch.Tensor]:
+        """Compute per-environment success and intermediate metrics."""
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
         obj_to_target_xy = self.obj.pose.p[:, :2] - self.target_site.pose.p[:, :2]
         obj_to_target_dist = torch.linalg.norm(obj_to_target_xy, axis=1)
@@ -178,6 +181,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         return obs
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
+        """Compute the normalized dense reward for pick-and-place."""
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
         placement_progress = self._reach_progress(info["obj_to_target_dist"]) * is_grasped

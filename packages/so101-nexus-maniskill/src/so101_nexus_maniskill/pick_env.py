@@ -252,9 +252,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
 
             total_objects = 1 + len(self.distractors)
             all_r = min_r + torch.rand(b, total_objects, device=self.device) * (max_r - min_r)
-            all_theta = (
-                torch.rand(b, total_objects, device=self.device) * 2 - 1
-            ) * angle_half
+            all_theta = (torch.rand(b, total_objects, device=self.device) * 2 - 1) * angle_half
 
             # Target pose
             target_xyz = torch.zeros((b, 3), device=self.device)

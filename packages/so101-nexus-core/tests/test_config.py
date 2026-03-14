@@ -236,6 +236,7 @@ class TestPickConfig:
     def test_default_single_cube(self):
         pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
         from so101_nexus_core.config import PickConfig
+
         cfg = PickConfig()
         assert len(cfg.objects) == 1
         assert cfg.n_distractors == 0
@@ -244,6 +245,7 @@ class TestPickConfig:
         pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
         from so101_nexus_core.config import PickConfig
         from so101_nexus_core.objects import CubeObject
+
         objs = [CubeObject() for _ in range(4)]
         cfg = PickConfig(objects=objs, n_distractors=2)
         assert len(cfg.objects) == 4
@@ -253,12 +255,14 @@ class TestPickConfig:
         pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
         from so101_nexus_core.config import PickConfig
         from so101_nexus_core.objects import CubeObject
+
         with pytest.raises(ValueError, match="objects pool must have at least"):
             PickConfig(objects=[CubeObject()], n_distractors=2)
 
     def test_negative_distractors_raises(self):
         pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
         from so101_nexus_core.config import PickConfig
+
         with pytest.raises(ValueError, match="n_distractors must be >= 0"):
             PickConfig(n_distractors=-1)
 
@@ -266,6 +270,7 @@ class TestPickConfig:
         pytest.importorskip("so101_nexus_core.objects", reason="objects.py not yet implemented")
         from so101_nexus_core.config import PickConfig
         from so101_nexus_core.objects import CubeObject
+
         obj = CubeObject()
         cfg = PickConfig(objects=obj)
         assert isinstance(cfg.objects, list)

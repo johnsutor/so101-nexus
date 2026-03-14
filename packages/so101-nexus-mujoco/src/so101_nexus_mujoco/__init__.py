@@ -1,3 +1,5 @@
+"""MuJoCo backend for SO101-Nexus: registers all MuJoCo Gymnasium environments."""
+
 import gymnasium
 
 gymnasium.register(

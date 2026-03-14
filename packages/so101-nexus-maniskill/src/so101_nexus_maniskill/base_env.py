@@ -1,3 +1,5 @@
+"""ManiSkill base environment for SO101-Nexus simulation tasks."""
+
 from __future__ import annotations
 
 from typing import Any, Union
@@ -66,7 +68,9 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             + cfg.task_objective * task_progress
             + cfg.completion_bonus * is_complete
         )
-        return base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
+        return (
+            base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
+        )
 
     @property
     def _default_sim_config(self) -> SimConfig:
@@ -231,4 +235,5 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         action: torch.Tensor,
         info: dict[str, Any],
     ) -> torch.Tensor:
+        """Delegate to compute_dense_reward (reward is already normalized)."""
         return self.compute_dense_reward(obs=obs, action=action, info=info)

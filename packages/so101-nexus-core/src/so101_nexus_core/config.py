@@ -154,11 +154,13 @@ class CameraConfig:
 
     @property
     def wrist_fov_rad_range(self) -> tuple[float, float]:
+        """Wrist FOV range converted to radians."""
         lo, hi = self.wrist_fov_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
 
     @property
     def wrist_pitch_rad_range(self) -> tuple[float, float]:
+        """Wrist pitch range converted to radians."""
         lo, hi = self.wrist_pitch_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
 
@@ -193,6 +195,7 @@ class RobotConfig:
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
+        """Rest joint positions in radians."""
         return tuple(float(np.radians(v)) for v in self.rest_qpos_deg)
 
     @property
@@ -249,11 +252,13 @@ class RobotCameraPreset:
 
     @property
     def wrist_cam_euler_center_rad(self) -> tuple[float, float, float]:
+        """Wrist camera Euler center angles converted to radians."""
         x, y, z = self.wrist_cam_euler_center_deg
         return (float(np.radians(x)), float(np.radians(y)), float(np.radians(z)))
 
     @property
     def wrist_cam_euler_noise_rad(self) -> tuple[float, float, float]:
+        """Wrist camera Euler noise angles converted to radians."""
         x, y, z = self.wrist_cam_euler_noise_deg
         return (float(np.radians(x)), float(np.radians(y)), float(np.radians(z)))
 
@@ -441,6 +446,7 @@ class PickConfig(EnvironmentConfig):
     ) -> None:
         super().__init__(**kwargs)
         from so101_nexus_core.objects import CubeObject, SceneObject as _SceneObject  # noqa: PLC0415, I001
+
         if objects is None:
             self.objects: list[SceneObject] = [CubeObject()]
         elif isinstance(objects, _SceneObject):

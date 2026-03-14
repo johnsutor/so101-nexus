@@ -1,3 +1,5 @@
+"""Public API for the so101-nexus-core package."""
+
 from pathlib import Path
 
 from so101_nexus_core.config import (
@@ -64,9 +66,9 @@ from so101_nexus_core.config import (
     sample_color as sample_color,
 )
 from so101_nexus_core.objects import (  # noqa: F401
-    SceneObject,
     CubeObject,
     MeshObject,
+    SceneObject,
     YCBObject,
 )
 

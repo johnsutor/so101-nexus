@@ -4,6 +4,7 @@ from __future__ import annotations
 
 
 def all_registered_env_ids() -> list[str]:
+    """Return a list of all registered SO101-Nexus environment IDs."""
     return [
         "MuJoCoPickLift-v1",
         "MuJoCoPickAndPlace-v1",

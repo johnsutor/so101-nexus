@@ -1,3 +1,5 @@
+"""MuJoCo base environment for SO101-Nexus simulation tasks."""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -295,6 +297,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
+        """Reset the environment and return the initial observation and info."""
         super().reset(seed=seed, options=options)
         mujoco.mj_resetData(self.model, self.data)
 
@@ -322,6 +325,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
+        """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
@@ -346,6 +350,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return obs, reward, terminated, False, info
 
     def render(self) -> np.ndarray | None:
+        """Render the current frame and return an RGB array, or None."""
         if self.render_mode == "rgb_array":
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(self.model, height=480, width=640)

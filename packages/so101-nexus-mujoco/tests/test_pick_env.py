@@ -38,23 +38,26 @@ class TestPickEnvDefaults:
 
 class TestPickEnvObjectConfig:
     def test_ycb_object(self):
-        env = gym.make("MuJoCoPickLift-v1",
-                       config=PickConfig(objects=[YCBObject(model_id="009_gelatin_box")]))
+        env = gym.make(
+            "MuJoCoPickLift-v1", config=PickConfig(objects=[YCBObject(model_id="009_gelatin_box")])
+        )
         obs, _ = env.reset()
         assert obs.shape == (18,)
         assert "gelatin box" in env.unwrapped.task_description
         env.close()
 
     def test_multiple_objects_with_distractors(self):
-        env = gym.make("MuJoCoPickLift-v1",
-                       config=PickConfig(
-                           objects=[
-                               CubeObject(color="red"),
-                               CubeObject(color="blue"),
-                               CubeObject(color="green"),
-                           ],
-                           n_distractors=2,
-                       ))
+        env = gym.make(
+            "MuJoCoPickLift-v1",
+            config=PickConfig(
+                objects=[
+                    CubeObject(color="red"),
+                    CubeObject(color="blue"),
+                    CubeObject(color="green"),
+                ],
+                n_distractors=2,
+            ),
+        )
         obs, _ = env.reset()
         assert obs.shape == (18,)
         env.close()
