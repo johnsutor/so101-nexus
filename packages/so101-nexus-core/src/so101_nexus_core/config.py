@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Literal, Union, cast
 
 import numpy as np
 
@@ -162,7 +162,7 @@ class CameraConfig:
         lo, hi = self.wrist_pitch_deg_range
         return (float(np.radians(lo)), float(np.radians(hi)))
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"CameraConfig(width={self.width}, height={self.height}, "
             f"wrist_fov_deg_range={self.wrist_fov_deg_range})"
@@ -200,7 +200,7 @@ class RobotConfig:
         """Backward-compatible alias returning radians."""
         return self.rest_qpos_rad
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"RobotConfig(grasp_force_threshold={self.grasp_force_threshold}, "
             f"static_vel_threshold={self.static_vel_threshold})"
@@ -257,7 +257,7 @@ class RobotCameraPreset:
         x, y, z = self.wrist_cam_euler_noise_deg
         return (float(np.radians(x)), float(np.radians(y)), float(np.radians(z)))
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"RobotCameraPreset(wrist_camera_mount_link={self.wrist_camera_mount_link!r}, "
             f"wrist_cam_euler_center_deg={self.wrist_cam_euler_center_deg})"
@@ -320,7 +320,7 @@ class RewardConfig:
         penalty = self.action_delta_penalty * action_delta_norm + self.energy_penalty * energy_norm
         return base - penalty
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"RewardConfig(reaching={self.reaching}, grasping={self.grasping}, "
             f"task_objective={self.task_objective}, completion_bonus={self.completion_bonus}, "
@@ -404,7 +404,7 @@ class EnvironmentConfig:
                 f"got {self.spawn_angle_half_range_deg}"
             )
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"{type(self).__name__}(max_episode_steps={self.max_episode_steps}, "
             f"goal_thresh={self.goal_thresh}, camera_mode={self.camera_mode!r})"
@@ -461,7 +461,7 @@ class PickConfig(EnvironmentConfig):
                 f"entries to support {self.n_distractors} distractors, got {len(self.objects)}"
             )
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
             f"lift_threshold={self.lift_threshold}, max_goal_height={self.max_goal_height})"
@@ -499,7 +499,7 @@ class PickCubeConfig(EnvironmentConfig):
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickCubeConfig(cube_colors={self.cube_colors!r}, "
             f"cube_half_size={self.cube_half_size}, lift_threshold={self.lift_threshold})"
@@ -554,7 +554,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickAndPlaceConfig(cube_colors={self.cube_colors!r}, "
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
@@ -580,7 +580,9 @@ class YCBEnvironmentConfig(EnvironmentConfig):
     ) -> None:
         super().__init__(**kwargs)
         self.available_model_ids: tuple[YcbModelId, ...] = (
-            available_model_ids if available_model_ids is not None else tuple(YCB_OBJECTS.keys())
+            available_model_ids
+            if available_model_ids is not None
+            else cast("tuple[YcbModelId, ...]", tuple(YCB_OBJECTS.keys()))
         )
         if not self.available_model_ids:
             raise ValueError("available_model_ids must not be empty")
@@ -591,7 +593,7 @@ class YCBEnvironmentConfig(EnvironmentConfig):
                     f"Must be one of {list(YCB_OBJECTS)}"
                 )
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"{type(self).__name__}(available_model_ids={self.available_model_ids!r}, "
             f"max_episode_steps={self.max_episode_steps})"
@@ -617,7 +619,7 @@ class PickYCBConfig(YCBEnvironmentConfig):
         self.lift_threshold = lift_threshold
         self.max_goal_height = max_goal_height
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickYCBConfig(lift_threshold={self.lift_threshold}, "
             f"max_goal_height={self.max_goal_height}, "
@@ -667,7 +669,7 @@ class PickCubeMultipleConfig(EnvironmentConfig):
         if self.num_distractors < 1:
             raise ValueError(f"num_distractors must be >= 1, got {self.num_distractors}")
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickCubeMultipleConfig(cube_color={self.cube_color!r}, "
             f"num_distractors={self.num_distractors}, lift_threshold={self.lift_threshold})"
@@ -701,7 +703,7 @@ class PickYCBMultipleConfig(YCBEnvironmentConfig):
         if self.num_distractors < 1:
             raise ValueError(f"num_distractors must be >= 1, got {self.num_distractors}")
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickYCBMultipleConfig(num_distractors={self.num_distractors}, "
             f"lift_threshold={self.lift_threshold}, max_goal_height={self.max_goal_height})"

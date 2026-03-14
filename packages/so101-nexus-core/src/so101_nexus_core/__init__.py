@@ -31,6 +31,9 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig as PickAndPlaceConfig,
 )
 from so101_nexus_core.config import (
+    PickConfig as PickConfig,
+)
+from so101_nexus_core.config import (
     PickCubeConfig as PickCubeConfig,
 )
 from so101_nexus_core.config import (
