@@ -477,6 +477,9 @@ class PickConfig(EnvironmentConfig):
 class PickCubeConfig(EnvironmentConfig):
     """Config for pick-cube and pick-cube-lift environments.
 
+    .. deprecated::
+        Use :class:`PickConfig` instead.
+
     Args:
         cube_colors: Cube color(s).
         cube_half_size: Half-size of the cube in metres.
@@ -495,6 +498,12 @@ class PickCubeConfig(EnvironmentConfig):
         max_goal_height: float = 0.08,
         **kwargs,
     ) -> None:
+        warnings.warn(
+            "PickCubeConfig is deprecated and will be removed in a future release. "
+            "Use PickConfig instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(**kwargs)
         self.cube_colors = cube_colors
         self.cube_half_size = cube_half_size
@@ -570,6 +579,10 @@ class PickAndPlaceConfig(EnvironmentConfig):
 class YCBEnvironmentConfig(EnvironmentConfig):
     """Base config for all YCB-object environments.
 
+    .. deprecated::
+        Use :class:`PickConfig` with :class:`~so101_nexus_core.objects.YCBObject`
+        entries instead.
+
     Stores the pool of YCB objects that may appear in an episode.
     Task-specific configs (PickYCBConfig, etc.) inherit from this class,
     making it the shared anchor for future look/push YCB tasks as well.
@@ -584,6 +597,13 @@ class YCBEnvironmentConfig(EnvironmentConfig):
         available_model_ids: tuple[YcbModelId, ...] | None = None,
         **kwargs,
     ) -> None:
+        if type(self) is YCBEnvironmentConfig:
+            warnings.warn(
+                "YCBEnvironmentConfig is deprecated and will be removed in a future release. "
+                "Use PickConfig with YCBObject entries instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         super().__init__(**kwargs)
         self.available_model_ids: tuple[YcbModelId, ...] = (
             available_model_ids
@@ -609,6 +629,10 @@ class YCBEnvironmentConfig(EnvironmentConfig):
 class PickYCBConfig(YCBEnvironmentConfig):
     """Config for pick-YCB and pick-YCB-lift environments.
 
+    .. deprecated::
+        Use :class:`PickConfig` with :class:`~so101_nexus_core.objects.YCBObject`
+        entries instead.
+
     Args:
         lift_threshold: Minimum height above initial z to count as lifted.
         max_goal_height: Height cap used to normalize lift progress to [0, 1].
@@ -621,6 +645,12 @@ class PickYCBConfig(YCBEnvironmentConfig):
         max_goal_height: float = 0.08,
         **kwargs,
     ) -> None:
+        warnings.warn(
+            "PickYCBConfig is deprecated and will be removed in a future release. "
+            "Use PickConfig with YCBObject entries instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(**kwargs)
         self.lift_threshold = lift_threshold
         self.max_goal_height = max_goal_height
@@ -635,6 +665,9 @@ class PickYCBConfig(YCBEnvironmentConfig):
 
 class PickCubeMultipleConfig(EnvironmentConfig):
     """Config for pick-cube-multiple environments with distractor cubes.
+
+    .. deprecated::
+        Use :class:`PickConfig` with ``n_distractors`` instead.
 
     Args:
         cube_color: Color of the target cube.
@@ -658,6 +691,12 @@ class PickCubeMultipleConfig(EnvironmentConfig):
         min_object_separation: float = 0.04,
         **kwargs,
     ) -> None:
+        warnings.warn(
+            "PickCubeMultipleConfig is deprecated and will be removed in a future release. "
+            "Use PickConfig with n_distractors instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(**kwargs)
         self.cube_color = cube_color
         self.cube_half_size = cube_half_size
@@ -685,6 +724,10 @@ class PickCubeMultipleConfig(EnvironmentConfig):
 class PickYCBMultipleConfig(YCBEnvironmentConfig):
     """Config for pick-YCB-multiple environments with distractor YCB objects.
 
+    .. deprecated::
+        Use :class:`PickConfig` with :class:`~so101_nexus_core.objects.YCBObject`
+        entries and ``n_distractors`` instead.
+
     Args:
         lift_threshold: Minimum height above initial z to count as lifted.
         max_goal_height: Height cap used to normalize lift progress to [0, 1].
@@ -701,6 +744,12 @@ class PickYCBMultipleConfig(YCBEnvironmentConfig):
         min_object_separation: float = 0.04,
         **kwargs,
     ) -> None:
+        warnings.warn(
+            "PickYCBMultipleConfig is deprecated and will be removed in a future release. "
+            "Use PickConfig with YCBObject entries and n_distractors instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(**kwargs)
         self.lift_threshold = lift_threshold
         self.max_goal_height = max_goal_height

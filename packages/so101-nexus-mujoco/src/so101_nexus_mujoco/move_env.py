@@ -26,9 +26,6 @@ _DIRECTION_VEC: dict[str, tuple[float, float, float]] = {
     "backward": (-1.0, 0.0, 0.0),
 }
 
-# Fraction of reward budget reserved for the completion bonus.
-_COMPLETION_BONUS = 0.10
-
 
 def _build_move_scene_xml(ground_rgba: list[float]) -> str:
     """Build MuJoCo XML string for the move scene (robot + floor + target site)."""
@@ -166,5 +163,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
         reach = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        bonus = _COMPLETION_BONUS if info.get("success", False) else 0.0
-        return (1.0 - _COMPLETION_BONUS) * reach + bonus
+        completion_bonus = self.config.reward.completion_bonus
+        bonus = completion_bonus if info.get("success", False) else 0.0
+        return (1.0 - completion_bonus) * reach + bonus

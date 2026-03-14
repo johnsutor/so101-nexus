@@ -16,9 +16,6 @@ from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
 
-# Fraction of reward budget reserved for the completion bonus.
-_COMPLETION_BONUS = 0.10
-
 
 def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
     """Build MuJoCo XML string for the look-at scene (robot + floor + target object).
@@ -65,14 +62,15 @@ class LookAtConfig(EnvironmentConfig):
             SceneObject, a list, or None (defaults to [CubeObject()]).
             A single object is automatically wrapped in a list. Only
             CubeObject targets are currently supported.
-        orientation_success_threshold: Max angular error in radians for success.
+        orientation_success_threshold_deg: Max angular error in degrees for success.
+            Defaults to 5.73 degrees (≈ 0.1 radians).
         **kwargs: Forwarded to EnvironmentConfig.
     """
 
     def __init__(
         self,
         objects: list[SceneObject] | SceneObject | None = None,
-        orientation_success_threshold: float = 0.1,
+        orientation_success_threshold_deg: float = 5.73,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -82,12 +80,17 @@ class LookAtConfig(EnvironmentConfig):
             self.objects = [objects]
         else:
             self.objects = list(objects)
-        self.orientation_success_threshold = orientation_success_threshold
+        self.orientation_success_threshold_deg = orientation_success_threshold_deg
         for obj in self.objects:
             if not isinstance(obj, CubeObject):
                 raise TypeError(
                     f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
                 )
+
+    @property
+    def _orientation_success_threshold_rad(self) -> float:
+        """Orientation success threshold converted to radians (internal use only)."""
+        return float(np.radians(self.orientation_success_threshold_deg))
 
 
 class LookAtEnv(SO101NexusMuJoCoBaseEnv):
@@ -195,10 +198,10 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         cos_sim = float(np.dot(tcp_forward, to_target) / (np.linalg.norm(tcp_forward) + 1e-8))
         cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
         orientation_error = float(np.arccos(cos_sim))
-        threshold: float = self.config.orientation_success_threshold  # type: ignore[attr-defined]
+        threshold_rad: float = self.config._orientation_success_threshold_rad  # type: ignore[attr-defined]
         return {
             "orientation_error": orientation_error,
-            "success": orientation_error < threshold,
+            "success": orientation_error < threshold_rad,
         }
 
     def _compute_reward(self, info: dict) -> float:
@@ -207,5 +210,6 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         tcp_pos = self._get_tcp_pose()[:3]
         to_target = target_pos - tcp_pos
         orient = self._orientation_toward_reward(tcp_forward, to_target)
-        bonus = _COMPLETION_BONUS if info.get("success", False) else 0.0
-        return (1.0 - _COMPLETION_BONUS) * orient + bonus
+        completion_bonus = self.config.reward.completion_bonus
+        bonus = completion_bonus if info.get("success", False) else 0.0
+        return (1.0 - completion_bonus) * orient + bonus

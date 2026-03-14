@@ -15,11 +15,8 @@ from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
 
-# Fraction of reward budget reserved for the completion bonus.
-_COMPLETION_BONUS = 0.10
 
-
-def _build_reach_scene_xml(ground_rgba: list[float]) -> str:
+def _build_reach_scene_xml(ground_rgba: list[float], target_radius: float) -> str:
     """Build the MuJoCo XML string for the reach scene (robot + floor + target site)."""
     robot_path = str(_SO101_XML)
     gr, gg, gb, ga = ground_rgba
@@ -39,7 +36,7 @@ def _build_reach_scene_xml(ground_rgba: list[float]) -> str:
     <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
-    <site name="reach_target" type="sphere" size="0.02" rgba="1 0.5 0 0.7"
+    <site name="reach_target" type="sphere" size="{target_radius}" rgba="1 0.5 0 0.7"
           pos="0.15 0 0.1" group="1"/>
   </worldbody>
 </mujoco>
@@ -101,7 +98,7 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         )
 
         ground_rgba = sample_color(config.ground_colors)
-        xml_string = _build_reach_scene_xml(ground_rgba)
+        xml_string = _build_reach_scene_xml(ground_rgba, config.target_radius)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
             f.flush()
@@ -142,5 +139,6 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
         reach = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        bonus = _COMPLETION_BONUS if info.get("success", False) else 0.0
-        return (1.0 - _COMPLETION_BONUS) * reach + bonus
+        completion_bonus = self.config.reward.completion_bonus
+        bonus = completion_bonus if info.get("success", False) else 0.0
+        return (1.0 - completion_bonus) * reach + bonus

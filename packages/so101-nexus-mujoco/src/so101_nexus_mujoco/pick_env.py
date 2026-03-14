@@ -211,17 +211,20 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         )
 
         self._n_distractors = config.n_distractors
-        # Total bodies in the scene = target + distractors
-        max_objects = 1 + self._n_distractors
-        scene_objects = list(config.objects[:max_objects])
+        # Build the XML for ALL objects in the pool so any object can be
+        # selected as the target or a distractor at reset time.
+        scene_objects = list(config.objects)
+        n_pool = len(scene_objects)
+        n_slots = 1 + self._n_distractors
 
         # Ensure YCB assets are on disk before building XML
         for obj in scene_objects:
             if isinstance(obj, YCBObject):
                 ensure_ycb_assets(obj.model_id)
 
-        # Body slot names: "pick_target", "distractor_0", "distractor_1", ...
-        slot_names = ["pick_target"] + [f"distractor_{i}" for i in range(self._n_distractors)]
+        # Body slot names: one per pool object (not just active slots).
+        # Slots beyond n_slots will be hidden off-world at reset time.
+        slot_names = [f"pick_slot_{i}" for i in range(n_pool)]
 
         xml_string = _build_scene_xml(
             scene_objects,
@@ -234,7 +237,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        # Build per-slot runtime info
+        # Build per-slot runtime info (one entry per pool object)
         self._slots: list[_SlotInfo] = []
         for slot, obj in zip(slot_names, scene_objects):
             geom_name = _primary_geom_name(slot, obj)
@@ -267,6 +270,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 )
             )
 
+        # n_slots = active slots (target + distractors); the rest are hidden.
+        self._n_slots = n_slots
         # Bookkeeping updated at each _task_reset
         self._target_slot_idx: int = 0
         self._task_description: str = ""
@@ -323,71 +328,66 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         max_r = self.config.spawn_max_radius
         angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
-        # Choose target index from [0, len(objects)-1] mapped across slots
-        n_pool = len(self.config.objects)
-        target_obj_idx = int(rng.integers(n_pool))
-        target_obj = self.config.objects[target_obj_idx]
+        n_pool = len(self._slots)
+        n_slots = self._n_slots  # number of active slots (target + distractors)
 
-        # Build the assignment: target goes to slot 0; distractors fill slots 1..
-        # For distractor pool: all objects except the chosen target (by idx)
-        distractor_pool_indices = [i for i in range(n_pool) if i != target_obj_idx]
-        if not distractor_pool_indices:
-            distractor_pool_indices = list(range(n_pool))
+        # Sample n_slots distinct slot indices from the pool without replacement.
+        chosen_indices = list(rng.choice(n_pool, size=n_slots, replace=False))
+        target_pool_idx = int(chosen_indices[0])
+        target_obj = self._slots[target_pool_idx].obj
 
-        # Assign objects to each slot
-        slot_obj_assignments: list[SceneObject] = [target_obj]
-        for i in range(self._n_distractors):
-            d_idx = distractor_pool_indices[int(rng.integers(len(distractor_pool_indices)))]
-            slot_obj_assignments.append(self.config.objects[d_idx])
+        # The first chosen slot becomes the target; the rest are distractors.
+        self._target_slot_idx = target_pool_idx
+        self._obj_geom_id = self._slots[target_pool_idx].geom_id
 
-        # Update _obj_geom_id to the target's geom (slot 0 = pick_target)
-        self._target_slot_idx = 0
-        self._obj_geom_id = self._slots[0].geom_id
+        # Gather bounding radii only for active slots (for position sampling).
+        active_bounding_radii = [self._slots[int(i)].bounding_radius for i in chosen_indices]
 
-        # Gather bounding radii for spacing
-        bounding_radii = [self._slots[i].bounding_radius for i in range(len(self._slots))]
-
-        total_objects = 1 + self._n_distractors
         positions = sample_separated_positions(
             rng,
-            total_objects,
+            n_slots,
             min_r,
             max_r,
             angle_half,
             self.config.min_object_separation,
-            bounding_radii,
+            active_bounding_radii,
         )
 
-        for slot_idx in range(total_objects):
-            slot = self._slots[slot_idx]
-            assigned_obj = slot_obj_assignments[slot_idx]
-            x, y = positions[slot_idx]
+        # Place active slots at their sampled positions.
+        for pos_idx, pool_idx in enumerate(chosen_indices):
+            slot = self._slots[int(pool_idx)]
+            obj = slot.obj
+            x, y = positions[pos_idx]
 
-            # Determine spawn_z and orientation for the assigned object
-            if isinstance(assigned_obj, CubeObject):
-                spawn_z = assigned_obj.half_size
+            if isinstance(obj, CubeObject):
+                spawn_z = obj.half_size
                 yaw_quat = random_yaw_quat(rng)
                 obj_quat = yaw_quat
-                # Recolour cube geom to assigned object's color
-                rgba = COLOR_MAP[assigned_obj.color]
+                rgba = COLOR_MAP[obj.color]
                 self.model.geom_rgba[slot.geom_id] = rgba
-            elif isinstance(assigned_obj, (YCBObject, MeshObject)):
-                # Use the slot's precomputed rest quat/spawn_z (only meaningful
-                # when the slot object type matches; for simplicity we reuse
-                # the slot's geometry data since XML is fixed at init)
+            elif isinstance(obj, (YCBObject, MeshObject)):
                 spawn_z = slot.spawn_z
                 yaw_quat = random_yaw_quat(rng)
                 obj_quat = np.zeros(4)
                 mujoco.mju_mulQuat(obj_quat, yaw_quat, slot.rest_quat)
             else:
-                raise TypeError(f"Unsupported object type: {type(assigned_obj)}")
+                raise TypeError(f"Unsupported object type: {type(obj)}")
 
             addr = slot.qpos_addr
             self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
             self.data.qpos[addr + 3 : addr + 7] = obj_quat
 
-            if slot_idx == 0:
+            if pos_idx == 0:
                 self._initial_obj_z = spawn_z
+
+        # Move all inactive slots far off-world so they are invisible and
+        # do not participate in collision.
+        unchosen = set(range(n_pool)) - {int(i) for i in chosen_indices}
+        for pool_idx in unchosen:
+            slot = self._slots[pool_idx]
+            addr = slot.qpos_addr
+            self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
+            self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
         self._task_description = f"Pick up the {repr(target_obj)}."
 

@@ -67,7 +67,7 @@ class Args:
     hf_entity: str = ""
     """the user or org name of the model repository from the Hugging Face Hub"""
 
-    env_id: str = "MuJoCoPickCubeLift-v1"
+    env_id: str = "MuJoCoPickLift-v1"
     """the id of the environment"""
     total_timesteps: int = 10000000
     """total timesteps of the experiments"""

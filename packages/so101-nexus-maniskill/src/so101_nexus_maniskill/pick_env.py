@@ -305,6 +305,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         """Return reach-only reward normalized to [0, 1]."""
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
+        energy_norm = torch.linalg.norm(action, dim=-1)
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
@@ -314,6 +315,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
                 "success",
                 torch.zeros(len(reach_progress), dtype=torch.bool, device=self.device),
             ),
+            energy_norm=energy_norm,
         )
 
 
@@ -338,12 +340,14 @@ class PickLiftEnv(PickEnv):
             torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0))
             * is_grasped
         )
+        energy_norm = torch.linalg.norm(action, dim=-1)
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=lift_progress,
             is_complete=info["success"],
+            energy_norm=energy_norm,
         )
 
 

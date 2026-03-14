@@ -185,12 +185,14 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
         placement_progress = self._reach_progress(info["obj_to_target_dist"]) * is_grasped
+        energy_norm = torch.linalg.norm(action, dim=-1)
 
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
+            energy_norm=energy_norm,
         )
 
 

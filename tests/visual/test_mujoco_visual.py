@@ -15,9 +15,9 @@ import so101_nexus_mujoco  # noqa: F401, E402
 from so101_nexus_core.config import (  # noqa: E402
     CameraConfig,
     PickAndPlaceConfig,
-    PickCubeConfig,
-    PickYCBConfig,
+    PickConfig,
 )
+from so101_nexus_core.objects import CubeObject, YCBObject  # noqa: E402
 from so101_nexus_core.visualization import CameraView, to_uint8  # noqa: E402
 
 from .conftest import verify_scene  # noqa: E402
@@ -28,8 +28,8 @@ _CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
 WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
 
-_PICK_CUBE_ENVS = {
-    "MuJoCoPickCubeLift-v1",
+_PICK_LIFT_ENVS = {
+    "MuJoCoPickLift-v1",
 }
 _PICK_AND_PLACE_ENVS = {
     "MuJoCoPickAndPlace-v1",
@@ -38,19 +38,25 @@ _PICK_AND_PLACE_ENVS = {
 
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
-    if env_id in _PICK_CUBE_ENVS:
-        return dict(config=PickCubeConfig(camera=_CAM, cube_colors="red"))
+    if env_id in _PICK_LIFT_ENVS:
+        return dict(config=PickConfig(camera=_CAM, objects=[CubeObject(color="red")]))
     if env_id in _PICK_AND_PLACE_ENVS:
         return dict(config=PickAndPlaceConfig(camera=_CAM, cube_colors="red"))
-    return dict(config=PickYCBConfig(camera=_CAM))
+    # YCB-based envs: extract model_id from env_id name
+    _YCB_ENV_TO_MODEL: dict[str, str] = {
+        "MuJoCoPickBananaLift-v1": "011_banana",
+        "MuJoCoPickGolfBallLift-v1": "058_golf_ball",
+        "MuJoCoPickForkLift-v1": "030_fork",
+    }
+    model_id = _YCB_ENV_TO_MODEL.get(env_id)
+    if model_id is not None:
+        return dict(config=PickConfig(camera=_CAM, objects=[YCBObject(model_id=model_id)]))
+    return {}
 
 
 MUJOCO_ENVS = [
-    "MuJoCoPickCubeLift-v1",
+    "MuJoCoPickLift-v1",
     "MuJoCoPickAndPlace-v1",
-    "MuJoCoPickBananaLift-v1",
-    "MuJoCoPickGolfBallLift-v1",
-    "MuJoCoPickForkLift-v1",
 ]
 
 
@@ -114,21 +120,15 @@ class TestMuJoCoCaptureInfrastructure:
 
 
 ENV_DESCRIPTIONS = {
-    "MuJoCoPickCubeLift-v1": "SO-101 robot arm pick-cube-lift task in MuJoCo",
+    "MuJoCoPickLift-v1": "SO-101 robot arm pick-lift task in MuJoCo",
     "MuJoCoPickAndPlace-v1": (
         "SO-101 robot arm pick-and-place task in MuJoCo with a colored target disc"
     ),
-    "MuJoCoPickBananaLift-v1": "SO-101 robot arm picking up a banana (YCB object) in MuJoCo",
-    "MuJoCoPickGolfBallLift-v1": "SO-101 robot arm picking up a golf ball (YCB object) in MuJoCo",
-    "MuJoCoPickForkLift-v1": "SO-101 robot arm picking up a fork (YCB object) in MuJoCo",
 }
 
 EXPECTED_ELEMENTS = {
-    "MuJoCoPickCubeLift-v1": "robot arm, red cube, ground plane",
+    "MuJoCoPickLift-v1": "robot arm, red cube, ground plane",
     "MuJoCoPickAndPlace-v1": "robot arm, red cube, ground plane, colored target disc",
-    "MuJoCoPickBananaLift-v1": "robot arm, banana-shaped object, ground plane",
-    "MuJoCoPickGolfBallLift-v1": "robot arm, small spherical object, ground plane",
-    "MuJoCoPickForkLift-v1": "robot arm, fork-shaped object, ground plane",
 }
 
 
