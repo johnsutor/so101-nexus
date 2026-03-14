@@ -1,5 +1,6 @@
 import pytest
-from so101_nexus_core.objects import SceneObject, CubeObject, YCBObject, MeshObject
+
+from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
 
 
 class TestSceneObjectBase:
@@ -10,7 +11,9 @@ class TestSceneObjectBase:
         assert isinstance(YCBObject(model_id="009_gelatin_box"), SceneObject)
 
     def test_mesh_is_scene_object(self):
-        obj = MeshObject(collision_mesh_path="/a.obj", visual_mesh_path="/b.obj", mass=0.1, name="x")
+        obj = MeshObject(
+            collision_mesh_path="/a.obj", visual_mesh_path="/b.obj", mass=0.1, name="x"
+        )
         assert isinstance(obj, SceneObject)
 
     def test_cannot_instantiate_base(self):
@@ -21,7 +24,9 @@ class TestSceneObjectBase:
         objects: list[SceneObject] = [
             CubeObject(),
             YCBObject(model_id="011_banana"),
-            MeshObject(collision_mesh_path="/a.obj", visual_mesh_path="/b.obj", mass=0.1, name="widget"),
+            MeshObject(
+                collision_mesh_path="/a.obj", visual_mesh_path="/b.obj", mass=0.1, name="widget"
+            ),
         ]
         for obj in objects:
             assert isinstance(repr(obj), str) and repr(obj)
