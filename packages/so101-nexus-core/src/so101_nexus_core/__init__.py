@@ -30,6 +30,9 @@ from so101_nexus_core.config import (
     ControlMode as ControlMode,
 )
 from so101_nexus_core.config import (
+    ObsMode as ObsMode,
+)
+from so101_nexus_core.config import (
     EnvironmentConfig as EnvironmentConfig,
 )
 from so101_nexus_core.config import (
