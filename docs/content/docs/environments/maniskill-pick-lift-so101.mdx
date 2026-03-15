@@ -1,0 +1,82 @@
+---
+title: ManiSkillPickLiftSO101-v1
+description: Pick up and lift an object with the SO-101 arm on the ManiSkill backend.
+---
+
+# ManiSkillPickLiftSO101-v1
+
+Pick up an object and lift it above a height threshold using the SO-101 robot arm in ManiSkill.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `ManiSkillPickLiftSO101-v1` |
+| Backend | ManiSkill |
+| Robot | SO-101 |
+| Max episode steps | 1024 |
+| Config class | `PickConfig` |
+
+## Observation Space
+
+| Component | Description |
+|-----------|-------------|
+| `tcp_pose` | TCP position and orientation |
+| `is_grasped` | Whether the object is currently grasped |
+| `obj_pose` | Object position and orientation |
+| `tcp_to_obj_pos` | Vector from TCP to object position |
+
+## Objects
+
+The environment supports two object types:
+
+- `CubeObject` -- a simple colored cube
+- `YCBObject` -- an object from the YCB dataset
+
+`MeshObject` is not supported on the ManiSkill backend.
+
+## Success Condition
+
+The episode succeeds when both conditions are met:
+
+1. The object is grasped (`is_grasped` is true).
+2. The object is lifted above the `lift_threshold`.
+
+## Vectorized Simulation
+
+ManiSkill supports running multiple environment instances in parallel via the `num_envs` argument.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill
+
+from so101_nexus_maniskill.config import PickConfig
+from so101_nexus_maniskill.objects import CubeObject
+
+# Single environment
+env = gym.make(
+    "ManiSkillPickLiftSO101-v1",
+    render_mode="human",
+    config=PickConfig(objects=[CubeObject()]),
+)
+
+obs, info = env.reset()
+for _ in range(1024):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+```python
+# Vectorized (multiple parallel environments)
+env = gym.make(
+    "ManiSkillPickLiftSO101-v1",
+    num_envs=16,
+    config=PickConfig(objects=[CubeObject()]),
+)
+```

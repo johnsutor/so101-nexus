@@ -1,0 +1,74 @@
+---
+title: Quickstart - ManiSkill
+description: Run your first ManiSkill environment in SO101-Nexus.
+---
+
+## Single Environment
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill  # registers ManiSkill envs with Gymnasium
+
+env = gym.make(
+    "ManiSkillPickLiftSO101-v1",
+    obs_mode="state",
+    control_mode="pd_joint_pos",
+    render_mode="rgb_array",
+)
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+## Batched Environments
+
+ManiSkill supports GPU-accelerated parallel simulation. Pass `num_envs` to run multiple environments in a single call -- this is significantly faster for training:
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill
+
+env = gym.make(
+    "ManiSkillPickLiftSO101-v1",
+    obs_mode="state",
+    control_mode="pd_joint_pos",
+    render_mode="rgb_array",
+    num_envs=16,
+)
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+
+env.close()
+```
+
+With `num_envs > 1`, observations, rewards, and actions are batched along the first dimension.
+
+## Use a YCB Object
+
+Just like MuJoCo environments, you can swap the default cube for a YCB object:
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill
+from so101_nexus_core import PickConfig, YCBObject
+
+config = PickConfig(objects=YCBObject(model_id="011_banana"))
+env = gym.make("ManiSkillPickLiftSO101-v1", config=config, obs_mode="state",
+               control_mode="pd_joint_pos", render_mode="rgb_array")
+```
+
+## What's Next?
+
+- [Working with Objects](/docs/guides/working-with-objects) -- use multiple objects, add distractors
+- [Customizing Environments](/docs/guides/customizing-environments) -- tune rewards, cameras, and spawn regions
+- [Training with PPO](/docs/guides/training-with-ppo) -- train a policy with GPU-accelerated batching
+- [Environment IDs](/docs/getting-started/environment-ids) -- full list of all registered environments

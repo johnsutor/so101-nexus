@@ -1,0 +1,82 @@
+---
+title: Training with PPO
+description: Train policies on SO101-Nexus environments using the included CleanRL-based PPO script.
+---
+
+SO101-Nexus includes a PPO training script at `examples/ppo.py`. It is a CleanRL-based implementation with an MLP actor-critic that serves as a baseline for RL training. The script auto-detects the backend from the environment ID prefix.
+
+## Quick start
+
+### MuJoCo
+
+```bash
+uv run python examples/ppo.py \
+    --env-id MuJoCoPickLift-v1 \
+    --total-timesteps 200000
+```
+
+### ManiSkill
+
+ManiSkill environments require the `--prerelease=allow` flag due to package constraints:
+
+```bash
+uv run --package so101-nexus-maniskill --prerelease=allow \
+    python examples/ppo.py \
+    --env-id ManiSkillPickLiftSO101-v1 \
+    --total-timesteps 200000
+```
+
+## CLI arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--env-id` | `str` | required | Gymnasium environment ID |
+| `--total-timesteps` | `int` | `10000000` | Total training timesteps |
+| `--num-envs` | `int` | `8` | Number of parallel environments |
+| `--num-steps` | `int` | `128` | Rollout length per environment per update |
+| `--learning-rate` | `float` | `2.5e-4` | Optimizer learning rate |
+| `--seed` | `int` | -- | Random seed for reproducibility |
+| `--track` | flag | off | Enable Weights and Biases logging |
+| `--capture-video` | flag | off | Record evaluation videos |
+
+## Vectorized environments
+
+The `--num-envs` flag controls how many environments run in parallel. More environments increase throughput but require more memory.
+
+For MuJoCo, environments are vectorized using Gymnasium's built-in `SyncVectorEnv`. ManiSkill environments use ManiSkill's native GPU-accelerated vectorization when available.
+
+A reasonable starting point for local training:
+
+```bash
+uv run python examples/ppo.py \
+    --env-id MuJoCoPickLift-v1 \
+    --num-envs 4 \
+    --num-steps 128 \
+    --total-timesteps 500000
+```
+
+## Tracking with Weights and Biases
+
+Pass `--track` to log training metrics to W&B:
+
+```bash
+uv run python examples/ppo.py \
+    --env-id MuJoCoPickLift-v1 \
+    --total-timesteps 1000000 \
+    --track
+```
+
+## Recording videos
+
+Pass `--capture-video` to save periodic evaluation rollouts:
+
+```bash
+uv run python examples/ppo.py \
+    --env-id MuJoCoPickLift-v1 \
+    --total-timesteps 500000 \
+    --capture-video
+```
+
+## Notes
+
+This script is a training baseline, not a tuned solution. For production use, you will likely need to adjust hyperparameters, reward weights (see [Customizing Environments](/docs/guides/customizing-environments)), and the network architecture. The MLP actor-critic is intentionally simple to make the code easy to read and modify.

@@ -1,0 +1,209 @@
+---
+title: Configuration Classes
+description: Reference for all configuration dataclasses.
+---
+
+# Configuration Classes
+
+All configuration classes live in `so101_nexus_core` and are Python dataclasses with default values. They control camera setup, robot parameters, reward shaping, and environment behavior.
+
+## CameraConfig
+
+Controls image resolution and wrist camera randomization.
+
+```python
+from so101_nexus_core import CameraConfig
+
+cam = CameraConfig(width=224, height=224)
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `224` | Image width in pixels |
+| `height` | `int` | `224` | Image height in pixels |
+| `wrist_fov_deg_range` | `tuple[float, float]` | `(60.0, 90.0)` | Field-of-view randomization range for the wrist camera, in degrees |
+| `wrist_pitch_deg_range` | `tuple[float, float]` | `(-34.4, 0.0)` | Pitch randomization range for the wrist camera, in degrees |
+| `wrist_cam_pos_x_noise` | `float` | `0.005` | Position noise along the x-axis |
+| `wrist_cam_pos_y_center` | `float` | `0.04` | Center y-position of the wrist camera |
+| `wrist_cam_pos_y_noise` | `float` | `0.01` | Position noise along the y-axis |
+| `wrist_cam_pos_z_center` | `float` | `-0.04` | Center z-position of the wrist camera |
+| `wrist_cam_pos_z_noise` | `float` | `0.01` | Position noise along the z-axis |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `wrist_fov_rad_range` | `tuple[float, float]` | `wrist_fov_deg_range` converted to radians |
+| `wrist_pitch_rad_range` | `tuple[float, float]` | `wrist_pitch_deg_range` converted to radians |
+
+---
+
+## RobotConfig
+
+Controls the arm rest pose and grasping thresholds.
+
+```python
+from so101_nexus_core import RobotConfig
+
+robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `rest_qpos_deg` | `tuple[float, ...]` | `(0.0, -90.0, 90.0, 37.82, 0.0, -63.03)` | Rest joint positions in degrees, one per joint |
+| `grasp_force_threshold` | `float` | `0.5` | Minimum contact force to count as a grasp |
+| `static_vel_threshold` | `float` | `0.2` | Maximum velocity to consider the arm stationary |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `rest_qpos_rad` | `tuple[float, ...]` | `rest_qpos_deg` converted to radians |
+| `rest_qpos` | `tuple[float, ...]` | Alias for `rest_qpos_rad` |
+
+---
+
+## RewardConfig
+
+Defines reward component weights and computes the shaped reward.
+
+```python
+from so101_nexus_core import RewardConfig
+
+reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.40, completion_bonus=0.10)
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `reaching` | `float` | `0.25` | Weight for the reaching component |
+| `grasping` | `float` | `0.25` | Weight for the grasping component |
+| `task_objective` | `float` | `0.40` | Weight for the task-specific objective |
+| `completion_bonus` | `float` | `0.10` | Weight for the task completion bonus |
+| `action_delta_penalty` | `float` | `0.0` | Weight for penalizing large action changes |
+| `energy_penalty` | `float` | `0.0` | Weight for penalizing energy usage |
+| `tanh_shaping_scale` | `float` | `5.0` | Scale factor for tanh reward shaping |
+
+### Validation
+
+The sum of all weights (`reaching + grasping + task_objective + completion_bonus + action_delta_penalty + energy_penalty`) must equal `1.0`. Construction raises an error if this constraint is violated.
+
+### Methods
+
+#### `compute()`
+
+```python
+def compute(
+    reach_progress: float,
+    is_grasped: bool,
+    task_progress: float,
+    is_complete: bool,
+    action_delta_norm: float = 0.0,
+    energy_norm: float = 0.0,
+) -> float
+```
+
+Computes the weighted reward from per-component progress values.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `reach_progress` | `float` | required | Progress toward the target (0 to 1) |
+| `is_grasped` | `bool` | required | Whether the object is currently grasped |
+| `task_progress` | `float` | required | Progress on the task objective (0 to 1) |
+| `is_complete` | `bool` | required | Whether the task is fully complete |
+| `action_delta_norm` | `float` | `0.0` | Norm of the action delta for penalty |
+| `energy_norm` | `float` | `0.0` | Norm of energy usage for penalty |
+
+Returns a single `float` reward value.
+
+---
+
+## EnvironmentConfig
+
+Base configuration for all environments. Task-specific configs extend this class.
+
+```python
+from so101_nexus_core import EnvironmentConfig
+
+config = EnvironmentConfig(max_episode_steps=512, camera_mode="both")
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `camera` | `CameraConfig \| None` | `None` | Camera settings. Uses `CameraConfig()` defaults when `None`. |
+| `reward` | `RewardConfig \| None` | `None` | Reward weights. Uses `RewardConfig()` defaults when `None`. |
+| `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
+| `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |
+| `max_episode_steps` | `int` | `1024` | Maximum steps before truncation |
+| `goal_thresh` | `float` | `0.025` | Distance threshold for goal completion (meters) |
+| `spawn_half_size` | `float` | `0.05` | Half-size of object spawn region |
+| `spawn_center` | `tuple[float, float]` | `(0.15, 0.0)` | Center of the spawn region (x, y) |
+| `spawn_min_radius` | `float` | `0.10` | Minimum spawn distance from the robot base |
+| `spawn_max_radius` | `float` | `0.25` | Maximum spawn distance from the robot base |
+| `spawn_angle_half_range_deg` | `float` | `90.0` | Half-range of spawn angle in degrees |
+| `camera_mode` | `CameraMode` | `"fixed"` | Which cameras to include: `"fixed"`, `"wrist"`, or `"both"` |
+| `robot_colors` | `ColorConfig` | `"yellow"` | Robot body color(s) |
+| `robot_init_qpos_noise` | `float` | `0.02` | Noise added to initial joint positions |
+
+---
+
+## PickConfig
+
+Extends `EnvironmentConfig` with parameters for pick and lift tasks.
+
+```python
+from so101_nexus_core import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[CubeObject(color="blue"), YCBObject("011_banana")],
+    n_distractors=2,
+)
+```
+
+### Additional Parameters
+
+These are in addition to all `EnvironmentConfig` parameters.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `objects` | `list[SceneObject] \| None` | `None` | Objects to pick. Defaults to `[CubeObject()]` when `None`. |
+| `n_distractors` | `int` | `0` | Number of distractor objects to spawn |
+| `lift_threshold` | `float` | `0.05` | Height above the table to count as lifted (meters) |
+| `max_goal_height` | `float` | `0.08` | Maximum target lift height (meters) |
+| `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+
+---
+
+## PickAndPlaceConfig
+
+Extends `EnvironmentConfig` with parameters for pick-and-place tasks.
+
+```python
+from so101_nexus_core import PickAndPlaceConfig
+
+config = PickAndPlaceConfig(
+    cube_colors="blue",
+    target_colors="green",
+    min_cube_target_separation=0.05,
+)
+```
+
+### Additional Parameters
+
+These are in addition to all `EnvironmentConfig` parameters.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cube_colors` | `ColorConfig` | `"red"` | Color(s) for the cube |
+| `target_colors` | `ColorConfig` | `"blue"` | Color(s) for the target disc |
+| `cube_half_size` | `float` | `0.0125` | Half-size of the cube (meters) |
+| `cube_mass` | `float` | `0.01` | Mass of the cube (kg) |
+| `target_disc_radius` | `float` | `0.05` | Radius of the target disc (meters) |
+| `min_cube_target_separation` | `float` | `0.0375` | Minimum distance between cube and target spawn positions (meters) |

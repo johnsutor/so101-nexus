@@ -1,0 +1,152 @@
+---
+title: Assets and Geometry
+description: Reference for YCB asset management and geometry helpers.
+---
+
+# Assets and Geometry
+
+`so101_nexus_core` provides functions for downloading YCB assets, resolving mesh paths, and computing spawn geometry. All functions are importable from the top-level package.
+
+```python
+from so101_nexus_core import ensure_ycb_assets, get_ycb_collision_mesh
+```
+
+## Simulation Directory Helpers
+
+These return paths to the bundled MJCF/URDF assets for each robot arm.
+
+### `get_so101_simulation_dir()`
+
+```python
+def get_so101_simulation_dir() -> Path
+```
+
+Returns the `Path` to the SO-101 simulation asset directory.
+
+### `get_so100_simulation_dir()`
+
+```python
+def get_so100_simulation_dir() -> Path
+```
+
+Returns the `Path` to the SO-100 simulation asset directory.
+
+---
+
+## YCB Asset Management
+
+YCB assets are downloaded from HuggingFace on first use and cached locally. The cache location is `~/.cache/so101_nexus/ycb/{model_id}/`.
+
+The source repository defaults to `ai-habitat/ycb` and can be overridden with the `SO101_YCB_HF_REPO` environment variable.
+
+### Supported Model IDs
+
+The `YcbModelId` type alias defines all valid model IDs:
+
+| Model ID | Name |
+|----------|------|
+| `009_gelatin_box` | Gelatin box |
+| `011_banana` | Banana |
+| `030_fork` | Fork |
+| `031_spoon` | Spoon |
+| `032_knife` | Knife |
+| `033_spatula` | Spatula |
+| `037_scissors` | Scissors |
+| `040_large_marker` | Large marker |
+| `043_phillips_screwdriver` | Phillips screwdriver |
+| `058_golf_ball` | Golf ball |
+
+### `ensure_ycb_assets()`
+
+```python
+def ensure_ycb_assets(model_id: str) -> Path
+```
+
+Downloads YCB mesh assets for the given model if they are not already cached, then returns the cache directory path.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_id` | `str` | A valid YCB model ID from `YCB_OBJECTS` |
+
+**Returns:** `Path` to the cached asset directory.
+
+### `get_ycb_mesh_dir()`
+
+```python
+def get_ycb_mesh_dir(model_id: str) -> Path
+```
+
+Returns the directory containing mesh files for the given YCB model.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_id` | `str` | A valid YCB model ID |
+
+**Returns:** `Path` to the mesh directory.
+
+### `get_ycb_collision_mesh()`
+
+```python
+def get_ycb_collision_mesh(model_id: str) -> Path
+```
+
+Returns the path to the collision mesh (`collision.obj`) for the given YCB model.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_id` | `str` | A valid YCB model ID |
+
+**Returns:** `Path` to `collision.obj`.
+
+### `get_ycb_visual_mesh()`
+
+```python
+def get_ycb_visual_mesh(model_id: str) -> Path
+```
+
+Returns the path to the visual mesh (`visual.obj`) for the given YCB model.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model_id` | `str` | A valid YCB model ID |
+
+**Returns:** `Path` to `visual.obj`.
+
+---
+
+## Geometry Helpers
+
+These functions compute spawn positions and orientations for YCB objects in each backend.
+
+### `get_maniskill_ycb_spawn_z()`
+
+```python
+def get_maniskill_ycb_spawn_z(model_id: str, margin: float = 0.002) -> float
+```
+
+Computes the spawn z-height for a YCB object in ManiSkill so that it rests on the table surface.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_id` | `str` | required | A valid YCB model ID |
+| `margin` | `float` | `0.002` | Small offset above the surface to avoid interpenetration |
+
+**Returns:** `float` z-coordinate for spawning.
+
+### `get_mujoco_ycb_rest_pose()`
+
+```python
+def get_mujoco_ycb_rest_pose(
+    verts: np.ndarray,
+    margin: float = 0.002,
+) -> tuple[np.ndarray, float]
+```
+
+Computes the stable rest orientation and spawn height for a YCB object in MuJoCo from its mesh vertices.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `verts` | `np.ndarray` | required | Vertex array of the object mesh |
+| `margin` | `float` | `0.002` | Small offset above the surface to avoid interpenetration |
+
+**Returns:** A tuple of `(quaternion, spawn_z)` where `quaternion` is a NumPy array in wxyz format and `spawn_z` is the z-coordinate for spawning.

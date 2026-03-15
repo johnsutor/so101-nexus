@@ -1,0 +1,34 @@
+---
+title: Overview
+description: Packages, backends, and how they fit together.
+---
+
+SO101-Nexus is split into two backend packages. You install only the one you need -- the shared `so101-nexus-core` package is pulled in automatically as a dependency.
+
+- **`so101-nexus-mujoco`** -- MuJoCo-based environments for the SO-101 arm. All five tasks are available.
+- **`so101-nexus-maniskill`** -- ManiSkill-based environments for both the SO-100 and SO-101 arms. PickLift and PickAndPlace are available.
+
+Importing a backend package registers its environments with Gymnasium:
+
+```python
+import so101_nexus_mujoco      # registers MuJoCo envs
+import so101_nexus_maniskill   # registers ManiSkill envs
+```
+
+After importing, create environments with `gymnasium.make()`.
+
+## When to Use Each Backend
+
+**MuJoCo** is the right choice when you want:
+- Fast single-environment simulation with a live viewer
+- Access to all five task types (PickLift, PickAndPlace, Reach, LookAt, Move)
+
+**ManiSkill** is the right choice when you want:
+- GPU-accelerated batched simulation via `num_envs` for faster training
+- SO-100 arm support alongside SO-101
+
+## Next Steps
+
+- [Installation](/docs/getting-started/installation) -- install your chosen backend
+- [MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco) -- run your first environment
+- [ManiSkill Quickstart](/docs/getting-started/quickstart-maniskill) -- run batched environments

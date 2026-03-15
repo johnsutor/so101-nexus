@@ -1,0 +1,38 @@
+---
+title: Environment Reference
+description: Complete reference for all registered simulation environments.
+---
+
+# Environment Reference
+
+SO101-Nexus provides Gymnasium-compatible environments across two backends. Each environment is registered with a unique ID and can be created with `gym.make()`.
+
+## All Environments
+
+| ID | Backend | Task | Max Steps |
+|----|---------|------|-----------|
+| [`MuJoCoPickLift-v1`](/docs/environments/mujoco-pick-lift) | MuJoCo | Pick and lift an object | 1024 |
+| [`MuJoCoPickAndPlace-v1`](/docs/environments/mujoco-pick-and-place) | MuJoCo | Pick a cube and place on target | 1024 |
+| [`MuJoCoReach-v1`](/docs/environments/mujoco-reach) | MuJoCo | Move TCP to target position | 512 |
+| [`MuJoCoLookAt-v1`](/docs/environments/mujoco-look-at) | MuJoCo | Orient TCP toward object | 256 |
+| [`MuJoCoMove-v1`](/docs/environments/mujoco-move) | MuJoCo | Move TCP in a direction | 256 |
+| [`ManiSkillPickLiftSO100-v1`](/docs/environments/maniskill-pick-lift-so100) | ManiSkill | Pick and lift (SO-100 arm) | 1024 |
+| [`ManiSkillPickLiftSO101-v1`](/docs/environments/maniskill-pick-lift-so101) | ManiSkill | Pick and lift (SO-101 arm) | 1024 |
+| [`ManiSkillPickAndPlaceSO100-v1`](/docs/environments/maniskill-pick-and-place-so100) | ManiSkill | Pick and place (SO-100 arm) | 1024 |
+| [`ManiSkillPickAndPlaceSO101-v1`](/docs/environments/maniskill-pick-and-place-so101) | ManiSkill | Pick and place (SO-101 arm) | 1024 |
+
+## Registration
+
+MuJoCo environments are registered when you import the `so101_nexus_mujoco` package. ManiSkill environments are registered when you import `so101_nexus_maniskill`.
+
+```python
+import gymnasium as gym
+
+# MuJoCo environments
+import so101_nexus_mujoco
+env = gym.make("MuJoCoPickLift-v1")
+
+# ManiSkill environments
+import so101_nexus_maniskill
+env = gym.make("ManiSkillPickLiftSO100-v1")
+```

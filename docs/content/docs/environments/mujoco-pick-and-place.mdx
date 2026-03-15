@@ -1,0 +1,76 @@
+---
+title: MuJoCoPickAndPlace-v1
+description: Pick up a cube and place it on a target using the MuJoCo backend.
+---
+
+# MuJoCoPickAndPlace-v1
+
+Pick up a colored cube and place it on a target disc.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoPickAndPlace-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 1024 |
+| Config class | `PickAndPlaceConfig` |
+| Task description | "Pick up the small \{cube_color\} cube and place it on the \{target_color\} circle." |
+
+## Observation Space
+
+The observation is a 24-dimensional vector.
+
+| Component | Dimensions | Description |
+|-----------|------------|-------------|
+| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
+| `is_grasped` | 1 | Whether the cube is currently grasped |
+| `target_pos` | 3 | Target disc position |
+| `obj_pose` | 7 | Cube position (3) and orientation as quaternion (4) |
+| `tcp_to_obj` | 3 | Vector from TCP to cube |
+| `obj_to_target` | 3 | Vector from cube to target |
+
+## Objects
+
+The scene contains a single colored cube and a target disc. Colors for both are configurable through `PickAndPlaceConfig`.
+
+## Success Condition
+
+The episode succeeds when all conditions are met:
+
+1. The cube is placed within `goal_thresh` distance of the target.
+2. The cube is resting on the ground (not held).
+3. The robot is static (not moving).
+
+## Reward
+
+The reward is a shaped sum of:
+
+- **Reaching** -- progress toward the cube
+- **Grasping** -- bonus for grasping the cube
+- **Placement progress** -- reward for moving the cube closer to the target
+- **Completion** -- bonus when the success condition is met
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+from so101_nexus_mujoco.config import PickAndPlaceConfig
+
+env = gym.make(
+    "MuJoCoPickAndPlace-v1",
+    render_mode="human",
+    config=PickAndPlaceConfig(),
+)
+
+obs, info = env.reset()
+for _ in range(1024):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```

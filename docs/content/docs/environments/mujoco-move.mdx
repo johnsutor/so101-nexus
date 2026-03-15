@@ -1,0 +1,69 @@
+---
+title: MuJoCoMove-v1
+description: Move the TCP in a specified direction using the MuJoCo backend.
+---
+
+# MuJoCoMove-v1
+
+Move the robot's end-effector in a cardinal direction by a fixed distance.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoMove-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 256 |
+| Config class | `MoveConfig` (extends `EnvironmentConfig`) |
+| Task description | "Move the end-effector \{direction\} by \{distance:.2f\} m." |
+
+## Configuration
+
+`MoveConfig` extends `EnvironmentConfig` with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `direction` | `Literal["up", "down", "left", "right", "forward", "backward"]` | -- | Direction of movement |
+| `target_distance` | `float` | 0.10 | Distance to move in meters |
+| `success_threshold` | `float` | 0.01 | Distance (m) within which the task is considered solved |
+
+## Observation Space
+
+The observation is a 10-dimensional vector.
+
+| Component | Dimensions | Description |
+|-----------|------------|-------------|
+| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
+| `tcp_to_target` | 3 | Vector from TCP to the computed goal position |
+
+## Objects
+
+No objects are present. The goal position is computed at episode start from the initial TCP position offset by `direction * target_distance`.
+
+## Success Condition
+
+The episode succeeds when the distance from the TCP to the target is less than `success_threshold` (default 0.01 m).
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+from so101_nexus_mujoco.config import MoveConfig
+
+env = gym.make(
+    "MuJoCoMove-v1",
+    render_mode="human",
+    config=MoveConfig(direction="up", target_distance=0.10),
+)
+
+obs, info = env.reset()
+for _ in range(256):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
