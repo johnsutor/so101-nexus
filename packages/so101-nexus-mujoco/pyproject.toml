@@ -1,10 +1,23 @@
 [project]
 name = "so101-nexus-mujoco"
-version = "0.2.0"
+version = "0.3.0a1"
 description = "MuJoCo simulation environments for the SO-101 robot arm"
 requires-python = ">=3.12"
-dependencies = ["so101-nexus-core==0.2.0", "mujoco>=3.0.0", "gymnasium>=1.0.0"]
+dependencies = ["so101-nexus-core==0.3.0a1", "mujoco>=3.0.0", "gymnasium>=1.0.0"]
 license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
 
 [build-system]
 requires = ["hatchling"]
