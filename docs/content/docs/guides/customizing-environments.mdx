@@ -1,0 +1,123 @@
+---
+title: Customizing Environments
+description: Practical recipes for configuring episode length, cameras, colors, spawn regions, rewards, and more.
+---
+
+Every SO101-Nexus environment accepts a typed config object that controls its behavior. Configs are dataclasses from `so101_nexus_core` and can be passed to `gymnasium.make` via the `config` keyword.
+
+## Change Episode Length
+
+Shorter episodes speed up training on simple tasks. Longer episodes give the agent more time for multi-step tasks.
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+from so101_nexus_core import EnvironmentConfig
+
+config = EnvironmentConfig(max_episode_steps=256)
+env = gym.make("MuJoCoReach-v1", config=config)
+```
+
+## Use Camera Observations
+
+On MuJoCo, pass `camera_mode` as a keyword argument to `gym.make()` to include wrist camera images. The observation becomes a dictionary with `"state"` and `"wrist_camera"` keys.
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist", render_mode="rgb_array")
+obs, _ = env.reset()
+print(obs["state"].shape)         # flat state vector
+print(obs["wrist_camera"].shape)  # camera image
+```
+
+To change camera resolution, pass a `CameraConfig` through the environment config:
+
+```python
+from so101_nexus_core import CameraConfig, EnvironmentConfig
+
+camera = CameraConfig(width=128, height=128)
+config = EnvironmentConfig(camera=camera)
+env = gym.make("MuJoCoPickLift-v1", config=config, camera_mode="wrist")
+```
+
+## Domain Randomization
+
+Randomize colors and spawn positions to improve sim-to-real transfer. Color fields accept a single color name or a list -- when a list is provided, the environment samples uniformly at each reset.
+
+```python
+from so101_nexus_core import EnvironmentConfig
+
+config = EnvironmentConfig(
+    # Randomize visual appearance
+    ground_colors=["gray", "white", "black"],
+    robot_colors=["yellow", "cyan"],
+    # Tighten the spawn region
+    spawn_min_radius=0.05,
+    spawn_max_radius=0.15,
+    spawn_angle_half_range_deg=60.0,
+)
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+## Tune Rewards
+
+Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). Weights must sum to 1.0.
+
+```python
+from so101_nexus_core import RewardConfig, EnvironmentConfig
+
+reward = RewardConfig(
+    reaching=0.20,
+    grasping=0.20,
+    task_objective=0.45,
+    completion_bonus=0.10,
+    action_delta_penalty=0.025,
+    energy_penalty=0.025,
+)
+config = EnvironmentConfig(reward=reward)
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+## Configure Pick Tasks
+
+`PickConfig` extends `EnvironmentConfig` with object and distractor settings. Use it for PickLift environments.
+
+```python
+from so101_nexus_core import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[
+        CubeObject(color="blue"),
+        YCBObject(model_id="058_golf_ball"),
+        YCBObject(model_id="011_banana"),
+    ],
+    n_distractors=1,
+    lift_threshold=0.06,
+    min_object_separation=0.04,
+    ground_colors=["gray", "white"],
+)
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
+```
+
+When multiple objects are provided, the environment selects one as the target at each reset.
+
+## Configure Pick-and-Place Tasks
+
+`PickAndPlaceConfig` controls the cube and target disc appearance. Use it for PickAndPlace environments.
+
+```python
+from so101_nexus_core import PickAndPlaceConfig
+
+config = PickAndPlaceConfig(
+    cube_colors=["red", "green", "blue"],
+    target_colors="cyan",
+    min_cube_target_separation=0.05,
+)
+env = gym.make("MuJoCoPickAndPlace-v1", config=config, render_mode="human")
+```
+
+## All Parameters
+
+See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `RewardConfig`, `CameraConfig`, and `RobotConfig`.

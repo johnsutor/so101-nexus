@@ -1,0 +1,131 @@
+---
+title: Scene Objects
+description: Reference for scene object types used in environments.
+---
+
+# Scene Objects
+
+Scene objects define what the robot interacts with. All object types live in `so101_nexus_core` and share the abstract `SceneObject` base class.
+
+## Backend Support
+
+| Class | MuJoCo | ManiSkill |
+|-------|--------|-----------|
+| `CubeObject` | Yes | Yes |
+| `YCBObject` | Yes | Yes |
+| `MeshObject` | Yes | No |
+
+---
+
+## SceneObject (abstract)
+
+Base class for all scene objects. Subclasses must implement `__repr__()`, which returns a natural-language description of the object (used in logging and debugging).
+
+```python
+from so101_nexus_core import SceneObject
+```
+
+`SceneObject` cannot be instantiated directly. Use one of the concrete subclasses below.
+
+---
+
+## CubeObject
+
+A solid-color cube with configurable size and mass.
+
+```python
+from so101_nexus_core import CubeObject
+
+cube = CubeObject(half_size=0.02, mass=0.015, color="blue")
+repr(cube)  # "blue cube"
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `half_size` | `float` | `0.0125` | Half the side length of the cube (meters) |
+| `mass` | `float` | `0.01` | Mass of the cube (kg) |
+| `color` | `ColorName` | `"red"` | Color of the cube. Must be a valid `ColorName`. |
+
+### `__repr__()`
+
+Returns `"{color} cube"`, for example `"red cube"`.
+
+---
+
+## YCBObject
+
+A YCB benchmark object loaded from mesh files. Assets are downloaded automatically on first use.
+
+```python
+from so101_nexus_core import YCBObject
+
+banana = YCBObject("011_banana")
+repr(banana)  # human-readable name from YCB_OBJECTS dict
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_id` | `str` | required | YCB model identifier. Must be a key in `YCB_OBJECTS`. |
+| `mass_override` | `float \| None` | `None` | Override the default mass. Uses the original mass when `None`. |
+
+### Validation
+
+`model_id` must be one of the supported YCB model IDs:
+
+| Model ID | Name |
+|----------|------|
+| `009_gelatin_box` | Gelatin box |
+| `011_banana` | Banana |
+| `030_fork` | Fork |
+| `031_spoon` | Spoon |
+| `032_knife` | Knife |
+| `033_spatula` | Spatula |
+| `037_scissors` | Scissors |
+| `040_large_marker` | Large marker |
+| `043_phillips_screwdriver` | Phillips screwdriver |
+| `058_golf_ball` | Golf ball |
+
+### `__repr__()`
+
+Returns the human-readable name from the `YCB_OBJECTS` dictionary.
+
+---
+
+## MeshObject
+
+A custom mesh object defined by collision and visual mesh files. Only supported on the MuJoCo backend.
+
+```python
+from so101_nexus_core import MeshObject
+
+obj = MeshObject(
+    collision_mesh_path="/path/to/collision.obj",
+    visual_mesh_path="/path/to/visual.obj",
+    mass=0.05,
+    name="custom widget",
+    scale=0.8,
+)
+repr(obj)  # "custom widget"
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `collision_mesh_path` | `str` | required | Path to the collision mesh file |
+| `visual_mesh_path` | `str` | required | Path to the visual mesh file |
+| `mass` | `float` | required | Mass of the object (kg) |
+| `name` | `str` | required | Human-readable name for the object |
+| `scale` | `float` | `1.0` | Uniform scale factor applied to the meshes |
+
+### `__repr__()`
+
+Returns the `name` provided at construction.
+
+### Backend Limitation
+
+`MeshObject` is only supported in MuJoCo environments. Passing a `MeshObject` to a ManiSkill environment will raise an error.

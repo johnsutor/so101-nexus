@@ -1,0 +1,101 @@
+---
+title: YCB Assets
+description: Download, cache, and use YCB object meshes in SO101-Nexus environments.
+---
+
+SO101-Nexus includes a subset of the YCB (Yale-Columbia-Berkeley) object dataset. Mesh assets are downloaded from HuggingFace on first use and cached locally.
+
+## Available objects
+
+| Model ID | Object |
+| --- | --- |
+| `009_gelatin_box` | Gelatin box |
+| `011_banana` | Banana |
+| `030_fork` | Fork |
+| `031_spoon` | Spoon |
+| `032_knife` | Knife |
+| `033_spatula` | Spatula |
+| `037_scissors` | Scissors |
+| `040_large_marker` | Large marker |
+| `043_phillips_screwdriver` | Phillips screwdriver |
+| `058_golf_ball` | Golf ball |
+
+The full mapping is available in the `YCB_OBJECTS` dictionary exported from `so101_nexus_core`.
+
+```python
+from so101_nexus_core import YCB_OBJECTS
+
+for model_id, name in YCB_OBJECTS.items():
+    print(f"{model_id}: {name}")
+```
+
+## Automatic download
+
+When you create a `YCBObject` and use it in an environment, the required mesh files are downloaded automatically via `ensure_ycb_assets`.
+
+```python
+from so101_nexus_core import YCBObject
+
+# Assets for "011_banana" are downloaded on first use
+obj = YCBObject(model_id="011_banana")
+```
+
+You can also trigger the download explicitly:
+
+```python
+from so101_nexus_core import ensure_ycb_assets
+
+ensure_ycb_assets("011_banana")
+```
+
+## Cache location
+
+Assets are stored at:
+
+```
+~/.cache/so101_nexus/ycb/{model_id}/
+```
+
+Each model directory contains the collision and visual mesh files needed by the simulator.
+
+## Public helpers
+
+Three helper functions provide paths to cached assets:
+
+| Function | Returns |
+| --- | --- |
+| `get_ycb_mesh_dir(model_id)` | Path to the model's cache directory |
+| `get_ycb_collision_mesh(model_id)` | Path to the collision mesh file |
+| `get_ycb_visual_mesh(model_id)` | Path to the visual mesh file |
+
+```python
+from so101_nexus_core import get_ycb_mesh_dir, get_ycb_collision_mesh, get_ycb_visual_mesh
+
+mesh_dir = get_ycb_mesh_dir("011_banana")
+collision = get_ycb_collision_mesh("011_banana")
+visual = get_ycb_visual_mesh("011_banana")
+```
+
+These functions do not trigger a download. Call `ensure_ycb_assets` first if the assets may not be cached yet.
+
+## Custom HuggingFace repository
+
+By default, assets are fetched from the project's HuggingFace repository. You can override this by setting the `SO101_YCB_HF_REPO` environment variable:
+
+```bash
+export SO101_YCB_HF_REPO="your-org/your-ycb-repo"
+```
+
+This is useful for private mirrors or custom object sets that follow the same directory layout.
+
+## Troubleshooting
+
+**Download failures.** If a download is interrupted, the cached directory may be incomplete. Delete the relevant subdirectory and retry:
+
+```bash
+rm -rf ~/.cache/so101_nexus/ycb/011_banana
+```
+
+**Invalid model ID.** Passing a `model_id` not in the supported set will raise an error. Check `YCB_OBJECTS` for the full list of valid IDs.
+
+**Firewall or proxy issues.** Asset downloads use the HuggingFace Hub client. If you are behind a proxy, configure the standard `HF_HUB_DISABLE_TELEMETRY`, `HTTPS_PROXY`, or `HF_ENDPOINT` environment variables as needed.

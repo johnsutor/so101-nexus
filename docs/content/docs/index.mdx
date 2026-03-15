@@ -1,0 +1,91 @@
+---
+title: SO101-Nexus
+description: Gymnasium-compatible simulation environments for SO-100 and SO-101 robot arms.
+---
+
+SO101-Nexus provides [Gymnasium](https://gymnasium.farama.org/)-compatible simulation environments for the [SO-100 and SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arms.
+
+There are very few standardized simulation environments available for these arms. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded environments across multiple physics backends, enabling consistent experimentation and benchmarking. Robust policies should generalize across simulators before being deployed in the real world -- sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
+
+SO101-Nexus also provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
+
+## Key Features
+
+- **Standard Gymnasium API** -- works with any RL library that supports Gymnasium
+- **Multiple backends** -- MuJoCo for fast single-env workflows, ManiSkill for GPU-accelerated batched simulation
+- **Five manipulation tasks** -- pick-and-lift, pick-and-place, reach, look-at, and move
+- **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards
+- **YCB object support** -- use real-world object meshes from the YCB dataset
+- **Sim-to-real transfer** -- environments match the physical SO-100 and SO-101 arms
+
+## Quick Examples
+
+Pick up and lift an object in five lines:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+Use a banana from the YCB dataset instead of the default cube:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+from so101_nexus_core import PickConfig, YCBObject
+
+config = PickConfig(objects=YCBObject(model_id="011_banana"))
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
+```
+
+Add distractors and randomize colors for domain randomization:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+from so101_nexus_core import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[
+        CubeObject(color="green"),
+        CubeObject(color="blue"),
+        YCBObject(model_id="011_banana"),
+        YCBObject(model_id="058_golf_ball"),
+    ],
+    n_distractors=2,
+    ground_colors=["gray", "white", "black"],
+    robot_colors=["yellow", "cyan"],
+)
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
+```
+
+## Tasks
+
+SO101-Nexus ships five manipulation primitives that cover the fundamentals of robotic grasping and movement:
+
+- **PickLift** -- grasp an object and lift it above a height threshold
+- **PickAndPlace** -- pick up a cube and place it at a marked target location
+- **Reach** -- move the end-effector to a target position in space
+- **LookAt** -- orient the end-effector to gaze at a target object
+- **Move** -- move the end-effector to a target position with tight tolerance
+
+All tasks are available on the MuJoCo backend. PickLift and PickAndPlace are also available on ManiSkill with GPU-accelerated batched simulation. Genesis support is on the roadmap.
+
+## Get Started
+
+- **[Installation](/docs/getting-started/installation)** -- install the backend you need with pip or from source
+- **[MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco)** -- run your first MuJoCo environment
+- **[ManiSkill Quickstart](/docs/getting-started/quickstart-maniskill)** -- run batched GPU-accelerated environments
+- **[Working with Objects](/docs/guides/working-with-objects)** -- use cubes, YCB objects, or custom meshes
+- **[Customizing Environments](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, and more

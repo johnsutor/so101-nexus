@@ -1,0 +1,71 @@
+---
+title: MuJoCoLookAt-v1
+description: Orient the TCP toward an object using the MuJoCo backend.
+---
+
+# MuJoCoLookAt-v1
+
+Orient the robot's end-effector so that it points at a target object.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoLookAt-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 256 |
+| Config class | `LookAtConfig` (extends `EnvironmentConfig`) |
+| Task description | "Look at the \{object repr\}." |
+
+## Configuration
+
+`LookAtConfig` extends `EnvironmentConfig` with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `objects` | `list` | -- | List of objects to look at (supports `CubeObject`) |
+| `orientation_success_threshold_deg` | `float` | 5.73 | Maximum angular error in degrees for success |
+
+## Observation Space
+
+The observation is a 10-dimensional vector.
+
+| Component | Dimensions | Description |
+|-----------|------------|-------------|
+| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
+| `gaze_to_target` | 3 | Normalized unit vector from the TCP gaze direction to the target |
+
+## Objects
+
+The environment uses `CubeObject` instances as gaze targets.
+
+## Success Condition
+
+The episode succeeds when the angular error between the TCP's gaze direction and the direction to the target is less than `orientation_success_threshold_deg` (default 5.73 degrees).
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+from so101_nexus_mujoco.config import LookAtConfig
+from so101_nexus_mujoco.objects import CubeObject
+
+env = gym.make(
+    "MuJoCoLookAt-v1",
+    render_mode="human",
+    config=LookAtConfig(
+        objects=[CubeObject()],
+    ),
+)
+
+obs, info = env.reset()
+for _ in range(256):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```

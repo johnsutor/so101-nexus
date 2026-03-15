@@ -1,0 +1,70 @@
+---
+title: Quickstart - MuJoCo
+description: Run your first MuJoCo environment in SO101-Nexus.
+---
+
+## Your First Environment
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco  # registers MuJoCo envs with Gymnasium
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+Import `so101_nexus_mujoco` before calling `gym.make()` -- the import registers all MuJoCo environments. Set `render_mode="human"` for a live viewer window, or `render_mode="rgb_array"` to capture frames programmatically.
+
+## Try a Different Task
+
+Every MuJoCo environment follows the same Gymnasium API. Swap the environment ID to try a different task:
+
+```python
+# Reach a target position
+env = gym.make("MuJoCoReach-v1", render_mode="human")
+
+# Orient the end-effector toward a target
+env = gym.make("MuJoCoLookAt-v1", render_mode="human")
+
+# Pick and place a cube at a target location
+env = gym.make("MuJoCoPickAndPlace-v1", render_mode="human")
+```
+
+## Use a YCB Object
+
+Swap the default cube for a real-world object from the YCB dataset:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+from so101_nexus_core import PickConfig, YCBObject
+
+config = PickConfig(objects=YCBObject(model_id="011_banana"))
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
+obs, info = env.reset()
+
+for _ in range(1000):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+YCB assets are downloaded automatically on first use.
+
+## What's Next?
+
+- [Working with Objects](/docs/guides/working-with-objects) -- use multiple objects, add distractors, load custom meshes
+- [Customizing Environments](/docs/guides/customizing-environments) -- tune rewards, cameras, spawn regions, and colors
+- [Training with PPO](/docs/guides/training-with-ppo) -- train a policy with the included PPO example
+- [Environment IDs](/docs/getting-started/environment-ids) -- full list of all registered environments

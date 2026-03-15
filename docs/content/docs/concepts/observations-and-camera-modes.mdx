@@ -1,0 +1,56 @@
+---
+title: Observations and Camera Modes
+description: State observation vectors, camera rendering modes, and how to inspect them.
+---
+
+Every SO101-Nexus environment returns observations as either a flat state vector or a dictionary containing state and camera data.
+
+## State Observations
+
+State observations are flat NumPy arrays whose size depends on the task:
+
+| Task | Dimensions | Key Components |
+| --- | --- | --- |
+| PickLift | 18 | TCP pose, grasp flag, object pose, TCP-to-object vector |
+| PickAndPlace | 24 | TCP pose, grasp flag, target position, object pose, TCP-to-object and object-to-target vectors |
+| Reach | 10 | TCP pose, TCP-to-target vector |
+| LookAt | 10 | TCP pose, gaze-to-target vector |
+| Move | 10 | TCP pose, TCP-to-target vector |
+
+Reach, LookAt, and Move share the same 10-dimensional layout. The semantic difference is in the third component: Reach and Move measure TCP-to-target distance, while LookAt measures gaze-to-target orientation error.
+
+The exact per-index observation breakdown is documented on each [environment's reference page](/docs/environments).
+
+## Inspecting Observations
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1")
+obs, info = env.reset()
+print(f"Observation shape: {obs.shape}")  # (18,)
+print(f"TCP position: {obs[:3]}")
+print(f"Is grasped: {obs[7]}")
+env.close()
+```
+
+## Camera Modes
+
+By default, environments return state-only observations. To include camera images, set the camera mode when creating the environment.
+
+On **MuJoCo**, pass `camera_mode` as a keyword argument to `gym.make()`. The accepted values are `"state_only"` (default, no camera) and `"wrist"` (wrist-mounted camera). When `"wrist"` is used, the observation becomes a dictionary:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist")
+obs, info = env.reset()
+# obs["state"] -> flat state vector
+# obs["wrist_camera"] -> image array
+```
+
+On **ManiSkill**, camera rendering is configured through the environment config's `camera_mode` field. Use `obs_mode="state"` for state-only observations.
+
+Camera resolution and wrist camera field-of-view can be configured through `CameraConfig`. See the [Configs API reference](/docs/api/configs) for all parameters.

@@ -1,0 +1,44 @@
+---
+title: Installation
+description: Install SO101-Nexus backends with pip or from source.
+---
+
+Python **>=3.12** is required. Install only the backend you need.
+
+## Install with pip
+
+```bash
+# MuJoCo backend
+pip install so101-nexus-mujoco
+
+# ManiSkill backend
+pip install so101-nexus-maniskill
+```
+
+Each backend package pulls in `so101-nexus-core` automatically.
+
+## Install from Source
+
+Clone the repository, then use `uv` to sync the backend you want:
+
+```bash
+git clone https://github.com/johnsutor/so101-nexus.git
+cd so101-nexus
+
+# MuJoCo backend
+uv sync --package so101-nexus-mujoco
+
+# ManiSkill backend
+uv sync --package so101-nexus-maniskill --prerelease=allow
+```
+
+## Verify Installation
+
+```python
+import so101_nexus_mujoco  # or so101_nexus_maniskill
+import gymnasium as gym
+
+env = gym.make("MuJoCoPickLift-v1")
+print("Installation OK")
+env.close()
+```

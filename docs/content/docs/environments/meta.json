@@ -1,0 +1,15 @@
+{
+  "title": "Environments",
+  "pages": [
+    "index",
+    "mujoco-pick-lift",
+    "mujoco-pick-and-place",
+    "mujoco-reach",
+    "mujoco-look-at",
+    "mujoco-move",
+    "maniskill-pick-lift-so100",
+    "maniskill-pick-lift-so101",
+    "maniskill-pick-and-place-so100",
+    "maniskill-pick-and-place-so101"
+  ]
+}

@@ -1,0 +1,107 @@
+---
+title: Working with Objects
+description: Use cubes, YCB objects, and custom meshes in your environments.
+---
+
+SO101-Nexus environments that involve manipulation accept scene objects through their config. This guide walks through the different ways to populate your scene.
+
+## Default Behavior
+
+When you don't specify any objects, environments use a single red cube:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+# Scene contains one red cube by default
+```
+
+## Using a Different Object
+
+Swap the default cube for any supported object by passing it through `PickConfig`:
+
+```python
+from so101_nexus_core import PickConfig, CubeObject
+
+# A blue cube instead of the default red
+config = PickConfig(objects=CubeObject(color="blue"))
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+Or use a real-world object from the YCB dataset (assets are downloaded automatically on first use):
+
+```python
+from so101_nexus_core import PickConfig, YCBObject
+
+config = PickConfig(objects=YCBObject(model_id="011_banana"))
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+Available YCB objects: `009_gelatin_box`, `011_banana`, `030_fork`, `031_spoon`, `032_knife`, `033_spatula`, `037_scissors`, `040_large_marker`, `043_phillips_screwdriver`, `058_golf_ball`. See [YCB Assets](/docs/guides/ycb-assets) for details on asset management.
+
+## Using Multiple Objects
+
+Pass a list of objects. The environment will select one as the manipulation target at each reset:
+
+```python
+from so101_nexus_core import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[
+        CubeObject(color="blue"),
+        YCBObject(model_id="058_golf_ball"),
+        YCBObject(model_id="011_banana"),
+    ],
+)
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+## Adding Distractors
+
+Distractors are extra objects placed in the scene that the agent must ignore. They increase task difficulty by requiring the agent to identify the correct target.
+
+```python
+from so101_nexus_core import PickConfig, CubeObject
+
+config = PickConfig(
+    objects=CubeObject(color="green"),
+    n_distractors=3,
+    min_object_separation=0.04,  # prevents objects from overlapping
+)
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
+```
+
+## Custom Meshes (MuJoCo Only)
+
+Load an arbitrary mesh file as a scene object with `MeshObject`. This is only supported on the MuJoCo backend.
+
+```python
+from so101_nexus_core import PickConfig, MeshObject
+
+obj = MeshObject(
+    collision_mesh_path="/path/to/collision.stl",
+    visual_mesh_path="/path/to/visual.obj",
+    mass=0.015,
+    name="custom_widget",
+)
+config = PickConfig(objects=obj)
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+## Task Descriptions
+
+Each object has a string representation that the environment uses to build its task description. This matters for language-conditioned policies:
+
+```python
+from so101_nexus_core import CubeObject, YCBObject
+
+print(repr(CubeObject(color="blue")))    # includes "blue cube"
+print(repr(YCBObject(model_id="011_banana")))  # includes "banana"
+```
+
+Inspect the task description with `env.unwrapped.task_description`.
+
+## All Parameters
+
+See the [Objects API reference](/docs/api/objects) for the full constructor parameters of `CubeObject`, `YCBObject`, and `MeshObject`.

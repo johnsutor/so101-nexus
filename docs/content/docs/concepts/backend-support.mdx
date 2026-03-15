@@ -1,0 +1,31 @@
+---
+title: Backend Support
+description: Simulator backends, environment availability, and key differences.
+---
+
+SO101-Nexus supports MuJoCo and ManiSkill as simulation backends. Genesis is on the roadmap but not yet implemented.
+
+## Environment Availability
+
+| Task | MuJoCo | ManiSkill (SO-100) | ManiSkill (SO-101) |
+| --- | --- | --- | --- |
+| PickLift | `MuJoCoPickLift-v1` | `ManiSkillPickLiftSO100-v1` | `ManiSkillPickLiftSO101-v1` |
+| PickAndPlace | `MuJoCoPickAndPlace-v1` | `ManiSkillPickAndPlaceSO100-v1` | `ManiSkillPickAndPlaceSO101-v1` |
+| Reach | `MuJoCoReach-v1` | -- | -- |
+| LookAt | `MuJoCoLookAt-v1` | -- | -- |
+| Move | `MuJoCoMove-v1` | -- | -- |
+
+Reach, LookAt, and Move are currently MuJoCo-only.
+
+## Vectorization
+
+ManiSkill runs multiple simulation instances in a single GPU-accelerated process by passing `num_envs` directly to `gym.make()`. MuJoCo environments must be vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper.
+
+## Key Differences
+
+- **Robot models** -- MuJoCo environments use the SO-101 arm. ManiSkill has separate SO-100 and SO-101 variants.
+- **Object support** -- MuJoCo supports CubeObject, YCBObject, and MeshObject. ManiSkill supports CubeObject and YCBObject only.
+- **Camera config** -- MuJoCo uses a `camera_mode` kwarg. ManiSkill uses `obs_mode` plus a config field.
+- **Task coverage** -- MuJoCo has all five tasks. ManiSkill has PickLift and PickAndPlace.
+
+For details on object types, see the [Objects API reference](/docs/api/objects). For camera configuration, see [Observations and Camera Modes](/docs/concepts/observations-and-camera-modes).

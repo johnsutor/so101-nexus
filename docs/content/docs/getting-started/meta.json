@@ -1,0 +1,10 @@
+{
+  "title": "Getting Started",
+  "pages": [
+    "overview",
+    "installation",
+    "quickstart-mujoco",
+    "quickstart-maniskill",
+    "environment-ids"
+  ]
+}

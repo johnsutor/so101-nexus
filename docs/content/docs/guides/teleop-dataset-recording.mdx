@@ -1,0 +1,71 @@
+---
+title: Teleop Dataset Recording
+description: Record demonstration datasets by teleoperating a simulated robot with a physical leader arm.
+---
+
+SO101-Nexus includes a teleoperation script at `examples/teleop.py` that lets you control a simulated robot using a physical SO-100 or SO-101 leader arm. Demonstrations are recorded as LeRobot v3 datasets and can be pushed directly to the HuggingFace Hub.
+
+## Hardware requirements
+
+- A physical SO-100 or SO-101 leader arm connected via USB
+- A Linux machine with the leader arm's serial port accessible
+
+## Finding the serial port
+
+Use the LeRobot port discovery tool to identify the leader arm's serial port:
+
+```bash
+lerobot-find-port
+```
+
+This will list connected devices with their port paths (typically `/dev/ttyACM0` or similar).
+
+## Launching the teleop interface
+
+```bash
+uv run --package so101-nexus-mujoco --group teleop \
+    python examples/teleop.py \
+    --leader-port /dev/ttyACM0
+```
+
+This opens a Gradio web UI in your browser.
+
+## CLI arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
+| `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
+| `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+
+## Gradio UI configuration
+
+The web interface provides controls for the recording session:
+
+| Setting | Description |
+| --- | --- |
+| Environment | Which simulation environment to use |
+| Robot type | SO-100 or SO-101 |
+| Episodes | Number of episodes to record |
+| FPS | Recording frame rate |
+| Camera resolution | Resolution of recorded camera frames |
+| Action space | `joint_pos` (absolute) or `joint_pos_delta` (relative) |
+| Countdown | Seconds of countdown before recording starts |
+
+## Session flow
+
+1. **Configure.** Set the environment, robot type, number of episodes, FPS, camera resolution, action space, and countdown timer in the Gradio UI.
+2. **Record.** A countdown plays before each episode begins. Teleoperate the simulated robot by moving the physical leader arm. The simulation mirrors your movements in real time.
+3. **Review.** After each episode, the UI displays a video replay and diagnostic plots of the recorded trajectory.
+4. **Approve or discard.** Accept the episode to add it to the dataset, or discard it and re-record.
+5. **Push to Hub.** Once all episodes are recorded, push the completed dataset to the HuggingFace Hub directly from the UI.
+
+## Recorded dataset format
+
+Datasets are saved in the LeRobot v3 format, which includes:
+
+- Joint positions and actions at each timestep
+- Camera frames at the configured resolution
+- Episode metadata (environment, robot type, timestamps)
+
+These datasets are compatible with LeRobot training pipelines and can be loaded with the standard LeRobot dataset API.

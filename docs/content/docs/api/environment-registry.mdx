@@ -1,0 +1,77 @@
+---
+title: Environment Registry
+description: How environment registration and discovery works.
+---
+
+# Environment Registry
+
+SO101-Nexus environments are registered with Gymnasium at import time. Each backend package registers its own set of environment IDs when you import it.
+
+## How Registration Works
+
+Importing a backend package triggers registration:
+
+```python
+import so101_nexus_mujoco      # registers MuJoCo environments
+import so101_nexus_maniskill   # registers ManiSkill environments
+```
+
+ManiSkill environments are also registered via the `@register_env` decorator for use with ManiSkill's own vectorized API.
+
+After importing, create environments with `gym.make()`:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+```
+
+You must import the backend package before calling `gym.make()`. Without the import, Gymnasium will not find the environment ID.
+
+## Discovering Registered Environments
+
+### `all_registered_env_ids()`
+
+```python
+from so101_nexus_core import all_registered_env_ids
+
+ids = all_registered_env_ids()
+```
+
+```python
+def all_registered_env_ids() -> list[str]
+```
+
+Returns a list of all SO101-Nexus environment IDs that have been registered with Gymnasium. This includes environments from every backend that has been imported in the current process.
+
+The function returns 7 environment IDs when both backends are imported.
+
+## Required Imports
+
+Each backend must be imported before its environments can be used. The core package alone does not register any environments.
+
+| Backend Package | Import Statement | Registers |
+|----------------|-----------------|-----------|
+| `so101-nexus-mujoco` | `import so101_nexus_mujoco` | MuJoCo environments |
+| `so101-nexus-maniskill` | `import so101_nexus_maniskill` | ManiSkill environments |
+
+## Passing Configuration
+
+All environments accept a `config` keyword argument through `gym.make()`:
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+from so101_nexus_core import PickConfig, CubeObject
+
+config = PickConfig(
+    objects=[CubeObject(color="blue")],
+    max_episode_steps=512,
+    camera_mode="both",
+)
+
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
+See [Configuration Classes](/docs/api/configs) for all available options.

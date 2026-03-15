@@ -1,0 +1,38 @@
+---
+title: Tasks and Success Conditions
+description: Task objectives, success criteria, and reward structure.
+---
+
+SO101-Nexus ships five task types that cover fundamental manipulation primitives.
+
+## Task Overview
+
+| Task | Objective | Max Steps |
+| --- | --- | --- |
+| PickLift | Grasp an object and lift it above a height threshold | 1024 |
+| PickAndPlace | Pick up a cube and place it at a target location | 1024 |
+| Reach | Move the TCP to a target position | 512 |
+| LookAt | Orient the end-effector to gaze at a target object | 256 |
+| Move | Move the TCP to a target position with tighter tolerance | 256 |
+
+## Success Conditions
+
+Each task defines a binary success signal returned in the `info` dict.
+
+**PickLift** succeeds when the object is grasped and lifted above the `lift_threshold` (default: 0.05 m).
+
+**PickAndPlace** succeeds when the cube's XY distance to the goal is below `goal_thresh`, the cube is on the ground, and the robot is static.
+
+**Reach** succeeds when the TCP-to-target distance is below `success_threshold` (default: 0.02 m).
+
+**LookAt** succeeds when the gaze orientation error is below threshold (default: 5.73 degrees).
+
+**Move** succeeds when the TCP-to-target distance is below `success_threshold` (default: 0.01 m) -- tighter than Reach.
+
+## Reward Structure
+
+All tasks use a shared reward structure that decomposes into weighted components: reaching progress, grasp quality, the task-specific objective (lifting height, placement accuracy, etc.), and a one-time completion bonus. The weights are configurable through `RewardConfig` and must sum to 1.0.
+
+Distance-based reward components use tanh shaping to produce smooth, bounded rewards that decay as the agent moves away from the goal. Optional penalties for action deltas and energy usage can be enabled for smoother or more efficient behavior.
+
+See the [Configs API reference](/docs/api/configs) for all `RewardConfig` parameters and default values.

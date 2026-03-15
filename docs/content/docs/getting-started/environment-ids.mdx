@@ -1,0 +1,43 @@
+---
+title: Environment IDs
+description: Complete list of registered environment IDs in SO101-Nexus.
+---
+
+SO101-Nexus environments are registered with Gymnasium when you import a backend package. You must import the relevant backend before calling `gymnasium.make()`.
+
+```python
+import so101_nexus_mujoco      # registers MuJoCo envs
+import so101_nexus_maniskill   # registers ManiSkill envs
+```
+
+## Listing Environments
+
+```python
+from so101_nexus_core.env_ids import all_registered_env_ids
+
+for env_id in all_registered_env_ids():
+    print(env_id)
+```
+
+## Core Registry
+
+The following environment IDs are returned by `all_registered_env_ids()`:
+
+| Environment ID | Backend | Task |
+|---------------|---------|------|
+| `MuJoCoPickLift-v1` | MuJoCo | Pick up and lift an object |
+| `MuJoCoPickAndPlace-v1` | MuJoCo | Pick up and place an object at a target |
+| `MuJoCoReach-v1` | MuJoCo | Reach a target position |
+| `MuJoCoLookAt-v1` | MuJoCo | Orient the end-effector toward a target |
+| `MuJoCoMove-v1` | MuJoCo | Move the arm to a target configuration |
+| `ManiSkillPickLiftSO100-v1` | ManiSkill | Pick up and lift an object (SO-100) |
+| `ManiSkillPickLiftSO101-v1` | ManiSkill | Pick up and lift an object (SO-101) |
+
+## Additional ManiSkill Environments
+
+The following environments are registered through ManiSkill's `@register_env` decorator when you import `so101_nexus_maniskill`. They do not appear in `all_registered_env_ids()` but are available via `gymnasium.make()`:
+
+| Environment ID | Task | Robot |
+|---------------|------|-------|
+| `ManiSkillPickAndPlaceSO100-v1` | Pick and place an object at a target | SO-100 |
+| `ManiSkillPickAndPlaceSO101-v1` | Pick and place an object at a target | SO-101 |

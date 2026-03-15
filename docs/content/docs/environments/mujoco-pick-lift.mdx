@@ -1,0 +1,87 @@
+---
+title: MuJoCoPickLift-v1
+description: Pick up and lift an object using the MuJoCo backend.
+---
+
+# MuJoCoPickLift-v1
+
+Pick up an object from the table and lift it above a height threshold.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoPickLift-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 1024 |
+| Config class | `PickConfig` |
+| Task description | "Pick up the \{object repr\}." |
+
+## Observation Space
+
+The observation is an 18-dimensional vector.
+
+| Component | Dimensions | Description |
+|-----------|------------|-------------|
+| `tcp_pos` | 3 | TCP position in world frame |
+| `tcp_quat` | 4 | TCP orientation as quaternion |
+| `is_grasped` | 1 | Whether the object is currently grasped |
+| `obj_pos` | 3 | Object position |
+| `obj_quat` | 4 | Object orientation as quaternion |
+| `tcp_to_obj` | 3 | Vector from TCP to object |
+
+## Objects
+
+The environment supports three object types via the `PickConfig`:
+
+- `CubeObject` -- a simple colored cube
+- `YCBObject` -- an object from the YCB dataset
+- `MeshObject` -- a custom mesh object
+
+## Success Condition
+
+The episode succeeds when both conditions are met:
+
+1. The object is grasped (`is_grasped` is true).
+2. The object is lifted above the `lift_threshold` (default 0.05 m).
+
+## Reward
+
+The reward is a shaped sum of:
+
+- **Reaching** -- progress toward the object
+- **Grasping** -- bonus for successfully grasping the object
+- **Lift progress** -- reward proportional to lift height
+- **Completion bonus** -- awarded when the success condition is met
+
+## Distractors
+
+Pass `n_distractors` in the config to add non-target objects to the scene. These objects are not part of the task but increase visual and physical complexity.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco
+
+from so101_nexus_mujoco.config import PickConfig
+from so101_nexus_mujoco.objects import CubeObject
+
+env = gym.make(
+    "MuJoCoPickLift-v1",
+    render_mode="human",
+    config=PickConfig(
+        objects=[CubeObject()],
+        n_distractors=2,
+    ),
+)
+
+obs, info = env.reset()
+for _ in range(1024):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
