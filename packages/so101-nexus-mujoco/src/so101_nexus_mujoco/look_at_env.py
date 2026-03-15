@@ -179,14 +179,25 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         # Third column of the rotation matrix = local z-axis in world frame.
         return mat[:, 2].copy()
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> np.ndarray | dict:
         tcp_pose = self._get_tcp_pose()
         target_pos = self._get_target_pos()
         gaze_to_target = target_pos - tcp_pose[:3]
         norm = float(np.linalg.norm(gaze_to_target))
         if norm > 1e-8:
             gaze_to_target = gaze_to_target / norm
-        return np.concatenate([tcp_pose, gaze_to_target])
+        state = np.concatenate([tcp_pose, gaze_to_target])
+
+        if self.camera_mode == "wrist":
+            assert self._wrist_renderer is not None
+            assert self._wrist_cam_id is not None
+            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
+            wrist_image = self._wrist_renderer.render()
+            if self.config.obs_mode == "visual":
+                self._privileged_state = state
+                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
+            return {"state": state, "wrist_camera": wrist_image}
+        return state
 
     def _get_info(self) -> dict:
         tcp_forward = self._get_tcp_forward()
@@ -201,10 +212,13 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
         orientation_error = float(np.arccos(cos_sim))
         threshold_rad: float = self.config._orientation_success_threshold_rad
-        return {
+        info = {
             "orientation_error": orientation_error,
             "success": orientation_error < threshold_rad,
         }
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return info
 
     def _compute_reward(self, info: dict) -> float:
         tcp_forward = self._get_tcp_forward()

@@ -125,18 +125,32 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         self._target_pos[2] = max(self._target_pos[2], 0.05)
         self.model.site_pos[self._target_site_id] = self._target_pos
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> np.ndarray | dict:
         tcp_pose = self._get_tcp_pose()
         tcp_to_target = self._target_pos - tcp_pose[:3]
-        return np.concatenate([tcp_pose, tcp_to_target])
+        state = np.concatenate([tcp_pose, tcp_to_target])
+
+        if self.camera_mode == "wrist":
+            assert self._wrist_renderer is not None
+            assert self._wrist_cam_id is not None
+            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
+            wrist_image = self._wrist_renderer.render()
+            if self.config.obs_mode == "visual":
+                self._privileged_state = state
+                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
+            return {"state": state, "wrist_camera": wrist_image}
+        return state
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
         dist = float(np.linalg.norm(self._target_pos - tcp_pos))
-        return {
+        info = {
             "tcp_to_target_dist": dist,
             "success": dist < self.config.success_threshold,
         }
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return info
 
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]

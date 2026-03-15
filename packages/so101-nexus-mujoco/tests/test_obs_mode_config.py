@@ -6,6 +6,9 @@ from so101_nexus_core import PickConfig
 from so101_nexus_core.config import EnvironmentConfig, PickAndPlaceConfig
 from so101_nexus_mujoco.pick_env import PickLiftEnv
 from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
+from so101_nexus_mujoco.reach_env import ReachConfig, ReachEnv
+from so101_nexus_mujoco.look_at_env import LookAtConfig, LookAtEnv
+from so101_nexus_mujoco.move_env import MoveConfig, MoveEnv
 
 
 class TestObsModeConfig:
@@ -91,4 +94,58 @@ class TestObsModeVisualPickAndPlace:
         obs, info = env.reset()
         assert obs["state"].shape == (24,)
         assert "privileged_state" not in info
+        env.close()
+
+
+class TestObsModeVisualReachEnv:
+    def test_visual_obs_state_is_6d(self):
+        cfg = ReachConfig(camera_mode="wrist", obs_mode="visual")
+        env = ReachEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        env.close()
+
+    def test_visual_obs_privileged_state_in_info(self):
+        cfg = ReachConfig(camera_mode="wrist", obs_mode="visual")
+        env = ReachEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert "privileged_state" in info
+        assert info["privileged_state"].shape == (10,)
+        env.close()
+
+
+class TestObsModeVisualLookAtEnv:
+    def test_visual_obs_state_is_6d(self):
+        cfg = LookAtConfig(camera_mode="wrist", obs_mode="visual")
+        env = LookAtEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        env.close()
+
+    def test_visual_obs_privileged_state_in_info(self):
+        cfg = LookAtConfig(camera_mode="wrist", obs_mode="visual")
+        env = LookAtEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert "privileged_state" in info
+        assert info["privileged_state"].shape == (10,)
+        env.close()
+
+
+class TestObsModeVisualMoveEnv:
+    def test_visual_obs_state_is_6d(self):
+        cfg = MoveConfig(camera_mode="wrist", obs_mode="visual")
+        env = MoveEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        env.close()
+
+    def test_visual_obs_privileged_state_in_info(self):
+        cfg = MoveConfig(camera_mode="wrist", obs_mode="visual")
+        env = MoveEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert "privileged_state" in info
+        assert info["privileged_state"].shape == (10,)
         env.close()
