@@ -4575,7 +4575,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus-core"
-version = "0.3.0b1"
+version = "0.3.0"
 source = { editable = "packages/so101-nexus-core" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -4602,7 +4602,7 @@ provides-extras = ["viz"]
 
 [[package]]
 name = "so101-nexus-maniskill"
-version = "0.3.0b1"
+version = "0.3.0"
 source = { editable = "packages/so101-nexus-maniskill" }
 dependencies = [
     { name = "mani-skill", marker = "extra == 'project-21-so101-nexus-maniskill'" },
@@ -4639,7 +4639,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-mujoco"
-version = "0.3.0b1"
+version = "0.3.0"
 source = { editable = "packages/so101-nexus-mujoco" }
 dependencies = [
     { name = "gymnasium", version = "1.2.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'project-18-so101-nexus-mujoco' or (extra == 'group-18-so101-nexus-mujoco-teleop' and extra == 'project-21-so101-nexus-maniskill') or (extra == 'group-21-so101-nexus-workspace-teleop' and extra == 'project-21-so101-nexus-maniskill')" },
@@ -4686,7 +4686,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-workspace"
-version = "0.3.0b1"
+version = "0.3.0"
 source = { virtual = "." }
 dependencies = [
     { name = "tensorboard" },
