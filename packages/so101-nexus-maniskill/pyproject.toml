@@ -1,9 +1,9 @@
 [project]
 name = "so101-nexus-maniskill"
-version = "0.3.0"
+version = "0.3.1"
 description = "ManiSkill simulation environments for the SO-101 robot arm"
 requires-python = ">=3.12"
-dependencies = ["so101-nexus-core==0.3.0", "mani_skill", "setuptools<82"]
+dependencies = ["so101-nexus-core==0.3.1", "mani_skill", "setuptools<82"]
 license = "Apache-2.0"
 classifiers = [
     "Development Status :: 4 - Beta",
