@@ -71,6 +71,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.camera_width = config.camera.width
         self.camera_height = config.camera.height
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        self._privileged_state: np.ndarray | None = None
 
     def _finish_model_setup(self) -> None:
         self._joint_ids = np.array(
@@ -135,10 +136,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 height=self.camera_height,
                 width=self.camera_width,
             )
+            state_size = (
+                len(SO101_JOINT_NAMES)
+                if self.config.obs_mode == "visual"
+                else self._state_obs_size()
+            )
             self.observation_space = spaces.Dict(
                 {
                     "state": spaces.Box(
-                        low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
+                        low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64
                     ),
                     "wrist_camera": spaces.Box(
                         low=0,

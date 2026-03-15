@@ -302,7 +302,11 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            return {"state": state, "wrist_camera": self._wrist_renderer.render()}
+            wrist_image = self._wrist_renderer.render()
+            if self.config.obs_mode == "visual":
+                self._privileged_state = state
+                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
+            return {"state": state, "wrist_camera": wrist_image}
         return state
 
     def _get_info(self) -> dict:
@@ -312,12 +316,15 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         is_grasped = self._is_grasping()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
 
-        return {
+        info = {
             "is_grasped": is_grasped,
             "is_robot_static": self._is_robot_static(),
             "lift_height": lift_height,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
         }
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return info
 
     def _compute_reward(self, info: dict) -> float:
         return self._reach_only_reward(info)

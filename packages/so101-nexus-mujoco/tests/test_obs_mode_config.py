@@ -1,7 +1,10 @@
 """Tests for obs_mode config validation."""
 
+import numpy as np
 import pytest
+from so101_nexus_core import PickConfig
 from so101_nexus_core.config import EnvironmentConfig
+from so101_nexus_mujoco.pick_env import PickLiftEnv
 
 
 class TestObsModeConfig:
@@ -29,3 +32,35 @@ class TestObsModeConfig:
     def test_invalid_obs_mode_rejected(self):
         with pytest.raises(ValueError, match="obs_mode"):
             EnvironmentConfig(obs_mode="invalid")
+
+
+class TestObsModeVisualPickEnv:
+    """Use direct construction with camera_mode='wrist' — gym.make does not
+    forward camera_mode from config to the env constructor parameter."""
+
+    def test_visual_obs_state_is_6d(self):
+        cfg = PickConfig(camera_mode="wrist", obs_mode="visual")
+        env = PickLiftEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        env.close()
+
+    def test_visual_obs_privileged_state_in_info(self):
+        cfg = PickConfig(camera_mode="wrist", obs_mode="visual")
+        env = PickLiftEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert "privileged_state" in info
+        # PickEnv privileged: tcp_pose(7) + is_grasped(1) + obj_pose(7) + tcp_to_obj(3) = 18
+        assert info["privileged_state"].shape == (18,)
+        env.close()
+
+    def test_state_mode_unchanged(self):
+        """Default obs_mode='state' still returns full privileged state vector."""
+        cfg = PickConfig(camera_mode="wrist")
+        env = PickLiftEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (18,)
+        assert "privileged_state" not in info
+        env.close()
