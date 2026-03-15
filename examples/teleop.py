@@ -212,18 +212,14 @@ def recording_thread(
             obs, _, terminated, truncated, _ = env.step(action)
 
             if isinstance(obs, dict):
-                obs_state = obs.get("state", obs.get("observation.state", action))
                 wrist_image = obs.get("wrist_camera", obs.get("observation.images.wrist_cam"))
             else:
-                obs_state = obs
                 wrist_image = None
 
+            # The leader arm action IS the observation.state for the dataset —
+            # it matches what real robot joint encoders would report.
             state.episode_actions.append(action.astype(np.float32))
-            state.episode_states.append(
-                obs_state
-                if isinstance(obs_state, np.ndarray)
-                else np.array(obs_state, dtype=np.float32)
-            )
+            state.episode_states.append(action.astype(np.float32))
             if wrist_image is not None:
                 state.episode_images.append(wrist_image)
                 state.live_frame = wrist_image.copy()
