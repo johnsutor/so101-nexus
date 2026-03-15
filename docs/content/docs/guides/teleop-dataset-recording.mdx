@@ -64,8 +64,11 @@ The web interface provides controls for the recording session:
 
 Datasets are saved in the LeRobot v3 format, which includes:
 
-- Joint positions and actions at each timestep
-- Camera frames at the configured resolution
+- **`observation.state`**: Joint positions (6D) at each timestep, matching what real robot encoders would report
+- **`action`**: Commanded joint positions (or deltas, depending on action space)
+- **`observation.images.wrist_cam`**: Camera frames at the configured resolution
 - Episode metadata (environment, robot type, timestamps)
+
+The `observation.state` field always contains the raw joint positions from the leader arm, not the simulator's internal state vector (which may include privileged information like object positions). This ensures datasets are compatible with sim-to-real transfer and vision-based policy training.
 
 These datasets are compatible with LeRobot training pipelines and can be loaded with the standard LeRobot dataset API.
