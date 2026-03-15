@@ -154,7 +154,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            return {"state": state, "wrist_camera": self._wrist_renderer.render()}
+            wrist_image = self._wrist_renderer.render()
+            if self.config.obs_mode == "visual":
+                self._privileged_state = state
+                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
+            return {"state": state, "wrist_camera": wrist_image}
         return state
 
     def _state_obs_size(self) -> int:
@@ -178,7 +182,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         lift_height = float(obj_pos[2] - self._initial_obj_z)
         success = is_obj_placed and is_robot_static
 
-        return {
+        info = {
             "obj_to_target_dist": obj_to_target_dist,
             "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
@@ -187,6 +191,9 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             "success": success,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
         }
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return info
 
     def _compute_reward(self, info: dict) -> float:
         reach_progress = 1.0 - float(

@@ -3,8 +3,9 @@
 import numpy as np
 import pytest
 from so101_nexus_core import PickConfig
-from so101_nexus_core.config import EnvironmentConfig
+from so101_nexus_core.config import EnvironmentConfig, PickAndPlaceConfig
 from so101_nexus_mujoco.pick_env import PickLiftEnv
+from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
 
 
 class TestObsModeConfig:
@@ -62,5 +63,32 @@ class TestObsModeVisualPickEnv:
         obs, info = env.reset()
         assert isinstance(obs, dict)
         assert obs["state"].shape == (18,)
+        assert "privileged_state" not in info
+        env.close()
+
+
+class TestObsModeVisualPickAndPlace:
+    def test_visual_obs_state_is_6d(self):
+        cfg = PickAndPlaceConfig(camera_mode="wrist", obs_mode="visual")
+        env = PickAndPlaceEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        env.close()
+
+    def test_visual_obs_privileged_state_in_info(self):
+        cfg = PickAndPlaceConfig(camera_mode="wrist", obs_mode="visual")
+        env = PickAndPlaceEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert "privileged_state" in info
+        # PickAndPlace: tcp(7)+grasped(1)+target(3)+obj(7)+tcp_to_obj(3)+obj_to_target(3) = 24
+        assert info["privileged_state"].shape == (24,)
+        env.close()
+
+    def test_state_mode_unchanged(self):
+        cfg = PickAndPlaceConfig(camera_mode="wrist")
+        env = PickAndPlaceEnv(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert obs["state"].shape == (24,)
         assert "privileged_state" not in info
         env.close()
