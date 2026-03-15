@@ -1,14 +1,14 @@
 """Tests for obs_mode config validation."""
 
-import numpy as np
 import pytest
+
 from so101_nexus_core import PickConfig
 from so101_nexus_core.config import EnvironmentConfig, PickAndPlaceConfig
-from so101_nexus_mujoco.pick_env import PickLiftEnv
-from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
-from so101_nexus_mujoco.reach_env import ReachConfig, ReachEnv
 from so101_nexus_mujoco.look_at_env import LookAtConfig, LookAtEnv
 from so101_nexus_mujoco.move_env import MoveConfig, MoveEnv
+from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
+from so101_nexus_mujoco.pick_env import PickLiftEnv
+from so101_nexus_mujoco.reach_env import ReachConfig, ReachEnv
 
 
 class TestObsModeConfig:
@@ -84,7 +84,7 @@ class TestObsModeVisualPickAndPlace:
         env = PickAndPlaceEnv(config=cfg, camera_mode="wrist")
         obs, info = env.reset()
         assert "privileged_state" in info
-        # PickAndPlace: tcp(7)+grasped(1)+target(3)+obj(7)+tcp_to_obj(3)+obj_to_target(3) = 24
+        # 24D: tcp, grasped, target, obj, tcp_to_obj, obj_to_target
         assert info["privileged_state"].shape == (24,)
         env.close()
 
