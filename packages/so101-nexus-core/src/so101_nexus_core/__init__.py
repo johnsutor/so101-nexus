@@ -33,6 +33,9 @@ from so101_nexus_core.config import (
     EnvironmentConfig as EnvironmentConfig,
 )
 from so101_nexus_core.config import (
+    ObsMode as ObsMode,
+)
+from so101_nexus_core.config import (
     PickAndPlaceConfig as PickAndPlaceConfig,
 )
 from so101_nexus_core.config import (

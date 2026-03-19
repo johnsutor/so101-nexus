@@ -1,13 +1,17 @@
 ---
 title: Observations and Camera Modes
-description: State observation vectors, camera rendering modes, and how to inspect them.
+description: State observation vectors, camera rendering modes, observation modes, and how to inspect them.
 ---
 
-Every SO101-Nexus environment returns observations as either a flat state vector or a dictionary containing state and camera data.
+Every SO101-Nexus environment returns observations as either a flat state vector or a dictionary containing state and camera data. The content of the state vector depends on the **observation mode**.
 
-## State Observations
+## Observation Modes
 
-State observations are flat NumPy arrays whose size depends on the task:
+The `obs_mode` config parameter controls what information is included in the `"state"` key of the observation. There are two modes:
+
+### `obs_mode="state"` (default)
+
+The state vector contains full privileged simulator information, including TCP pose, object positions, grasp flags, and relative vectors. This is useful for state-based reinforcement learning where the policy has access to ground-truth information.
 
 | Task | Dimensions | Key Components |
 | --- | --- | --- |
@@ -20,6 +24,30 @@ State observations are flat NumPy arrays whose size depends on the task:
 Reach, LookAt, and Move share the same 10-dimensional layout. The semantic difference is in the third component: Reach and Move measure TCP-to-target distance, while LookAt measures gaze-to-target orientation error.
 
 The exact per-index observation breakdown is documented on each [environment's reference page](/docs/environments).
+
+### `obs_mode="visual"`
+
+The state vector contains only the 6 joint positions, matching what a real robot's joint encoders would report. This mode is designed for vision-based policies that should learn to locate objects using camera images rather than ground-truth state. It requires `camera_mode="wrist"`.
+
+| All Tasks | Dimensions | Key Components |
+| --- | --- | --- |
+| Any | 6 | Joint positions (shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper) |
+
+The full privileged state vector is still available in the `info` dict under the `"privileged_state"` key for logging or debugging purposes.
+
+```python
+from so101_nexus_core import PickConfig
+from so101_nexus_mujoco.pick_env import PickLiftEnv
+
+cfg = PickConfig(camera_mode="wrist", obs_mode="visual")
+env = PickLiftEnv(config=cfg, camera_mode="wrist")
+obs, info = env.reset()
+
+print(obs["state"].shape)              # (6,) — joint positions only
+print(obs["wrist_camera"].shape)       # (224, 224, 3) — camera image
+print(info["privileged_state"].shape)  # (18,) — full state for debugging
+env.close()
+```
 
 ## Inspecting Observations
 
@@ -54,3 +82,12 @@ obs, info = env.reset()
 On **ManiSkill**, camera rendering is configured through the environment config's `camera_mode` field. Use `obs_mode="state"` for state-only observations.
 
 Camera resolution and wrist camera field-of-view can be configured through `CameraConfig`. See the [Configs API reference](/docs/api/configs) for all parameters.
+
+## Choosing the Right Mode
+
+| Use Case | `obs_mode` | `camera_mode` | Why |
+| --- | --- | --- | --- |
+| State-based RL training | `"state"` | `"state_only"` | Policy uses privileged state directly |
+| Vision-based RL training | `"visual"` | `"wrist"` | Policy learns from camera images; prevents cheating via ground-truth state |
+| Teleop dataset recording | `"visual"` | `"wrist"` | Matches real robot sensor setup (joints + camera) |
+| Debugging / visualization | `"state"` | `"wrist"` | Full state + camera for analysis |

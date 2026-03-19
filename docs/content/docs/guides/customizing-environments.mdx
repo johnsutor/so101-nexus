@@ -42,6 +42,25 @@ config = EnvironmentConfig(camera=camera)
 env = gym.make("MuJoCoPickLift-v1", config=config, camera_mode="wrist")
 ```
 
+## Visual Observation Mode
+
+For vision-based policies, use `obs_mode="visual"` to prevent the policy from accessing privileged simulator state (object positions, grasp flags, etc.). The `"state"` key in the observation dict will contain only the 6 joint positions, matching what a real robot's encoders would report. The full privileged state is still available in the `info` dict under `"privileged_state"` for logging.
+
+```python
+from so101_nexus_core import PickConfig
+from so101_nexus_mujoco.pick_env import PickLiftEnv
+
+config = PickConfig(camera_mode="wrist", obs_mode="visual")
+env = PickLiftEnv(config=config, camera_mode="wrist")
+obs, info = env.reset()
+
+obs["state"]              # (6,) joint positions only
+obs["wrist_camera"]       # (224, 224, 3) camera image
+info["privileged_state"]  # (18,) full state for debugging
+```
+
+This mode requires `camera_mode="wrist"` since a vision-based policy needs camera observations.
+
 ## Domain Randomization
 
 Randomize colors and spawn positions to improve sim-to-real transfer. Color fields accept a single color name or a list -- when a list is provided, the environment samples uniformly at each reset.

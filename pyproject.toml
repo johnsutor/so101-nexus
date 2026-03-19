@@ -1,6 +1,6 @@
 [project]
 name = "so101-nexus-workspace"
-version = "0.3.0"
+version = "0.3.1"
 description = "Workspace root for SO101-Nexus simulation environments"
 requires-python = ">=3.12"
 dependencies = [

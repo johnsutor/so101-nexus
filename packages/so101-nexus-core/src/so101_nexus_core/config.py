@@ -20,6 +20,7 @@ ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black
 ColorConfig = Union[ColorName, list[ColorName]]
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
 CameraMode = Literal["fixed", "wrist", "both"]
+ObsMode = Literal["state", "visual"]
 
 YcbModelId = Literal[
     "009_gelatin_box",
@@ -340,6 +341,7 @@ class EnvironmentConfig:
         spawn_max_radius: Maximum spawn radius.
         spawn_angle_half_range_deg: Half angular range for spawn angle in degrees.
         camera_mode: Camera mode (fixed, wrist, or both).
+        obs_mode: Observation mode (state or visual).
         robot_colors: Robot arm color(s).
         robot_init_qpos_noise: Initial joint position noise.
     """
@@ -354,10 +356,11 @@ class EnvironmentConfig:
         goal_thresh: float = 0.025,
         spawn_half_size: float = 0.05,
         spawn_center: tuple[float, float] = (0.15, 0.0),
-        spawn_min_radius: float = 0.10,
-        spawn_max_radius: float = 0.25,
+        spawn_min_radius: float = 0.20,
+        spawn_max_radius: float = 0.40,
         spawn_angle_half_range_deg: float = 90.0,
         camera_mode: CameraMode = "fixed",
+        obs_mode: ObsMode = "state",
         robot_colors: ColorConfig = "yellow",
         robot_init_qpos_noise: float = 0.02,
     ) -> None:
@@ -373,10 +376,18 @@ class EnvironmentConfig:
         self.spawn_max_radius = spawn_max_radius
         self.spawn_angle_half_range_deg = spawn_angle_half_range_deg
         self.camera_mode = camera_mode
+        self.obs_mode = obs_mode
         self.robot_colors = robot_colors
         self.robot_init_qpos_noise = robot_init_qpos_noise
         if self.camera_mode not in ("fixed", "wrist", "both"):
             raise ValueError(f"camera_mode must be fixed|wrist|both, got {self.camera_mode!r}")
+        if self.obs_mode not in ("state", "visual"):
+            raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
+        if self.obs_mode == "visual" and self.camera_mode != "wrist":
+            raise ValueError(
+                f"obs_mode='visual' requires camera_mode='wrist', "
+                f"got camera_mode={self.camera_mode!r}"
+            )
         if self.camera.width <= 0 or self.camera.height <= 0:
             raise ValueError(
                 f"camera dimensions must be > 0, got {self.camera.width}x{self.camera.height}"
