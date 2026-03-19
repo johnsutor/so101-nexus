@@ -12,7 +12,14 @@ SO101-Nexus includes a teleoperation script at `examples/teleop.py` that lets yo
 
 ## Finding the serial port
 
-Use the LeRobot port discovery tool to identify the leader arm's serial port:
+If you're on Linux, you may need to make the serial devices writable before running the port finder or launching teleop:
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+sudo chmod 666 /dev/ttyACM1
+```
+
+Assuming you have already [installed LeRobot](https://huggingface.co/docs/lerobot/installation), you can use the LeRobot port discovery tool to identify the leader arm's serial port:
 
 ```bash
 lerobot-find-port

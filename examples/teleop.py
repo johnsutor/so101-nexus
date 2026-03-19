@@ -281,29 +281,36 @@ def _noop(*_n: int):
     return tuple(gr.update() for _ in range(_n[0] if _n else 1))
 
 
-def _enter_to_start_script() -> str:
-    """Return JS that maps Enter to Start Recording on the ready screen."""
+def _keyboard_shortcuts_js() -> str:
+    """Return a JS function for keyboard shortcuts (passed via gr.Blocks js=)."""
     return """
-<script>
-(() => {
-  if (window.__so_nexus_enter_listener_installed) return;
-  window.__so_nexus_enter_listener_installed = true;
+() => {
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" || event.repeat) return;
+    if (event.repeat) return;
     const active = document.activeElement;
     const tag = active?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || active?.isContentEditable) return;
 
-    const ready = document.getElementById("ready-screen");
-    if (!ready || ready.offsetParent === null) return;
+    const isVisible = (id) => {
+      const el = document.getElementById(id);
+      return el && el.offsetParent !== null;
+    };
+    const clickBtn = (selector) => {
+      const btn = document.querySelector(selector);
+      if (btn) { event.preventDefault(); btn.click(); }
+    };
 
-    const startButton = document.querySelector("#start-recording-btn button");
-    if (!startButton) return;
-    event.preventDefault();
-    startButton.click();
+    if (event.key === "Enter" && isVisible("ready-screen")) {
+      clickBtn("#start-recording-btn button");
+    } else if (event.key === "Escape" && isVisible("recording-screen")) {
+      clickBtn("#stop-recording-btn button");
+    } else if (event.key === "a" && isVisible("review-screen")) {
+      clickBtn("#approve-btn button");
+    } else if (event.key === "d" && isVisible("review-screen")) {
+      clickBtn("#discard-btn button");
+    }
   });
-})();
-</script>
+}
 """
 
 
@@ -385,6 +392,7 @@ def main() -> None:
     init_state: dict = {
         "running": False,
         "done": False,
+        "processed": False,
         "error": None,
         "tee_stdout": None,
         "tee_stderr": None,
@@ -533,8 +541,14 @@ def main() -> None:
             gr.update(visible=True),
         )
 
+    def _progress_text(completed: int, total: int) -> str:
+        return f"**Episode {completed} / {total}**"
+
     def poll_init():
         """Poll the init thread and stream log output to the UI."""
+        if init_state["processed"]:
+            return _noop(7)
+
         tee_out = init_state.get("tee_stdout")
         tee_err = init_state.get("tee_stderr")
         log = tee_out.get_output() if tee_out else ""
@@ -544,13 +558,14 @@ def main() -> None:
                 log += "\n" + err
 
         if not init_state["done"]:
-            return (gr.update(value=log or "Starting..."), *_noop(5))
+            return (gr.update(value=log or "Starting..."), *_noop(6))
 
         if tee_out:
             sys.stdout = tee_out._original
         if tee_err:
             sys.stderr = tee_err._original
         init_state["running"] = False
+        init_state["processed"] = True
 
         if init_state["error"]:
             return (
@@ -560,6 +575,7 @@ def main() -> None:
                 gr.update(),
                 gr.update(),
                 gr.update(visible=True),
+                gr.update(),
             )
 
         if init_state["warning"]:
@@ -570,12 +586,14 @@ def main() -> None:
             f"**Env:** `{s['env_id']}` | **Robot:** `{s['robot_type']}` | "
             f"**FPS:** {s['fps']} | **Max steps:** {s['max_steps']}"
         )
+        n = s["state"].num_episodes
         return (
             gr.update(value=log),
             gr.update(visible=False),
             gr.update(visible=True),
             gr.update(value=header, visible=True),
-            gr.update(value=f"Ready to record. 0/{s['state'].num_episodes} episodes complete."),
+            gr.update(value="Ready to record. Press **Enter** or click the button below."),
+            gr.update(visible=True, value=_progress_text(0, n)),
             gr.update(),
         )
 
@@ -611,25 +629,21 @@ def main() -> None:
         """Poll the recording thread for live frames and detect completion."""
         s = session.get("state")
         if s is None:
-            return _noop(7)
+            return _noop(9)
 
         w, h, fps = session["camera_width"], session["camera_height"], session["fps"]
 
         if s.countdown_value > 0:
-            img = np.zeros((h, w, 3), dtype=np.uint8)
-            cv2.putText(
-                img,
-                str(s.countdown_value),
-                (w // 2 - 40, h // 2 + 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                4,
-                (255, 255, 255),
-                6,
-            )
             return (
-                gr.update(value=f"Starting in {s.countdown_value}..."),
-                gr.update(value=img),
-                *_noop(5),
+                gr.update(value="Get ready..."),
+                gr.update(visible=False),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(visible=False),
+                gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             )
 
         if s.is_recording:
@@ -639,10 +653,19 @@ def main() -> None:
             elif frame.shape[0] != h or frame.shape[1] != w:
                 frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_LINEAR)
             n = len(s.episode_actions)
+            ep = s.episodes_completed + 1
             return (
-                gr.update(value=f"Recording — {n} frames ({n / fps:.1f}s)"),
-                gr.update(value=frame),
-                *_noop(5),
+                gr.update(
+                    value=f"Recording episode {ep}/{s.num_episodes} — {n} frames ({n / fps:.1f}s)"
+                ),
+                gr.update(value=frame, visible=True),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(visible=True),
+                gr.update(visible=False),
             )
 
         if s.recording_finished:
@@ -659,21 +682,23 @@ def main() -> None:
             s.recording_finished = False
             return (
                 gr.update(value="Recording complete."),
-                gr.update(value=None),
+                gr.update(value=None, visible=False),
                 gr.update(visible=False),
                 gr.update(visible=True),
                 gr.update(value=video_path),
                 gr.update(value=fig),
                 gr.update(value=meta),
+                gr.update(visible=False),
+                gr.update(visible=False),
             )
 
-        return _noop(7)
+        return _noop(9)
 
     def stop_recording():
         """Signal the recording thread to stop."""
         session["state"].should_stop = True
 
-    def approve_episode():
+    def approve_episode(progress=gr.Progress()):
         """Save the recorded episode to the dataset and advance."""
         s = session["state"]
         dataset = session["dataset"]
@@ -681,6 +706,7 @@ def main() -> None:
         if session["action_space"] == "joint_pos_delta":
             actions = compute_delta_actions(actions)
 
+        progress(0, desc="Saving episode...")
         for i in range(len(actions)):
             frame = {
                 "observation.state": s.episode_states[i].astype(np.float32),
@@ -692,21 +718,38 @@ def main() -> None:
             dataset.add_frame(frame)
 
         dataset.save_episode()
+        progress(1.0, desc="Done")
         s.episodes_completed += 1
         s.clear_episode()
 
+        progress = _progress_text(s.episodes_completed, s.num_episodes)
         if s.episodes_completed >= s.num_episodes:
+            ds = session["dataset"]
+            repo_id = getattr(ds, "repo_id", "unknown")
+            info = (
+                f"**Dataset:** `{repo_id}`\n\n"
+                f"**Episodes:** {s.episodes_completed} | "
+                f"**Env:** `{session['env_id']}` | "
+                f"**FPS:** {session['fps']}"
+            )
             return (
                 gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=True),
                 gr.update(),
+                gr.update(value=progress),
+                gr.update(value=info),
             )
         return (
             gr.update(visible=False),
             gr.update(visible=True),
             gr.update(visible=False),
-            gr.update(value=f"Episode saved. {s.episodes_completed}/{s.num_episodes} complete."),
+            gr.update(
+                value="Episode saved! Ready to record the next one. "
+                "Press **Enter** or click the button below."
+            ),
+            gr.update(value=progress),
+            gr.update(),
         )
 
     def discard_episode():
@@ -719,27 +762,49 @@ def main() -> None:
             gr.update(visible=True),
             gr.update(visible=False),
             gr.update(
-                value=f"Episode discarded. {s.episodes_completed}/{s.num_episodes} complete."
+                value="Episode discarded. Ready to re-record. "
+                "Press **Enter** or click the button below."
             ),
+            gr.update(value=_progress_text(s.episodes_completed, s.num_episodes)),
+            gr.update(),
         )
 
     def push_to_hub():
         """Push the completed dataset to HuggingFace Hub."""
-        session["dataset"].push_to_hub()
+        try:
+            session["dataset"].push_to_hub()
+        except Exception as exc:
+            msg = str(exc).strip()
+            if not msg:
+                msg = type(exc).__name__
+            raise gr.Error(
+                f"Failed to push to Hub: {msg}\n\n"
+                "Make sure you are logged in (`huggingface-cli login`) and have "
+                "write access to the target repository."
+            ) from exc
         return "Dataset pushed to HuggingFace Hub!"
 
     def finalize_and_close():
         """Finalize the dataset and disconnect all hardware."""
-        session["dataset"].finalize()
-        session["leader"].disconnect()
-        return "Dataset finalized. You can close this window."
+        try:
+            session["dataset"].finalize()
+        except Exception as exc:
+            raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
+        try:
+            session["leader"].disconnect()
+        except Exception:
+            pass  # Best-effort disconnect
+        return "Dataset finalized. Closing..."
 
     all_env_ids = all_registered_env_ids()
 
-    with gr.Blocks(title="SO Nexus Teleop Recorder") as app:
+    with gr.Blocks(
+        title="SO Nexus Teleop Recorder",
+        js=_keyboard_shortcuts_js(),
+    ) as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
-        gr.HTML(_enter_to_start_script())
         session_header = gr.Markdown(visible=False)
+        progress_status = gr.Markdown(visible=False)
 
         with gr.Group(visible=True) as setup_screen:
             gr.Markdown("## Session Configuration")
@@ -824,13 +889,19 @@ def main() -> None:
                 elem_id="start-recording-btn",
             )
 
-        with gr.Group(visible=False) as recording_screen:
+        with gr.Group(visible=False, elem_id="recording-screen") as recording_screen:
             recording_status = gr.Markdown("Starting...")
-            live_feed = gr.Image(label="Live Camera Feed", height=640)
-            stop_btn = gr.Button("Stop Recording", variant="stop")
+            countdown_area = gr.Markdown("Get ready...", visible=False)
+            live_feed = gr.Image(label="Live Camera Feed", height=640, visible=False)
+            stop_btn = gr.Button(
+                "Stop Recording (or press Esc)",
+                variant="stop",
+                elem_id="stop-recording-btn",
+                visible=False,
+            )
             rec_timer = gr.Timer(value=0.1)
 
-        with gr.Group(visible=False) as review_screen:
+        with gr.Group(visible=False, elem_id="review-screen") as review_screen:
             gr.Markdown("## Review Episode")
             with gr.Row():
                 with gr.Column():
@@ -839,11 +910,12 @@ def main() -> None:
                     state_plot = gr.Plot(label="Joint States")
             episode_metadata = gr.Markdown()
             with gr.Row():
-                approve_btn = gr.Button("Approve", variant="primary")
-                discard_btn = gr.Button("Discard", variant="stop")
+                approve_btn = gr.Button("Approve (A)", variant="primary", elem_id="approve-btn")
+                discard_btn = gr.Button("Discard (D)", variant="stop", elem_id="discard-btn")
 
         with gr.Group(visible=False) as done_screen:
             gr.Markdown("## All episodes recorded!")
+            done_info = gr.Markdown("")
             done_status = gr.Markdown("")
             with gr.Row():
                 push_btn = gr.Button("Push to Hub", variant="primary")
@@ -875,6 +947,7 @@ def main() -> None:
                 ready_screen,
                 session_header,
                 ready_status,
+                progress_status,
                 setup_screen,
             ],
         )
@@ -893,18 +966,40 @@ def main() -> None:
                 review_video,
                 state_plot,
                 episode_metadata,
+                stop_btn,
+                countdown_area,
             ],
         )
         approve_btn.click(
             fn=approve_episode,
-            outputs=[review_screen, ready_screen, done_screen, ready_status],
+            outputs=[
+                review_screen,
+                ready_screen,
+                done_screen,
+                ready_status,
+                progress_status,
+                done_info,
+            ],
         )
         discard_btn.click(
             fn=discard_episode,
-            outputs=[review_screen, ready_screen, done_screen, ready_status],
+            outputs=[
+                review_screen,
+                ready_screen,
+                done_screen,
+                ready_status,
+                progress_status,
+                done_info,
+            ],
         )
         push_btn.click(fn=push_to_hub, outputs=[done_status])
-        finalize_btn.click(fn=finalize_and_close, outputs=[done_status])
+        finalize_btn.click(
+            fn=finalize_and_close,
+            outputs=[done_status],
+        ).then(
+            fn=None,
+            js="() => { setTimeout(() => { window.open('', '_self'); window.close(); }, 500); }",
+        )
 
     app.launch(inbrowser=True)
 

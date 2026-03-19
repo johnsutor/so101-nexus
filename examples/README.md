@@ -15,6 +15,13 @@ Follow your robot's guide to assemble, flash firmware, and run calibration. This
 
 **Find your leader arm's serial port** using the LeRobot port finder:
 
+If you're on Linux, you may need to make the serial devices writable before running the port finder or launching teleop:
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+sudo chmod 666 /dev/ttyACM1
+```
+
 ```bash
 lerobot-find-port
 ```
