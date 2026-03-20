@@ -47,7 +47,7 @@ SO101_JOINT_NAMES: tuple[str, ...] = (
 
 MoveDirection = Literal["up", "down", "left", "right", "forward", "backward"]
 
-DIRECTION_VECTORS: dict[str, tuple[float, float, float]] = {
+DIRECTION_VECTORS: dict[MoveDirection, tuple[float, float, float]] = {
     "up": (0.0, 0.0, 1.0),
     "down": (0.0, 0.0, -1.0),
     "left": (0.0, 1.0, 0.0),
