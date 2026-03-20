@@ -62,6 +62,19 @@ from so101_nexus_core.objects import (  # noqa: F401
     SceneObject,
     YCBObject,
 )
+from so101_nexus_core.observations import (  # noqa: F401
+    EndEffectorPose,
+    GazeDirection,
+    GraspState,
+    JointPositions,
+    ObjectOffset,
+    ObjectPose,
+    Observation,
+    OverheadCamera,
+    TargetOffset,
+    TargetPosition,
+    WristCamera,
+)
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SO_ARM100_DIR = ASSETS_DIR / "SO-ARM100"
