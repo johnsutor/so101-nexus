@@ -7,6 +7,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <DocsLayout
       tree={source.pageTree}
       nav={{ title: "SO101-Nexus" }}
+      githubUrl="https://github.com/johnsutor/so101-nexus"
     >
       {children}
     </DocsLayout>
