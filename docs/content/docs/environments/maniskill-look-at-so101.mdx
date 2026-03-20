@@ -1,0 +1,49 @@
+---
+title: ManiSkillLookAtSO101-v1
+description: Orient the TCP toward a target object with the SO-101 arm on the ManiSkill backend.
+---
+
+# ManiSkillLookAtSO101-v1
+
+Orient the robot's end-effector toward a randomly placed target object using the SO-101 robot arm in ManiSkill.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `ManiSkillLookAtSO101-v1` |
+| Backend | ManiSkill |
+| Robot | SO-101 |
+| Max episode steps | 256 |
+| Config class | `LookAtConfig` |
+
+## Observation Space
+
+Default observation includes only joint positions (configurable via `observations` parameter):
+
+| Component | Class | Dimensions | Description |
+|-----------|-------|------------|-------------|
+| Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
+
+## Objects
+
+A single `CubeObject` is placed as the look-at target. The cube is static (kinematic).
+
+## Success Condition
+
+The episode succeeds when the angular error between the TCP forward direction and the direction to the target is less than `orientation_success_threshold_deg` (default 5.73 degrees).
+
+## Vectorized Simulation
+
+ManiSkill supports running multiple environment instances in parallel via the `num_envs` argument.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill
+
+from so101_nexus_core.config import LookAtConfig
+
+env = gym.make("ManiSkillLookAtSO101-v1", obs_mode="state", num_envs=1)
+```

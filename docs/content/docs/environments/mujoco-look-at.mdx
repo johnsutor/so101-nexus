@@ -28,12 +28,11 @@ Orient the robot's end-effector so that it points at a target object.
 
 ## Observation Space
 
-The observation is a 10-dimensional vector.
+Default observation includes only joint positions (configurable via `observations` parameter on `LookAtConfig`):
 
-| Component | Dimensions | Description |
-|-----------|------------|-------------|
-| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
-| `gaze_to_target` | 3 | Normalized unit vector from the TCP gaze direction to the target |
+| Component | Class | Dimensions | Description |
+|-----------|-------|------------|-------------|
+| Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
 
 ## Objects
 
@@ -49,7 +48,7 @@ The episode succeeds when the angular error between the TCP's gaze direction and
 import gymnasium as gym
 import so101_nexus_mujoco
 
-from so101_nexus_mujoco.config import LookAtConfig
+from so101_nexus_core.config import LookAtConfig
 from so101_nexus_mujoco.objects import CubeObject
 
 env = gym.make(
