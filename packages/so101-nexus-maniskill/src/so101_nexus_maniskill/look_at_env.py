@@ -90,9 +90,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
             y = cy + (torch.rand(b, device=self.device) * 2 - 1) * half
             z = torch.full((b,), self._target_obj.half_size, device=self.device)
             pos = torch.stack([x, y, z], dim=1)
-            q = torch.tensor(
-                [[1, 0, 0, 0]], device=self.device, dtype=torch.float32
-            ).expand(b, -1)
+            q = torch.tensor([[1, 0, 0, 0]], device=self.device, dtype=torch.float32).expand(b, -1)
             self.target_obj_actor.set_pose(Pose.create_from_pq(p=pos, q=q))
 
     def evaluate(self) -> dict[str, torch.Tensor]:
@@ -102,9 +100,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         rot_mat = tcp_pose.to_transformation_matrix()[..., :3, :3]
         tcp_forward = rot_mat[..., :, 2]  # (num_envs, 3)
         to_target = self.target_obj_actor.pose.p - tcp_pose.p
-        to_target_norm = to_target / (
-            torch.linalg.norm(to_target, dim=1, keepdim=True) + 1e-8
-        )
+        to_target_norm = to_target / (torch.linalg.norm(to_target, dim=1, keepdim=True) + 1e-8)
         cos_sim = (tcp_forward * to_target_norm).sum(dim=1).clamp(-1, 1)
         orientation_error = torch.arccos(cos_sim)
         return {
@@ -128,17 +124,13 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         else:
             super()._add_component_obs(obs, component, info)
 
-    def compute_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: dict
-    ) -> torch.Tensor:
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Cosine similarity reward for orientation toward target."""
         tcp_pose = self.agent.tcp_pose
         rot_mat = tcp_pose.to_transformation_matrix()[..., :3, :3]
         tcp_forward = rot_mat[..., :, 2]
         to_target = self.target_obj_actor.pose.p - tcp_pose.p
-        to_target_norm = to_target / (
-            torch.linalg.norm(to_target, dim=1, keepdim=True) + 1e-8
-        )
+        to_target_norm = to_target / (torch.linalg.norm(to_target, dim=1, keepdim=True) + 1e-8)
         cos_sim = (tcp_forward * to_target_norm).sum(dim=1).clamp(-1, 1)
         orient = (cos_sim + 1) / 2  # map [-1, 1] to [0, 1]
         bonus = self.config.reward.completion_bonus

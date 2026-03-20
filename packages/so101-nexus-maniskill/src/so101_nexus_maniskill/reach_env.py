@@ -85,9 +85,7 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
             offset = (torch.rand(b, 3, device=self.device) * 2 - 1) * half
             pos = center.unsqueeze(0) + offset
             pos[:, 2] = pos[:, 2].clamp(min=0.05)
-            q = torch.tensor(
-                [[1, 0, 0, 0]], device=self.device, dtype=torch.float32
-            ).expand(b, -1)
+            q = torch.tensor([[1, 0, 0, 0]], device=self.device, dtype=torch.float32).expand(b, -1)
             self.target_site.set_pose(Pose.create_from_pq(p=pos, q=q))
             self._target_pos = pos
 
@@ -113,9 +111,7 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
         else:
             super()._add_component_obs(obs, component, info)
 
-    def compute_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: dict
-    ) -> torch.Tensor:
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Tanh-shaped reach reward with completion bonus."""
         reach = self._reach_progress(info["tcp_to_target_dist"])
         bonus = self.config.reward.completion_bonus

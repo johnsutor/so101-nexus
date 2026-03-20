@@ -58,8 +58,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
     def task_description(self) -> str:
         """Return a description of the current move task."""
         return (
-            f"Move the end-effector {self.config.direction} "
-            f"by {self.config.target_distance:.2f} m."
+            f"Move the end-effector {self.config.direction} by {self.config.target_distance:.2f} m."
         )
 
     def _load_scene(self, options: dict) -> None:
@@ -98,9 +97,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
             )
             target = tcp_pos + dir_vec * self.config.target_distance
             target[:, 2] = target[:, 2].clamp(min=0.02)
-            q = torch.tensor(
-                [[1, 0, 0, 0]], device=self.device, dtype=torch.float32
-            ).expand(b, -1)
+            q = torch.tensor([[1, 0, 0, 0]], device=self.device, dtype=torch.float32).expand(b, -1)
             self.target_site.set_pose(Pose.create_from_pq(p=target, q=q))
             self._target_pos = target
 
@@ -126,9 +123,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
         else:
             super()._add_component_obs(obs, component, info)
 
-    def compute_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: dict
-    ) -> torch.Tensor:
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Tanh-shaped reach reward with completion bonus."""
         reach = self._reach_progress(info["tcp_to_target_dist"])
         bonus = self.config.reward.completion_bonus
