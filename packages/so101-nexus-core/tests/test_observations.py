@@ -25,6 +25,7 @@ class TestObservationBase:
     def test_subclass_requires_name_and_size(self):
         class Bad(Observation):
             pass
+
         with pytest.raises(TypeError):
             Bad()
 

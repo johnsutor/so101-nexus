@@ -49,7 +49,7 @@ class Observation(ABC):
 
 
 class JointPositions(Observation):
-    """Current angle of each robot joint in radians (6-dim)."""
+    """Current angle of each robot joint (6-dim)."""
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -61,7 +61,7 @@ class JointPositions(Observation):
 
 
 class EndEffectorPose(Observation):
-    """Position (x, y, z) and orientation (qw, qx, qy, qz) of the gripper tip in world coordinates (7-dim)."""
+    """Gripper tip position and orientation in world coordinates (7-dim)."""
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -85,7 +85,7 @@ class TargetOffset(Observation):
 
 
 class GazeDirection(Observation):
-    """Unit vector pointing from the gripper tip toward the target object, normalized to length 1 (3-dim)."""
+    """Unit vector from the gripper tip toward the target object (3-dim)."""
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -109,7 +109,7 @@ class GraspState(Observation):
 
 
 class ObjectPose(Observation):
-    """Position (x, y, z) and orientation (qw, qx, qy, qz) of the target object in world coordinates (7-dim)."""
+    """Target object position and orientation in world coordinates (7-dim)."""
 
     @property
     def name(self) -> str:  # noqa: D102
