@@ -15,6 +15,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from so101_nexus_core.objects import SceneObject
+    from so101_nexus_core.observations import Observation
 
 ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]
 ColorConfig = Union[ColorName, list[ColorName]]
@@ -43,6 +44,17 @@ SO101_JOINT_NAMES: tuple[str, ...] = (
     "wrist_roll",
     "gripper",
 )
+
+MoveDirection = Literal["up", "down", "left", "right", "forward", "backward"]
+
+DIRECTION_VECTORS: dict[str, tuple[float, float, float]] = {
+    "up": (0.0, 0.0, 1.0),
+    "down": (0.0, 0.0, -1.0),
+    "left": (0.0, 1.0, 0.0),
+    "right": (0.0, -1.0, 0.0),
+    "forward": (1.0, 0.0, 0.0),
+    "backward": (-1.0, 0.0, 0.0),
+}
 
 COLOR_MAP: dict[str, list[float]] = {
     "red": [1.0, 0.0, 0.0, 1.0],
@@ -344,6 +356,7 @@ class EnvironmentConfig:
         obs_mode: Observation mode (state or visual).
         robot_colors: Robot arm color(s).
         robot_init_qpos_noise: Initial joint position noise.
+        observations: Observation components to include in the state vector.
     """
 
     def __init__(
@@ -363,6 +376,7 @@ class EnvironmentConfig:
         obs_mode: ObsMode = "state",
         robot_colors: ColorConfig = "yellow",
         robot_init_qpos_noise: float = 0.02,
+        observations: list[Observation] | None = None,
     ) -> None:
         self.camera = camera if camera is not None else CameraConfig()
         self.reward = reward if reward is not None else RewardConfig()
@@ -379,6 +393,7 @@ class EnvironmentConfig:
         self.obs_mode = obs_mode
         self.robot_colors = robot_colors
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.observations = observations
         if self.camera_mode not in ("fixed", "wrist", "both"):
             raise ValueError(f"camera_mode must be fixed|wrist|both, got {self.camera_mode!r}")
         if self.obs_mode not in ("state", "visual"):
@@ -525,6 +540,100 @@ class PickAndPlaceConfig(EnvironmentConfig):
             f"PickAndPlaceConfig(cube_colors={self.cube_colors!r}, "
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
         )
+
+
+class ReachConfig(EnvironmentConfig):
+    """Config for the reach-to-target primitive task.
+
+    Args:
+        target_radius: Visual radius of the target site sphere (metres).
+        target_workspace_half_extent: Half-width of the cubic workspace to
+            sample target positions from (metres).
+        success_threshold: TCP-to-target distance (m) that counts as success.
+        **kwargs: Forwarded to EnvironmentConfig.
+    """
+
+    def __init__(
+        self,
+        target_radius: float = 0.02,
+        target_workspace_half_extent: float = 0.15,
+        success_threshold: float = 0.02,
+        **kwargs,
+    ) -> None:
+        kwargs.setdefault("max_episode_steps", 512)
+        super().__init__(**kwargs)
+        self.target_radius = target_radius
+        self.target_workspace_half_extent = target_workspace_half_extent
+        self.success_threshold = success_threshold
+
+
+class LookAtConfig(EnvironmentConfig):
+    """Config for the look-at primitive task.
+
+    Args:
+        objects: Object(s) to sample as the look-at target. Accepts a single
+            SceneObject, a list, or None (defaults to [CubeObject()]).
+            Only CubeObject targets are currently supported.
+        orientation_success_threshold_deg: Max angular error in degrees for success.
+        **kwargs: Forwarded to EnvironmentConfig.
+    """
+
+    def __init__(
+        self,
+        objects: list[SceneObject] | SceneObject | None = None,
+        orientation_success_threshold_deg: float = 5.73,
+        **kwargs,
+    ) -> None:
+        kwargs.setdefault("max_episode_steps", 256)
+        super().__init__(**kwargs)
+        from so101_nexus_core.objects import CubeObject  # noqa: PLC0415
+        from so101_nexus_core.objects import SceneObject as _SceneObject
+
+        if objects is None:
+            self.objects: list[SceneObject] = [CubeObject()]
+        elif isinstance(objects, _SceneObject):
+            self.objects = [objects]
+        else:
+            self.objects = list(objects)
+        self.orientation_success_threshold_deg = orientation_success_threshold_deg
+        for obj in self.objects:
+            if not isinstance(obj, CubeObject):
+                raise TypeError(
+                    f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
+                )
+
+    @property
+    def _orientation_success_threshold_rad(self) -> float:
+        """Orientation success threshold converted to radians (internal use only)."""
+        return float(np.radians(self.orientation_success_threshold_deg))
+
+
+class MoveConfig(EnvironmentConfig):
+    """Config for the directional move primitive task.
+
+    Args:
+        direction: Cardinal direction to move the TCP.
+        target_distance: Distance in metres to travel from the initial TCP position.
+        success_threshold: Max residual distance (m) to count as success.
+        **kwargs: Forwarded to EnvironmentConfig.
+    """
+
+    def __init__(
+        self,
+        direction: MoveDirection = "up",
+        target_distance: float = 0.10,
+        success_threshold: float = 0.01,
+        **kwargs,
+    ) -> None:
+        kwargs.setdefault("max_episode_steps", 256)
+        if direction not in DIRECTION_VECTORS:
+            raise ValueError(
+                f"direction must be one of {list(DIRECTION_VECTORS)}, got {direction!r}"
+            )
+        super().__init__(**kwargs)
+        self.direction = direction
+        self.target_distance = target_distance
+        self.success_threshold = success_threshold
 
 
 SQRT_HALF = float(np.sqrt(0.5))

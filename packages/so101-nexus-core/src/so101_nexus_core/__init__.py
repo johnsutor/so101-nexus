@@ -6,6 +6,9 @@ from so101_nexus_core.config import (
     COLOR_MAP as COLOR_MAP,
 )
 from so101_nexus_core.config import (
+    DIRECTION_VECTORS as DIRECTION_VECTORS,
+)
+from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS as ROBOT_CAMERA_PRESETS,
 )
 from so101_nexus_core.config import (
@@ -33,6 +36,15 @@ from so101_nexus_core.config import (
     EnvironmentConfig as EnvironmentConfig,
 )
 from so101_nexus_core.config import (
+    LookAtConfig as LookAtConfig,
+)
+from so101_nexus_core.config import (
+    MoveConfig as MoveConfig,
+)
+from so101_nexus_core.config import (
+    MoveDirection as MoveDirection,
+)
+from so101_nexus_core.config import (
     ObsMode as ObsMode,
 )
 from so101_nexus_core.config import (
@@ -40,6 +52,9 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.config import (
     PickConfig as PickConfig,
+)
+from so101_nexus_core.config import (
+    ReachConfig as ReachConfig,
 )
 from so101_nexus_core.config import (
     RewardConfig as RewardConfig,
