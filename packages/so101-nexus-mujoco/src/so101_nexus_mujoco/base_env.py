@@ -235,11 +235,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return geom_ids
 
     def _state_obs_size(self) -> int:
-        """Return the dimensionality of the flat state observation vector.
-
-        Default: tcp_pose(7) + is_grasped(1) + obj_pose(7) + tcp_to_obj(3) = 18.
-        Subclasses that add or remove fields should override this method.
-        """
+        """Return the dimensionality of the flat state observation vector."""
+        if self.config.observations is not None:
+            return sum(c.size for c in self.config.observations if c.size > 0)
+        # Legacy default for pick envs that haven't migrated yet
         return 18
 
     def _get_tcp_pose(self) -> np.ndarray:
@@ -298,6 +297,46 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return np.array(
             [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
             dtype=np.float64,
+        )
+
+    def _compute_obs_components(self) -> np.ndarray:
+        """Build the flat state vector from the observation component list."""
+        from so101_nexus_core.observations import (
+            EndEffectorPose,
+            GazeDirection,
+            GraspState,
+            JointPositions,
+            ObjectOffset,
+            ObjectPose,
+            TargetOffset,
+            TargetPosition,
+        )
+
+        parts: list[np.ndarray] = []
+        for comp in self.config.observations:
+            if isinstance(comp, JointPositions):
+                parts.append(self._get_current_qpos())
+            elif isinstance(comp, EndEffectorPose):
+                parts.append(self._get_tcp_pose())
+            elif isinstance(comp, GraspState):
+                parts.append(np.array([self._is_grasping()]))
+            elif isinstance(
+                comp,
+                (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
+            ):
+                parts.append(self._get_component_data(comp))
+            else:
+                raise ValueError(f"Unsupported observation component: {comp!r}")
+        return np.concatenate(parts)
+
+    def _get_component_data(self, component: object) -> np.ndarray:
+        """Return data for a task-specific observation component.
+
+        Subclasses override this for components like TargetOffset or GazeDirection
+        that depend on task state (target position, object position, etc.).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support observation component {component!r}"
         )
 
     def reset(
