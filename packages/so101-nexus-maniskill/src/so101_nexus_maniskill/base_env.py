@@ -229,6 +229,42 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             self._initial_obj_z = torch.zeros(self.num_envs, device=self.device)
         self._initial_obj_z[env_idx] = z
 
+    def _build_obs_extra_from_components(self, info: dict) -> dict[str, torch.Tensor]:
+        """Build obs_extra dict from observation components.
+
+        ManiSkill automatically includes agent qpos/qvel. This method adds
+        task-specific components from config.observations.
+        """
+        from so101_nexus_core.observations import (
+            EndEffectorPose,
+            GraspState,
+            JointPositions,
+        )
+
+        obs: dict[str, torch.Tensor] = {}
+        if self.config.observations is None:
+            return obs
+        for comp in self.config.observations:
+            if isinstance(comp, JointPositions):
+                continue  # ManiSkill includes qpos automatically
+            elif isinstance(comp, EndEffectorPose):
+                obs["tcp_pose"] = self.agent.tcp_pose.raw_pose
+            elif isinstance(comp, GraspState):
+                obs["is_grasped"] = info.get(
+                    "is_grasped", torch.zeros(self.num_envs, device=self.device)
+                )
+            else:
+                self._add_component_obs(obs, comp, info)
+        return obs
+
+    def _add_component_obs(
+        self, obs: dict[str, torch.Tensor], component: object, info: dict
+    ) -> None:
+        """Add a task-specific component to obs dict. Subclasses override."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support observation component {component!r}"
+        )
+
     def compute_normalized_dense_reward(
         self,
         obs: dict[str, torch.Tensor] | torch.Tensor,
