@@ -12,6 +12,7 @@ from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import ControlMode, LookAtConfig
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject
+from so101_nexus_core.rewards import simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -191,6 +192,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         tcp_pos = self._get_tcp_pose()[:3]
         to_target = target_pos - tcp_pos
         orient = self._orientation_toward_reward(tcp_forward, to_target)
-        completion_bonus = self.config.reward.completion_bonus
-        bonus = completion_bonus if info.get("success", False) else 0.0
-        return (1.0 - completion_bonus) * orient + bonus
+        return simple_reward(
+            progress=orient,
+            completion_bonus=self.config.reward.completion_bonus,
+            success=info.get("success", False),
+        )

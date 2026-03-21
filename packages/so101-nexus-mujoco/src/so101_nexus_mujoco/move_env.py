@@ -11,6 +11,7 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import DIRECTION_VECTORS, ControlMode, MoveConfig
 from so101_nexus_core.constants import sample_color
+from so101_nexus_core.rewards import simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -143,7 +144,9 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
-        reach = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        completion_bonus = self.config.reward.completion_bonus
-        bonus = completion_bonus if info.get("success", False) else 0.0
-        return (1.0 - completion_bonus) * reach + bonus
+        progress = self._reach_to_target_reward(tcp_pos, self._target_pos)
+        return simple_reward(
+            progress=progress,
+            completion_bonus=self.config.reward.completion_bonus,
+            success=info.get("success", False),
+        )

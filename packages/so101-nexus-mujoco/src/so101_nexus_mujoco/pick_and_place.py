@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig,
 )
 from so101_nexus_core.constants import sample_color
+from so101_nexus_core.rewards import reach_progress
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GraspState,
@@ -228,21 +229,14 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(
-            np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"])
-        )
+        scale = self.config.reward.tanh_shaping_scale
+        rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
         placement_progress = (
-            (
-                1.0
-                - float(np.tanh(self.config.reward.tanh_shaping_scale * info["obj_to_target_dist"]))
-            )
-            if is_grasped
-            else 0.0
+            reach_progress(info["obj_to_target_dist"], scale=scale) if is_grasped else 0.0
         )
-
         return self.config.reward.compute(
-            reach_progress=reach_progress,
+            reach_progress=rp,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
