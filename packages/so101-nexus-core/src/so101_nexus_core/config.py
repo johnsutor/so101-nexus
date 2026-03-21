@@ -500,9 +500,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
         if self.target_disc_radius <= 0:
-            raise ValueError(
-                f"target_disc_radius must be > 0, got {self.target_disc_radius}"
-            )
+            raise ValueError(f"target_disc_radius must be > 0, got {self.target_disc_radius}")
         if self.min_cube_target_separation < 0:
             raise ValueError(
                 f"min_cube_target_separation must be >= 0, got {self.min_cube_target_separation}"

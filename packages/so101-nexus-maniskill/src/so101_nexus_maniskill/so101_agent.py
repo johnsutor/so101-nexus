@@ -32,7 +32,9 @@ class SO101(BaseAgent):
         "link": {
             "gripper_link": {"material": "gripper", "patch_radius": 0.1, "min_patch_radius": 0.1},
             "moving_jaw_so101_v1_link": {
-                "material": "gripper", "patch_radius": 0.1, "min_patch_radius": 0.1
+                "material": "gripper",
+                "patch_radius": 0.1,
+                "min_patch_radius": 0.1,
             },
         },
     }
