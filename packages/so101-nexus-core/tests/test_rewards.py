@@ -18,6 +18,9 @@ class TestReachProgress:
     def test_returns_float(self):
         assert isinstance(reach_progress(0.5, scale=5.0), float)
 
+    def test_negative_distance_clamped_to_zero(self):
+        assert reach_progress(-0.1, scale=5.0) == pytest.approx(1.0)
+
 
 class TestOrientationProgress:
     def test_same_direction_returns_one(self):

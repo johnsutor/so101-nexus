@@ -13,14 +13,16 @@ import math
 def reach_progress(distance: float, *, scale: float) -> float:
     """Tanh-shaped progress in [0, 1]: 1 at distance 0, decaying toward 0.
 
+    Negative distances are clamped to 0 (floating-point jitter tolerance).
+
     Parameters
     ----------
     distance : float
         Non-negative distance to target.
     scale : float
-        Shaping steepness (``RewardConfig.tanh_shaping_scale``).
+        Positive shaping steepness (``RewardConfig.tanh_shaping_scale``).
     """
-    return 1.0 - math.tanh(scale * distance)
+    return 1.0 - math.tanh(scale * max(0.0, distance))
 
 
 def orientation_progress(cos_similarity: float) -> float:
@@ -51,7 +53,8 @@ def simple_reward(
     progress : float
         Task progress in [0, 1].
     completion_bonus : float
-        Fraction of reward budget reserved for completion.
+        Fraction of reward budget reserved for completion, in [0, 1].
+        Caller (``RewardConfig``) is responsible for range validation.
     success : bool
         Whether the task is complete.
     """
