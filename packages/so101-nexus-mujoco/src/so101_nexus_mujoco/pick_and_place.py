@@ -241,6 +241,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             task_progress=placement_progress,
             is_complete=info["success"],
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
 
     def _task_reset(self) -> None:
