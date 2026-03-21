@@ -111,19 +111,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         self._target_pos[2] = max(self._target_pos[2], 0.02)
         self.model.site_pos[self._move_target_site_id] = self._target_pos
 
-    def _get_obs(self) -> np.ndarray | dict:
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
-
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import TargetOffset
 

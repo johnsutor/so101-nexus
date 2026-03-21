@@ -468,7 +468,18 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         raise NotImplementedError
 
     def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
-        raise NotImplementedError
+        """Build observation from component list, optionally including wrist camera."""
+        state = self._compute_obs_components()
+        if self.camera_mode == "wrist":
+            assert self._wrist_renderer is not None
+            assert self._wrist_cam_id is not None
+            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
+            wrist_image = self._wrist_renderer.render()
+            if self.config.obs_mode == "visual":
+                self._privileged_state = state
+                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
+            return {"state": state, "wrist_camera": wrist_image}
+        return state
 
     def _get_info(self) -> dict:
         raise NotImplementedError

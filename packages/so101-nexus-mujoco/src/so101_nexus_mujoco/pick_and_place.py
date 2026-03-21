@@ -139,20 +139,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     def _get_target_pos(self) -> np.ndarray:
         return self.data.xpos[self._target_body_id].copy()
 
-    def _get_obs(self) -> np.ndarray | dict:
-        """Return proprioception plus cube and goal geometry, with an optional wrist image."""
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
-
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import (
             ObjectOffset as _ObjectOffset,
