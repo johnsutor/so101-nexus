@@ -124,3 +124,8 @@ from so101_nexus_core.ycb_geometry import (  # noqa: E402
 from so101_nexus_core.ycb_geometry import (  # noqa: E402
     get_mujoco_ycb_rest_pose as get_mujoco_ycb_rest_pose,
 )
+from so101_nexus_core.rewards import (  # noqa: F401, E402
+    orientation_progress,
+    reach_progress,
+    simple_reward,
+)
