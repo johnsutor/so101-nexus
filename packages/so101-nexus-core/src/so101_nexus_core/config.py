@@ -149,6 +149,10 @@ class RobotConfig:
         self.rest_qpos_deg = rest_qpos_deg
         self.grasp_force_threshold = grasp_force_threshold
         self.static_vel_threshold = static_vel_threshold
+        if len(self.rest_qpos_deg) != 6:
+            raise ValueError(
+                f"rest_qpos_deg must have exactly 6 elements, got {len(self.rest_qpos_deg)}"
+            )
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
@@ -434,6 +438,10 @@ class PickConfig(EnvironmentConfig):
                 f"objects pool must have at least n_distractors+1={self.n_distractors + 1} "
                 f"entries to support {self.n_distractors} distractors, got {len(self.objects)}"
             )
+        if self.min_object_separation < 0:
+            raise ValueError(
+                f"min_object_separation must be >= 0, got {self.min_object_separation}"
+            )
         if self.observations is None:
             self.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
 
@@ -491,6 +499,14 @@ class PickAndPlaceConfig(EnvironmentConfig):
             )
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.target_disc_radius <= 0:
+            raise ValueError(
+                f"target_disc_radius must be > 0, got {self.target_disc_radius}"
+            )
+        if self.min_cube_target_separation < 0:
+            raise ValueError(
+                f"min_cube_target_separation must be >= 0, got {self.min_cube_target_separation}"
+            )
         if self.observations is None:
             self.observations = [
                 EndEffectorPose(),

@@ -3,6 +3,8 @@ import pytest
 from so101_nexus_core.config import (
     EnvironmentConfig,
     PickAndPlaceConfig,
+    PickConfig,
+    RobotConfig,
 )
 
 
@@ -101,3 +103,19 @@ class TestConfigValidation:
         cfg = EnvironmentConfig(spawn_min_radius=0.05, spawn_max_radius=0.30)
         assert cfg.spawn_min_radius == 0.05
         assert cfg.spawn_max_radius == 0.30
+
+    def test_robot_config_rest_qpos_wrong_length(self):
+        with pytest.raises(ValueError, match="rest_qpos_deg must have exactly 6"):
+            RobotConfig(rest_qpos_deg=(0.0, 0.0, 0.0))
+
+    def test_pick_and_place_negative_target_disc_radius(self):
+        with pytest.raises(ValueError, match="target_disc_radius must be > 0"):
+            PickAndPlaceConfig(target_disc_radius=-0.01)
+
+    def test_pick_and_place_negative_min_separation(self):
+        with pytest.raises(ValueError, match="min_cube_target_separation must be >= 0"):
+            PickAndPlaceConfig(min_cube_target_separation=-0.01)
+
+    def test_pick_config_negative_min_object_separation(self):
+        with pytest.raises(ValueError, match="min_object_separation must be >= 0"):
+            PickConfig(min_object_separation=-0.01)
