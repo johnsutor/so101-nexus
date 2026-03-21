@@ -9,22 +9,12 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.config import ControlMode, EnvironmentConfig, sample_color
+from so101_nexus_core.config import DIRECTION_VECTORS, ControlMode, MoveConfig
+from so101_nexus_core.constants import sample_color
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
-
-MoveDirection = Literal["up", "down", "left", "right", "forward", "backward"]
-
-_DIRECTION_VEC: dict[str, tuple[float, float, float]] = {
-    "up": (0.0, 0.0, 1.0),
-    "down": (0.0, 0.0, -1.0),
-    "left": (0.0, 1.0, 0.0),
-    "right": (0.0, -1.0, 0.0),
-    "forward": (1.0, 0.0, 0.0),
-    "backward": (-1.0, 0.0, 0.0),
-}
 
 
 def _build_move_scene_xml(ground_rgba: list[float]) -> str:
@@ -54,35 +44,10 @@ def _build_move_scene_xml(ground_rgba: list[float]) -> str:
 """
 
 
-class MoveConfig(EnvironmentConfig):
-    """Config for the directional move primitive task.
-
-    Args:
-        direction: Cardinal direction to move the TCP.
-        target_distance: Distance in metres to travel from the initial TCP position.
-        success_threshold: Max residual distance (m) to count as success.
-        **kwargs: Forwarded to EnvironmentConfig.
-    """
-
-    def __init__(
-        self,
-        direction: MoveDirection = "up",
-        target_distance: float = 0.10,
-        success_threshold: float = 0.01,
-        **kwargs,
-    ) -> None:
-        if direction not in _DIRECTION_VEC:
-            raise ValueError(f"direction must be one of {list(_DIRECTION_VEC)}, got {direction!r}")
-        super().__init__(**kwargs)
-        self.direction = direction
-        self.target_distance = target_distance
-        self.success_threshold = success_threshold
-
-
 class MoveEnv(SO101NexusMuJoCoBaseEnv):
     """Move primitive: translate TCP a fixed distance in a specified direction.
 
-    Obs (10,): tcp_pose(7) + tcp_to_target(3).
+    Default obs (6,): joint_positions.
     Info: tcp_to_target_dist, success.
     task_description: "Move the end-effector <direction> by <distance> m."
 
@@ -123,7 +88,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_SITE, "move_target"
         )
         self._target_pos: np.ndarray = np.zeros(3)
-        self._dir_vec: np.ndarray = np.array(_DIRECTION_VEC[config.direction], dtype=np.float64)
+        self._dir_vec: np.ndarray = np.array(DIRECTION_VECTORS[config.direction], dtype=np.float64)
 
         self._finish_model_setup()
 
@@ -133,9 +98,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         return (
             f"Move the end-effector {self.config.direction} by {self.config.target_distance:.2f} m."
         )
-
-    def _state_obs_size(self) -> int:
-        return 10
 
     def _task_reset(self) -> None:
         # Forward kinematics is up-to-date because reset() calls mj_forward after _task_reset.
@@ -149,10 +111,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         self.model.site_pos[self._move_target_site_id] = self._target_pos
 
     def _get_obs(self) -> np.ndarray | dict:
-        tcp_pose = self._get_tcp_pose()
-        tcp_to_target = self._target_pos - tcp_pose[:3]
-        state = np.concatenate([tcp_pose, tcp_to_target])
-
+        state = self._compute_obs_components()
         if self.camera_mode == "wrist":
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
@@ -163,6 +122,13 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
                 return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
             return {"state": state, "wrist_camera": wrist_image}
         return state
+
+    def _get_component_data(self, component: object) -> np.ndarray:
+        from so101_nexus_core.observations import TargetOffset
+
+        if isinstance(component, TargetOffset):
+            return self._target_pos - self._get_tcp_pose()[:3]
+        return super()._get_component_data(component)
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]

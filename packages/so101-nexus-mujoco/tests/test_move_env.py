@@ -19,7 +19,7 @@ class TestMoveEnv:
 
     def test_obs_shape(self, move_env):
         obs, _ = move_env.reset()
-        assert obs.shape == (10,)
+        assert obs.shape == (6,)
 
     def test_step_five_tuple(self, move_env):
         move_env.reset()
@@ -37,3 +37,13 @@ class TestMoveEnv:
 
     def test_task_description(self, move_env):
         assert isinstance(move_env.unwrapped.task_description, str)
+
+    def test_custom_observations(self):
+        from so101_nexus_core.config import MoveConfig
+        from so101_nexus_core.observations import EndEffectorPose, JointPositions
+
+        config = MoveConfig(observations=[JointPositions(), EndEffectorPose()])
+        env = gym.make("MuJoCoMove-v1", config=config)
+        obs, _ = env.reset()
+        assert obs.shape == (13,)  # 6 + 7
+        env.close()

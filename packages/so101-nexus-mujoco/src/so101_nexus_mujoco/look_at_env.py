@@ -9,8 +9,9 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.config import COLOR_MAP, ControlMode, EnvironmentConfig, sample_color
-from so101_nexus_core.objects import CubeObject, SceneObject
+from so101_nexus_core.config import ControlMode, LookAtConfig
+from so101_nexus_core.constants import COLOR_MAP, sample_color
+from so101_nexus_core.objects import CubeObject
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -54,49 +55,10 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
 """
 
 
-class LookAtConfig(EnvironmentConfig):
-    """Config for the look-at primitive task.
-
-    Args:
-        objects: Object(s) to sample as the look-at target. Accepts a single
-            SceneObject, a list, or None (defaults to [CubeObject()]).
-            A single object is automatically wrapped in a list. Only
-            CubeObject targets are currently supported.
-        orientation_success_threshold_deg: Max angular error in degrees for success.
-            Defaults to 5.73 degrees (≈ 0.1 radians).
-        **kwargs: Forwarded to EnvironmentConfig.
-    """
-
-    def __init__(
-        self,
-        objects: list[SceneObject] | SceneObject | None = None,
-        orientation_success_threshold_deg: float = 5.73,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        if objects is None:
-            self.objects: list[SceneObject] = [CubeObject()]
-        elif isinstance(objects, SceneObject):
-            self.objects = [objects]
-        else:
-            self.objects = list(objects)
-        self.orientation_success_threshold_deg = orientation_success_threshold_deg
-        for obj in self.objects:
-            if not isinstance(obj, CubeObject):
-                raise TypeError(
-                    f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
-                )
-
-    @property
-    def _orientation_success_threshold_rad(self) -> float:
-        """Orientation success threshold converted to radians (internal use only)."""
-        return float(np.radians(self.orientation_success_threshold_deg))
-
-
 class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     """LookAt primitive: orient the wrist camera toward a sampled target object.
 
-    Obs (10,): tcp_pose(7) + gaze_to_target(3).
+    Default obs (6,): joint_positions.
     Info: orientation_error (radians), success.
     task_description is auto-generated: "Look at the <repr(obj)>."
 
@@ -154,9 +116,6 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         """Return the current episode task description."""
         return self._task_description
 
-    def _state_obs_size(self) -> int:
-        return 10
-
     def _task_reset(self) -> None:
         # Place the object randomly in the workspace in front of the robot.
         half = self.config.spawn_half_size
@@ -180,14 +139,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         return mat[:, 2].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
-        tcp_pose = self._get_tcp_pose()
-        target_pos = self._get_target_pos()
-        gaze_to_target = target_pos - tcp_pose[:3]
-        norm = float(np.linalg.norm(gaze_to_target))
-        if norm > 1e-8:
-            gaze_to_target = gaze_to_target / norm
-        state = np.concatenate([tcp_pose, gaze_to_target])
-
+        state = self._compute_obs_components()
         if self.camera_mode == "wrist":
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
@@ -198,6 +150,19 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
                 return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
             return {"state": state, "wrist_camera": wrist_image}
         return state
+
+    def _get_component_data(self, component: object) -> np.ndarray:
+        from so101_nexus_core.observations import GazeDirection
+
+        if isinstance(component, GazeDirection):
+            target_pos = self._get_target_pos()
+            tcp_pos = self._get_tcp_pose()[:3]
+            gaze = target_pos - tcp_pos
+            norm = float(np.linalg.norm(gaze))
+            if norm > 1e-8:
+                gaze = gaze / norm
+            return gaze
+        return super()._get_component_data(component)
 
     def _get_info(self) -> dict:
         tcp_forward = self._get_tcp_forward()

@@ -29,12 +29,11 @@ Move the robot's end-effector in a cardinal direction by a fixed distance.
 
 ## Observation Space
 
-The observation is a 10-dimensional vector.
+Default observation includes only joint positions (configurable via `observations` parameter on `MoveConfig`):
 
-| Component | Dimensions | Description |
-|-----------|------------|-------------|
-| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
-| `tcp_to_target` | 3 | Vector from TCP to the computed goal position |
+| Component | Class | Dimensions | Description |
+|-----------|-------|------------|-------------|
+| Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
 
 ## Objects
 
@@ -50,7 +49,7 @@ The episode succeeds when the distance from the TCP to the target is less than `
 import gymnasium as gym
 import so101_nexus_mujoco
 
-from so101_nexus_mujoco.config import MoveConfig
+from so101_nexus_core.config import MoveConfig
 
 env = gym.make(
     "MuJoCoMove-v1",

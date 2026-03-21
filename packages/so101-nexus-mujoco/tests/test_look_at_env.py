@@ -19,7 +19,7 @@ class TestLookAtEnv:
 
     def test_obs_shape(self, look_at_env):
         obs, _ = look_at_env.reset()
-        assert obs.shape == (10,)
+        assert obs.shape == (6,)
 
     def test_step_five_tuple(self, look_at_env):
         look_at_env.reset()
@@ -37,3 +37,13 @@ class TestLookAtEnv:
 
     def test_task_description(self, look_at_env):
         assert isinstance(look_at_env.unwrapped.task_description, str)
+
+    def test_custom_observations(self):
+        from so101_nexus_core.config import LookAtConfig
+        from so101_nexus_core.observations import EndEffectorPose, JointPositions
+
+        config = LookAtConfig(observations=[JointPositions(), EndEffectorPose()])
+        env = gym.make("MuJoCoLookAt-v1", config=config)
+        obs, _ = env.reset()
+        assert obs.shape == (13,)  # 6 + 7
+        env.close()

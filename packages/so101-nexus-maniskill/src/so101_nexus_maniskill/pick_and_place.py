@@ -6,16 +6,13 @@ import sapien
 import torch
 from mani_skill.envs.utils.randomization.pose import random_quaternions
 from mani_skill.utils.building import actors
-from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.config import (
-    PickAndPlaceConfig,
-    sample_color,
-)
+from so101_nexus_core.config import PickAndPlaceConfig
+from so101_nexus_core.constants import sample_color
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
+from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
 _DEFAULT_CONFIG = PickAndPlaceConfig()
 PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
@@ -59,13 +56,14 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             robot_cfgs=robot_cfgs,
         )
 
-        if reconfiguration_freq is None:
-            reconfiguration_freq = 1 if config.camera_mode in ("wrist", "both") else 0
-
         super().__init__(
             *args,
             robot_uids=robot_uids,
-            reconfiguration_freq=reconfiguration_freq,
+            reconfiguration_freq=(
+                reconfiguration_freq
+                if reconfiguration_freq is not None
+                else self._default_reconfiguration_freq()
+            ),
             num_envs=num_envs,
             **kwargs,
         )
@@ -196,32 +194,19 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         )
 
 
-def _register_robot_variant(
-    *,
-    class_name: str,
-    env_id: str,
-    base_cls: type,
-    robot_uid: str,
-) -> type:
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("robot_uids", robot_uid)
-        base_cls.__init__(self, *args, **kwargs)
-
-    cls = type(class_name, (base_cls,), {"__init__": __init__})
-    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
-    globals()[class_name] = cls
-    return cls
-
-
-PickAndPlaceSO100Env = _register_robot_variant(
+PickAndPlaceSO100Env = register_robot_variant(
     class_name="PickAndPlaceSO100Env",
     env_id="ManiSkillPickAndPlaceSO100-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so100",
+    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    caller_globals=globals(),
 )
-PickAndPlaceSO101Env = _register_robot_variant(
+PickAndPlaceSO101Env = register_robot_variant(
     class_name="PickAndPlaceSO101Env",
     env_id="ManiSkillPickAndPlaceSO101-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so101",
+    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    caller_globals=globals(),
 )

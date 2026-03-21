@@ -15,7 +15,15 @@ from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import (
     ControlMode,
     PickAndPlaceConfig,
-    sample_color,
+)
+from so101_nexus_core.constants import sample_color
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
 )
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
@@ -84,6 +92,15 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
+        if config.observations is None:
+            config.observations = [
+                EndEffectorPose(),
+                GraspState(),
+                TargetPosition(),
+                ObjectPose(),
+                ObjectOffset(),
+                TargetOffset(),
+            ]
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -140,16 +157,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _get_obs(self) -> np.ndarray | dict:
         """Return proprioception plus cube and goal geometry, with an optional wrist image."""
-        tcp_pose = self._get_tcp_pose()
-        is_grasped = np.array([self._is_grasping()])
-        target_pos = self._get_target_pos()
-        obj_pose = self._get_cube_pose()
-        tcp_to_obj = obj_pose[:3] - tcp_pose[:3]
-        obj_to_target = target_pos - obj_pose[:3]
-        state = np.concatenate(
-            [tcp_pose, is_grasped, target_pos, obj_pose, tcp_to_obj, obj_to_target]
-        )
-
+        state = self._compute_obs_components()
         if self.camera_mode == "wrist":
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
@@ -161,9 +169,33 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             return {"state": state, "wrist_camera": wrist_image}
         return state
 
-    def _state_obs_size(self) -> int:
-        """Return the flat state observation size used by ``_get_obs``."""
-        return 24
+    def _get_component_data(self, component: object) -> np.ndarray:
+        from so101_nexus_core.observations import (
+            ObjectOffset as _ObjectOffset,
+        )
+        from so101_nexus_core.observations import (
+            ObjectPose as _ObjectPose,
+        )
+        from so101_nexus_core.observations import (
+            TargetOffset as _TargetOffset,
+        )
+        from so101_nexus_core.observations import (
+            TargetPosition as _TargetPosition,
+        )
+
+        if isinstance(component, _ObjectPose):
+            return self._get_cube_pose()
+        if isinstance(component, _ObjectOffset):
+            tcp_pos = self._get_tcp_pose()[:3]
+            obj_pos = self._get_cube_pose()[:3]
+            return obj_pos - tcp_pos
+        if isinstance(component, _TargetPosition):
+            return self._get_target_pos()
+        if isinstance(component, _TargetOffset):
+            obj_pos = self._get_cube_pose()[:3]
+            target_pos = self._get_target_pos()
+            return target_pos - obj_pos
+        return super()._get_component_data(component)
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]

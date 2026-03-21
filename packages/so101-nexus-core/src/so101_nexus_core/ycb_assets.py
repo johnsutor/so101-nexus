@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Protocol, cast
 
-from so101_nexus_core.config import YCB_OBJECTS
+from so101_nexus_core.constants import YCB_OBJECTS
 
 _HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
 _CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"

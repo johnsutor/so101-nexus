@@ -111,7 +111,7 @@ class TestObsModeVisualReachEnv:
         env = ReachEnv(config=cfg, camera_mode="wrist")
         obs, info = env.reset()
         assert "privileged_state" in info
-        assert info["privileged_state"].shape == (10,)
+        assert info["privileged_state"].shape == (6,)
         env.close()
 
 
@@ -129,7 +129,7 @@ class TestObsModeVisualLookAtEnv:
         env = LookAtEnv(config=cfg, camera_mode="wrist")
         obs, info = env.reset()
         assert "privileged_state" in info
-        assert info["privileged_state"].shape == (10,)
+        assert info["privileged_state"].shape == (6,)
         env.close()
 
 
@@ -147,5 +147,5 @@ class TestObsModeVisualMoveEnv:
         env = MoveEnv(config=cfg, camera_mode="wrist")
         obs, info = env.reset()
         assert "privileged_state" in info
-        assert info["privileged_state"].shape == (10,)
+        assert info["privileged_state"].shape == (6,)
         env.close()

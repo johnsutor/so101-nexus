@@ -19,7 +19,7 @@ class TestReachEnv:
 
     def test_obs_shape(self, reach_env):
         obs, _ = reach_env.reset()
-        assert obs.shape == (10,)
+        assert obs.shape == (6,)
 
     def test_step_five_tuple(self, reach_env):
         reach_env.reset()
@@ -37,3 +37,13 @@ class TestReachEnv:
 
     def test_task_description(self, reach_env):
         assert isinstance(reach_env.unwrapped.task_description, str)
+
+    def test_custom_observations(self):
+        from so101_nexus_core.config import ReachConfig
+        from so101_nexus_core.observations import EndEffectorPose, JointPositions
+
+        config = ReachConfig(observations=[JointPositions(), EndEffectorPose()])
+        env = gym.make("MuJoCoReach-v1", config=config)
+        obs, _ = env.reset()
+        assert obs.shape == (13,)  # 6 + 7
+        env.close()

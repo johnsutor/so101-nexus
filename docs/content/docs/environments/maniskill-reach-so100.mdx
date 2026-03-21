@@ -1,0 +1,55 @@
+---
+title: ManiSkillReachSO100-v1
+description: Move the TCP to a target position with the SO-100 arm on the ManiSkill backend.
+---
+
+# ManiSkillReachSO100-v1
+
+Move the robot's end-effector (TCP) to a randomly sampled target position using the SO-100 robot arm in ManiSkill.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `ManiSkillReachSO100-v1` |
+| Backend | ManiSkill |
+| Robot | SO-100 |
+| Max episode steps | 512 |
+| Config class | `ReachConfig` |
+
+## Observation Space
+
+Default observation includes only joint positions (configurable via `observations` parameter):
+
+| Component | Class | Dimensions | Description |
+|-----------|-------|------------|-------------|
+| Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
+
+## Objects
+
+No graspable objects. The target is a visual-only sphere rendered in the scene.
+
+## Success Condition
+
+The episode succeeds when the distance from the TCP to the target is less than `success_threshold` (default 0.02 m).
+
+## Vectorized Simulation
+
+ManiSkill supports running multiple environment instances in parallel via the `num_envs` argument.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus_maniskill
+
+from so101_nexus_core.config import ReachConfig
+from so101_nexus_core.observations import JointPositions, TargetOffset
+
+# Default (joint positions only)
+env = gym.make("ManiSkillReachSO100-v1", obs_mode="state", num_envs=1)
+
+# With custom observations
+config = ReachConfig(observations=[JointPositions(), TargetOffset()])
+env = gym.make("ManiSkillReachSO100-v1", config=config, obs_mode="state", num_envs=1)
+```

@@ -22,12 +22,17 @@ from so101_nexus_core import (
     get_ycb_visual_mesh,
 )
 from so101_nexus_core.config import (
-    COLOR_MAP,
     ControlMode,
     PickConfig,
-    sample_color,
 )
+from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    ObjectOffset,
+    ObjectPose,
+)
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
@@ -202,6 +207,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     ) -> None:
         if config is None:
             config = PickConfig()
+        if config.observations is None:
+            config.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -292,12 +299,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         return self.data.qpos[addr : addr + 7].copy()
 
     def _get_obs(self) -> np.ndarray | dict:
-        tcp_pose = self._get_tcp_pose()
-        is_grasped = np.array([self._is_grasping()])
-        obj_pose = self._get_target_pose()
-        tcp_to_obj = obj_pose[:3] - tcp_pose[:3]
-        state = np.concatenate([tcp_pose, is_grasped, obj_pose, tcp_to_obj])
-
+        state = self._compute_obs_components()
         if self.camera_mode == "wrist":
             assert self._wrist_renderer is not None
             assert self._wrist_cam_id is not None
@@ -308,6 +310,18 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
             return {"state": state, "wrist_camera": wrist_image}
         return state
+
+    def _get_component_data(self, component: object) -> np.ndarray:
+        from so101_nexus_core.observations import ObjectOffset as _ObjectOffset
+        from so101_nexus_core.observations import ObjectPose as _ObjectPose
+
+        if isinstance(component, _ObjectPose):
+            return self._get_target_pose()
+        if isinstance(component, _ObjectOffset):
+            tcp_pos = self._get_tcp_pose()[:3]
+            obj_pos = self._get_target_pose()[:3]
+            return obj_pos - tcp_pos
+        return super()._get_component_data(component)
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
