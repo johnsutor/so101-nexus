@@ -27,12 +27,6 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
-from so101_nexus_core.observations import (
-    EndEffectorPose,
-    GraspState,
-    ObjectOffset,
-    ObjectPose,
-)
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
@@ -207,8 +201,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     ) -> None:
         if config is None:
             config = PickConfig()
-        if config.observations is None:
-            config.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
         self._init_common(
             config=config,
             render_mode=render_mode,

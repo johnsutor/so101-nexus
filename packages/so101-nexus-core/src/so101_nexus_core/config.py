@@ -18,7 +18,15 @@ from so101_nexus_core.constants import (
     validate_color_config,
 )
 from so101_nexus_core.objects import CubeObject, SceneObject
-from so101_nexus_core.observations import JointPositions
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    JointPositions,
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
+)
 
 if TYPE_CHECKING:
     from so101_nexus_core.observations import Observation
@@ -426,6 +434,8 @@ class PickConfig(EnvironmentConfig):
                 f"objects pool must have at least n_distractors+1={self.n_distractors + 1} "
                 f"entries to support {self.n_distractors} distractors, got {len(self.objects)}"
             )
+        if self.observations is None:
+            self.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -481,6 +491,15 @@ class PickAndPlaceConfig(EnvironmentConfig):
             )
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.observations is None:
+            self.observations = [
+                EndEffectorPose(),
+                GraspState(),
+                TargetPosition(),
+                ObjectPose(),
+                ObjectOffset(),
+                TargetOffset(),
+            ]
 
     def __repr__(self) -> str:  # noqa: D105
         return (

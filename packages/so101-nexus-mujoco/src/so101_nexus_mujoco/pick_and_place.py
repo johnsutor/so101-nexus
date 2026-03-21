@@ -18,14 +18,6 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.rewards import reach_progress
-from so101_nexus_core.observations import (
-    EndEffectorPose,
-    GraspState,
-    ObjectOffset,
-    ObjectPose,
-    TargetOffset,
-    TargetPosition,
-)
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
@@ -93,15 +85,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if config.observations is None:
-            config.observations = [
-                EndEffectorPose(),
-                GraspState(),
-                TargetPosition(),
-                ObjectPose(),
-                ObjectOffset(),
-                TargetOffset(),
-            ]
         self._init_common(
             config=config,
             render_mode=render_mode,
