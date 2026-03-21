@@ -59,9 +59,12 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         """
         return 1 if self.config.camera_mode in ("wrist", "both") else 0
 
+    # Tensor equivalent of so101_nexus_core.rewards.reach_progress
     def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
+        """Tanh-shaped progress in [0, 1]. See ``so101_nexus_core.rewards.reach_progress``."""
         return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
+    # Tensor equivalent of so101_nexus_core.config.RewardConfig.compute
     def _assemble_normalized_reward(
         self,
         *,
@@ -72,6 +75,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         action_delta_norm: float | torch.Tensor = 0.0,
         energy_norm: float | torch.Tensor = 0.0,
     ) -> torch.Tensor:
+        """Assemble weighted reward. See ``RewardConfig.compute`` for scalar equivalent."""
         cfg = self.config.reward
         base = (
             cfg.reaching * reach_progress
