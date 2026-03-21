@@ -93,7 +93,7 @@ def _build_scene_xml(
     asset_entries = ""
     body_entries = ""
 
-    for i, (obj, slot) in enumerate(zip(objects, slot_names)):
+    for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
         if isinstance(obj, YCBObject):
             collision_path = str(get_ycb_collision_mesh(obj.model_id))
             visual_path = str(get_ycb_visual_mesh(obj.model_id))
@@ -152,12 +152,12 @@ class _SlotInfo:
     """Runtime data for one object slot in the MuJoCo model."""
 
     __slots__ = (
-        "qpos_addr",
+        "bounding_radius",
         "geom_id",
+        "obj",
+        "qpos_addr",
         "rest_quat",
         "spawn_z",
-        "bounding_radius",
-        "obj",
     )
 
     def __init__(
@@ -238,7 +238,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
 
         # Build per-slot runtime info (one entry per pool object)
         self._slots: list[_SlotInfo] = []
-        for slot, obj in zip(slot_names, scene_objects):
+        for slot, obj in zip(slot_names, scene_objects, strict=True):
             geom_name = _primary_geom_name(slot, obj)
             geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
             joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{slot}_joint")
@@ -389,7 +389,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
-        self._task_description = f"Pick up the {repr(target_obj)}."
+        self._task_description = f"Pick up the {target_obj!r}."
 
 
 class PickLiftEnv(PickEnv):

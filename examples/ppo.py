@@ -10,14 +10,12 @@ import os
 import random
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import gymnasium as gym
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import tyro
+from torch import nn, optim
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
@@ -50,7 +48,7 @@ class Args:
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "cleanRL"
     """the wandb's project name"""
-    wandb_entity: Optional[str] = None
+    wandb_entity: str | None = None
     """the entity (team) of wandb's project"""
     wandb_log_video: bool = True
     """if toggled, logs periodic rollout videos to wandb when tracking is enabled"""
@@ -99,7 +97,7 @@ class Args:
     """coefficient of the value function"""
     max_grad_norm: float = 0.5
     """the maximum norm for the gradient clipping"""
-    target_kl: Optional[float] = None
+    target_kl: float | None = None
     """the target KL divergence threshold"""
 
     batch_size: int = 0
@@ -108,6 +106,9 @@ class Args:
     """the mini-batch size (computed in runtime)"""
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
+
+
+_LAYER_INIT_STD = float(np.sqrt(2))
 
 
 def is_maniskill_env(env_id: str) -> bool:
@@ -124,8 +125,7 @@ def make_mujoco_env(env_id, idx, capture_video, run_name):
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
             env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        return env
+        return gym.wrappers.RecordEpisodeStatistics(env)
 
     return thunk
 
@@ -177,7 +177,7 @@ def make_video_eval_env(env_id: str):
     return gym.make(env_id, render_mode="rgb_array")
 
 
-def maybe_log_wandb_rollout_video(
+def maybe_log_wandb_rollout_video(  # noqa: C901
     *,
     args: Args,
     agent: "Agent",
@@ -246,7 +246,7 @@ def maybe_log_wandb_rollout_video(
     )
 
 
-def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+def layer_init(layer, std=_LAYER_INIT_STD, bias_const=0.0):
     """Apply orthogonal initialization to a linear layer and return it."""
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
@@ -309,8 +309,9 @@ if __name__ == "__main__":
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
-        "|param|value|\n|-|-|\n%s"
-        % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+        "|param|value|\n|-|-|\n{}".format(
+            "\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])
+        ),
     )
 
     random.seed(args.seed)
@@ -354,8 +355,8 @@ if __name__ == "__main__":
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
-    obs = torch.zeros((args.num_steps, args.num_envs) + obs_shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + action_shape).to(device)
+    obs = torch.zeros((args.num_steps, args.num_envs, *obs_shape)).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs, *action_shape)).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -373,7 +374,7 @@ if __name__ == "__main__":
             lrnow = frac * args.learning_rate
             optimizer.param_groups[0]["lr"] = lrnow
 
-        for step in range(0, args.num_steps):
+        for step in range(args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
@@ -399,7 +400,7 @@ if __name__ == "__main__":
                     ep = infos["final_info"]["episode"]
                     done_returns = ep["return"][mask]
                     done_lengths = ep["episode_len"][mask]
-                    for ret, length in zip(done_returns, done_lengths):
+                    for ret, length in zip(done_returns, done_lengths, strict=True):
                         ep_return = float(ret.item())
                         ep_length = float(length.item())
                         print(f"global_step={global_step}, episodic_return={ep_return}")
@@ -433,9 +434,9 @@ if __name__ == "__main__":
                 )
             returns = advantages + values
 
-        b_obs = obs.reshape((-1,) + obs_shape)
+        b_obs = obs.reshape((-1, *obs_shape))
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + action_shape)
+        b_actions = actions.reshape((-1, *action_shape))
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -443,7 +444,7 @@ if __name__ == "__main__":
         b_inds = np.arange(args.batch_size)
         clipfracs = []
         approx_kl = old_approx_kl = pg_loss = v_loss = entropy_loss = torch.tensor(0.0)
-        for epoch in range(args.update_epochs):
+        for _epoch in range(args.update_epochs):
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):
                 end = start + args.minibatch_size

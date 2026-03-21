@@ -33,7 +33,8 @@ class TestMoveEnv:
     def test_info_keys(self, move_env):
         move_env.reset()
         _, _, _, _, info = move_env.step(move_env.action_space.sample())
-        assert "tcp_to_target_dist" in info and "success" in info
+        assert "tcp_to_target_dist" in info
+        assert "success" in info
 
     def test_task_description(self, move_env):
         assert isinstance(move_env.unwrapped.task_description, str)

@@ -145,12 +145,14 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
     def __init__(
         self,
         *args,
-        config: PickConfig = PickConfig(),
+        config: PickConfig | None = None,
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
+        if config is None:
+            config = PickConfig()
         robot_cfgs = build_maniskill_robot_configs(config=config)
 
         self._setup_base(
@@ -194,7 +196,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         )
         self._target_obj = target
         self._distractors_spec = distractors
-        self._task_description = f"Pick up the {repr(target)}."
+        self._task_description = f"Pick up the {target!r}."
         self._obj_spawn_z_val = _obj_spawn_z(target)
         self._distractor_spawn_zs = [_obj_spawn_z(d) for d in distractors]
 

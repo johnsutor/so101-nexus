@@ -26,11 +26,11 @@ class TestObsModeConfig:
         assert cfg.obs_mode == "visual"
 
     def test_obs_mode_visual_rejects_fixed(self):
-        with pytest.raises(ValueError, match="obs_mode.*visual.*requires.*camera_mode.*wrist"):
+        with pytest.raises(ValueError, match=r"obs_mode.*visual.*requires.*camera_mode.*wrist"):
             EnvironmentConfig(obs_mode="visual", camera_mode="fixed")
 
     def test_obs_mode_visual_rejects_both(self):
-        with pytest.raises(ValueError, match="obs_mode.*visual.*requires.*camera_mode.*wrist"):
+        with pytest.raises(ValueError, match=r"obs_mode.*visual.*requires.*camera_mode.*wrist"):
             EnvironmentConfig(obs_mode="visual", camera_mode="both")
 
     def test_invalid_obs_mode_rejected(self):

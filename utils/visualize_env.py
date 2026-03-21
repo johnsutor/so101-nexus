@@ -42,7 +42,7 @@ class _MuJoCoEnvProtocol(Protocol):
 
 def _capture_views(env: gymnasium.Env) -> list[CameraView]:
     """Capture wrist, top-down, and head-on camera views."""
-    mujoco_env = cast(_MuJoCoEnvProtocol, env.unwrapped)
+    mujoco_env = cast("_MuJoCoEnvProtocol", env.unwrapped)
     model = mujoco_env.model
     data = mujoco_env.data
 
@@ -95,7 +95,7 @@ def main():
 
     print(f"Environment: {ENV_ID}")
     print(f"Action space: {env.action_space}")
-    print(f"Composed frame shape: {frame.shape}  (H×W×C)")
+    print(f"Composed frame shape: {frame.shape}  (HxWxC)")
     print(f"Running {NUM_STEPS} steps with random actions...")
 
     for step in range(NUM_STEPS):

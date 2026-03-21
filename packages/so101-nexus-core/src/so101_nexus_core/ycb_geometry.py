@@ -14,7 +14,7 @@ def _load_maniskill_pick_db() -> dict:
     info_path = (
         Path.home() / ".maniskill" / "data" / "assets" / "mani_skill2_ycb" / "info_pick_v0.json"
     )
-    with open(info_path, "r", encoding="utf-8") as f:
+    with open(info_path, encoding="utf-8") as f:
         return json.load(f)
 
 

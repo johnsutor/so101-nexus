@@ -14,6 +14,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import importlib
 import inspect
@@ -314,7 +315,7 @@ def _keyboard_shortcuts_js() -> str:
 """
 
 
-def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) -> dict:
+def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) -> dict:  # noqa: PLR0912
     """Return ``gym.make`` kwargs for teleop recording with the requested camera size."""
     import_backend_for_env_id(env_id)
     spec = gym.spec(env_id)
@@ -374,7 +375,7 @@ def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) ->
     return kwargs
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901, PLR0915
     """Launch the Gradio teleop recorder app."""
     import gradio as gr
 
@@ -512,8 +513,8 @@ def main() -> None:
             error=None,
         )
 
-        tee_out = TeeStream(cast(_WritableTextStream, sys.stdout))
-        tee_err = TeeStream(cast(_WritableTextStream, sys.stderr))
+        tee_out = TeeStream(cast("_WritableTextStream", sys.stdout))
+        tee_err = TeeStream(cast("_WritableTextStream", sys.stderr))
         init_state["tee_stdout"], init_state["tee_stderr"] = tee_out, tee_err
         sys.stdout, sys.stderr = tee_out, tee_err
 
@@ -698,7 +699,7 @@ def main() -> None:
         """Signal the recording thread to stop."""
         session["state"].should_stop = True
 
-    def approve_episode(progress=gr.Progress()):
+    def approve_episode(progress=gr.Progress()):  # noqa: B008
         """Save the recorded episode to the dataset and advance."""
         s = session["state"]
         dataset = session["dataset"]
@@ -790,10 +791,8 @@ def main() -> None:
             session["dataset"].finalize()
         except Exception as exc:
             raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
-        try:
-            session["leader"].disconnect()
-        except Exception:
-            pass  # Best-effort disconnect
+        with contextlib.suppress(Exception):
+            session["leader"].disconnect()  # Best-effort disconnect
         return "Dataset finalized. Closing..."
 
     all_env_ids = all_registered_env_ids()

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import mujoco
 import numpy as np
@@ -11,9 +11,11 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import ControlMode, LookAtConfig
 from so101_nexus_core.constants import COLOR_MAP, sample_color
-from so101_nexus_core.objects import CubeObject
 from so101_nexus_core.rewards import simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+
+if TYPE_CHECKING:
+    from so101_nexus_core.objects import CubeObject
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -108,7 +110,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
         )
 
-        self._task_description: str = f"Look at the {repr(self._target_obj)}."
+        self._task_description: str = f"Look at the {self._target_obj!r}."
 
         self._finish_model_setup()
 

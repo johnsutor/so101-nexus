@@ -6,10 +6,14 @@ import base64
 import io
 import os
 import re
-from typing import Sequence
+from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy as np
 
 from so101_nexus_core.visualization import CameraView, compose_frame
 

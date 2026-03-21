@@ -14,7 +14,6 @@ from so101_nexus_core.config import (
     ControlMode,
     EnvironmentConfig,
 )
-from so101_nexus_core.rewards import orientation_progress, reach_progress
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -25,6 +24,7 @@ from so101_nexus_core.observations import (
     TargetOffset,
     TargetPosition,
 )
+from so101_nexus_core.rewards import orientation_progress, reach_progress
 
 _REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
 
@@ -278,7 +278,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
 
-            obj_involved = g1 == self._obj_geom_id or g2 == self._obj_geom_id
+            obj_involved = self._obj_geom_id in (g1, g2)
             if not obj_involved:
                 continue
 

@@ -15,7 +15,7 @@ from so101_nexus_maniskill.pick_env import (
     PickLiftSO101Env,
 )
 
-BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
+BASE_KWARGS = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
 
 LIFT_ENV_IDS = [
     ("ManiSkillPickLiftSO100-v1", "so100"),

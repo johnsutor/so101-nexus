@@ -16,7 +16,7 @@ class _ExportableMesh(Protocol):
     def export(self, file_obj: str, file_type: str | None = None) -> object: ...
 
     @property
-    def convex_hull(self) -> "_ExportableMesh": ...
+    def convex_hull(self) -> _ExportableMesh: ...
 
 
 def _validate_model_id(model_id: str) -> None:
@@ -36,8 +36,8 @@ def _load_exportable_mesh(glb_path: Path) -> _ExportableMesh:
 
     scene_or_mesh = trimesh.load(str(glb_path), force="mesh")
     if isinstance(scene_or_mesh, trimesh.Scene):
-        return cast(_ExportableMesh, scene_or_mesh.dump(concatenate=True))
-    return cast(_ExportableMesh, scene_or_mesh)
+        return cast("_ExportableMesh", scene_or_mesh.dump(concatenate=True))
+    return cast("_ExportableMesh", scene_or_mesh)
 
 
 def _convert_glb_to_obj(glb_path: Path, obj_path: Path) -> None:

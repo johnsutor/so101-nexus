@@ -106,6 +106,11 @@ def get_so100_simulation_dir() -> Path:
     return SO_ARM100_DIR / "Simulation" / "SO100"
 
 
+from so101_nexus_core.rewards import (  # noqa: F401, E402
+    orientation_progress,
+    reach_progress,
+    simple_reward,
+)
 from so101_nexus_core.ycb_assets import (  # noqa: E402
     ensure_ycb_assets as ensure_ycb_assets,
 )
@@ -123,9 +128,4 @@ from so101_nexus_core.ycb_geometry import (  # noqa: E402
 )
 from so101_nexus_core.ycb_geometry import (  # noqa: E402
     get_mujoco_ycb_rest_pose as get_mujoco_ycb_rest_pose,
-)
-from so101_nexus_core.rewards import (  # noqa: F401, E402
-    orientation_progress,
-    reach_progress,
-    simple_reward,
 )

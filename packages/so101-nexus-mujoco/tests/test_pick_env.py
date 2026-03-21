@@ -33,7 +33,8 @@ class TestPickEnvDefaults:
     def test_info_has_success(self, pick_env):
         pick_env.reset()
         _, _, _, _, info = pick_env.step(pick_env.action_space.sample())
-        assert "success" in info and "lift_height" in info
+        assert "success" in info
+        assert "lift_height" in info
 
 
 class TestPickEnvObjectConfig:

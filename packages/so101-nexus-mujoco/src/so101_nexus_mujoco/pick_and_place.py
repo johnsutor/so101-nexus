@@ -79,12 +79,14 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def __init__(
         self,
-        config: PickAndPlaceConfig = PickAndPlaceConfig(),
+        config: PickAndPlaceConfig | None = None,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
+        if config is None:
+            config = PickAndPlaceConfig()
         self._init_common(
             config=config,
             render_mode=render_mode,

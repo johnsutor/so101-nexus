@@ -38,26 +38,51 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = [
-    "E",
-    "F",
-    "I",
-    "W",
-    "D",       
-    "ERA",     
-    "PLR2044", 
-    "PGH004",  
+    "E",        # pycodestyle errors
+    "F",        # Pyflakes
+    "I",        # isort
+    "W",        # pycodestyle warnings
+    "D",        # pydocstyle
+    "ERA",      # flake8-eradicate (commented-out code)
+    "PLR",      # Pylint refactor (duplicate code, too-many-args/branches/returns)
+    "PLW",      # Pylint warnings (unused vars, unreachable code)
+    "PLC",      # Pylint conventions
+    "PGH004",   # blanket-noqa
+    "C4",       # flake8-comprehensions (simplify comprehensions)
+    "C90",      # mccabe complexity
+    "SIM",      # flake8-simplify (redundant conditions, if/else)
+    "RUF",      # Ruff-specific (mutable defaults, ambiguous chars)
+    "UP",       # pyupgrade (modern Python 3.10+ syntax)
+    "B",        # flake8-bugbear (mutable defaults, assert, except)
+    "PIE",      # flake8-pie (unnecessary pass, dict wrappers)
+    "PT",       # flake8-pytest-style (consistent pytest patterns)
+    "RET",      # flake8-return (simplify returns)
+    "TCH",      # flake8-type-checking (TYPE_CHECKING imports)
 ]
 ignore = [
     "F403",
     "F405",
+    "PLR0913",  # too-many-arguments — config classes legitimately need many params
+    "PLR2004",  # magic-value-comparison — physics/sim code uses many numeric literals
+    "PLC0415",  # import-outside-top-level — conditional/deferred imports are intentional
+    "RUF012",   # mutable-class-default — dataclass-style fields are intentional
+    "RUF059",   # unused-unpacked-variable (too aggressive for comprehension patterns)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**/*.py" = ["D"]
+"**/tests/**/*.py" = ["D", "PT006"]
 ".github/**/*.py" = ["D"]
 "examples/**/*.py" = ["D"]
 
 
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 10
+max-returns = 6
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

@@ -7,12 +7,12 @@ lives here where either module can import it without a cycle.
 
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 import numpy as np
 
 ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]
-ColorConfig = Union[ColorName, list[ColorName]]
+ColorConfig = ColorName | list[ColorName]
 
 COLOR_MAP: dict[str, list[float]] = {
     "red": [1.0, 0.0, 0.0, 1.0],

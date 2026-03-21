@@ -11,7 +11,7 @@ from so101_nexus_maniskill.pick_and_place import (
 )
 
 _CFG = PickAndPlaceConfig()
-BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
+BASE_KWARGS = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
 
 ENV_IDS = [
     ("ManiSkillPickAndPlaceSO100-v1", "so100"),

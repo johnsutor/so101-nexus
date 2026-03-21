@@ -6,7 +6,7 @@ import pytest
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-import so101_nexus_mujoco  # noqa: F401, E402
+import so101_nexus_mujoco  # noqa: F401
 from so101_nexus_core.config import PickAndPlaceConfig
 from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
 

@@ -161,14 +161,14 @@ class _CameraObservation(Observation):
         self.height = height
 
     @property
-    def name(self) -> str:  # noqa: D102
+    def name(self) -> str:
         return self._name
 
     @property
-    def size(self) -> int:  # noqa: D102
+    def size(self) -> int:
         return 0
 
-    def __repr__(self) -> str:  # noqa: D105
+    def __repr__(self) -> str:
         return f"{type(self).__name__}(width={self.width}, height={self.height})"
 
 

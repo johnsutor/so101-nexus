@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-import so101_nexus_core.ycb_geometry as ycb_geometry
+if TYPE_CHECKING:
+    from pathlib import Path
+
+from so101_nexus_core import ycb_geometry
 
 
 def test_get_maniskill_ycb_spawn_z_reads_metadata(monkeypatch: pytest.MonkeyPatch):

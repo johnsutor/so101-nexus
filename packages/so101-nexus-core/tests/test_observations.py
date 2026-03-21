@@ -73,9 +73,9 @@ class TestCameraComponents:
         assert cam.height == 224
 
     def test_camera_invalid_resolution(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Camera dimensions must be > 0"):
             WristCamera(width=0, height=224)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Camera dimensions must be > 0"):
             OverheadCamera(width=224, height=-1)
 
     def test_camera_is_observation(self):
