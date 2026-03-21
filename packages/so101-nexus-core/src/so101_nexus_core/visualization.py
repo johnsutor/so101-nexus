@@ -19,8 +19,10 @@ try:
 except ImportError:
     _PIL_AVAILABLE = False
 
+# Default tile dimensions for side-by-side view composition (4:3 aspect ratio).
 DEFAULT_TILE_W = 320
 DEFAULT_TILE_H = 240
+# Height of the dark info bar appended below composed frames.
 INFO_BAR_H = 28
 
 

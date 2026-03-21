@@ -621,9 +621,11 @@ class MoveConfig(EnvironmentConfig):
             self.observations = [JointPositions()]
 
 
+# sqrt(2)/2 — used for 90-degree rotation quaternions in camera presets.
 SQRT_HALF = float(np.sqrt(0.5))
 
 ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
+    # SO-100: base rotated 90° around Z (faces +X). Wrist cam on Fixed_Jaw link.
     "so100": RobotCameraPreset(
         base_quat=(SQRT_HALF, 0.0, 0.0, SQRT_HALF),
         sensor_cam_eye_pos=(0.0, 0.3, 0.3),
@@ -636,6 +638,8 @@ ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
         wrist_cam_euler_center_deg=(-180.0, -37.5, -90.0),
         wrist_cam_euler_noise_deg=(0.0, 7.5, 0.0),
     ),
+    # SO-101: base identity quaternion (faces +X natively). Wrist cam on gripper_link.
+    # Euler noise 11.459° ≈ 0.2 rad — larger than SO-100 due to different gripper geometry.
     "so101": RobotCameraPreset(
         base_quat=(1.0, 0.0, 0.0, 0.0),
         sensor_cam_eye_pos=(0.0, 0.3, 0.3),
