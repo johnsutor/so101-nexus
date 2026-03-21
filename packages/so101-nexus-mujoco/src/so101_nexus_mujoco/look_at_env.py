@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import mujoco
 import numpy as np
@@ -11,8 +11,11 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import ControlMode, LookAtConfig
 from so101_nexus_core.constants import COLOR_MAP, sample_color
-from so101_nexus_core.objects import CubeObject
+from so101_nexus_core.rewards import simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+
+if TYPE_CHECKING:
+    from so101_nexus_core.objects import CubeObject
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -107,7 +110,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
         )
 
-        self._task_description: str = f"Look at the {repr(self._target_obj)}."
+        self._task_description: str = f"Look at the {self._target_obj!r}."
 
         self._finish_model_setup()
 
@@ -137,19 +140,6 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
         # Third column of the rotation matrix = local z-axis in world frame.
         return mat[:, 2].copy()
-
-    def _get_obs(self) -> np.ndarray | dict:
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
 
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import GazeDirection
@@ -191,6 +181,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         tcp_pos = self._get_tcp_pose()[:3]
         to_target = target_pos - tcp_pos
         orient = self._orientation_toward_reward(tcp_forward, to_target)
-        completion_bonus = self.config.reward.completion_bonus
-        bonus = completion_bonus if info.get("success", False) else 0.0
-        return (1.0 - completion_bonus) * orient + bonus
+        return simple_reward(
+            progress=orient,
+            completion_bonus=self.config.reward.completion_bonus,
+            success=info.get("success", False),
+        )

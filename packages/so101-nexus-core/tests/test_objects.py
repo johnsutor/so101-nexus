@@ -29,24 +29,26 @@ class TestSceneObjectBase:
             ),
         ]
         for obj in objects:
-            assert isinstance(repr(obj), str) and repr(obj)
+            assert isinstance(repr(obj), str)
+            assert repr(obj)
 
 
 class TestCubeObject:
     def test_defaults(self):
         obj = CubeObject()
-        assert obj.half_size > 0 and obj.mass > 0
+        assert obj.half_size > 0
+        assert obj.mass > 0
 
     def test_repr_color_cube(self):
         assert repr(CubeObject(color="red")) == "red cube"
         assert repr(CubeObject(color="green")) == "green cube"
 
     def test_invalid_size(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="half_size must be positive"):
             CubeObject(half_size=-0.01)
 
     def test_invalid_color(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="color must be one of"):
             CubeObject(color="fuschia")
 
 
@@ -64,7 +66,7 @@ class TestYCBObject:
         assert repr(YCBObject(model_id="011_banana")) == "banana"
 
     def test_invalid_model_id(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="model_id must be one of"):
             YCBObject(model_id="999_unknown")
 
 
@@ -85,5 +87,5 @@ class TestMeshObject:
         assert repr(obj) == "wrench"
 
     def test_invalid_mass(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="mass must be positive"):
             MeshObject(collision_mesh_path="/a.obj", visual_mesh_path="/b.obj", mass=-1.0, name="x")

@@ -33,7 +33,8 @@ class TestLookAtEnv:
     def test_info_keys(self, look_at_env):
         look_at_env.reset()
         _, _, _, _, info = look_at_env.step(look_at_env.action_space.sample())
-        assert "orientation_error" in info and "success" in info
+        assert "orientation_error" in info
+        assert "success" in info
 
     def test_task_description(self, look_at_env):
         assert isinstance(look_at_env.unwrapped.task_description, str)

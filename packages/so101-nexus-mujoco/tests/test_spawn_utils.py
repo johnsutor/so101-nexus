@@ -177,15 +177,15 @@ def test_max_attempts_zero_raises():
 
 def test_determinism_with_fixed_seed():
     """A fixed RNG seed should produce the same spawn sequence every time."""
-    kwargs = dict(
-        count=4,
-        min_r=0.10,
-        max_r=0.40,
-        angle_half=math.pi / 2,
-        min_clearance=0.02,
-        bounding_radii=[0.04, 0.04, 0.04, 0.04],
-        max_attempts=100,
-    )
+    kwargs = {
+        "count": 4,
+        "min_r": 0.10,
+        "max_r": 0.40,
+        "angle_half": math.pi / 2,
+        "min_clearance": 0.02,
+        "bounding_radii": [0.04, 0.04, 0.04, 0.04],
+        "max_attempts": 100,
+    }
     result_a = sample_separated_positions(rng=_make_rng(7), **kwargs)
     result_b = sample_separated_positions(rng=_make_rng(7), **kwargs)
     assert result_a == result_b

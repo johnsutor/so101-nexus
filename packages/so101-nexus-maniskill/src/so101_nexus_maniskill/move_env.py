@@ -28,12 +28,14 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
     def __init__(
         self,
         *args,
-        config: MoveConfig = MoveConfig(),
+        config: MoveConfig | None = None,
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
+        if config is None:
+            config = MoveConfig()
         robot_cfgs = build_maniskill_robot_configs(config=config)
         self._setup_base(config=config, robot_uids=robot_uids, robot_cfgs=robot_cfgs)
 

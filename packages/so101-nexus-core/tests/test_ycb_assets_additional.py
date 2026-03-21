@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import sys
 import types
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+from so101_nexus_core import ycb_assets
 
-import so101_nexus_core.ycb_assets as ycb_assets
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 class _FakeMesh:

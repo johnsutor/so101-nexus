@@ -33,7 +33,8 @@ class TestReachEnv:
     def test_info_keys(self, reach_env):
         reach_env.reset()
         _, _, _, _, info = reach_env.step(reach_env.action_space.sample())
-        assert "tcp_to_target_dist" in info and "success" in info
+        assert "tcp_to_target_dist" in info
+        assert "success" in info
 
     def test_task_description(self, reach_env):
         assert isinstance(reach_env.unwrapped.task_description, str)

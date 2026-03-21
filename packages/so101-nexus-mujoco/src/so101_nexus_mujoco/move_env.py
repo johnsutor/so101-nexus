@@ -11,6 +11,7 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import DIRECTION_VECTORS, ControlMode, MoveConfig
 from so101_nexus_core.constants import sample_color
+from so101_nexus_core.rewards import simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -110,19 +111,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         self._target_pos[2] = max(self._target_pos[2], 0.02)
         self.model.site_pos[self._move_target_site_id] = self._target_pos
 
-    def _get_obs(self) -> np.ndarray | dict:
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
-
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import TargetOffset
 
@@ -143,7 +131,9 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
-        reach = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        completion_bonus = self.config.reward.completion_bonus
-        bonus = completion_bonus if info.get("success", False) else 0.0
-        return (1.0 - completion_bonus) * reach + bonus
+        progress = self._reach_to_target_reward(tcp_pos, self._target_pos)
+        return simple_reward(
+            progress=progress,
+            completion_bonus=self.config.reward.completion_bonus,
+            success=info.get("success", False),
+        )

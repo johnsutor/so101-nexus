@@ -18,7 +18,15 @@ from so101_nexus_core.constants import (
     validate_color_config,
 )
 from so101_nexus_core.objects import CubeObject, SceneObject
-from so101_nexus_core.observations import JointPositions
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    JointPositions,
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
+)
 
 if TYPE_CHECKING:
     from so101_nexus_core.observations import Observation
@@ -141,6 +149,10 @@ class RobotConfig:
         self.rest_qpos_deg = rest_qpos_deg
         self.grasp_force_threshold = grasp_force_threshold
         self.static_vel_threshold = static_vel_threshold
+        if len(self.rest_qpos_deg) != 6:
+            raise ValueError(
+                f"rest_qpos_deg must have exactly 6 elements, got {len(self.rest_qpos_deg)}"
+            )
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
@@ -426,6 +438,12 @@ class PickConfig(EnvironmentConfig):
                 f"objects pool must have at least n_distractors+1={self.n_distractors + 1} "
                 f"entries to support {self.n_distractors} distractors, got {len(self.objects)}"
             )
+        if self.min_object_separation < 0:
+            raise ValueError(
+                f"min_object_separation must be >= 0, got {self.min_object_separation}"
+            )
+        if self.observations is None:
+            self.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -481,6 +499,21 @@ class PickAndPlaceConfig(EnvironmentConfig):
             )
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.target_disc_radius <= 0:
+            raise ValueError(f"target_disc_radius must be > 0, got {self.target_disc_radius}")
+        if self.min_cube_target_separation < 0:
+            raise ValueError(
+                f"min_cube_target_separation must be >= 0, got {self.min_cube_target_separation}"
+            )
+        if self.observations is None:
+            self.observations = [
+                EndEffectorPose(),
+                GraspState(),
+                TargetPosition(),
+                ObjectPose(),
+                ObjectOffset(),
+                TargetOffset(),
+            ]
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -586,9 +619,11 @@ class MoveConfig(EnvironmentConfig):
             self.observations = [JointPositions()]
 
 
+# sqrt(2)/2 — used for 90-degree rotation quaternions in camera presets.
 SQRT_HALF = float(np.sqrt(0.5))
 
 ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
+    # SO-100: base rotated 90° around Z (faces +X). Wrist cam on Fixed_Jaw link.
     "so100": RobotCameraPreset(
         base_quat=(SQRT_HALF, 0.0, 0.0, SQRT_HALF),
         sensor_cam_eye_pos=(0.0, 0.3, 0.3),
@@ -601,6 +636,8 @@ ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
         wrist_cam_euler_center_deg=(-180.0, -37.5, -90.0),
         wrist_cam_euler_noise_deg=(0.0, 7.5, 0.0),
     ),
+    # SO-101: base identity quaternion (faces +X natively). Wrist cam on gripper_link.
+    # Euler noise 11.459° ≈ 0.2 rad — larger than SO-100 due to different gripper geometry.
     "so101": RobotCameraPreset(
         base_quat=(1.0, 0.0, 0.0, 0.0),
         sensor_cam_eye_pos=(0.0, 0.3, 0.3),

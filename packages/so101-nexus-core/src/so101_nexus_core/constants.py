@@ -7,12 +7,12 @@ lives here where either module can import it without a cycle.
 
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 import numpy as np
 
 ColorName = Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]
-ColorConfig = Union[ColorName, list[ColorName]]
+ColorConfig = ColorName | list[ColorName]
 
 COLOR_MAP: dict[str, list[float]] = {
     "red": [1.0, 0.0, 0.0, 1.0],
@@ -26,16 +26,8 @@ COLOR_MAP: dict[str, list[float]] = {
     "gray": [0.5, 0.5, 0.5, 1.0],
 }
 
-CUBE_COLOR_MAP: dict[str, list[float]] = {
-    "red": [1.0, 0.0, 0.0, 1.0],
-    "orange": [1.0, 0.5, 0.0, 1.0],
-    "yellow": [1.0, 1.0, 0.0, 1.0],
-    "green": [0.0, 1.0, 0.0, 1.0],
-    "blue": [0.0, 0.0, 1.0, 1.0],
-    "purple": [0.5, 0.0, 0.5, 1.0],
-    "black": [0.0, 0.0, 0.0, 1.0],
-    "white": [1.0, 1.0, 1.0, 1.0],
-}
+# CUBE_COLOR_MAP omits "gray" (reserved for ground) — otherwise identical to COLOR_MAP.
+CUBE_COLOR_MAP: dict[str, list[float]] = {k: v for k, v in COLOR_MAP.items() if k != "gray"}
 
 TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
 

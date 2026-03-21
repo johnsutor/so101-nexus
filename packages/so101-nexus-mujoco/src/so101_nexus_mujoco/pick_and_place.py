@@ -17,14 +17,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig,
 )
 from so101_nexus_core.constants import sample_color
-from so101_nexus_core.observations import (
-    EndEffectorPose,
-    GraspState,
-    ObjectOffset,
-    ObjectPose,
-    TargetOffset,
-    TargetPosition,
-)
+from so101_nexus_core.rewards import reach_progress
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
@@ -86,21 +79,14 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def __init__(
         self,
-        config: PickAndPlaceConfig = PickAndPlaceConfig(),
+        config: PickAndPlaceConfig | None = None,
         render_mode: str | None = None,
         camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
-        if config.observations is None:
-            config.observations = [
-                EndEffectorPose(),
-                GraspState(),
-                TargetPosition(),
-                ObjectPose(),
-                ObjectOffset(),
-                TargetOffset(),
-            ]
+        if config is None:
+            config = PickAndPlaceConfig()
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -154,20 +140,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _get_target_pos(self) -> np.ndarray:
         return self.data.xpos[self._target_body_id].copy()
-
-    def _get_obs(self) -> np.ndarray | dict:
-        """Return proprioception plus cube and goal geometry, with an optional wrist image."""
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
 
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import (
@@ -228,25 +200,19 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        reach_progress = 1.0 - float(
-            np.tanh(self.config.reward.tanh_shaping_scale * info["tcp_to_obj_dist"])
-        )
+        scale = self.config.reward.tanh_shaping_scale
+        rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
         placement_progress = (
-            (
-                1.0
-                - float(np.tanh(self.config.reward.tanh_shaping_scale * info["obj_to_target_dist"]))
-            )
-            if is_grasped
-            else 0.0
+            reach_progress(info["obj_to_target_dist"], scale=scale) if is_grasped else 0.0
         )
-
         return self.config.reward.compute(
-            reach_progress=reach_progress,
+            reach_progress=rp,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
             action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )
 
     def _task_reset(self) -> None:

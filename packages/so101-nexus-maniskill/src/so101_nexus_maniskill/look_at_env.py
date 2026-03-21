@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from mani_skill.utils.building import actors
@@ -11,8 +11,10 @@ from mani_skill.utils.structs.pose import Pose
 
 from so101_nexus_core.config import LookAtConfig
 from so101_nexus_core.constants import sample_color
-from so101_nexus_core.objects import CubeObject
 from so101_nexus_core.observations import GazeDirection
+
+if TYPE_CHECKING:
+    from so101_nexus_core.objects import CubeObject
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
@@ -30,12 +32,14 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     def __init__(
         self,
         *args,
-        config: LookAtConfig = LookAtConfig(),
+        config: LookAtConfig | None = None,
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
+        if config is None:
+            config = LookAtConfig()
         self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
@@ -56,7 +60,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     @property
     def task_description(self) -> str:
         """Return the current episode task description."""
-        return f"Look at the {repr(self._target_obj)}."
+        return f"Look at the {self._target_obj!r}."
 
     def _load_scene(self, options: dict) -> None:
         self._build_ground()

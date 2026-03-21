@@ -14,9 +14,11 @@ from so101_nexus_core.config import (
 
 
 def build_maniskill_robot_configs(
-    config: EnvironmentConfig = EnvironmentConfig(),
+    config: EnvironmentConfig | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build ManiSkill robot config dicts from canonical presets."""
+    if config is None:
+        config = EnvironmentConfig()
     configs: dict[str, dict[str, Any]] = {}
     fov_range = list(config.camera.wrist_fov_rad_range)
 

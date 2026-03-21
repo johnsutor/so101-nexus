@@ -25,26 +25,30 @@ class SO101(BaseAgent):
 
     uid = "so101"
     urdf_path = str(_URDF_DIR / "so101_new_calib.urdf")
-    urdf_config = dict(
-        _materials=dict(gripper=dict(static_friction=2, dynamic_friction=2, restitution=0.0)),
-        link=dict(
-            gripper_link=dict(material="gripper", patch_radius=0.1, min_patch_radius=0.1),
-            moving_jaw_so101_v1_link=dict(
-                material="gripper", patch_radius=0.1, min_patch_radius=0.1
-            ),
-        ),
-    )
+    urdf_config = {
+        "_materials": {
+            "gripper": {"static_friction": 2, "dynamic_friction": 2, "restitution": 0.0}
+        },
+        "link": {
+            "gripper_link": {"material": "gripper", "patch_radius": 0.1, "min_patch_radius": 0.1},
+            "moving_jaw_so101_v1_link": {
+                "material": "gripper",
+                "patch_radius": 0.1,
+                "min_patch_radius": 0.1,
+            },
+        },
+    }
 
-    keyframes = dict(
-        rest=Keyframe(
+    keyframes = {
+        "rest": Keyframe(
             qpos=np.array([0, -1.5708, 1.5708, 0.66, 0, -1.1]),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
-        zero=Keyframe(
+        "zero": Keyframe(
             qpos=np.array([0.0] * 6),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
-    )
+    }
 
     arm_joint_names = [
         "shoulder_pan",
@@ -88,11 +92,11 @@ class SO101(BaseAgent):
         pd_joint_target_delta_pos = copy.deepcopy(pd_joint_delta_pos)
         pd_joint_target_delta_pos.use_target = True
 
-        controller_configs = dict(
-            pd_joint_delta_pos=pd_joint_delta_pos,
-            pd_joint_pos=pd_joint_pos,
-            pd_joint_target_delta_pos=pd_joint_target_delta_pos,
-        )
+        controller_configs = {
+            "pd_joint_delta_pos": pd_joint_delta_pos,
+            "pd_joint_pos": pd_joint_pos,
+            "pd_joint_target_delta_pos": pd_joint_target_delta_pos,
+        }
         return copy.deepcopy(controller_configs)
 
     def _after_loading_articulation(self) -> None:

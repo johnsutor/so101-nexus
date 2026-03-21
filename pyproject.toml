@@ -42,22 +42,45 @@ select = [
     "F",
     "I",
     "W",
-    "D",       
-    "ERA",     
-    "PLR2044", 
-    "PGH004",  
+    "D",
+    "ERA",
+    "PLR",
+    "PLW",
+    "PLC",
+    "PGH004",
+    "C4",
+    "C90",
+    "SIM",
+    "RUF",
+    "UP",
+    "B",
+    "PIE",
+    "PT",
+    "RET",
+    "TCH",
 ]
 ignore = [
     "F403",
     "F405",
+    "PLR0913",
+    "PLR2004",
+    "PLC0415",
+    "RUF012",
+    "RUF059",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**/*.py" = ["D"]
+"**/tests/**/*.py" = ["D", "PT006"]
 ".github/**/*.py" = ["D"]
 "examples/**/*.py" = ["D"]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 12
 
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 10
+max-returns = 6
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

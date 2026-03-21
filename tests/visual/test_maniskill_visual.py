@@ -32,10 +32,10 @@ _PICK_AND_PLACE_ENVS = {
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
     if env_id in _PICK_LIFT_ENVS:
-        return dict(config=PickConfig(objects=[CubeObject(color="red")], camera=_CAM))
+        return {"config": PickConfig(objects=[CubeObject(color="red")], camera=_CAM)}
     if env_id in _PICK_AND_PLACE_ENVS:
-        return dict(config=PickAndPlaceConfig(camera=_CAM, cube_colors="red"))
-    return dict(config=PickConfig(camera=_CAM))
+        return {"config": PickAndPlaceConfig(camera=_CAM, cube_colors="red")}
+    return {"config": PickConfig(camera=_CAM)}
 
 
 MANISKILL_SO101_ENVS = [

@@ -6,21 +6,21 @@ import os
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
-import gymnasium  # noqa: E402
-import mujoco  # noqa: E402
-import numpy as np  # noqa: E402
-import pytest  # noqa: E402
+import gymnasium
+import mujoco
+import numpy as np
+import pytest
 
-import so101_nexus_mujoco  # noqa: F401, E402
-from so101_nexus_core.config import (  # noqa: E402
+import so101_nexus_mujoco  # noqa: F401
+from so101_nexus_core.config import (
     CameraConfig,
     PickAndPlaceConfig,
     PickConfig,
 )
-from so101_nexus_core.objects import CubeObject, YCBObject  # noqa: E402
-from so101_nexus_core.visualization import CameraView, to_uint8  # noqa: E402
+from so101_nexus_core.objects import CubeObject, YCBObject
+from so101_nexus_core.visualization import CameraView, to_uint8
 
-from .conftest import verify_scene  # noqa: E402
+from .conftest import verify_scene
 
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
@@ -39,9 +39,9 @@ _PICK_AND_PLACE_ENVS = {
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
     if env_id in _PICK_LIFT_ENVS:
-        return dict(config=PickConfig(camera=_CAM, objects=[CubeObject(color="red")]))
+        return {"config": PickConfig(camera=_CAM, objects=[CubeObject(color="red")])}
     if env_id in _PICK_AND_PLACE_ENVS:
-        return dict(config=PickAndPlaceConfig(camera=_CAM, cube_colors="red"))
+        return {"config": PickAndPlaceConfig(camera=_CAM, cube_colors="red")}
     # YCB-based envs: extract model_id from env_id name
     _YCB_ENV_TO_MODEL: dict[str, str] = {
         "MuJoCoPickBananaLift-v1": "011_banana",
@@ -50,7 +50,7 @@ def _env_kwargs(env_id: str) -> dict:
     }
     model_id = _YCB_ENV_TO_MODEL.get(env_id)
     if model_id is not None:
-        return dict(config=PickConfig(camera=_CAM, objects=[YCBObject(model_id=model_id)]))
+        return {"config": PickConfig(camera=_CAM, objects=[YCBObject(model_id=model_id)])}
     return {}
 
 

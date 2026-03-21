@@ -15,10 +15,14 @@ Usage:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import gymnasium
-import numpy as np
 
 import so101_nexus_maniskill  # noqa: F401
+
+if TYPE_CHECKING:
+    import numpy as np
 from so101_nexus_core.visualization import (
     CameraView,
     compose_frame,
@@ -63,7 +67,7 @@ def main():
 
     print(f"Environment:          {ENV_ID}")
     print(f"Action space:         {env.action_space}")
-    print(f"Composed frame shape: {frame.shape}  (H×W×C)")
+    print(f"Composed frame shape: {frame.shape}  (HxWxC)")
     print(f"Running {NUM_STEPS} steps with random actions...")
 
     for step in range(1, NUM_STEPS + 1):

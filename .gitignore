@@ -222,3 +222,6 @@ __marimo__/
 # Examples 
 wandb/*
 runs/*
+
+# Code 
+docs/superpowers

@@ -7,7 +7,10 @@ that work across both MuJoCo and ManiSkill backends.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 import numpy as np
 
@@ -19,8 +22,10 @@ try:
 except ImportError:
     _PIL_AVAILABLE = False
 
+# Default tile dimensions for side-by-side view composition (4:3 aspect ratio).
 DEFAULT_TILE_W = 320
 DEFAULT_TILE_H = 240
+# Height of the dark info bar appended below composed frames.
 INFO_BAR_H = 28
 
 
@@ -139,7 +144,7 @@ def save_frame_grid(
     import imageio.v3 as iio
 
     n_grid = min(max_frames, len(frames))
-    indices = cast(list[int], np.linspace(0, len(frames) - 1, n_grid, dtype=int).tolist())
+    indices = cast("list[int]", np.linspace(0, len(frames) - 1, n_grid, dtype=int).tolist())
     grid_frames = [frames[i] for i in indices]
 
     rows = (n_grid + cols - 1) // cols

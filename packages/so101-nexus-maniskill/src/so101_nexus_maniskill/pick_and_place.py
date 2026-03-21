@@ -26,12 +26,14 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     def __init__(
         self,
         *args,
-        config: PickAndPlaceConfig = PickAndPlaceConfig(),
+        config: PickAndPlaceConfig | None = None,
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
+        if config is None:
+            config = PickAndPlaceConfig()
         self.cube_colors = config.cube_colors
         self.target_colors = config.target_colors
         self.cube_half_size = config.cube_half_size

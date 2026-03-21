@@ -27,12 +27,6 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
-from so101_nexus_core.observations import (
-    EndEffectorPose,
-    GraspState,
-    ObjectOffset,
-    ObjectPose,
-)
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
@@ -99,7 +93,7 @@ def _build_scene_xml(
     asset_entries = ""
     body_entries = ""
 
-    for i, (obj, slot) in enumerate(zip(objects, slot_names)):
+    for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
         if isinstance(obj, YCBObject):
             collision_path = str(get_ycb_collision_mesh(obj.model_id))
             visual_path = str(get_ycb_visual_mesh(obj.model_id))
@@ -158,12 +152,12 @@ class _SlotInfo:
     """Runtime data for one object slot in the MuJoCo model."""
 
     __slots__ = (
-        "qpos_addr",
+        "bounding_radius",
         "geom_id",
+        "obj",
+        "qpos_addr",
         "rest_quat",
         "spawn_z",
-        "bounding_radius",
-        "obj",
     )
 
     def __init__(
@@ -207,8 +201,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     ) -> None:
         if config is None:
             config = PickConfig()
-        if config.observations is None:
-            config.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -246,7 +238,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
 
         # Build per-slot runtime info (one entry per pool object)
         self._slots: list[_SlotInfo] = []
-        for slot, obj in zip(slot_names, scene_objects):
+        for slot, obj in zip(slot_names, scene_objects, strict=True):
             geom_name = _primary_geom_name(slot, obj)
             geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
             joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{slot}_joint")
@@ -297,19 +289,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         slot = self._slots[self._target_slot_idx]
         addr = slot.qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
-
-    def _get_obs(self) -> np.ndarray | dict:
-        state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
-            assert self._wrist_cam_id is not None
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
 
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus_core.observations import ObjectOffset as _ObjectOffset
@@ -410,7 +389,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
-        self._task_description = f"Pick up the {repr(target_obj)}."
+        self._task_description = f"Pick up the {target_obj!r}."
 
 
 class PickLiftEnv(PickEnv):

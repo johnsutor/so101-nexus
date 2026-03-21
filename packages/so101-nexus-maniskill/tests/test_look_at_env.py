@@ -12,7 +12,7 @@ from so101_nexus_core.observations import (
     JointPositions,
 )
 
-BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
+BASE_KWARGS = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
 
 LOOK_AT_ENV_IDS = [
     ("ManiSkillLookAtSO100-v1", "so100"),
@@ -71,7 +71,7 @@ class TestEpisodeLogic:
         env = _get_env(request, env_id)
         env.reset()
         info = env.unwrapped.evaluate()
-        assert self.EVALUATE_KEYS <= set(info.keys())
+        assert set(info.keys()) >= self.EVALUATE_KEYS
 
     @pytest.mark.parametrize("env_id,robot", LOOK_AT_ENV_IDS)
     def test_reward_range(self, request, env_id, robot):

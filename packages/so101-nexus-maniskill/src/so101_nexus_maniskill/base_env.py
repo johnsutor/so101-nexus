@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import sapien
 import sapien.render
 import torch
-from mani_skill.agents.robots.so100.so_100 import SO100
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -18,10 +17,14 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.config import CameraMode, EnvironmentConfig
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.observations import EndEffectorPose, GraspState, JointPositions
-from so101_nexus_maniskill.so101_agent import SO101
+
+if TYPE_CHECKING:
+    from mani_skill.agents.robots.so100.so_100 import SO100
+
+    from so101_nexus_core.config import CameraMode, EnvironmentConfig
+    from so101_nexus_maniskill.so101_agent import SO101
 
 # Fixed sensor camera field-of-view: 60 degrees expressed in radians.
 _SENSOR_CAM_FOV_RAD: float = float(np.radians(60.0))
@@ -31,7 +34,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
 
     SUPPORTED_ROBOTS = ["so100", "so101"]
-    agent: Union[SO100, SO101]
+    agent: SO100 | SO101
 
     def _setup_base(
         self,
@@ -59,9 +62,12 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         """
         return 1 if self.config.camera_mode in ("wrist", "both") else 0
 
+    # Tensor equivalent of so101_nexus_core.rewards.reach_progress
     def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
+        """Tanh-shaped progress in [0, 1]. See ``so101_nexus_core.rewards.reach_progress``."""
         return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
+    # Tensor equivalent of so101_nexus_core.config.RewardConfig.compute
     def _assemble_normalized_reward(
         self,
         *,
@@ -72,6 +78,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         action_delta_norm: float | torch.Tensor = 0.0,
         energy_norm: float | torch.Tensor = 0.0,
     ) -> torch.Tensor:
+        """Assemble weighted reward. See ``RewardConfig.compute`` for scalar equivalent."""
         cfg = self.config.reward
         base = (
             cfg.reaching * reach_progress
@@ -118,8 +125,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             eul_n = cfg["wrist_cam_euler_noise"]
             fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
 
-            p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n)]
-            e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n)]
+            p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n, strict=True)]
+            e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n, strict=True)]
             q = euler2quat(*e, axes="sxyz")
             fov = np.random.uniform(fov_lo, fov_hi)
 
@@ -252,7 +259,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 continue  # ManiSkill includes qpos automatically
-            elif isinstance(comp, EndEffectorPose):
+            if isinstance(comp, EndEffectorPose):
                 obs["tcp_pose"] = self.agent.tcp_pose.raw_pose
             elif isinstance(comp, GraspState):
                 obs["is_grasped"] = info.get(
