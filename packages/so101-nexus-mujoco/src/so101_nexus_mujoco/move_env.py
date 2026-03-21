@@ -9,8 +9,8 @@ import mujoco
 import numpy as np
 
 from so101_nexus_core import get_so101_simulation_dir
-from so101_nexus_core.config import DIRECTION_VECTORS, ControlMode, MoveConfig, sample_color
-from so101_nexus_core.observations import JointPositions
+from so101_nexus_core.config import DIRECTION_VECTORS, ControlMode, MoveConfig
+from so101_nexus_core.constants import sample_color
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 _SO101_DIR = get_so101_simulation_dir()
@@ -68,8 +68,6 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     ) -> None:
         if config is None:
             config = MoveConfig()
-        if config.observations is None:
-            config.observations = [JointPositions()]
         self._init_common(
             config=config,
             render_mode=render_mode,

@@ -22,11 +22,10 @@ from so101_nexus_core import (
     get_ycb_visual_mesh,
 )
 from so101_nexus_core.config import (
-    COLOR_MAP,
     ControlMode,
     PickConfig,
-    sample_color,
 )
+from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
 from so101_nexus_core.observations import (
     EndEffectorPose,

@@ -15,8 +15,8 @@ from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import (
     ControlMode,
     PickAndPlaceConfig,
-    sample_color,
 )
+from so101_nexus_core.constants import sample_color
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GraspState,

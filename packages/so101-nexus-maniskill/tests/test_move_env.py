@@ -5,6 +5,12 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.config import MoveConfig
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    JointPositions,
+    TargetOffset,
+)
 
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
@@ -81,3 +87,31 @@ class TestTaskDescription:
         desc = move_so100_env.unwrapped.task_description
         assert desc
         assert "up" in desc
+
+
+class TestCustomObservations:
+    def test_target_offset_obs(self):
+        """TargetOffset component produces a 3-dim obs_extra entry."""
+        config = MoveConfig(observations=[JointPositions(), TargetOffset()])
+        env = gym.make("ManiSkillMoveSO100-v1", config=config, **BASE_KWARGS)
+        try:
+            obs, info = env.reset()
+            _, _, _, _, info = env.step(env.action_space.sample())
+            extra = env.unwrapped._get_obs_extra(info)
+            assert "target_offset" in extra
+            assert extra["target_offset"].shape[-1] == 3
+        finally:
+            env.close()
+
+    def test_end_effector_pose_obs(self):
+        """EndEffectorPose component produces tcp_pose in obs_extra."""
+        config = MoveConfig(observations=[JointPositions(), EndEffectorPose(), TargetOffset()])
+        env = gym.make("ManiSkillMoveSO100-v1", config=config, **BASE_KWARGS)
+        try:
+            obs, info = env.reset()
+            _, _, _, _, info = env.step(env.action_space.sample())
+            extra = env.unwrapped._get_obs_extra(info)
+            assert "tcp_pose" in extra
+            assert "target_offset" in extra
+        finally:
+            env.close()

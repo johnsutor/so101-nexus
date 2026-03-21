@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from so101_nexus_core.config import COLOR_MAP, YCB_OBJECTS
+from so101_nexus_core.constants import COLOR_MAP, YCB_OBJECTS, ColorName
 
 
 class SceneObject(ABC):
@@ -37,14 +37,14 @@ class CubeObject(SceneObject):
     Args:
         half_size: Half-extent of each side in metres.
         mass: Object mass in kg.
-        color: Named color key from COLOR_MAP (e.g. "red", "blue").
+        color: Named color from COLOR_MAP (e.g. "red", "blue").
     """
 
     def __init__(
         self,
         half_size: float = 0.0125,
         mass: float = 0.01,
-        color: str = "red",
+        color: ColorName = "red",
     ) -> None:
         if half_size <= 0:
             raise ValueError(f"half_size must be positive, got {half_size}")

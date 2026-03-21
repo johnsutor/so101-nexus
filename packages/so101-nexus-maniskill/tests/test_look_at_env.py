@@ -5,6 +5,12 @@ import pytest
 import torch
 
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.config import LookAtConfig
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GazeDirection,
+    JointPositions,
+)
 
 BASE_KWARGS = dict(obs_mode="state", num_envs=1, render_mode=None)
 
@@ -79,3 +85,31 @@ class TestEpisodeLogic:
 class TestTaskDescription:
     def test_task_description_nonempty(self, look_at_so100_env):
         assert look_at_so100_env.unwrapped.task_description
+
+
+class TestCustomObservations:
+    def test_gaze_direction_obs(self):
+        """GazeDirection component produces a normalized 3-dim obs_extra entry."""
+        config = LookAtConfig(observations=[JointPositions(), GazeDirection()])
+        env = gym.make("ManiSkillLookAtSO100-v1", config=config, **BASE_KWARGS)
+        try:
+            obs, info = env.reset()
+            _, _, _, _, info = env.step(env.action_space.sample())
+            extra = env.unwrapped._get_obs_extra(info)
+            assert "gaze_direction" in extra
+            assert extra["gaze_direction"].shape[-1] == 3
+        finally:
+            env.close()
+
+    def test_end_effector_pose_obs(self):
+        """EndEffectorPose component produces tcp_pose in obs_extra."""
+        config = LookAtConfig(observations=[JointPositions(), EndEffectorPose(), GazeDirection()])
+        env = gym.make("ManiSkillLookAtSO100-v1", config=config, **BASE_KWARGS)
+        try:
+            obs, info = env.reset()
+            _, _, _, _, info = env.step(env.action_space.sample())
+            extra = env.unwrapped._get_obs_extra(info)
+            assert "tcp_pose" in extra
+            assert "gaze_direction" in extra
+        finally:
+            env.close()

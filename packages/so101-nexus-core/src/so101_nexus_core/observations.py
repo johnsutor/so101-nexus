@@ -43,11 +43,6 @@ class Observation(ABC):
         return f"{type(self).__name__}()"
 
 
-# ---------------------------------------------------------------------------
-# State components — fixed-size slices of the flat observation vector
-# ---------------------------------------------------------------------------
-
-
 class JointPositions(Observation):
     """Current angle of each robot joint (6-dim)."""
 

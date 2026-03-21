@@ -6,15 +6,15 @@ from typing import Any
 
 import torch
 from mani_skill.utils.building import actors
-from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.config import LookAtConfig, sample_color
+from so101_nexus_core.config import LookAtConfig
+from so101_nexus_core.constants import sample_color
 from so101_nexus_core.objects import CubeObject
-from so101_nexus_core.observations import JointPositions
+from so101_nexus_core.observations import GazeDirection
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv
+from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
 _DEFAULT_CONFIG = LookAtConfig()
 
@@ -36,21 +36,19 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         reconfiguration_freq: int | None = None,
         **kwargs,
     ):
-        if config.observations is None:
-            config.observations = [JointPositions()]
-
         self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
         self._setup_base(config=config, robot_uids=robot_uids, robot_cfgs=robot_cfgs)
 
-        if reconfiguration_freq is None:
-            reconfiguration_freq = 1 if config.camera_mode in ("wrist", "both") else 0
-
         super().__init__(
             *args,
             robot_uids=robot_uids,
-            reconfiguration_freq=reconfiguration_freq,
+            reconfiguration_freq=(
+                reconfiguration_freq
+                if reconfiguration_freq is not None
+                else self._default_reconfiguration_freq()
+            ),
             num_envs=num_envs,
             **kwargs,
         )
@@ -114,8 +112,6 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     def _add_component_obs(
         self, obs: dict[str, torch.Tensor], component: object, info: dict
     ) -> None:
-        from so101_nexus_core.observations import GazeDirection
-
         if isinstance(component, GazeDirection):
             to_target = self.target_obj_actor.pose.p - self.agent.tcp_pose.p
             obs["gaze_direction"] = to_target / (
@@ -137,32 +133,19 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         return (1.0 - bonus) * orient + bonus * info["success"]
 
 
-def _register_robot_variant(
-    *,
-    class_name: str,
-    env_id: str,
-    base_cls: type,
-    robot_uid: str,
-) -> type:
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("robot_uids", robot_uid)
-        base_cls.__init__(self, *args, **kwargs)
-
-    cls = type(class_name, (base_cls,), {"__init__": __init__})
-    cls = register_env(env_id, max_episode_steps=_DEFAULT_CONFIG.max_episode_steps)(cls)
-    globals()[class_name] = cls
-    return cls
-
-
-LookAtSO100Env = _register_robot_variant(
+LookAtSO100Env = register_robot_variant(
     class_name="LookAtSO100Env",
     env_id="ManiSkillLookAtSO100-v1",
     base_cls=LookAtEnv,
     robot_uid="so100",
+    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    caller_globals=globals(),
 )
-LookAtSO101Env = _register_robot_variant(
+LookAtSO101Env = register_robot_variant(
     class_name="LookAtSO101Env",
     env_id="ManiSkillLookAtSO101-v1",
     base_cls=LookAtEnv,
     robot_uid="so101",
+    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    caller_globals=globals(),
 )

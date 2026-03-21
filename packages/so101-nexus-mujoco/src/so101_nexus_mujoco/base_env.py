@@ -14,6 +14,16 @@ from so101_nexus_core.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GazeDirection,
+    GraspState,
+    JointPositions,
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
+)
 
 _REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
 
@@ -301,18 +311,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
-        from so101_nexus_core.observations import (
-            EndEffectorPose,
-            GazeDirection,
-            GraspState,
-            JointPositions,
-            ObjectOffset,
-            ObjectPose,
-            TargetOffset,
-            TargetPosition,
-        )
-
         parts: list[np.ndarray] = []
+        assert self.config.observations is not None, "config.observations must be set"
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._get_current_qpos())

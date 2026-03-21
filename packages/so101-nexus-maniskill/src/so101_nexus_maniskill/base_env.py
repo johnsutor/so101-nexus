@@ -12,12 +12,15 @@ from mani_skill.agents.robots.so100.so_100 import SO100
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
+from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.config import CameraMode, EnvironmentConfig, sample_color
+from so101_nexus_core.config import CameraMode, EnvironmentConfig
+from so101_nexus_core.constants import sample_color
+from so101_nexus_core.observations import EndEffectorPose, GraspState, JointPositions
 from so101_nexus_maniskill.so101_agent import SO101
 
 # Fixed sensor camera field-of-view: 60 degrees expressed in radians.
@@ -47,6 +50,14 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         self.camera_height = config.camera.height
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
+
+    def _default_reconfiguration_freq(self) -> int:
+        """Return the default reconfiguration frequency based on camera mode.
+
+        Wrist/both camera modes need scene reconfiguration every episode
+        so that the wrist camera updates correctly.
+        """
+        return 1 if self.config.camera_mode in ("wrist", "both") else 0
 
     def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
         return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
@@ -235,12 +246,6 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         ManiSkill automatically includes agent qpos/qvel. This method adds
         task-specific components from config.observations.
         """
-        from so101_nexus_core.observations import (
-            EndEffectorPose,
-            GraspState,
-            JointPositions,
-        )
-
         obs: dict[str, torch.Tensor] = {}
         if self.config.observations is None:
             return obs
@@ -273,3 +278,41 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
     ) -> torch.Tensor:
         """Delegate to compute_dense_reward (reward is already normalized)."""
         return self.compute_dense_reward(obs=obs, action=action, info=info)
+
+
+def register_robot_variant(
+    *,
+    class_name: str,
+    env_id: str,
+    base_cls: type,
+    robot_uid: str,
+    max_episode_steps: int,
+    caller_globals: dict,
+) -> type:
+    """Create and register a robot-specific environment variant.
+
+    Parameters
+    ----------
+    class_name:
+        Name for the generated class.
+    env_id:
+        Gymnasium environment ID to register.
+    base_cls:
+        Base environment class to subclass.
+    robot_uid:
+        Robot identifier (``"so100"`` or ``"so101"``).
+    max_episode_steps:
+        Maximum episode length for registration.
+    caller_globals:
+        The calling module's ``globals()`` dict so the class is
+        injected into the correct namespace.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("robot_uids", robot_uid)
+        base_cls.__init__(self, *args, **kwargs)
+
+    cls = type(class_name, (base_cls,), {"__init__": __init__})
+    cls = register_env(env_id, max_episode_steps=max_episode_steps)(cls)
+    caller_globals[class_name] = cls
+    return cls

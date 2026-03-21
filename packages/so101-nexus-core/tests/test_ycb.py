@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from so101_nexus_core.config import YCB_OBJECTS
+from so101_nexus_core.constants import YCB_OBJECTS
 from so101_nexus_core.ycb_assets import get_ycb_mesh_dir
 
 EXPECTED_MODEL_IDS = [

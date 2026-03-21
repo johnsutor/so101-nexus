@@ -3,9 +3,6 @@
 from pathlib import Path
 
 from so101_nexus_core.config import (
-    COLOR_MAP as COLOR_MAP,
-)
-from so101_nexus_core.config import (
     DIRECTION_VECTORS as DIRECTION_VECTORS,
 )
 from so101_nexus_core.config import (
@@ -15,19 +12,10 @@ from so101_nexus_core.config import (
     SO101_JOINT_NAMES as SO101_JOINT_NAMES,
 )
 from so101_nexus_core.config import (
-    YCB_OBJECTS as YCB_OBJECTS,
-)
-from so101_nexus_core.config import (
     CameraConfig as CameraConfig,
 )
 from so101_nexus_core.config import (
     CameraMode as CameraMode,
-)
-from so101_nexus_core.config import (
-    ColorConfig as ColorConfig,
-)
-from so101_nexus_core.config import (
-    ColorName as ColorName,
 )
 from so101_nexus_core.config import (
     ControlMode as ControlMode,
@@ -68,7 +56,19 @@ from so101_nexus_core.config import (
 from so101_nexus_core.config import (
     YcbModelId as YcbModelId,
 )
-from so101_nexus_core.config import (
+from so101_nexus_core.constants import (
+    COLOR_MAP as COLOR_MAP,
+)
+from so101_nexus_core.constants import (
+    YCB_OBJECTS as YCB_OBJECTS,
+)
+from so101_nexus_core.constants import (
+    ColorConfig as ColorConfig,
+)
+from so101_nexus_core.constants import (
+    ColorName as ColorName,
+)
+from so101_nexus_core.constants import (
     sample_color as sample_color,
 )
 from so101_nexus_core.objects import (  # noqa: F401
