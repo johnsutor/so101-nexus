@@ -232,6 +232,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             min_r = cfg["spawn_min_radius"]
             max_r = cfg["spawn_max_radius"]
             angle_half = cfg["spawn_angle_half_range"]
+            cx, cy = cfg["cube_spawn_center"]
 
             total_objects = 1 + len(self.distractors)
             all_r = min_r + torch.rand(b, total_objects, device=self.device) * (max_r - min_r)
@@ -239,8 +240,8 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
 
             # Target pose
             target_xyz = torch.zeros((b, 3), device=self.device)
-            target_xyz[:, 0] = all_r[:, 0] * torch.cos(all_theta[:, 0])
-            target_xyz[:, 1] = all_r[:, 0] * torch.sin(all_theta[:, 0])
+            target_xyz[:, 0] = cx + all_r[:, 0] * torch.cos(all_theta[:, 0])
+            target_xyz[:, 1] = cy + all_r[:, 0] * torch.sin(all_theta[:, 0])
             target_xyz[:, 2] = self._obj_spawn_z_val
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
@@ -250,8 +251,8 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             for d_idx, distractor in enumerate(self.distractors):
                 slot = 1 + d_idx
                 d_xyz = torch.zeros((b, 3), device=self.device)
-                d_xyz[:, 0] = all_r[:, slot] * torch.cos(all_theta[:, slot])
-                d_xyz[:, 1] = all_r[:, slot] * torch.sin(all_theta[:, slot])
+                d_xyz[:, 0] = cx + all_r[:, slot] * torch.cos(all_theta[:, slot])
+                d_xyz[:, 1] = cy + all_r[:, slot] * torch.sin(all_theta[:, slot])
                 d_xyz[:, 2] = self._distractor_spawn_zs[d_idx]
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)
                 distractor.set_pose(Pose.create_from_pq(p=d_xyz, q=d_qs))
