@@ -34,7 +34,7 @@ You must import the backend package before calling `gym.make()`. Without the imp
 ### `all_registered_env_ids()`
 
 ```python
-from so101_nexus_core import all_registered_env_ids
+from so101_nexus_core.env_ids import all_registered_env_ids
 
 ids = all_registered_env_ids()
 ```
@@ -43,9 +43,7 @@ ids = all_registered_env_ids()
 def all_registered_env_ids() -> list[str]
 ```
 
-Returns a list of all SO101-Nexus environment IDs that have been registered with Gymnasium. This includes environments from every backend that has been imported in the current process.
-
-The function returns 7 environment IDs when both backends are imported.
+Returns a list of all SO101-Nexus environment IDs. The function returns 13 environment IDs (5 MuJoCo + 8 ManiSkill).
 
 ## Required Imports
 
@@ -68,7 +66,6 @@ from so101_nexus_core import PickConfig, CubeObject
 config = PickConfig(
     objects=[CubeObject(color="blue")],
     max_episode_steps=512,
-    camera_mode="both",
 )
 
 env = gym.make("MuJoCoPickLift-v1", config=config)

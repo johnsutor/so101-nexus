@@ -5,7 +5,7 @@ description: Public API surface of so101_nexus_core.
 
 # Core Package
 
-`so101_nexus_core` provides shared types, configuration classes, scene objects, asset helpers, and the environment registry used by all backends. It is installed automatically as a dependency of any backend package.
+`so101_nexus_core` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry used by all backends. It is installed automatically as a dependency of any backend package.
 
 ```python
 import so101_nexus_core
@@ -18,9 +18,10 @@ import so101_nexus_core
 | Name | Definition |
 |------|------------|
 | `ColorName` | `Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]` |
-| `ColorConfig` | `Union[ColorName, list[ColorName]]` |
+| `ColorConfig` | `ColorName \| list[ColorName]` |
 | `ControlMode` | `Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]` |
-| `CameraMode` | `Literal["fixed", "wrist", "both"]` |
+| `ObsMode` | `Literal["state", "visual"]` |
+| `MoveDirection` | `Literal["up", "down", "left", "right", "forward", "backward"]` |
 | `YcbModelId` | Literal union of 10 YCB object IDs (see [Assets and Geometry](/docs/api/assets-and-geometry)) |
 
 ### Constants
@@ -28,26 +29,48 @@ import so101_nexus_core
 | Name | Type | Description |
 |------|------|-------------|
 | `SO101_JOINT_NAMES` | `tuple[str, ...]` | Ordered joint names for the SO-101 arm |
-| `COLOR_MAP` | `dict[ColorName, tuple]` | Maps color names to RGBA values |
+| `DIRECTION_VECTORS` | `dict[MoveDirection, tuple]` | Maps direction names to unit vectors |
+| `COLOR_MAP` | `dict[str, list[float]]` | Maps color names to RGBA values |
 | `YCB_OBJECTS` | `dict[str, str]` | Maps YCB model IDs to human-readable names |
-| `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera configuration presets |
+| `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera mounting presets for SO-100 and SO-101 |
 | `ASSETS_DIR` | `Path` | Root directory for bundled assets |
 | `SO_ARM100_DIR` | `Path` | Asset directory for the SO-100 arm |
 | `SO101_DIR` | `Path` | Asset directory for the SO-101 arm |
 
 ### Configuration Classes
 
-All configuration classes are dataclasses with sensible defaults. See [Configuration Classes](/docs/api/configs) for full reference.
+All configuration classes have sensible defaults. See [Configuration Classes](/docs/api/configs) for full reference.
 
 | Class | Purpose |
 |-------|---------|
-| `CameraConfig` | Camera resolution and wrist camera randomization ranges |
+| `RenderConfig` | Render camera resolution (visualization only, not observations) |
 | `RobotConfig` | Rest pose, grasp force threshold, velocity threshold |
-| `RobotCameraPreset` | Named preset combining camera parameters |
+| `RobotCameraPreset` | Named preset combining camera mounting parameters |
 | `RewardConfig` | Reward component weights with a `compute()` method |
-| `EnvironmentConfig` | Base environment parameters (spawn region, camera mode, episode length) |
+| `EnvironmentConfig` | Base environment parameters (spawn region, obs mode, episode length) |
 | `PickConfig` | Extends `EnvironmentConfig` for pick/lift tasks |
 | `PickAndPlaceConfig` | Extends `EnvironmentConfig` for pick-and-place tasks |
+| `ReachConfig` | Extends `EnvironmentConfig` for reach-to-target tasks |
+| `LookAtConfig` | Extends `EnvironmentConfig` for look-at tasks |
+| `MoveConfig` | Extends `EnvironmentConfig` for directional move tasks |
+
+### Observation Components
+
+See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual overview and [Configuration Classes](/docs/api/configs) for full parameter reference.
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `Observation` | Abstract base | Base class for all observation components |
+| `JointPositions` | State (6-dim) | Current joint angles |
+| `EndEffectorPose` | State (7-dim) | TCP position + quaternion orientation |
+| `TargetOffset` | State (3-dim) | Vector from gripper to goal |
+| `GazeDirection` | State (3-dim) | Unit vector toward target |
+| `GraspState` | State (1-dim) | Binary grasp flag |
+| `ObjectPose` | State (7-dim) | Object position + quaternion orientation |
+| `ObjectOffset` | State (3-dim) | Vector from gripper to object |
+| `TargetPosition` | State (3-dim) | Absolute goal position |
+| `WristCamera` | Camera | RGB image from wrist-mounted camera |
+| `OverheadCamera` | Camera | RGB image from stationary overhead camera |
 
 ### Scene Objects
 
@@ -66,7 +89,7 @@ See [Scene Objects](/docs/api/objects) for full reference.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `sample_color` | `(config: ColorConfig) -> ColorName` | Sample a color name from a `ColorConfig` value |
+| `sample_color` | `(colors: ColorConfig, rng: Generator \| None = None) -> list[float]` | Resolve a ColorConfig to an RGBA list, sampling uniformly if given a list of colors |
 
 #### Asset Paths
 

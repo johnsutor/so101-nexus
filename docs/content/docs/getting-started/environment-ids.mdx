@@ -19,19 +19,32 @@ for env_id in all_registered_env_ids():
     print(env_id)
 ```
 
-## Core Registry
+## All Registered Environment IDs
 
 The following environment IDs are returned by `all_registered_env_ids()`:
 
-| Environment ID | Backend | Task |
-|---------------|---------|------|
-| `MuJoCoPickLift-v1` | MuJoCo | Pick up and lift an object |
-| `MuJoCoPickAndPlace-v1` | MuJoCo | Pick up and place an object at a target |
-| `MuJoCoReach-v1` | MuJoCo | Reach a target position |
-| `MuJoCoLookAt-v1` | MuJoCo | Orient the end-effector toward a target |
-| `MuJoCoMove-v1` | MuJoCo | Move the arm to a target configuration |
-| `ManiSkillPickLiftSO100-v1` | ManiSkill | Pick up and lift an object (SO-100) |
-| `ManiSkillPickLiftSO101-v1` | ManiSkill | Pick up and lift an object (SO-101) |
+### MuJoCo Environments
+
+| Environment ID | Task |
+|---------------|------|
+| `MuJoCoPickLift-v1` | Pick up and lift an object |
+| `MuJoCoPickAndPlace-v1` | Pick up and place an object at a target |
+| `MuJoCoReach-v1` | Reach a target position |
+| `MuJoCoLookAt-v1` | Orient the end-effector toward a target |
+| `MuJoCoMove-v1` | Move the TCP in a cardinal direction |
+
+### ManiSkill Environments
+
+| Environment ID | Task | Robot |
+|---------------|------|-------|
+| `ManiSkillPickLiftSO100-v1` | Pick up and lift an object | SO-100 |
+| `ManiSkillPickLiftSO101-v1` | Pick up and lift an object | SO-101 |
+| `ManiSkillReachSO100-v1` | Move TCP to a target position | SO-100 |
+| `ManiSkillReachSO101-v1` | Move TCP to a target position | SO-101 |
+| `ManiSkillLookAtSO100-v1` | Orient the end-effector toward a target | SO-100 |
+| `ManiSkillLookAtSO101-v1` | Orient the end-effector toward a target | SO-101 |
+| `ManiSkillMoveSO100-v1` | Move the end-effector in a cardinal direction | SO-100 |
+| `ManiSkillMoveSO101-v1` | Move the end-effector in a cardinal direction | SO-101 |
 
 ## Additional ManiSkill Environments
 
@@ -41,9 +54,3 @@ The following environments are registered through ManiSkill's `@register_env` de
 |---------------|------|-------|
 | `ManiSkillPickAndPlaceSO100-v1` | Pick and place an object at a target | SO-100 |
 | `ManiSkillPickAndPlaceSO101-v1` | Pick and place an object at a target | SO-101 |
-| `ManiSkillReachSO100-v1` | Move TCP to a target position | SO-100 |
-| `ManiSkillReachSO101-v1` | Move TCP to a target position | SO-101 |
-| `ManiSkillLookAtSO100-v1` | Orient the end-effector toward a target | SO-100 |
-| `ManiSkillLookAtSO101-v1` | Orient the end-effector toward a target | SO-101 |
-| `ManiSkillMoveSO100-v1` | Move the end-effector in a cardinal direction | SO-100 |
-| `ManiSkillMoveSO101-v1` | Move the end-effector in a cardinal direction | SO-101 |

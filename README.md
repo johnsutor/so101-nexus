@@ -74,11 +74,11 @@ See the [docs](https://so101-nexus.com/docs) for the full list of environments, 
 
 ## Roadmap
 
-- [x] ManiSkill environments for SO-100 and SO-101
-- [x] MuJoCo environments for SO-101
+- [x] ManiSkill environments for SO-100 and SO-101 (all five tasks)
+- [x] MuJoCo environments for SO-101 (all five tasks)
+- [x] Primitive tasks: Reach, LookAt, Move, PickLift, PickAndPlace
 - [ ] Genesis environments for SO-100 and SO-101
 - [ ] TD-MPC baselines and exemplars for every environment
-- [ ] Additional manipulation tasks beyond pick-and-place/lift
 - [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 
 ## Development

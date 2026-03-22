@@ -78,7 +78,7 @@ uv run python examples/ppo.py --env-id MuJoCoPickLift-v1 --total-timesteps 20000
 For ManiSkill environments:
 
 ```bash
-uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickCubeLiftSO101-v1 --total-timesteps 200000
+uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickLiftSO101-v1 --total-timesteps 200000
 ```
 
 For MuJoCo environments:
