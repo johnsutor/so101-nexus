@@ -14,8 +14,9 @@ import numpy as np
 _DEFAULT_VFOV_DEG: float = 45.0
 
 # Default render resolution (landscape, matching the forward-arc scene shape).
-OVERHEAD_RENDER_WIDTH: int = 640
-OVERHEAD_RENDER_HEIGHT: int = 480
+# Used as fallback when no CameraConfig is available.
+DEFAULT_RENDER_WIDTH: int = 640
+DEFAULT_RENDER_HEIGHT: int = 480
 
 
 def _scene_bounds(
@@ -47,7 +48,7 @@ def compute_overhead_camera_params(
     spawn_max_radius: float = 0.40,
     margin: float = 0.10,
     fov_deg: float = _DEFAULT_VFOV_DEG,
-    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
+    aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
 ) -> dict[str, Any]:
     """Compute overhead (top-down) camera parameters that tightly bound the scene.
 
@@ -107,7 +108,7 @@ def compute_overhead_eye_target(
     spawn_max_radius: float = 0.40,
     margin: float = 0.10,
     fov_deg: float = _DEFAULT_VFOV_DEG,
-    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
+    aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
 ) -> tuple[list[float], list[float]]:
     """Compute eye and target positions for an overhead look-at camera.
 
@@ -140,7 +141,7 @@ def compute_angled_camera_params(
     elevation: float = -30.0,
     azimuth: float = 160.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
-    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
+    aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
 ) -> dict[str, Any]:
     """Compute angled (privileged) camera parameters that view the full scene.
 

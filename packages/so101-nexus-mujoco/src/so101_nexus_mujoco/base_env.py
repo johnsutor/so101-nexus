@@ -9,11 +9,7 @@ import mujoco
 import numpy as np
 from gymnasium import spaces
 
-from so101_nexus_core.camera_utils import (
-    OVERHEAD_RENDER_HEIGHT,
-    OVERHEAD_RENDER_WIDTH,
-    compute_overhead_camera_params,
-)
+from so101_nexus_core.camera_utils import compute_overhead_camera_params
 from so101_nexus_core.config import (
     SO101_JOINT_NAMES,
     ControlMode,
@@ -416,12 +412,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self.render_mode == "rgb_array":
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(
-                    self.model, height=OVERHEAD_RENDER_HEIGHT, width=OVERHEAD_RENDER_WIDTH
+                    self.model,
+                    height=self.config.camera.render_height,
+                    width=self.config.camera.render_width,
                 )
             if not hasattr(self, "_overhead_cam"):
                 params = compute_overhead_camera_params(
                     spawn_center=self.config.spawn_center,
                     spawn_max_radius=self.config.spawn_max_radius,
+                    aspect=self.config.camera.render_width / self.config.camera.render_height,
                 )
                 self._overhead_cam = mujoco.MjvCamera()
                 self._overhead_cam.type = mujoco.mjtCamera.mjCAMERA_FREE

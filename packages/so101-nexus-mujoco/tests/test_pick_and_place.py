@@ -214,7 +214,8 @@ class TestCameraModes:
         assert "state" in obs
         assert "wrist_camera" in obs
         assert obs["state"].shape == (24,)
-        assert obs["wrist_camera"].shape == (224, 224, 3)
+        cam = env.config.camera
+        assert obs["wrist_camera"].shape == (cam.height, cam.width, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
 

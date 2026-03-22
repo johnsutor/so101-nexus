@@ -17,11 +17,7 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 from sapien.render import RenderBodyComponent
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core.camera_utils import (
-    OVERHEAD_RENDER_HEIGHT,
-    OVERHEAD_RENDER_WIDTH,
-    compute_overhead_eye_target,
-)
+from so101_nexus_core.camera_utils import compute_overhead_eye_target
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.observations import EndEffectorPose, GraspState, JointPositions
 
@@ -155,15 +151,16 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self) -> CameraConfig:
+        rw = self.config.camera.render_width
+        rh = self.config.camera.render_height
         eye, target = compute_overhead_eye_target(
             spawn_center=self.config.spawn_center,
             spawn_max_radius=self.config.spawn_max_radius,
+            aspect=rw / rh,
         )
         # up=(1,0,0) so +X (robot forward) points up in the image.
         pose = sapien_utils.look_at(eye, target, up=(1, 0, 0))
-        return CameraConfig(
-            "render_camera", pose, OVERHEAD_RENDER_WIDTH, OVERHEAD_RENDER_HEIGHT, 1, 0.01, 100
-        )
+        return CameraConfig("render_camera", pose, rw, rh, 1, 0.01, 100)
 
     def _load_agent(
         self,

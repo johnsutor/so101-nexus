@@ -74,8 +74,10 @@ class CameraConfig:
     """Camera resolution, wrist field-of-view, and wrist mount randomization defaults.
 
     Args:
-        width: Image width in pixels.
-        height: Image height in pixels.
+        width: Image width in pixels (wrist and sensor cameras).
+        height: Image height in pixels (wrist and sensor cameras).
+        render_width: Width for the overhead render camera. Defaults to ``width``.
+        render_height: Height for the overhead render camera. Defaults to ``height``.
         wrist_fov_deg_range: (min, max) wrist camera field-of-view in degrees.
         wrist_pitch_deg_range: (min, max) wrist camera pitch in degrees.
         wrist_cam_pos_x_noise: Noise on wrist camera x position.
@@ -87,8 +89,10 @@ class CameraConfig:
 
     def __init__(
         self,
-        width: int = 224,
-        height: int = 224,
+        width: int = 640,
+        height: int = 480,
+        render_width: int | None = None,
+        render_height: int | None = None,
         wrist_fov_deg_range: tuple[float, float] = (60.0, 90.0),
         wrist_pitch_deg_range: tuple[float, float] = (-34.4, 0.0),
         wrist_cam_pos_x_noise: float = 0.005,
@@ -99,6 +103,8 @@ class CameraConfig:
     ) -> None:
         self.width = width
         self.height = height
+        self.render_width = render_width if render_width is not None else width
+        self.render_height = render_height if render_height is not None else height
         self.wrist_fov_deg_range = wrist_fov_deg_range
         self.wrist_pitch_deg_range = wrist_pitch_deg_range
         self.wrist_cam_pos_x_noise = wrist_cam_pos_x_noise

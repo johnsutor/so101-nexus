@@ -262,7 +262,7 @@ def test_wrist_camera_state_obs(env_id, config_cls):
     assert isinstance(obs, dict)
     assert "state" in obs
     assert "wrist_camera" in obs
-    assert obs["wrist_camera"].shape == (224, 224, 3)
+    assert obs["wrist_camera"].shape == (config.camera.height, config.camera.width, 3)
     assert obs["wrist_camera"].dtype == np.uint8
     _run_episode(env)
     env.close()
