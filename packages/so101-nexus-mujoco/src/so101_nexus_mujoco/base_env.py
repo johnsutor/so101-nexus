@@ -22,8 +22,11 @@ from so101_nexus_core.observations import (
     JointPositions,
     ObjectOffset,
     ObjectPose,
+    OverheadCamera,
     TargetOffset,
     TargetPosition,
+    WristCamera,
+    _CameraObservation,
 )
 from so101_nexus_core.rewards import orientation_progress, reach_progress
 
@@ -137,36 +140,81 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         self._prev_target: np.ndarray | None = None
 
-        if self.camera_mode == "wrist":
+        # --- Detect camera observation components ---
+        self._wrist_cam_component: WristCamera | None = None
+        self._overhead_cam_component: OverheadCamera | None = None
+        if self.config.observations is not None:
+            for comp in self.config.observations:
+                if isinstance(comp, WristCamera):
+                    self._wrist_cam_component = comp
+                elif isinstance(comp, OverheadCamera):
+                    self._overhead_cam_component = comp
+
+        # --- Wrist camera: prefer observation component, fall back to camera_mode ---
+        has_wrist = self._wrist_cam_component is not None or getattr(self, "camera_mode", None) == "wrist"
+        if has_wrist:
             self._wrist_cam_id = mujoco.mj_name2id(
                 self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam"
             )
-            self._wrist_renderer = mujoco.Renderer(
-                self.model,
-                height=self.camera_height,
-                width=self.camera_width,
+            wrist_w = self._wrist_cam_component.width if self._wrist_cam_component else self.camera_width
+            wrist_h = self._wrist_cam_component.height if self._wrist_cam_component else self.camera_height
+            self._wrist_renderer = mujoco.Renderer(self.model, height=wrist_h, width=wrist_w)
+        else:
+            self._wrist_cam_id = None
+            self._wrist_renderer = None
+
+        # --- Overhead observation camera (driven by OverheadCamera component) ---
+        if self._overhead_cam_component is not None:
+            cam = self._overhead_cam_component
+            params = compute_overhead_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                fov_deg=cam.fov_deg,
+                aspect=cam.width / cam.height,
             )
+            self._overhead_obs_cam = mujoco.MjvCamera()
+            self._overhead_obs_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            self._overhead_obs_cam.lookat[:] = params["lookat"]
+            self._overhead_obs_cam.distance = params["distance"]
+            self._overhead_obs_cam.elevation = params["elevation"]
+            self._overhead_obs_cam.azimuth = params["azimuth"]
+            self._overhead_obs_renderer = mujoco.Renderer(
+                self.model, height=cam.height, width=cam.width
+            )
+        else:
+            self._overhead_obs_cam = None
+            self._overhead_obs_renderer = None
+
+        # --- Build observation space ---
+        has_any_camera = has_wrist or self._overhead_cam_component is not None
+        if has_any_camera:
             state_size = (
                 len(SO101_JOINT_NAMES)
                 if self.config.obs_mode == "visual"
                 else self._state_obs_size()
             )
-            self.observation_space = spaces.Dict(
-                {
-                    "state": spaces.Box(
-                        low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64
-                    ),
-                    "wrist_camera": spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=(self.camera_height, self.camera_width, 3),
-                        dtype=np.uint8,
-                    ),
-                }
-            )
+            obs_dict: dict[str, spaces.Space] = {
+                "state": spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64
+                ),
+            }
+            if has_wrist:
+                obs_dict["wrist_camera"] = spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(wrist_h, wrist_w, 3),
+                    dtype=np.uint8,
+                )
+            if self._overhead_cam_component is not None:
+                oc = self._overhead_cam_component
+                obs_dict["overhead_camera"] = spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(oc.height, oc.width, 3),
+                    dtype=np.uint8,
+                )
+            self.observation_space = spaces.Dict(obs_dict)
         else:
-            self._wrist_cam_id = None
-            self._wrist_renderer = None
             self.observation_space = spaces.Box(
                 low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
             )
@@ -211,15 +259,29 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _randomize_wrist_camera(self) -> None:
         """Randomize wrist camera pose and field of view for domain randomization.
 
-        No-ops when ``camera_mode`` is not ``"wrist"``. Pitch, position, and FOV
-        are sampled uniformly from the ranges defined in ``config.camera``.
+        Uses ``WristCamera`` observation component parameters when available,
+        otherwise falls back to ``config.camera``. No-ops when no wrist camera
+        is active.
         """
-        if self.camera_mode != "wrist":
+        if self._wrist_renderer is None:
             return
-        cam = self.config.camera
-        pitch_lo_rad, pitch_hi_rad = cam.wrist_pitch_rad_range
+
+        wc = self._wrist_cam_component
+        if wc is not None:
+            pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
+            fov_lo, fov_hi = wc.fov_deg_range
+            pos_x_noise = wc.pos_x_noise
+            pos_y_center, pos_y_noise = wc.pos_y_center, wc.pos_y_noise
+            pos_z_center, pos_z_noise = wc.pos_z_center, wc.pos_z_noise
+        else:
+            cam = self.config.camera
+            pitch_lo_rad, pitch_hi_rad = cam.wrist_pitch_rad_range
+            fov_lo, fov_hi = cam.wrist_fov_deg_range
+            pos_x_noise = cam.wrist_cam_pos_x_noise
+            pos_y_center, pos_y_noise = cam.wrist_cam_pos_y_center, cam.wrist_cam_pos_y_noise
+            pos_z_center, pos_z_noise = cam.wrist_cam_pos_z_center, cam.wrist_cam_pos_z_noise
+
         pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
-        # Yaw is fixed at 0; roll is fixed at 0.
         euler = np.array([pitch_rad, 0.0, 0.0])
         quat = np.zeros(4)
         mujoco.mju_euler2Quat(quat, euler, "XYZ")
@@ -228,14 +290,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.model.cam_mat0[self._wrist_cam_id] = mat
 
         self.model.cam_pos0[self._wrist_cam_id] = [
-            self.np_random.uniform(-cam.wrist_cam_pos_x_noise, cam.wrist_cam_pos_x_noise),
-            cam.wrist_cam_pos_y_center
-            + self.np_random.uniform(-cam.wrist_cam_pos_y_noise, cam.wrist_cam_pos_y_noise),
-            cam.wrist_cam_pos_z_center
-            + self.np_random.uniform(-cam.wrist_cam_pos_z_noise, cam.wrist_cam_pos_z_noise),
+            self.np_random.uniform(-pos_x_noise, pos_x_noise),
+            pos_y_center + self.np_random.uniform(-pos_y_noise, pos_y_noise),
+            pos_z_center + self.np_random.uniform(-pos_z_noise, pos_z_noise),
         ]
 
-        fov_lo, fov_hi = cam.wrist_fov_deg_range
         self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
 
     def _get_collision_geoms(self, body_id: int) -> set[int]:
@@ -338,6 +397,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
             ):
                 parts.append(self._get_component_data(comp))
+            elif isinstance(comp, _CameraObservation):
+                continue  # camera images handled separately in _get_obs
             else:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
         return np.concatenate(parts)
@@ -442,6 +503,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self._wrist_renderer is not None:
             self._wrist_renderer.close()
             self._wrist_renderer = None
+        if getattr(self, "_overhead_obs_renderer", None) is not None:
+            self._overhead_obs_renderer.close()
+            self._overhead_obs_renderer = None
         if self._renderer is not None:
             self._renderer.close()
             self._renderer = None
@@ -496,18 +560,33 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         raise NotImplementedError
 
     def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
-        """Build observation from component list, optionally including wrist camera."""
+        """Build observation from component list, optionally including camera images."""
         state = self._compute_obs_components()
-        if self.camera_mode == "wrist":
-            assert self._wrist_renderer is not None
+        has_any_camera = (
+            self._wrist_renderer is not None
+            or getattr(self, "_overhead_obs_renderer", None) is not None
+        )
+        if not has_any_camera:
+            return state
+
+        obs: dict[str, np.ndarray] = {}
+        if self.config.obs_mode == "visual":
+            self._privileged_state = state
+            obs["state"] = self._get_current_qpos()
+        else:
+            obs["state"] = state
+
+        if self._wrist_renderer is not None:
             assert self._wrist_cam_id is not None
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            wrist_image = self._wrist_renderer.render()
-            if self.config.obs_mode == "visual":
-                self._privileged_state = state
-                return {"state": self._get_current_qpos(), "wrist_camera": wrist_image}
-            return {"state": state, "wrist_camera": wrist_image}
-        return state
+            obs["wrist_camera"] = self._wrist_renderer.render()
+
+        if getattr(self, "_overhead_obs_renderer", None) is not None:
+            assert self._overhead_obs_cam is not None
+            self._overhead_obs_renderer.update_scene(self.data, camera=self._overhead_obs_cam)
+            obs["overhead_camera"] = self._overhead_obs_renderer.render()
+
+        return obs
 
     def _get_info(self) -> dict:
         raise NotImplementedError
