@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+import numpy as np
+
 
 class Observation(ABC):
     """Abstract base for observation components.
@@ -154,7 +156,7 @@ class _CameraObservation(Observation):
 
     _name: str  # set by subclasses
 
-    def __init__(self, width: int = 224, height: int = 224) -> None:
+    def __init__(self, width: int = 640, height: int = 480) -> None:
         if width <= 0 or height <= 0:
             raise ValueError(f"Camera dimensions must be > 0, got {width}x{height}")
         self.width = width
@@ -173,12 +175,90 @@ class _CameraObservation(Observation):
 
 
 class WristCamera(_CameraObservation):
-    """RGB image from the camera mounted on the robot's wrist."""
+    """RGB image from the camera mounted on the robot's wrist.
+
+    Parameters
+    ----------
+    width : int
+        Image width in pixels.
+    height : int
+        Image height in pixels.
+    fov_deg_range : tuple[float, float]
+        Min/max field-of-view in degrees for domain randomisation.
+    pitch_deg_range : tuple[float, float]
+        Min/max pitch angle in degrees for domain randomisation.
+    pos_x_noise : float
+        Noise magnitude for camera x-position.
+    pos_y_center : float
+        Nominal y-offset of the camera from the wrist.
+    pos_y_noise : float
+        Noise magnitude for camera y-position.
+    pos_z_center : float
+        Nominal z-offset of the camera from the wrist.
+    pos_z_noise : float
+        Noise magnitude for camera z-position.
+    """
 
     _name = "wrist_camera"
 
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        fov_deg_range: tuple[float, float] = (60.0, 90.0),
+        pitch_deg_range: tuple[float, float] = (-34.4, 0.0),
+        pos_x_noise: float = 0.005,
+        pos_y_center: float = 0.04,
+        pos_y_noise: float = 0.01,
+        pos_z_center: float = -0.04,
+        pos_z_noise: float = 0.01,
+    ) -> None:
+        super().__init__(width=width, height=height)
+        self.fov_deg_range = fov_deg_range
+        self.pitch_deg_range = pitch_deg_range
+        self.pos_x_noise = pos_x_noise
+        self.pos_y_center = pos_y_center
+        self.pos_y_noise = pos_y_noise
+        self.pos_z_center = pos_z_center
+        self.pos_z_noise = pos_z_noise
+
+    @property
+    def fov_rad_range(self) -> tuple[float, float]:
+        """Field-of-view range converted to radians."""
+        return (
+            float(np.radians(self.fov_deg_range[0])),
+            float(np.radians(self.fov_deg_range[1])),
+        )
+
+    @property
+    def pitch_rad_range(self) -> tuple[float, float]:
+        """Pitch angle range converted to radians."""
+        return (
+            float(np.radians(self.pitch_deg_range[0])),
+            float(np.radians(self.pitch_deg_range[1])),
+        )
+
 
 class OverheadCamera(_CameraObservation):
-    """RGB image from the stationary camera above the workspace."""
+    """RGB image from the stationary camera above the workspace.
+
+    Parameters
+    ----------
+    width : int
+        Image width in pixels.
+    height : int
+        Image height in pixels.
+    fov_deg : float
+        Vertical field-of-view in degrees.
+    """
 
     _name = "overhead_camera"
+
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        fov_deg: float = 45.0,
+    ) -> None:
+        super().__init__(width=width, height=height)
+        self.fov_deg = fov_deg
