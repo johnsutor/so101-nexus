@@ -2,16 +2,19 @@ import numpy as np
 import pytest
 
 from so101_nexus_core.config import (
-    COLOR_MAP,
+    EXTENDED_POSE,
+    POSES,
+    REST_POSE,
     SO101_JOINT_NAMES,
     CameraConfig,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickConfig,
+    Pose,
     RewardConfig,
     RobotConfig,
-    sample_color,
 )
+from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject
 
 
@@ -253,3 +256,158 @@ def test_robot_config_grasp_force_threshold_default():
 def test_robot_config_static_vel_threshold_default():
     cfg = RobotConfig()
     assert cfg.static_vel_threshold == pytest.approx(0.2)
+
+
+class TestPose:
+    def test_fixed_joints_stay_fixed(self):
+        pose = Pose(
+            name="test",
+            shoulder_pan_deg=10.0,
+            shoulder_lift_deg=-90.0,
+            elbow_flex_deg=90.0,
+            wrist_flex_deg=37.0,
+            wrist_roll_deg=0.0,
+            gripper_deg=-10.0,
+        )
+        rng = np.random.default_rng(42)
+        result = pose.sample(rng)
+        assert result == (10.0, -90.0, 90.0, 37.0, 0.0, -10.0)
+
+    def test_free_joints_within_range(self):
+        pose = Pose(
+            name="test",
+            shoulder_pan_deg=(-110.0, 110.0),
+            shoulder_lift_deg=-90.0,
+            elbow_flex_deg=90.0,
+            wrist_flex_deg=37.0,
+            wrist_roll_deg=(-157.0, 163.0),
+            gripper_deg=(-10.0, 100.0),
+        )
+        rng = np.random.default_rng(42)
+        for _ in range(50):
+            result = pose.sample(rng)
+            assert -110.0 <= result[0] <= 110.0
+            assert result[1] == -90.0
+            assert result[2] == 90.0
+            assert result[3] == 37.0
+            assert -157.0 <= result[4] <= 163.0
+            assert -10.0 <= result[5] <= 100.0
+
+    def test_sample_rad_converts_to_radians(self):
+        pose = Pose(
+            name="test",
+            shoulder_pan_deg=0.0,
+            shoulder_lift_deg=-90.0,
+            elbow_flex_deg=90.0,
+            wrist_flex_deg=0.0,
+            wrist_roll_deg=0.0,
+            gripper_deg=0.0,
+        )
+        rng1 = np.random.default_rng(99)
+        rng2 = np.random.default_rng(99)
+        d = pose.sample(rng1)
+        r = pose.sample_rad(rng2)
+        assert r == pytest.approx(tuple(np.radians(v) for v in d))
+
+    def test_invalid_range_raises(self):
+        with pytest.raises(ValueError, match="min must be <= max"):
+            Pose(
+                name="bad",
+                shoulder_pan_deg=(110.0, -110.0),
+                shoulder_lift_deg=0.0,
+                elbow_flex_deg=0.0,
+                wrist_flex_deg=0.0,
+                wrist_roll_deg=0.0,
+                gripper_deg=0.0,
+            )
+
+    def test_name_stored(self):
+        pose = Pose(
+            name="mypose",
+            shoulder_pan_deg=0.0,
+            shoulder_lift_deg=0.0,
+            elbow_flex_deg=0.0,
+            wrist_flex_deg=0.0,
+            wrist_roll_deg=0.0,
+            gripper_deg=0.0,
+        )
+        assert pose.name == "mypose"
+
+
+class TestBuiltinPoses:
+    def test_rest_pose_in_registry(self):
+        assert "rest" in POSES
+        assert POSES["rest"] is REST_POSE
+
+    def test_extended_pose_in_registry(self):
+        assert "extended" in POSES
+        assert POSES["extended"] is EXTENDED_POSE
+
+    def test_rest_pose_fixed_joints_match_legacy_defaults(self):
+        rng = np.random.default_rng(0)
+        sample = REST_POSE.sample(rng)
+        assert sample[1] == pytest.approx(-90.0)
+        assert sample[2] == pytest.approx(90.0)
+        assert sample[3] == pytest.approx(37.8152144786)
+
+    def test_extended_pose_has_different_fixed_joints(self):
+        rng = np.random.default_rng(0)
+        rest = REST_POSE.sample(rng)
+        rng2 = np.random.default_rng(0)
+        ext = EXTENDED_POSE.sample(rng2)
+        assert ext[1] != rest[1]
+        assert ext[2] != rest[2]
+
+    def test_all_poses_sample_six_joints(self):
+        rng = np.random.default_rng(42)
+        for name, pose in POSES.items():
+            result = pose.sample(rng)
+            assert len(result) == 6, f"Pose {name!r} returned {len(result)} joints"
+
+
+class TestRobotConfigInitPose:
+    def test_init_pose_default_is_none(self):
+        cfg = RobotConfig()
+        assert cfg.init_pose is None
+
+    def test_init_pose_accepts_string(self):
+        cfg = RobotConfig(init_pose="rest")
+        assert cfg.init_pose == "rest"
+
+    def test_init_pose_accepts_pose_object(self):
+        pose = Pose(
+            name="custom",
+            shoulder_pan_deg=0.0,
+            shoulder_lift_deg=0.0,
+            elbow_flex_deg=0.0,
+            wrist_flex_deg=0.0,
+            wrist_roll_deg=0.0,
+            gripper_deg=0.0,
+        )
+        cfg = RobotConfig(init_pose=pose)
+        assert cfg.init_pose is pose
+
+    def test_init_pose_invalid_string_raises(self):
+        with pytest.raises(ValueError, match="Unknown pose name"):
+            RobotConfig(init_pose="nonexistent")
+
+    def test_resolve_pose_returns_pose_for_string(self):
+        cfg = RobotConfig(init_pose="rest")
+        assert cfg.resolve_pose() is POSES["rest"]
+
+    def test_resolve_pose_returns_pose_for_object(self):
+        pose = Pose(
+            name="custom",
+            shoulder_pan_deg=0.0,
+            shoulder_lift_deg=0.0,
+            elbow_flex_deg=0.0,
+            wrist_flex_deg=0.0,
+            wrist_roll_deg=0.0,
+            gripper_deg=0.0,
+        )
+        cfg = RobotConfig(init_pose=pose)
+        assert cfg.resolve_pose() is pose
+
+    def test_resolve_pose_returns_none_when_not_set(self):
+        cfg = RobotConfig()
+        assert cfg.resolve_pose() is None
