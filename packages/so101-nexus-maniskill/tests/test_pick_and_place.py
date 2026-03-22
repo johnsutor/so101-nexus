@@ -259,3 +259,17 @@ class TestRobotSubclasses:
         inner = so101_env.unwrapped
         assert isinstance(inner, PickAndPlaceSO101Env)
         assert inner.robot_uids == "so101"
+
+
+class TestSpawnCenterOffset:
+    @pytest.mark.parametrize("env_id,robot", ENV_IDS)
+    def test_spawn_center_offsets_cube_and_target(self, request, env_id, robot):
+        """Cube and target should be offset by spawn_center."""
+        env = _get_env(request, env_id)
+        cube_xs = []
+        for seed in range(10):
+            env.reset(seed=seed)
+            cube_x = env.unwrapped.obj.pose.p[0, 0].cpu().item()
+            cube_xs.append(cube_x)
+        # Mean x should be near spawn_center x=0.15, not near 0
+        assert sum(cube_xs) / len(cube_xs) > 0.10

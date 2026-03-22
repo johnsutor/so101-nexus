@@ -158,8 +158,9 @@ class TestEpisodeLogic:
         inner = env.unwrapped
         min_r = inner._robot_cfg["spawn_min_radius"]
         max_r = inner._robot_cfg["spawn_max_radius"]
+        cx, cy = inner._robot_cfg["cube_spawn_center"]
         obj_p = inner.obj.pose.p[0].cpu()
-        r = float(torch.sqrt(obj_p[0] ** 2 + obj_p[1] ** 2))
+        r = float(torch.sqrt((obj_p[0] - cx) ** 2 + (obj_p[1] - cy) ** 2))
         assert min_r <= r <= max_r
 
 
@@ -268,3 +269,17 @@ class TestYCBObjects:
         assert isinstance(obs, torch.Tensor)
         assert "banana" in env.unwrapped.task_description.lower()
         env.close()
+
+
+class TestSpawnCenterOffset:
+    @pytest.mark.parametrize("env_id,robot", LIFT_ENV_IDS)
+    def test_spawn_center_offsets_object_positions(self, request, env_id, robot):
+        """Objects should be offset by spawn_center, not centered at origin."""
+        env = _get_env(request, env_id)
+        xs = []
+        for seed in range(10):
+            env.reset(seed=seed)
+            obj_x = env.unwrapped.obj.pose.p[0, 0].cpu().item()
+            xs.append(obj_x)
+        # Mean x should be near spawn_center x=0.15, not near 0
+        assert sum(xs) / len(xs) > 0.10
