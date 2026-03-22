@@ -505,11 +505,19 @@ class EnvironmentConfig:
             raise ValueError(f"camera_mode must be fixed|wrist|both, got {self.camera_mode!r}")
         if self.obs_mode not in ("state", "visual"):
             raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
-        if self.obs_mode == "visual" and self.camera_mode != "wrist":
-            raise ValueError(
-                f"obs_mode='visual' requires camera_mode='wrist', "
-                f"got camera_mode={self.camera_mode!r}"
+        if self.obs_mode == "visual":
+            from so101_nexus_core.observations import _CameraObservation as _CamObs
+
+            has_camera_component = self.observations is not None and any(
+                isinstance(c, _CamObs) for c in self.observations
             )
+            has_camera_mode = self.camera_mode in ("wrist", "both")
+            if not has_camera_component and not has_camera_mode:
+                raise ValueError(
+                    "obs_mode='visual' requires at least one camera observation "
+                    "component (e.g. WristCamera() or OverheadCamera()) in observations, "
+                    "or camera_mode='wrist'"
+                )
         if self.camera.width <= 0 or self.camera.height <= 0:
             raise ValueError(
                 f"camera dimensions must be > 0, got {self.camera.width}x{self.camera.height}"
