@@ -5,15 +5,27 @@ description: Simulator backends, environment availability, and key differences.
 
 SO101-Nexus supports MuJoCo and ManiSkill as simulation backends. Genesis is on the roadmap but not yet implemented.
 
+## Task Availability
+
+All five tasks are available on both backends:
+
+| Task | MuJoCo | ManiSkill |
+|------|--------|-----------|
+| PickLift | SO-101 | SO-100, SO-101 |
+| PickAndPlace | SO-101 | SO-100, SO-101 |
+| Reach | SO-101 | SO-100, SO-101 |
+| LookAt | SO-101 | SO-100, SO-101 |
+| Move | SO-101 | SO-100, SO-101 |
+
 ## Vectorization
 
 ManiSkill runs multiple simulation instances in a single GPU-accelerated process by passing `num_envs` directly to `gym.make()`. MuJoCo environments must be vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper.
 
 ## Key Differences
 
-- **Robot models** -- MuJoCo environments use the SO-101 arm. ManiSkill has separate SO-100 and SO-101 variants.
+- **Robot models** -- MuJoCo environments use the SO-101 arm. ManiSkill has separate SO-100 and SO-101 variants for each task.
 - **Object support** -- MuJoCo supports CubeObject, YCBObject, and MeshObject. ManiSkill supports CubeObject and YCBObject only.
-- **Camera config** -- MuJoCo uses a `camera_mode` kwarg. ManiSkill uses `obs_mode` plus a config field.
-- **Task coverage** -- MuJoCo has all five tasks. ManiSkill has PickLift and PickAndPlace.
+- **Observations** -- Both backends use the same composable observation components (`observations` parameter). See [Observations](/docs/concepts/observations-and-camera-modes) for details.
+- **GPU batching** -- ManiSkill supports `num_envs` for GPU-accelerated parallel simulation. MuJoCo uses CPU-based vectorization.
 
-For details on object types, see the [Objects API reference](/docs/api/objects). For camera configuration, see [Observations and Camera Modes](/docs/concepts/observations-and-camera-modes).
+For details on object types, see the [Objects API reference](/docs/api/objects). For observation configuration, see [Observations](/docs/concepts/observations-and-camera-modes).

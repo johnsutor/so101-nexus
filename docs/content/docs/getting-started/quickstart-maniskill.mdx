@@ -66,6 +66,24 @@ env = gym.make("ManiSkillPickLiftSO101-v1", config=config, obs_mode="state",
                control_mode="pd_joint_pos", render_mode="rgb_array")
 ```
 
+## Try Other Tasks
+
+ManiSkill supports all five task types with SO-100 and SO-101 variants:
+
+```python
+# Reach a target position
+env = gym.make("ManiSkillReachSO101-v1", obs_mode="state",
+               control_mode="pd_joint_pos", render_mode="rgb_array")
+
+# Orient the end-effector toward a target
+env = gym.make("ManiSkillLookAtSO101-v1", obs_mode="state",
+               control_mode="pd_joint_pos", render_mode="rgb_array")
+
+# Move the TCP in a direction
+env = gym.make("ManiSkillMoveSO101-v1", obs_mode="state",
+               control_mode="pd_joint_pos", render_mode="rgb_array")
+```
+
 ## What's Next?
 
 - [Working with Objects](/docs/guides/working-with-objects) -- use multiple objects, add distractors

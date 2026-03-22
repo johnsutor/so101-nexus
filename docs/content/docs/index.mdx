@@ -65,7 +65,7 @@ config = PickConfig(
     ],
     n_distractors=2,
     ground_colors=["gray", "white", "black"],
-    robot_colors=["yellow", "cyan"],
+    robot_colors=["yellow", "orange"],
 )
 env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
 ```
@@ -80,7 +80,7 @@ SO101-Nexus ships five manipulation primitives that cover the fundamentals of ro
 - **LookAt** -- orient the end-effector to gaze at a target object
 - **Move** -- move the end-effector to a target position with tight tolerance
 
-All tasks are available on the MuJoCo backend. PickLift and PickAndPlace are also available on ManiSkill with GPU-accelerated batched simulation. Genesis support is on the roadmap.
+All five tasks are available on both the MuJoCo and ManiSkill backends. ManiSkill additionally supports GPU-accelerated batched simulation and SO-100 arm variants. Genesis support is on the roadmap.
 
 ## Get Started
 

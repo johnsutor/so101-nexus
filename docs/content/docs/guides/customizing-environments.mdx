@@ -3,7 +3,7 @@ title: Customizing Environments
 description: Practical recipes for configuring episode length, cameras, colors, spawn regions, rewards, and more.
 ---
 
-Every SO101-Nexus environment accepts a typed config object that controls its behavior. Configs are dataclasses from `so101_nexus_core` and can be passed to `gymnasium.make` via the `config` keyword.
+Every SO101-Nexus environment accepts a typed config object that controls its behavior. Configs are classes from `so101_nexus_core` and can be passed to `gymnasium.make` via the `config` keyword.
 
 ## Change Episode Length
 
@@ -12,90 +12,106 @@ Shorter episodes speed up training on simple tasks. Longer episodes give the age
 ```python
 import gymnasium as gym
 import so101_nexus_mujoco
-from so101_nexus_core import EnvironmentConfig
+from so101_nexus_core import ReachConfig
 
-config = EnvironmentConfig(max_episode_steps=256)
+config = ReachConfig(max_episode_steps=256)
 env = gym.make("MuJoCoReach-v1", config=config)
 ```
 
-## Use Camera Observations
+## Add Camera Observations
 
-On MuJoCo, pass `camera_mode` as a keyword argument to `gym.make()` to include wrist camera images. The observation becomes a dictionary with `"state"` and `"wrist_camera"` keys.
+Include camera images by adding a camera component to the `observations` list. The observation becomes a dictionary with a `"state"` key (flat vector) plus one key per camera.
 
 ```python
 import gymnasium as gym
 import so101_nexus_mujoco
+from so101_nexus_core import (
+    PickConfig, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, WristCamera,
+)
 
-env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist", render_mode="rgb_array")
+config = PickConfig(observations=[
+    EndEffectorPose(),
+    GraspState(),
+    ObjectPose(),
+    ObjectOffset(),
+    WristCamera(width=224, height=224),
+])
+env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="rgb_array")
 obs, _ = env.reset()
-print(obs["state"].shape)         # flat state vector
-print(obs["wrist_camera"].shape)  # camera image
+print(obs["state"].shape)         # (18,) — flat state vector
+print(obs["wrist_camera"].shape)  # (224, 224, 3) — camera image
 ```
 
-To change camera resolution, pass a `CameraConfig` through the environment config:
+You can also add an overhead camera, or both:
 
 ```python
-from so101_nexus_core import CameraConfig, EnvironmentConfig
+from so101_nexus_core import OverheadCamera
 
-camera = CameraConfig(width=128, height=128)
-config = EnvironmentConfig(camera=camera)
-env = gym.make("MuJoCoPickLift-v1", config=config, camera_mode="wrist")
+config = PickConfig(observations=[
+    EndEffectorPose(),
+    GraspState(),
+    ObjectPose(),
+    ObjectOffset(),
+    WristCamera(width=224, height=224),
+    OverheadCamera(width=224, height=224),
+])
 ```
 
 ## Visual Observation Mode
 
-For vision-based policies, use `obs_mode="visual"` to prevent the policy from accessing privileged simulator state (object positions, grasp flags, etc.). The `"state"` key in the observation dict will contain only the 6 joint positions, matching what a real robot's encoders would report. The full privileged state is still available in the `info` dict under `"privileged_state"` for logging.
+For vision-based policies, use `obs_mode="visual"` to signal that the policy should not rely on privileged simulator state. This mode requires at least one camera component in the observations list.
 
 ```python
-from so101_nexus_core import PickConfig
-from so101_nexus_mujoco.pick_env import PickLiftEnv
+from so101_nexus_core import PickConfig, JointPositions, WristCamera
 
-config = PickConfig(camera_mode="wrist", obs_mode="visual")
-env = PickLiftEnv(config=config, camera_mode="wrist")
+config = PickConfig(
+    obs_mode="visual",
+    observations=[JointPositions(), WristCamera(width=224, height=224)],
+)
+env = gym.make("MuJoCoPickLift-v1", config=config)
 obs, info = env.reset()
 
 obs["state"]              # (6,) joint positions only
 obs["wrist_camera"]       # (224, 224, 3) camera image
-info["privileged_state"]  # (18,) full state for debugging
 ```
-
-This mode requires `camera_mode="wrist"` since a vision-based policy needs camera observations.
 
 ## Domain Randomization
 
 Randomize colors and spawn positions to improve sim-to-real transfer. Color fields accept a single color name or a list -- when a list is provided, the environment samples uniformly at each reset.
 
 ```python
-from so101_nexus_core import EnvironmentConfig
+from so101_nexus_core import PickConfig
 
-config = EnvironmentConfig(
+config = PickConfig(
     # Randomize visual appearance
     ground_colors=["gray", "white", "black"],
-    robot_colors=["yellow", "cyan"],
+    robot_colors=["yellow", "orange"],
     # Tighten the spawn region
-    spawn_min_radius=0.05,
-    spawn_max_radius=0.15,
+    spawn_min_radius=0.20,
+    spawn_max_radius=0.30,
     spawn_angle_half_range_deg=60.0,
 )
 env = gym.make("MuJoCoPickLift-v1", config=config)
 ```
 
+Available colors: `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `black`, `white`, `gray`.
+
 ## Tune Rewards
 
-Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). Weights must sum to 1.0.
+Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). The four weights must sum to 1.0. Optional penalty terms are applied separately.
 
 ```python
-from so101_nexus_core import RewardConfig, EnvironmentConfig
+from so101_nexus_core import RewardConfig, PickConfig
 
 reward = RewardConfig(
     reaching=0.20,
     grasping=0.20,
-    task_objective=0.45,
+    task_objective=0.50,
     completion_bonus=0.10,
     action_delta_penalty=0.025,
     energy_penalty=0.025,
 )
-config = EnvironmentConfig(reward=reward)
+config = PickConfig(reward=reward)
 env = gym.make("MuJoCoPickLift-v1", config=config)
 ```
 
@@ -131,7 +147,7 @@ from so101_nexus_core import PickAndPlaceConfig
 
 config = PickAndPlaceConfig(
     cube_colors=["red", "green", "blue"],
-    target_colors="cyan",
+    target_colors="purple",
     min_cube_target_separation=0.05,
 )
 env = gym.make("MuJoCoPickAndPlace-v1", config=config, render_mode="human")
@@ -139,4 +155,4 @@ env = gym.make("MuJoCoPickAndPlace-v1", config=config, render_mode="human")
 
 ## All Parameters
 
-See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `RewardConfig`, `CameraConfig`, and `RobotConfig`.
+See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `ReachConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and `RobotConfig`.

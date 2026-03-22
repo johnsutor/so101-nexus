@@ -1,52 +1,112 @@
 ---
-title: Observations and Camera Modes
-description: State observation vectors, camera rendering modes, observation modes, and how to inspect them.
+title: Observations
+description: Composable observation components, observation modes, and how to inspect them.
 ---
 
-Every SO101-Nexus environment returns observations as either a flat state vector or a dictionary containing state and camera data. The content of the state vector depends on the **observation mode**.
+Every SO101-Nexus environment builds its observation from a list of **observation components**. Components are lightweight descriptor classes that tell the environment which data to include. State components contribute slices of a flat vector; camera components add image tensors to a dictionary observation.
+
+## Observation Components
+
+### State Components
+
+State components produce fixed-size slices of the observation vector.
+
+| Component | Dimensions | Description |
+| --- | --- | --- |
+| `JointPositions` | 6 | Current angle of each robot joint |
+| `EndEffectorPose` | 7 | TCP position (3) + quaternion orientation (4) |
+| `TargetOffset` | 3 | Vector from gripper tip to goal position |
+| `GazeDirection` | 3 | Unit vector from gripper toward the target object |
+| `GraspState` | 1 | Binary grasp flag (1.0 = grasping, 0.0 = not) |
+| `ObjectPose` | 7 | Target object position (3) + quaternion orientation (4) |
+| `ObjectOffset` | 3 | Vector from gripper tip to target object |
+| `TargetPosition` | 3 | Absolute goal position (x, y, z) |
+
+### Camera Components
+
+Camera components add image tensors to a dict-style observation space. They have `size = 0` in the state vector.
+
+| Component | Key | Description |
+| --- | --- | --- |
+| `WristCamera` | `"wrist_camera"` | RGB image from the camera mounted on the robot's wrist |
+| `OverheadCamera` | `"overhead_camera"` | RGB image from a stationary camera above the workspace |
+
+Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
+
+```python
+from so101_nexus_core import WristCamera, OverheadCamera
+
+# Default resolution
+wrist = WristCamera()
+
+# Custom resolution with FOV randomization
+wrist = WristCamera(width=224, height=224, fov_deg_range=(60.0, 90.0))
+
+# Overhead camera
+overhead = OverheadCamera(width=320, height=240, fov_deg=45.0)
+```
+
+## Composing Observations
+
+Pass a list of components via the `observations` parameter on any config. Each task provides sensible defaults when `observations` is not specified.
+
+```python
+from so101_nexus_core import (
+    PickConfig, JointPositions, EndEffectorPose, GraspState,
+    ObjectPose, ObjectOffset, WristCamera,
+)
+
+# State-only observations (default for PickLift)
+config = PickConfig(observations=[
+    EndEffectorPose(),
+    GraspState(),
+    ObjectPose(),
+    ObjectOffset(),
+])
+
+# Add a wrist camera to the observation
+config = PickConfig(observations=[
+    EndEffectorPose(),
+    GraspState(),
+    ObjectPose(),
+    ObjectOffset(),
+    WristCamera(width=224, height=224),
+])
+```
+
+When the observation list contains only state components, the observation is a flat NumPy array. When it contains one or more camera components, the observation becomes a dictionary with a `"state"` key (flat vector from all state components) plus one key per camera (e.g. `"wrist_camera"`, `"overhead_camera"`).
+
+## Default Observations by Task
+
+Each task config auto-populates `observations` if you don't provide one:
+
+| Task | Default Components | State Dimensions |
+| --- | --- | --- |
+| PickLift | EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 18 |
+| PickAndPlace | EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 24 |
+| Reach | JointPositions | 6 |
+| LookAt | JointPositions | 6 |
+| Move | JointPositions | 6 |
 
 ## Observation Modes
 
-The `obs_mode` config parameter controls what information is included in the `"state"` key of the observation. There are two modes:
+The `obs_mode` config parameter controls the semantic intent of the observation:
 
 ### `obs_mode="state"` (default)
 
-The state vector contains full privileged simulator information, including TCP pose, object positions, grasp flags, and relative vectors. This is useful for state-based reinforcement learning where the policy has access to ground-truth information.
-
-| Task | Dimensions | Key Components |
-| --- | --- | --- |
-| PickLift | 18 | TCP pose, grasp flag, object pose, TCP-to-object vector |
-| PickAndPlace | 24 | TCP pose, grasp flag, target position, object pose, TCP-to-object and object-to-target vectors |
-| Reach | 10 | TCP pose, TCP-to-target vector |
-| LookAt | 10 | TCP pose, gaze-to-target vector |
-| Move | 10 | TCP pose, TCP-to-target vector |
-
-Reach, LookAt, and Move share the same 10-dimensional layout. The semantic difference is in the third component: Reach and Move measure TCP-to-target distance, while LookAt measures gaze-to-target orientation error.
-
-The exact per-index observation breakdown is documented on each [environment's reference page](/docs/environments).
+The observation contains whatever components are listed in `observations`. This is useful for state-based reinforcement learning where the policy has access to ground-truth information.
 
 ### `obs_mode="visual"`
 
-The state vector contains only the 6 joint positions, matching what a real robot's joint encoders would report. This mode is designed for vision-based policies that should learn to locate objects using camera images rather than ground-truth state. It requires `camera_mode="wrist"`.
-
-| All Tasks | Dimensions | Key Components |
-| --- | --- | --- |
-| Any | 6 | Joint positions (shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper) |
-
-The full privileged state vector is still available in the `info` dict under the `"privileged_state"` key for logging or debugging purposes.
+Designed for vision-based policies. Requires at least one camera component (e.g. `WristCamera()` or `OverheadCamera()`) in the `observations` list. Construction raises an error if no camera component is present.
 
 ```python
-from so101_nexus_core import PickConfig
-from so101_nexus_mujoco.pick_env import PickLiftEnv
+from so101_nexus_core import PickConfig, JointPositions, WristCamera
 
-cfg = PickConfig(camera_mode="wrist", obs_mode="visual")
-env = PickLiftEnv(config=cfg, camera_mode="wrist")
-obs, info = env.reset()
-
-print(obs["state"].shape)              # (6,) — joint positions only
-print(obs["wrist_camera"].shape)       # (224, 224, 3) — camera image
-print(info["privileged_state"].shape)  # (18,) — full state for debugging
-env.close()
+config = PickConfig(
+    obs_mode="visual",
+    observations=[JointPositions(), WristCamera(width=224, height=224)],
+)
 ```
 
 ## Inspecting Observations
@@ -55,39 +115,36 @@ env.close()
 import gymnasium as gym
 import so101_nexus_mujoco
 
+# State-only (default)
 env = gym.make("MuJoCoPickLift-v1")
 obs, info = env.reset()
 print(f"Observation shape: {obs.shape}")  # (18,)
-print(f"TCP position: {obs[:3]}")
-print(f"Is grasped: {obs[7]}")
+env.close()
+
+# With camera
+from so101_nexus_core import (
+    PickConfig, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, WristCamera,
+)
+
+config = PickConfig(observations=[
+    EndEffectorPose(),
+    GraspState(),
+    ObjectPose(),
+    ObjectOffset(),
+    WristCamera(width=224, height=224),
+])
+env = gym.make("MuJoCoPickLift-v1", config=config)
+obs, info = env.reset()
+print(obs["state"].shape)          # (18,) — state components
+print(obs["wrist_camera"].shape)   # (224, 224, 3) — camera image
 env.close()
 ```
 
-## Camera Modes
+## Choosing the Right Setup
 
-By default, environments return state-only observations. To include camera images, set the camera mode when creating the environment.
-
-On **MuJoCo**, pass `camera_mode` as a keyword argument to `gym.make()`. The accepted values are `"state_only"` (default, no camera) and `"wrist"` (wrist-mounted camera). When `"wrist"` is used, the observation becomes a dictionary:
-
-```python
-import gymnasium as gym
-import so101_nexus_mujoco
-
-env = gym.make("MuJoCoPickLift-v1", camera_mode="wrist")
-obs, info = env.reset()
-# obs["state"] -> flat state vector
-# obs["wrist_camera"] -> image array
-```
-
-On **ManiSkill**, camera rendering is configured through the environment config's `camera_mode` field. Use `obs_mode="state"` for state-only observations.
-
-Camera resolution and wrist camera field-of-view can be configured through `CameraConfig`. See the [Configs API reference](/docs/api/configs) for all parameters.
-
-## Choosing the Right Mode
-
-| Use Case | `obs_mode` | `camera_mode` | Why |
+| Use Case | `obs_mode` | Components | Why |
 | --- | --- | --- | --- |
-| State-based RL training | `"state"` | `"state_only"` | Policy uses privileged state directly |
-| Vision-based RL training | `"visual"` | `"wrist"` | Policy learns from camera images; prevents cheating via ground-truth state |
-| Teleop dataset recording | `"visual"` | `"wrist"` | Matches real robot sensor setup (joints + camera) |
-| Debugging / visualization | `"state"` | `"wrist"` | Full state + camera for analysis |
+| State-based RL training | `"state"` | Default (no cameras) | Policy uses privileged state directly |
+| Vision-based RL training | `"visual"` | JointPositions + WristCamera | Policy learns from camera images; no ground-truth state |
+| Multi-view vision | `"visual"` | JointPositions + WristCamera + OverheadCamera | Policy fuses multiple camera views |
+| Debugging / visualization | `"state"` | Default + WristCamera | Full state + camera for analysis |

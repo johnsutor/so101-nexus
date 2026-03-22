@@ -1,42 +1,28 @@
 ---
 title: Configuration Classes
-description: Reference for all configuration dataclasses.
+description: Reference for all configuration classes.
 ---
 
 # Configuration Classes
 
-All configuration classes live in `so101_nexus_core` and are Python dataclasses with default values. They control camera setup, robot parameters, reward shaping, and environment behavior.
+All configuration classes live in `so101_nexus_core` and are plain Python classes with default constructor arguments. They control rendering, robot parameters, reward shaping, observation composition, and environment behavior.
 
-## CameraConfig
+## RenderConfig
 
-Controls image resolution and wrist camera randomization.
+Controls image resolution for the visualization render camera (not observations).
 
 ```python
-from so101_nexus_core import CameraConfig
+from so101_nexus_core import RenderConfig
 
-cam = CameraConfig(width=224, height=224)
+render = RenderConfig(width=640, height=480)
 ```
 
 ### Constructor Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `width` | `int` | `224` | Image width in pixels |
-| `height` | `int` | `224` | Image height in pixels |
-| `wrist_fov_deg_range` | `tuple[float, float]` | `(60.0, 90.0)` | Field-of-view randomization range for the wrist camera, in degrees |
-| `wrist_pitch_deg_range` | `tuple[float, float]` | `(-34.4, 0.0)` | Pitch randomization range for the wrist camera, in degrees |
-| `wrist_cam_pos_x_noise` | `float` | `0.005` | Position noise along the x-axis |
-| `wrist_cam_pos_y_center` | `float` | `0.04` | Center y-position of the wrist camera |
-| `wrist_cam_pos_y_noise` | `float` | `0.01` | Position noise along the y-axis |
-| `wrist_cam_pos_z_center` | `float` | `-0.04` | Center z-position of the wrist camera |
-| `wrist_cam_pos_z_noise` | `float` | `0.01` | Position noise along the z-axis |
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `wrist_fov_rad_range` | `tuple[float, float]` | `wrist_fov_deg_range` converted to radians |
-| `wrist_pitch_rad_range` | `tuple[float, float]` | `wrist_pitch_deg_range` converted to radians |
+| `width` | `int` | `640` | Render image width in pixels |
+| `height` | `int` | `480` | Render image height in pixels |
 
 ---
 
@@ -141,13 +127,13 @@ reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.40, complet
 | `grasping` | `float` | `0.25` | Weight for the grasping component |
 | `task_objective` | `float` | `0.40` | Weight for the task-specific objective |
 | `completion_bonus` | `float` | `0.10` | Weight for the task completion bonus |
-| `action_delta_penalty` | `float` | `0.0` | Weight for penalizing large action changes |
-| `energy_penalty` | `float` | `0.0` | Weight for penalizing energy usage |
+| `action_delta_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of consecutive action deltas |
+| `energy_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of the action vector |
 | `tanh_shaping_scale` | `float` | `5.0` | Scale factor for tanh reward shaping |
 
 ### Validation
 
-The sum of all weights (`reaching + grasping + task_objective + completion_bonus + action_delta_penalty + energy_penalty`) must equal `1.0`. Construction raises an error if this constraint is violated.
+The four base weights (`reaching + grasping + task_objective + completion_bonus`) must sum to 1.0. Construction raises an error if this constraint is violated. The penalty coefficients are separate additive terms and are not included in the sum constraint.
 
 ### Methods
 
@@ -186,14 +172,14 @@ Base configuration for all environments. Task-specific configs extend this class
 ```python
 from so101_nexus_core import EnvironmentConfig
 
-config = EnvironmentConfig(max_episode_steps=512, camera_mode="both")
+config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 ```
 
 ### Constructor Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `camera` | `CameraConfig \| None` | `None` | Camera settings. Uses `CameraConfig()` defaults when `None`. |
+| `render` | `RenderConfig \| None` | `None` | Render camera resolution settings (visualization only). Uses `RenderConfig()` defaults when `None`. |
 | `reward` | `RewardConfig \| None` | `None` | Reward weights. Uses `RewardConfig()` defaults when `None`. |
 | `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
 | `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |
@@ -201,12 +187,76 @@ config = EnvironmentConfig(max_episode_steps=512, camera_mode="both")
 | `goal_thresh` | `float` | `0.025` | Distance threshold for goal completion (meters) |
 | `spawn_half_size` | `float` | `0.05` | Half-size of object spawn region |
 | `spawn_center` | `tuple[float, float]` | `(0.15, 0.0)` | Center of the spawn region (x, y) |
-| `spawn_min_radius` | `float` | `0.10` | Minimum spawn distance from the robot base |
-| `spawn_max_radius` | `float` | `0.25` | Maximum spawn distance from the robot base |
+| `spawn_min_radius` | `float` | `0.20` | Minimum spawn distance from the robot base |
+| `spawn_max_radius` | `float` | `0.40` | Maximum spawn distance from the robot base |
 | `spawn_angle_half_range_deg` | `float` | `90.0` | Half-range of spawn angle in degrees |
-| `camera_mode` | `CameraMode` | `"fixed"` | Which cameras to include: `"fixed"`, `"wrist"`, or `"both"` |
+| `obs_mode` | `ObsMode` | `"state"` | Observation mode: `"state"` or `"visual"` |
 | `robot_colors` | `ColorConfig` | `"yellow"` | Robot body color(s) |
 | `robot_init_qpos_noise` | `float` | `0.02` | Noise added to initial joint positions |
+| `observations` | `list[Observation] \| None` | `None` | Observation components to include. Task-specific configs provide defaults when `None`. |
+
+### Validation
+
+- `obs_mode` must be `"state"` or `"visual"`
+- When `obs_mode="visual"`, `observations` must contain at least one camera component (`WristCamera` or `OverheadCamera`)
+- Duplicate camera component types are not allowed
+
+---
+
+## Observation Components
+
+Observation components are lightweight descriptor classes passed via the `observations` parameter. See [Observations](/docs/concepts/observations-and-camera-modes) for a conceptual overview.
+
+### State Components
+
+| Class | Size | Description |
+|-------|------|-------------|
+| `JointPositions()` | 6 | Current joint angles |
+| `EndEffectorPose()` | 7 | TCP position + quaternion |
+| `TargetOffset()` | 3 | Vector from gripper to goal |
+| `GazeDirection()` | 3 | Unit vector toward target |
+| `GraspState()` | 1 | Binary grasp flag |
+| `ObjectPose()` | 7 | Object position + quaternion |
+| `ObjectOffset()` | 3 | Vector from gripper to object |
+| `TargetPosition()` | 3 | Absolute goal position |
+
+### Camera Components
+
+#### `WristCamera`
+
+```python
+from so101_nexus_core import WristCamera
+
+cam = WristCamera(width=224, height=224)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `640` | Image width in pixels |
+| `height` | `int` | `480` | Image height in pixels |
+| `fov_deg_range` | `tuple[float, float]` | `(60.0, 90.0)` | FOV randomization range in degrees |
+| `pitch_deg_range` | `tuple[float, float]` | `(-34.4, 0.0)` | Pitch randomization range in degrees |
+| `pos_x_noise` | `float` | `0.005` | Position noise along x-axis |
+| `pos_y_center` | `float` | `0.04` | Nominal y-offset from the wrist |
+| `pos_y_noise` | `float` | `0.01` | Position noise along y-axis |
+| `pos_z_center` | `float` | `-0.04` | Nominal z-offset from the wrist |
+| `pos_z_noise` | `float` | `0.01` | Position noise along z-axis |
+
+Properties: `fov_rad_range`, `pitch_rad_range` (converted to radians).
+
+#### `OverheadCamera`
+
+```python
+from so101_nexus_core import OverheadCamera
+
+cam = OverheadCamera(width=320, height=240, fov_deg=45.0)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `640` | Image width in pixels |
+| `height` | `int` | `480` | Image height in pixels |
+| `fov_deg` | `float` | `45.0` | Vertical field-of-view in degrees |
 
 ---
 
@@ -229,11 +279,15 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `objects` | `list[SceneObject] \| None` | `None` | Objects to pick. Defaults to `[CubeObject()]` when `None`. |
+| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Objects to pick. A single object is auto-wrapped. Defaults to `[CubeObject()]` when `None`. |
 | `n_distractors` | `int` | `0` | Number of distractor objects to spawn |
 | `lift_threshold` | `float` | `0.05` | Height above the table to count as lifted (meters) |
 | `max_goal_height` | `float` | `0.08` | Maximum target lift height (meters) |
 | `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+
+### Default Observations
+
+When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (18 dimensions).
 
 ---
 
@@ -263,3 +317,87 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `cube_mass` | `float` | `0.01` | Mass of the cube (kg) |
 | `target_disc_radius` | `float` | `0.05` | Radius of the target disc (meters) |
 | `min_cube_target_separation` | `float` | `0.0375` | Minimum distance between cube and target spawn positions (meters) |
+
+### Default Observations
+
+When `observations` is not specified: `[EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (24 dimensions).
+
+---
+
+## ReachConfig
+
+Extends `EnvironmentConfig` with parameters for the reach-to-target primitive task.
+
+```python
+from so101_nexus_core import ReachConfig
+
+config = ReachConfig(target_radius=0.03, success_threshold=0.02)
+```
+
+### Additional Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `target_radius` | `float` | `0.02` | Visual radius of the target site sphere (meters) |
+| `target_workspace_half_extent` | `float` | `0.15` | Half-width of the cubic workspace for target sampling (meters) |
+| `success_threshold` | `float` | `0.02` | TCP-to-target distance (m) that counts as success |
+
+Defaults `max_episode_steps` to 512.
+
+### Default Observations
+
+When `observations` is not specified: `[JointPositions()]` (6 dimensions).
+
+---
+
+## LookAtConfig
+
+Extends `EnvironmentConfig` with parameters for the look-at primitive task.
+
+```python
+from so101_nexus_core import LookAtConfig, CubeObject
+
+config = LookAtConfig(
+    objects=CubeObject(color="blue"),
+    orientation_success_threshold_deg=5.0,
+)
+```
+
+### Additional Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Target object(s). Only `CubeObject` is supported. Defaults to `[CubeObject()]`. |
+| `orientation_success_threshold_deg` | `float` | `5.73` | Max angular error in degrees for success |
+
+Defaults `max_episode_steps` to 256.
+
+### Default Observations
+
+When `observations` is not specified: `[JointPositions()]` (6 dimensions).
+
+---
+
+## MoveConfig
+
+Extends `EnvironmentConfig` with parameters for the directional move primitive task.
+
+```python
+from so101_nexus_core import MoveConfig
+
+config = MoveConfig(direction="up", target_distance=0.10)
+```
+
+### Additional Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `direction` | `MoveDirection` | `"up"` | Cardinal direction: `"up"`, `"down"`, `"left"`, `"right"`, `"forward"`, `"backward"` |
+| `target_distance` | `float` | `0.10` | Distance in metres to travel from the initial TCP position |
+| `success_threshold` | `float` | `0.01` | Max residual distance (m) to count as success |
+
+Defaults `max_episode_steps` to 256.
+
+### Default Observations
+
+When `observations` is not specified: `[JointPositions()]` (6 dimensions).
