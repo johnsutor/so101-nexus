@@ -46,9 +46,7 @@ def compute_overhead_camera_params(
     dict with keys: lookat (3,), distance, elevation, azimuth.
     """
     cx, cy = spawn_center
-    visible_radius = (
-        np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
-    )
+    visible_radius = np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
     distance = _distance_for_radius(visible_radius, fov_deg)
     return {
         "lookat": np.array([cx, cy, 0.0]),
@@ -88,9 +86,7 @@ def compute_angled_camera_params(
     dict with keys: lookat (3,), distance, elevation, azimuth.
     """
     cx, cy = spawn_center
-    visible_radius = (
-        np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
-    )
+    visible_radius = np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
     distance = _distance_for_radius(visible_radius, fov_deg) * 1.2
     return {
         "lookat": np.array([cx, cy, 0.0]),

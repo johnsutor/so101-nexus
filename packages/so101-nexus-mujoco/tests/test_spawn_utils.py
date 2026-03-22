@@ -229,9 +229,14 @@ class TestCenterOffset:
         rng = np.random.default_rng(42)
         center = (0.15, 0.0)
         positions = sample_separated_positions(
-            rng, count=1, min_r=0.20, max_r=0.30,
-            angle_half=np.pi / 4, min_clearance=0.01,
-            bounding_radii=[0.01], center=center,
+            rng,
+            count=1,
+            min_r=0.20,
+            max_r=0.30,
+            angle_half=np.pi / 4,
+            min_clearance=0.01,
+            bounding_radii=[0.01],
+            center=center,
         )
         x, y = positions[0]
         assert x > 0.15  # shifted forward by center
@@ -239,14 +244,23 @@ class TestCenterOffset:
     def test_center_default_is_origin(self):
         rng = np.random.default_rng(42)
         pos_no_center = sample_separated_positions(
-            rng, count=1, min_r=0.20, max_r=0.30,
-            angle_half=np.pi / 4, min_clearance=0.01,
+            rng,
+            count=1,
+            min_r=0.20,
+            max_r=0.30,
+            angle_half=np.pi / 4,
+            min_clearance=0.01,
             bounding_radii=[0.01],
         )
         rng2 = np.random.default_rng(42)
         pos_origin = sample_separated_positions(
-            rng2, count=1, min_r=0.20, max_r=0.30,
-            angle_half=np.pi / 4, min_clearance=0.01,
-            bounding_radii=[0.01], center=(0.0, 0.0),
+            rng2,
+            count=1,
+            min_r=0.20,
+            max_r=0.30,
+            angle_half=np.pi / 4,
+            min_clearance=0.01,
+            bounding_radii=[0.01],
+            center=(0.0, 0.0),
         )
         assert pos_no_center == pos_origin
