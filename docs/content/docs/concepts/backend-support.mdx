@@ -5,18 +5,6 @@ description: Simulator backends, environment availability, and key differences.
 
 SO101-Nexus supports MuJoCo and ManiSkill as simulation backends. Genesis is on the roadmap but not yet implemented.
 
-## Environment Availability
-
-| Task | MuJoCo | ManiSkill (SO-100) | ManiSkill (SO-101) |
-| --- | --- | --- | --- |
-| PickLift | `MuJoCoPickLift-v1` | `ManiSkillPickLiftSO100-v1` | `ManiSkillPickLiftSO101-v1` |
-| PickAndPlace | `MuJoCoPickAndPlace-v1` | `ManiSkillPickAndPlaceSO100-v1` | `ManiSkillPickAndPlaceSO101-v1` |
-| Reach | `MuJoCoReach-v1` | -- | -- |
-| LookAt | `MuJoCoLookAt-v1` | -- | -- |
-| Move | `MuJoCoMove-v1` | -- | -- |
-
-Reach, LookAt, and Move are currently MuJoCo-only.
-
 ## Vectorization
 
 ManiSkill runs multiple simulation instances in a single GPU-accelerated process by passing `num_envs` directly to `gym.make()`. MuJoCo environments must be vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper.

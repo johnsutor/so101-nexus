@@ -3,6 +3,7 @@
   "pages": [
     "backend-support",
     "observations-and-camera-modes",
+    "poses",
     "tasks-and-success-conditions"
   ]
 }

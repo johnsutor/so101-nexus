@@ -26,8 +26,6 @@ from so101_nexus_core.observations import (
 )
 from so101_nexus_core.rewards import orientation_progress, reach_progress
 
-_REST_QPOS = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
-
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     """Shared MuJoCo base class for SO101-Nexus tasks.
@@ -175,26 +173,39 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._renderer = None
         self._viewer = None
 
-    def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> None:
+    def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> np.ndarray:
         """Reset arm joints to a target configuration with optional noise.
 
         Parameters
         ----------
         init_qpos : np.ndarray or None
             If provided, joints are set to this exact configuration (no noise).
-            If None, joints are reset to the default rest pose with Gaussian noise
-            scaled by ``robot_init_qpos_noise``.
+            If None, joints are reset based on ``config.robot.init_pose`` if set,
+            otherwise the default rest pose with Gaussian noise.
+
+        Returns
+        -------
+        np.ndarray
+            The target joint positions actually applied (before per-joint noise).
         """
-        target = init_qpos if init_qpos is not None else _REST_QPOS
+        if init_qpos is not None:
+            target = init_qpos
+            noise_scale = 0.0
+        else:
+            pose = self.config.robot.resolve_pose()
+            if pose is not None:
+                target = np.array(pose.sample_rad(self.np_random), dtype=np.float64)
+                noise_scale = 0.0  # free joints already have randomness
+            else:
+                target = np.array(self.config.robot.rest_qpos_rad, dtype=np.float64)
+                noise_scale = self.robot_init_qpos_noise
+
         for i, jid in enumerate(self._joint_ids):
             qpos_addr = self.model.jnt_qposadr[jid]
-            noise = (
-                0.0
-                if init_qpos is not None
-                else self.np_random.uniform(-self.robot_init_qpos_noise, self.robot_init_qpos_noise)
-            )
+            noise = 0.0 if noise_scale == 0.0 else self.np_random.uniform(-noise_scale, noise_scale)
             self.data.qpos[qpos_addr] = target[i] + noise
         self.data.ctrl[self._actuator_ids] = np.clip(target, self._ctrl_low, self._ctrl_high)
+        return target
 
     def _randomize_wrist_camera(self) -> None:
         """Randomize wrist camera pose and field of view for domain randomization.
@@ -357,11 +368,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                         f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
                     )
 
-        self._reset_robot_joints(init_qpos=init_qpos)
+        applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
         self._randomize_wrist_camera()
 
-        self._prev_target = (init_qpos if init_qpos is not None else _REST_QPOS).copy()
+        self._prev_target = applied_qpos.copy()
         mujoco.mj_forward(self.model, self.data)
 
         obs = self._get_obs()

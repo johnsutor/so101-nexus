@@ -44,6 +44,10 @@ class SO101(BaseAgent):
             qpos=np.array([0, -1.5708, 1.5708, 0.66, 0, -1.1]),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
+        "extended": Keyframe(
+            qpos=np.array([0, np.radians(-30.0), np.radians(20.0), np.radians(10.0), 0, -1.1]),
+            pose=sapien.Pose(q=euler2quat(0, 0, 0)),
+        ),
         "zero": Keyframe(
             qpos=np.array([0.0] * 6),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),

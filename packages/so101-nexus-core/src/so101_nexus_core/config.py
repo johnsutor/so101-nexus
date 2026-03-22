@@ -128,21 +128,128 @@ class CameraConfig:
         )
 
 
+JointSpec = float | tuple[float, float]
+
+
+class Pose:
+    """A named robot arm pose with fixed and free joints.
+
+    Each joint is either a fixed angle (``float``) or a uniform sampling
+    range (``tuple[float, float]``). Fixed joints return the same value
+    every call; free joints are sampled uniformly.
+
+    All angles are in degrees for the public API.
+
+    Parameters
+    ----------
+    name : str
+        Human-readable identifier for this pose.
+    shoulder_pan_deg : JointSpec
+        Shoulder pan angle or range in degrees.
+    shoulder_lift_deg : JointSpec
+        Shoulder lift angle or range in degrees.
+    elbow_flex_deg : JointSpec
+        Elbow flex angle or range in degrees.
+    wrist_flex_deg : JointSpec
+        Wrist flex angle or range in degrees.
+    wrist_roll_deg : JointSpec
+        Wrist roll angle or range in degrees.
+    gripper_deg : JointSpec
+        Gripper angle or range in degrees.
+    """
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        shoulder_pan_deg: JointSpec,
+        shoulder_lift_deg: JointSpec,
+        elbow_flex_deg: JointSpec,
+        wrist_flex_deg: JointSpec,
+        wrist_roll_deg: JointSpec,
+        gripper_deg: JointSpec,
+    ) -> None:
+        self.name = name
+        self._specs: tuple[JointSpec, ...] = (
+            shoulder_pan_deg,
+            shoulder_lift_deg,
+            elbow_flex_deg,
+            wrist_flex_deg,
+            wrist_roll_deg,
+            gripper_deg,
+        )
+        for spec in self._specs:
+            if isinstance(spec, tuple) and spec[0] > spec[1]:
+                raise ValueError(f"Joint range min must be <= max, got ({spec[0]}, {spec[1]})")
+
+    def sample(self, rng: np.random.Generator) -> tuple[float, ...]:
+        """Return a concrete 6-tuple of joint angles in degrees."""
+        values: list[float] = []
+        for spec in self._specs:
+            if isinstance(spec, tuple):
+                values.append(float(rng.uniform(spec[0], spec[1])))
+            else:
+                values.append(float(spec))
+        return tuple(values)
+
+    def sample_rad(self, rng: np.random.Generator) -> tuple[float, ...]:
+        """Return a concrete 6-tuple of joint angles in radians."""
+        return tuple(float(np.radians(v)) for v in self.sample(rng))
+
+    def __repr__(self) -> str:  # noqa: D105
+        return f"Pose(name={self.name!r})"
+
+
+REST_POSE = Pose(
+    name="rest",
+    shoulder_pan_deg=(-110.0, 110.0),
+    shoulder_lift_deg=-90.0,
+    elbow_flex_deg=90.0,
+    wrist_flex_deg=37.8152144786,
+    wrist_roll_deg=(-157.0, 163.0),
+    gripper_deg=(-10.0, 100.0),
+)
+
+EXTENDED_POSE = Pose(
+    name="extended",
+    shoulder_pan_deg=(-110.0, 110.0),
+    shoulder_lift_deg=-30.0,
+    elbow_flex_deg=20.0,
+    wrist_flex_deg=10.0,
+    wrist_roll_deg=(-157.0, 163.0),
+    gripper_deg=(-10.0, 100.0),
+)
+
+POSES: dict[str, Pose] = {
+    "rest": REST_POSE,
+    "extended": EXTENDED_POSE,
+}
+
+
 class RobotConfig:
     """Configurable robot parameters.
 
     Joint names are intentionally not included here — they are structural
     identifiers that must match the URDF/MJCF and should not be overridden.
 
-    Args:
-        rest_qpos_deg: Rest joint positions in degrees.
-        grasp_force_threshold: Force threshold for grasp detection.
-        static_vel_threshold: Velocity threshold for static detection.
+    Parameters
+    ----------
+    rest_qpos_deg : tuple[float, ...]
+        Rest joint positions in degrees.
+    init_pose : str | Pose | None
+        Initial pose for resets. A string looks up from ``POSES``,
+        a ``Pose`` instance is used directly, ``None`` uses the legacy
+        ``rest_qpos_deg`` + noise path.
+    grasp_force_threshold : float
+        Force threshold for grasp detection.
+    static_vel_threshold : float
+        Velocity threshold for static detection.
     """
 
     def __init__(
         self,
         rest_qpos_deg: tuple[float, ...] = (0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644),
+        init_pose: str | Pose | None = None,
         grasp_force_threshold: float = 0.5,
         static_vel_threshold: float = 0.2,
     ) -> None:
@@ -153,6 +260,17 @@ class RobotConfig:
             raise ValueError(
                 f"rest_qpos_deg must have exactly 6 elements, got {len(self.rest_qpos_deg)}"
             )
+        if isinstance(init_pose, str) and init_pose not in POSES:
+            raise ValueError(f"Unknown pose name {init_pose!r}. Available: {list(POSES)}")
+        self.init_pose: str | Pose | None = init_pose
+
+    def resolve_pose(self) -> Pose | None:
+        """Return the resolved Pose object, or None if not set."""
+        if self.init_pose is None:
+            return None
+        if isinstance(self.init_pose, Pose):
+            return self.init_pose
+        return POSES[self.init_pose]
 
     @property
     def rest_qpos_rad(self) -> tuple[float, ...]:
@@ -166,7 +284,8 @@ class RobotConfig:
 
     def __repr__(self) -> str:  # noqa: D105
         return (
-            f"RobotConfig(grasp_force_threshold={self.grasp_force_threshold}, "
+            f"RobotConfig(init_pose={self.init_pose!r}, "
+            f"grasp_force_threshold={self.grasp_force_threshold}, "
             f"static_vel_threshold={self.static_vel_threshold})"
         )
 

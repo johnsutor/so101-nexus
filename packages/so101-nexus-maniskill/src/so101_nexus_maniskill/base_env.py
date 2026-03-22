@@ -232,14 +232,23 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     def _reset_robot(self, env_idx: torch.Tensor) -> None:
         b = len(env_idx)
-        qpos = (
-            torch.tensor(self.agent.keyframes["rest"].qpos, dtype=torch.float32)
-            .unsqueeze(0)
-            .expand(b, -1)
-            .clone()
-        )
-        noise = (torch.rand_like(qpos) * 2 - 1) * self.robot_init_qpos_noise
-        self.agent.reset(qpos + noise)
+        pose = self.config.robot.resolve_pose()
+        if pose is not None:
+            # Sample a pose per environment using NumPy RNG seeded from torch for reproducibility
+            seed = int(torch.randint(0, 2**31, (1,)).item())
+            np_rng = np.random.default_rng(seed)
+            samples = np.array([pose.sample_rad(np_rng) for _ in range(b)], dtype=np.float32)
+            qpos = torch.tensor(samples, dtype=torch.float32, device=self.device)
+        else:
+            qpos = (
+                torch.tensor(self.agent.keyframes["rest"].qpos, dtype=torch.float32)
+                .unsqueeze(0)
+                .expand(b, -1)
+                .clone()
+            )
+            noise = (torch.rand_like(qpos) * 2 - 1) * self.robot_init_qpos_noise
+            qpos = qpos + noise
+        self.agent.reset(qpos)
         self.agent.robot.set_pose(sapien.Pose(p=[0, 0, 0], q=self._robot_cfg["base_quat"]))
 
     def _store_initial_obj_z(self, env_idx: torch.Tensor, z: torch.Tensor) -> None:
