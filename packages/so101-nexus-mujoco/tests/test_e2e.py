@@ -324,7 +324,8 @@ class TestObservationDrivenCameras:
         env = env_cls(config=cfg)
         obs, info = env.reset()
         assert isinstance(obs, dict)
-        assert "state" in obs and "overhead_camera" in obs
+        assert "state" in obs
+        assert "overhead_camera" in obs
         assert obs["overhead_camera"].shape == (48, 64, 3)
         assert obs["overhead_camera"].dtype == np.uint8
         obs2, _, _, _, _ = env.step(env.action_space.sample())
@@ -338,7 +339,8 @@ class TestObservationDrivenCameras:
         env = env_cls(config=cfg)
         obs, info = env.reset()
         assert isinstance(obs, dict)
-        assert "state" in obs and "wrist_camera" in obs
+        assert "state" in obs
+        assert "wrist_camera" in obs
         assert obs["wrist_camera"].shape == (48, 64, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
@@ -401,7 +403,8 @@ class TestObservationDrivenCameras:
         obs, info = env.reset()
         assert obs["state"].shape == (6,)
         assert "privileged_state" in info
-        assert "wrist_camera" in obs and "overhead_camera" in obs
+        assert "wrist_camera" in obs
+        assert "overhead_camera" in obs
         env.close()
 
     def test_render_independent_of_overhead_obs(self):

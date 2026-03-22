@@ -305,9 +305,7 @@ class TestObservationDrivenCameras:
     )
     def test_overhead_camera_sensor(self, env_id, config_cls):
         """OverheadCamera observation component creates an overhead_camera sensor."""
-        config = config_cls(
-            observations=[JointPositions(), OverheadCamera(width=64, height=48)]
-        )
+        config = config_cls(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
         env = gym.make(env_id, config=config, **BASE_KWARGS)
         sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
         assert "overhead_camera" in sensor_names
@@ -321,9 +319,7 @@ class TestObservationDrivenCameras:
     )
     def test_wrist_camera_sensor(self, env_id, config_cls):
         """WristCamera observation component creates a wrist_camera sensor."""
-        config = config_cls(
-            observations=[JointPositions(), WristCamera(width=64, height=48)]
-        )
+        config = config_cls(observations=[JointPositions(), WristCamera(width=64, height=48)])
         env = gym.make(env_id, config=config, **BASE_KWARGS)
         sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
         assert "wrist_camera" in sensor_names

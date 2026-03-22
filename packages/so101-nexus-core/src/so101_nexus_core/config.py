@@ -83,7 +83,7 @@ class RenderConfig:
         if self.width <= 0 or self.height <= 0:
             raise ValueError(f"render dimensions must be > 0, got {self.width}x{self.height}")
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return f"RenderConfig(width={self.width}, height={self.height})"
 
 

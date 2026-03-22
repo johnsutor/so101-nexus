@@ -44,7 +44,10 @@ def _env_kwargs(env_id: str) -> dict:
             "config": PickConfig(
                 render=_RENDER,
                 objects=[CubeObject(color="red")],
-                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+                observations=[
+                    JointPositions(),
+                    WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                ],
             )
         }
     if env_id in _PICK_AND_PLACE_ENVS:
@@ -52,7 +55,10 @@ def _env_kwargs(env_id: str) -> dict:
             "config": PickAndPlaceConfig(
                 render=_RENDER,
                 cube_colors="red",
-                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+                observations=[
+                    JointPositions(),
+                    WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                ],
             )
         }
     # YCB-based envs: extract model_id from env_id name
@@ -67,7 +73,10 @@ def _env_kwargs(env_id: str) -> dict:
             "config": PickConfig(
                 render=_RENDER,
                 objects=[YCBObject(model_id=model_id)],
-                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+                observations=[
+                    JointPositions(),
+                    WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                ],
             )
         }
     return {}

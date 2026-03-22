@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from so101_nexus_core.config import EnvironmentConfig
     from so101_nexus_maniskill.so101_agent import SO101
 
+
 class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
 

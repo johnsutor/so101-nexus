@@ -33,12 +33,8 @@ _PICK_AND_PLACE_STATE_OBS = [
 ]
 _REACH_STATE_OBS = [JointPositions, EndEffectorPose, TargetOffset]
 
-# Sizes: sum of component sizes
-# Pick: 6+7+1+7+3 = 24
 _PICK_STATE_SIZE = 24
-# PickAndPlace: 6+7+1+3+7+3+3 = 30
 _PICK_AND_PLACE_STATE_SIZE = 30
-# Reach: 6+7+3 = 16
 _REACH_STATE_SIZE = 16
 
 

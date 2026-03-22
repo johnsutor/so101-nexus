@@ -110,7 +110,7 @@ class TestConfigValidation:
             PickConfig(min_object_separation=-0.01)
 
     def test_obs_mode_visual_requires_camera_component(self):
-        with pytest.raises(ValueError, match="obs_mode.*visual.*requires.*camera"):
+        with pytest.raises(ValueError, match=r"obs_mode.*visual.*requires.*camera"):
             EnvironmentConfig(obs_mode="visual")
 
     def test_obs_mode_visual_with_wrist_camera_ok(self):
