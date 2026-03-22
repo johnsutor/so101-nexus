@@ -21,12 +21,6 @@ from so101_nexus_core.config import (
     SO101_JOINT_NAMES as SO101_JOINT_NAMES,
 )
 from so101_nexus_core.config import (
-    CameraConfig as CameraConfig,
-)
-from so101_nexus_core.config import (
-    CameraMode as CameraMode,
-)
-from so101_nexus_core.config import (
     ControlMode as ControlMode,
 )
 from so101_nexus_core.config import (

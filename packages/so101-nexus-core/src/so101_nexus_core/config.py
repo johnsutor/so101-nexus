@@ -31,7 +31,6 @@ from so101_nexus_core.observations import (
 if TYPE_CHECKING:
     from so101_nexus_core.observations import Observation
 ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
-CameraMode = Literal["fixed", "wrist", "both"]
 ObsMode = Literal["state", "visual"]
 
 YcbModelId = Literal[
@@ -68,70 +67,6 @@ DIRECTION_VECTORS: dict[MoveDirection, tuple[float, float, float]] = {
 }
 
 _validate_color_config = validate_color_config
-
-
-class CameraConfig:
-    """Camera resolution, wrist field-of-view, and wrist mount randomization defaults.
-
-    Args:
-        width: Image width in pixels (wrist and sensor cameras).
-        height: Image height in pixels (wrist and sensor cameras).
-        render_width: Width for the overhead render camera. Defaults to ``width``.
-        render_height: Height for the overhead render camera. Defaults to ``height``.
-        wrist_fov_deg_range: (min, max) wrist camera field-of-view in degrees.
-        wrist_pitch_deg_range: (min, max) wrist camera pitch in degrees.
-        wrist_cam_pos_x_noise: Noise on wrist camera x position.
-        wrist_cam_pos_y_center: Center of wrist camera y position.
-        wrist_cam_pos_y_noise: Noise on wrist camera y position.
-        wrist_cam_pos_z_center: Center of wrist camera z position.
-        wrist_cam_pos_z_noise: Noise on wrist camera z position.
-    """
-
-    def __init__(
-        self,
-        width: int = 640,
-        height: int = 480,
-        render_width: int | None = None,
-        render_height: int | None = None,
-        wrist_fov_deg_range: tuple[float, float] = (60.0, 90.0),
-        wrist_pitch_deg_range: tuple[float, float] = (-34.4, 0.0),
-        wrist_cam_pos_x_noise: float = 0.005,
-        wrist_cam_pos_y_center: float = 0.04,
-        wrist_cam_pos_y_noise: float = 0.01,
-        wrist_cam_pos_z_center: float = -0.04,
-        wrist_cam_pos_z_noise: float = 0.01,
-    ) -> None:
-        self.width = width
-        self.height = height
-        self.render_width = render_width if render_width is not None else width
-        self.render_height = render_height if render_height is not None else height
-        self.wrist_fov_deg_range = wrist_fov_deg_range
-        self.wrist_pitch_deg_range = wrist_pitch_deg_range
-        self.wrist_cam_pos_x_noise = wrist_cam_pos_x_noise
-        self.wrist_cam_pos_y_center = wrist_cam_pos_y_center
-        self.wrist_cam_pos_y_noise = wrist_cam_pos_y_noise
-        self.wrist_cam_pos_z_center = wrist_cam_pos_z_center
-        self.wrist_cam_pos_z_noise = wrist_cam_pos_z_noise
-        if self.width <= 0 or self.height <= 0:
-            raise ValueError(f"camera dimensions must be > 0, got {self.width}x{self.height}")
-
-    @property
-    def wrist_fov_rad_range(self) -> tuple[float, float]:
-        """Wrist FOV range converted to radians."""
-        lo, hi = self.wrist_fov_deg_range
-        return (float(np.radians(lo)), float(np.radians(hi)))
-
-    @property
-    def wrist_pitch_rad_range(self) -> tuple[float, float]:
-        """Wrist pitch range converted to radians."""
-        lo, hi = self.wrist_pitch_deg_range
-        return (float(np.radians(lo)), float(np.radians(hi)))
-
-    def __repr__(self) -> str:  # noqa: D105
-        return (
-            f"CameraConfig(width={self.width}, height={self.height}, "
-            f"wrist_fov_deg_range={self.wrist_fov_deg_range})"
-        )
 
 
 class RenderConfig:
@@ -445,7 +380,6 @@ class EnvironmentConfig:
     parameters live in subclass configs (PickConfig, etc.).
 
     Args:
-        camera: Camera configuration.
         render: Render camera resolution settings (visualization only).
         reward: Reward configuration.
         robot: Robot configuration.
@@ -457,7 +391,6 @@ class EnvironmentConfig:
         spawn_min_radius: Minimum spawn radius.
         spawn_max_radius: Maximum spawn radius.
         spawn_angle_half_range_deg: Half angular range for spawn angle in degrees.
-        camera_mode: Camera mode (fixed, wrist, or both).
         obs_mode: Observation mode (state or visual).
         robot_colors: Robot arm color(s).
         robot_init_qpos_noise: Initial joint position noise.
@@ -466,7 +399,6 @@ class EnvironmentConfig:
 
     def __init__(
         self,
-        camera: CameraConfig | None = None,
         render: RenderConfig | None = None,
         reward: RewardConfig | None = None,
         robot: RobotConfig | None = None,
@@ -478,13 +410,11 @@ class EnvironmentConfig:
         spawn_min_radius: float = 0.20,
         spawn_max_radius: float = 0.40,
         spawn_angle_half_range_deg: float = 90.0,
-        camera_mode: CameraMode = "fixed",
         obs_mode: ObsMode = "state",
         robot_colors: ColorConfig = "yellow",
         robot_init_qpos_noise: float = 0.02,
         observations: list[Observation] | None = None,
     ) -> None:
-        self.camera = camera if camera is not None else CameraConfig()
         self.render = render if render is not None else RenderConfig()
         self.reward = reward if reward is not None else RewardConfig()
         self.robot = robot if robot is not None else RobotConfig()
@@ -496,13 +426,10 @@ class EnvironmentConfig:
         self.spawn_min_radius = spawn_min_radius
         self.spawn_max_radius = spawn_max_radius
         self.spawn_angle_half_range_deg = spawn_angle_half_range_deg
-        self.camera_mode = camera_mode
         self.obs_mode = obs_mode
         self.robot_colors = robot_colors
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.observations = observations
-        if self.camera_mode not in ("fixed", "wrist", "both"):
-            raise ValueError(f"camera_mode must be fixed|wrist|both, got {self.camera_mode!r}")
         if self.obs_mode not in ("state", "visual"):
             raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
         if self.obs_mode == "visual":
@@ -511,17 +438,11 @@ class EnvironmentConfig:
             has_camera_component = self.observations is not None and any(
                 isinstance(c, _CamObs) for c in self.observations
             )
-            has_camera_mode = self.camera_mode in ("wrist", "both")
-            if not has_camera_component and not has_camera_mode:
+            if not has_camera_component:
                 raise ValueError(
                     "obs_mode='visual' requires at least one camera observation "
-                    "component (e.g. WristCamera() or OverheadCamera()) in observations, "
-                    "or camera_mode='wrist'"
+                    "component (e.g. WristCamera() or OverheadCamera()) in observations"
                 )
-        if self.camera.width <= 0 or self.camera.height <= 0:
-            raise ValueError(
-                f"camera dimensions must be > 0, got {self.camera.width}x{self.camera.height}"
-            )
         _validate_color_config(self.ground_colors, "ground_colors")
         _validate_color_config(self.robot_colors, "robot_colors")
         if self.spawn_min_radius < 0:
@@ -546,7 +467,7 @@ class EnvironmentConfig:
     def __repr__(self) -> str:  # noqa: D105
         return (
             f"{type(self).__name__}(max_episode_steps={self.max_episode_steps}, "
-            f"goal_thresh={self.goal_thresh}, camera_mode={self.camera_mode!r})"
+            f"goal_thresh={self.goal_thresh})"
         )
 
 

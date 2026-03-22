@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 import gymnasium
 import mujoco
@@ -63,26 +63,16 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         *,
         config: EnvironmentConfig,
         render_mode: str | None,
-        camera_mode: Literal["state_only", "wrist"],
         control_mode: ControlMode,
         robot_init_qpos_noise: float,
     ) -> None:
         if control_mode not in self._VALID_CONTROL_MODES:
             valid = sorted(self._VALID_CONTROL_MODES)
             raise ValueError(f"control_mode must be one of {valid}, got {control_mode!r}")
-        if camera_mode not in ("state_only", "wrist"):
-            raise ValueError(f"camera_mode must be state_only|wrist, got {camera_mode!r}")
-        if config.camera.width <= 0 or config.camera.height <= 0:
-            raise ValueError(
-                f"camera dimensions must be > 0, got {config.camera.width}x{config.camera.height}"
-            )
 
         self.config = config
         self.control_mode = control_mode
         self.render_mode = render_mode
-        self.camera_mode = camera_mode
-        self.camera_width = config.camera.width
-        self.camera_height = config.camera.height
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self._privileged_state: np.ndarray | None = None
 
@@ -150,14 +140,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 elif isinstance(comp, OverheadCamera):
                     self._overhead_cam_component = comp
 
-        # --- Wrist camera: prefer observation component, fall back to camera_mode ---
-        has_wrist = self._wrist_cam_component is not None or getattr(self, "camera_mode", None) == "wrist"
+        # --- Wrist camera: driven by WristCamera observation component ---
+        has_wrist = self._wrist_cam_component is not None
         if has_wrist:
             self._wrist_cam_id = mujoco.mj_name2id(
                 self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam"
             )
-            wrist_w = self._wrist_cam_component.width if self._wrist_cam_component else self.camera_width
-            wrist_h = self._wrist_cam_component.height if self._wrist_cam_component else self.camera_height
+            wrist_w = self._wrist_cam_component.width
+            wrist_h = self._wrist_cam_component.height
             self._wrist_renderer = mujoco.Renderer(self.model, height=wrist_h, width=wrist_w)
         else:
             self._wrist_cam_id = None
@@ -259,27 +249,19 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _randomize_wrist_camera(self) -> None:
         """Randomize wrist camera pose and field of view for domain randomization.
 
-        Uses ``WristCamera`` observation component parameters when available,
-        otherwise falls back to ``config.camera``. No-ops when no wrist camera
-        is active.
+        Uses ``WristCamera`` observation component parameters. No-ops when no
+        wrist camera is active.
         """
         if self._wrist_renderer is None:
             return
 
         wc = self._wrist_cam_component
-        if wc is not None:
-            pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
-            fov_lo, fov_hi = wc.fov_deg_range
-            pos_x_noise = wc.pos_x_noise
-            pos_y_center, pos_y_noise = wc.pos_y_center, wc.pos_y_noise
-            pos_z_center, pos_z_noise = wc.pos_z_center, wc.pos_z_noise
-        else:
-            cam = self.config.camera
-            pitch_lo_rad, pitch_hi_rad = cam.wrist_pitch_rad_range
-            fov_lo, fov_hi = cam.wrist_fov_deg_range
-            pos_x_noise = cam.wrist_cam_pos_x_noise
-            pos_y_center, pos_y_noise = cam.wrist_cam_pos_y_center, cam.wrist_cam_pos_y_noise
-            pos_z_center, pos_z_noise = cam.wrist_cam_pos_z_center, cam.wrist_cam_pos_z_noise
+        assert wc is not None, "wrist renderer requires a WristCamera component"
+        pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
+        fov_lo, fov_hi = wc.fov_deg_range
+        pos_x_noise = wc.pos_x_noise
+        pos_y_center, pos_y_noise = wc.pos_y_center, wc.pos_y_noise
+        pos_z_center, pos_z_noise = wc.pos_z_center, wc.pos_z_noise
 
         pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
         euler = np.array([pitch_rad, 0.0, 0.0])
@@ -474,14 +456,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(
                     self.model,
-                    height=self.config.camera.render_height,
-                    width=self.config.camera.render_width,
+                    height=self.config.render.height,
+                    width=self.config.render.width,
                 )
             if not hasattr(self, "_overhead_cam"):
                 params = compute_overhead_camera_params(
                     spawn_center=self.config.spawn_center,
                     spawn_max_radius=self.config.spawn_max_radius,
-                    aspect=self.config.camera.render_width / self.config.camera.render_height,
+                    aspect=self.config.render.width / self.config.render.height,
                 )
                 self._overhead_cam = mujoco.MjvCamera()
                 self._overhead_cam.type = mujoco.mjtCamera.mjCAMERA_FREE

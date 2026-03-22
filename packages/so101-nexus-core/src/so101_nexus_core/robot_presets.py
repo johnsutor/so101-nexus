@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import numpy as np
+
 from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS,
     EnvironmentConfig,
@@ -30,11 +32,11 @@ def build_maniskill_robot_configs(
                 wrist_cam = comp
                 break
 
-    # FOV range: prefer WristCamera component, fall back to CameraConfig
+    # FOV range from WristCamera component, or default
     if wrist_cam is not None:
         fov_range = list(wrist_cam.fov_rad_range)
     else:
-        fov_range = list(config.camera.wrist_fov_rad_range)
+        fov_range = [np.radians(60.0), np.radians(90.0)]
 
     for uid, preset in ROBOT_CAMERA_PRESETS.items():
         cfg: dict[str, Any] = {

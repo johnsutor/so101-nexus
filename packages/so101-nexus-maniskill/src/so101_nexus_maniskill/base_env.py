@@ -31,12 +31,8 @@ from so101_nexus_core.observations import (
 if TYPE_CHECKING:
     from mani_skill.agents.robots.so100.so_100 import SO100
 
-    from so101_nexus_core.config import CameraMode, EnvironmentConfig
+    from so101_nexus_core.config import EnvironmentConfig
     from so101_nexus_maniskill.so101_agent import SO101
-
-# Fixed sensor camera field-of-view: 60 degrees expressed in radians.
-_SENSOR_CAM_FOV_RAD: float = float(np.radians(60.0))
-
 
 class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
@@ -55,10 +51,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
 
         self.config = config
-        self.camera_mode: CameraMode = config.camera_mode
         self.robot_init_qpos_noise = config.robot_init_qpos_noise
-        self.camera_width = config.camera.width
-        self.camera_height = config.camera.height
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
 
@@ -73,14 +66,12 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                     self._overhead_cam_component = comp
 
     def _default_reconfiguration_freq(self) -> int:
-        """Return the default reconfiguration frequency based on camera mode.
+        """Return the default reconfiguration frequency based on camera components.
 
-        Wrist/both camera modes need scene reconfiguration every episode
+        Wrist camera needs scene reconfiguration every episode
         so that the wrist camera updates correctly.
         """
-        if self._wrist_cam_component is not None:
-            return 1
-        return 1 if self.config.camera_mode in ("wrist", "both") else 0
+        return 1 if self._wrist_cam_component is not None else 0
 
     # Tensor equivalent of so101_nexus_core.rewards.reach_progress
     def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
@@ -123,15 +114,11 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         cfg = self._robot_cfg
         configs: list[CameraConfig] = []
 
-        # Wrist camera: prefer observation component, fall back to camera_mode
-        has_wrist = self._wrist_cam_component is not None or self.camera_mode in (
-            "wrist",
-            "both",
-        )
-        if has_wrist:
+        # Wrist camera: driven by WristCamera observation component
+        if self._wrist_cam_component is not None:
             wc = self._wrist_cam_component
-            w = wc.width if wc else self.camera_width
-            h = wc.height if wc else self.camera_height
+            w = wc.width
+            h = wc.height
             mount_link = self.agent.robot.links_map[cfg["wrist_camera_mount_link"]]
             pos_c = cfg["wrist_cam_pos_center"]
             pos_n = cfg["wrist_cam_pos_noise"]
@@ -160,27 +147,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                 )
             )
 
-        # Fixed camera: legacy camera_mode only (when no observation components override)
-        has_fixed = (
-            self._wrist_cam_component is None
-            and self._overhead_cam_component is None
-            and self.camera_mode in ("fixed", "both")
-        )
-        if has_fixed:
-            pose = sapien_utils.look_at(cfg["sensor_cam_eye_pos"], cfg["sensor_cam_target_pos"])
-            configs.append(
-                CameraConfig(
-                    "base_camera",
-                    pose,
-                    self.camera_width,
-                    self.camera_height,
-                    _SENSOR_CAM_FOV_RAD,
-                    0.01,
-                    100,
-                )
-            )
-
-        # Overhead camera: observation component
+        # Overhead camera: driven by OverheadCamera observation component
         if self._overhead_cam_component is not None:
             oc = self._overhead_cam_component
             eye, target = compute_overhead_eye_target(
@@ -206,8 +173,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self) -> CameraConfig:
-        rw = self.config.camera.render_width
-        rh = self.config.camera.render_height
+        rw = self.config.render.width
+        rh = self.config.render.height
         eye, target = compute_overhead_eye_target(
             spawn_center=self.config.spawn_center,
             spawn_max_radius=self.config.spawn_max_radius,
