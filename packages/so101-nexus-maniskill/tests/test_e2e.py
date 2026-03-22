@@ -282,29 +282,6 @@ def test_reward_bounds(env_id):
     env.close()
 
 
-_camera_mode_env_params = [
-    (REACH_ENV_IDS[0], ReachConfig),
-    (LOOKAT_ENV_IDS[0], LookAtConfig),
-    (MOVE_ENV_IDS[0], MoveConfig),
-    (PICK_LIFT_ENV_IDS[0], PickConfig),
-    (PICK_AND_PLACE_ENV_IDS[0], PickAndPlaceConfig),
-]
-
-
-@pytest.mark.parametrize("camera_mode", ["fixed", "wrist", "both"])
-@pytest.mark.parametrize(
-    "env_id,config_cls",
-    _camera_mode_env_params,
-    ids=[eid for eid, _ in _camera_mode_env_params],
-)
-def test_camera_mode(env_id, config_cls, camera_mode):
-    """Each camera mode (fixed, wrist, both) works on every env type."""
-    config = config_cls(camera_mode=camera_mode)
-    env = gym.make(env_id, config=config, **BASE_KWARGS)
-    _run_episode(env)
-    env.close()
-
-
 # ---------------------------------------------------------------------------
 # Observation-driven camera tests
 # ---------------------------------------------------------------------------

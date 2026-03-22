@@ -13,18 +13,19 @@ import pytest
 
 import so101_nexus_mujoco  # noqa: F401
 from so101_nexus_core.config import (
-    CameraConfig,
     PickAndPlaceConfig,
     PickConfig,
+    RenderConfig,
 )
 from so101_nexus_core.objects import CubeObject, YCBObject
+from so101_nexus_core.observations import JointPositions, WristCamera
 from so101_nexus_core.visualization import CameraView, to_uint8
 
 from .conftest import verify_scene
 
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
-_CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+_RENDER = RenderConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
 WORKSPACE_CENTER = np.array([0.15, 0.0, 0.0])
 
@@ -39,9 +40,21 @@ _PICK_AND_PLACE_ENVS = {
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
     if env_id in _PICK_LIFT_ENVS:
-        return {"config": PickConfig(camera=_CAM, objects=[CubeObject(color="red")])}
+        return {
+            "config": PickConfig(
+                render=_RENDER,
+                objects=[CubeObject(color="red")],
+                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+            )
+        }
     if env_id in _PICK_AND_PLACE_ENVS:
-        return {"config": PickAndPlaceConfig(camera=_CAM, cube_colors="red")}
+        return {
+            "config": PickAndPlaceConfig(
+                render=_RENDER,
+                cube_colors="red",
+                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+            )
+        }
     # YCB-based envs: extract model_id from env_id name
     _YCB_ENV_TO_MODEL: dict[str, str] = {
         "MuJoCoPickBananaLift-v1": "011_banana",
@@ -50,7 +63,13 @@ def _env_kwargs(env_id: str) -> dict:
     }
     model_id = _YCB_ENV_TO_MODEL.get(env_id)
     if model_id is not None:
-        return {"config": PickConfig(camera=_CAM, objects=[YCBObject(model_id=model_id)])}
+        return {
+            "config": PickConfig(
+                render=_RENDER,
+                objects=[YCBObject(model_id=model_id)],
+                observations=[JointPositions(), WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)],
+            )
+        }
     return {}
 
 
@@ -103,7 +122,6 @@ class TestMuJoCoCaptureInfrastructure:
     def test_capture_views(self, env_id: str):
         env = gymnasium.make(
             env_id,
-            camera_mode="wrist",
             **_env_kwargs(env_id),
         )
         env.reset(seed=42)
@@ -140,7 +158,6 @@ class TestMuJoCoVisual:
     def test_env_renders_correctly(self, visual_verifier, env_id: str):
         env = gymnasium.make(
             env_id,
-            camera_mode="wrist",
             **_env_kwargs(env_id),
         )
         env.reset(seed=42)

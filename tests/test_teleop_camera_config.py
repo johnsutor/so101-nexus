@@ -16,13 +16,13 @@ def _load_teleop_module():
     return module
 
 
-def test_recording_env_kwargs_override_mujoco_camera_size():
+def test_recording_env_kwargs_override_mujoco_render_size():
     teleop = _load_teleop_module()
 
     kwargs = teleop._recording_env_kwargs("MuJoCoPickLift-v1", 480, 512)
 
-    assert kwargs["config"].camera.width == 480
-    assert kwargs["config"].camera.height == 512
+    assert kwargs["config"].render.width == 480
+    assert kwargs["config"].render.height == 512
 
 
 def test_recording_env_kwargs_preserve_registered_env_kwargs():
@@ -30,5 +30,5 @@ def test_recording_env_kwargs_preserve_registered_env_kwargs():
 
     kwargs = teleop._recording_env_kwargs("MuJoCoPickAndPlace-v1", 640, 360)
 
-    assert kwargs["config"].camera.width == 640
-    assert kwargs["config"].camera.height == 360
+    assert kwargs["config"].render.width == 640
+    assert kwargs["config"].render.height == 360

@@ -6,13 +6,10 @@ from so101_nexus_core.config import (
     PickConfig,
     RobotConfig,
 )
+from so101_nexus_core.observations import OverheadCamera, WristCamera
 
 
 class TestNewConfigFields:
-    def test_environment_config_has_camera_mode(self):
-        cfg = EnvironmentConfig()
-        assert cfg.camera_mode == "fixed"
-
     def test_environment_config_has_robot_colors(self):
         cfg = EnvironmentConfig()
         assert cfg.robot_colors == "yellow"
@@ -28,10 +25,6 @@ class TestNewConfigFields:
     def test_pick_and_place_has_target_colors(self):
         cfg = PickAndPlaceConfig()
         assert cfg.target_colors == "blue"
-
-    def test_camera_mode_custom(self):
-        cfg = EnvironmentConfig(camera_mode="wrist")
-        assert cfg.camera_mode == "wrist"
 
     def test_robot_colors_custom(self):
         cfg = EnvironmentConfig(robot_colors="red")
@@ -58,10 +51,6 @@ class TestConfigValidation:
     def test_same_cube_and_target_color_warns(self):
         with pytest.warns(UserWarning, match="overlap"):
             PickAndPlaceConfig(cube_colors="red", target_colors="red")
-
-    def test_invalid_camera_mode(self):
-        with pytest.raises(ValueError, match="camera_mode"):
-            EnvironmentConfig(camera_mode="overhead")
 
     def test_invalid_ground_color(self):
         with pytest.raises(ValueError, match="ground_colors"):
@@ -119,3 +108,21 @@ class TestConfigValidation:
     def test_pick_config_negative_min_object_separation(self):
         with pytest.raises(ValueError, match="min_object_separation must be >= 0"):
             PickConfig(min_object_separation=-0.01)
+
+    def test_obs_mode_visual_requires_camera_component(self):
+        with pytest.raises(ValueError, match="obs_mode.*visual.*requires.*camera"):
+            EnvironmentConfig(obs_mode="visual")
+
+    def test_obs_mode_visual_with_wrist_camera_ok(self):
+        cfg = EnvironmentConfig(
+            obs_mode="visual",
+            observations=[WristCamera(width=64, height=48)],
+        )
+        assert cfg.obs_mode == "visual"
+
+    def test_obs_mode_visual_with_overhead_camera_ok(self):
+        cfg = EnvironmentConfig(
+            obs_mode="visual",
+            observations=[OverheadCamera(width=64, height=48)],
+        )
+        assert cfg.obs_mode == "visual"

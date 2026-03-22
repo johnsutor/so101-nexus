@@ -229,77 +229,6 @@ def test_control_mode(env_id, control_mode):
     env.close()
 
 
-_wrist_env_params = [
-    ("MuJoCoReach-v1", ReachConfig),
-    ("MuJoCoLookAt-v1", LookAtConfig),
-    ("MuJoCoMove-v1", MoveConfig),
-    ("MuJoCoPickLift-v1", PickConfig),
-    ("MuJoCoPickAndPlace-v1", PickAndPlaceConfig),
-]
-
-
-@pytest.mark.parametrize(
-    "env_id,config_cls",
-    _wrist_env_params,
-    ids=[eid for eid, _ in _wrist_env_params],
-)
-def test_wrist_camera_state_obs(env_id, config_cls):
-    """Wrist camera mode returns dict obs with state and wrist_camera keys."""
-    from so101_nexus_mujoco.look_at_env import LookAtEnv
-    from so101_nexus_mujoco.move_env import MoveEnv
-    from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
-    from so101_nexus_mujoco.pick_env import PickLiftEnv
-    from so101_nexus_mujoco.reach_env import ReachEnv
-
-    env_cls_map = {
-        "MuJoCoReach-v1": ReachEnv,
-        "MuJoCoLookAt-v1": LookAtEnv,
-        "MuJoCoMove-v1": MoveEnv,
-        "MuJoCoPickLift-v1": PickLiftEnv,
-        "MuJoCoPickAndPlace-v1": PickAndPlaceEnv,
-    }
-    config = config_cls(camera_mode="wrist")
-    env = env_cls_map[env_id](config=config, camera_mode="wrist")
-    obs, _info = env.reset()
-    assert isinstance(obs, dict)
-    assert "state" in obs
-    assert "wrist_camera" in obs
-    assert obs["wrist_camera"].shape == (config.camera.height, config.camera.width, 3)
-    assert obs["wrist_camera"].dtype == np.uint8
-    _run_episode(env)
-    env.close()
-
-
-@pytest.mark.parametrize(
-    "env_id,config_cls",
-    _wrist_env_params,
-    ids=[eid for eid, _ in _wrist_env_params],
-)
-def test_visual_obs_mode(env_id, config_cls):
-    """Visual obs mode returns joint-only state with privileged_state in info."""
-    from so101_nexus_mujoco.look_at_env import LookAtEnv
-    from so101_nexus_mujoco.move_env import MoveEnv
-    from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
-    from so101_nexus_mujoco.pick_env import PickLiftEnv
-    from so101_nexus_mujoco.reach_env import ReachEnv
-
-    env_cls_map = {
-        "MuJoCoReach-v1": ReachEnv,
-        "MuJoCoLookAt-v1": LookAtEnv,
-        "MuJoCoMove-v1": MoveEnv,
-        "MuJoCoPickLift-v1": PickLiftEnv,
-        "MuJoCoPickAndPlace-v1": PickAndPlaceEnv,
-    }
-    config = config_cls(camera_mode="wrist", obs_mode="visual")
-    env = env_cls_map[env_id](config=config, camera_mode="wrist")
-    obs, info = env.reset()
-    assert isinstance(obs, dict)
-    assert obs["state"].shape == (6,)
-    assert "privileged_state" in info
-    _run_episode(env)
-    env.close()
-
-
 @pytest.mark.parametrize("env_id", MUJOCO_ENV_IDS)
 def test_multiple_resets(env_id):
     """Each environment can be reset multiple times without errors."""
@@ -447,10 +376,9 @@ class TestObservationDrivenCameras:
         env_cls, config_cls = _get_env_cls_map()[env_key]
         cfg = config_cls(
             obs_mode="visual",
-            camera_mode="wrist",
             observations=[JointPositions(), OverheadCamera(width=64, height=48)],
         )
-        env = env_cls(config=cfg, camera_mode="wrist")
+        env = env_cls(config=cfg)
         obs, info = env.reset()
         assert isinstance(obs, dict)
         assert obs["state"].shape == (6,)
@@ -463,14 +391,13 @@ class TestObservationDrivenCameras:
         env_cls, config_cls = _get_env_cls_map()[env_key]
         cfg = config_cls(
             obs_mode="visual",
-            camera_mode="wrist",
             observations=[
                 JointPositions(),
                 WristCamera(width=64, height=48),
                 OverheadCamera(width=32, height=24),
             ],
         )
-        env = env_cls(config=cfg, camera_mode="wrist")
+        env = env_cls(config=cfg)
         obs, info = env.reset()
         assert obs["state"].shape == (6,)
         assert "privileged_state" in info
