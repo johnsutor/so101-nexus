@@ -11,6 +11,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig,
     PickConfig,
 )
+from so101_nexus_core.observations import WristCamera
 
 
 def build_maniskill_robot_configs(
@@ -20,7 +21,20 @@ def build_maniskill_robot_configs(
     if config is None:
         config = EnvironmentConfig()
     configs: dict[str, dict[str, Any]] = {}
-    fov_range = list(config.camera.wrist_fov_rad_range)
+
+    # Find WristCamera component if present
+    wrist_cam: WristCamera | None = None
+    if config.observations is not None:
+        for comp in config.observations:
+            if isinstance(comp, WristCamera):
+                wrist_cam = comp
+                break
+
+    # FOV range: prefer WristCamera component, fall back to CameraConfig
+    if wrist_cam is not None:
+        fov_range = list(wrist_cam.fov_rad_range)
+    else:
+        fov_range = list(config.camera.wrist_fov_rad_range)
 
     for uid, preset in ROBOT_CAMERA_PRESETS.items():
         cfg: dict[str, Any] = {

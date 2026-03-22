@@ -19,7 +19,14 @@ from transforms3d.euler import euler2quat
 
 from so101_nexus_core.camera_utils import compute_overhead_eye_target
 from so101_nexus_core.constants import sample_color
-from so101_nexus_core.observations import EndEffectorPose, GraspState, JointPositions
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    JointPositions,
+    OverheadCamera,
+    WristCamera,
+    _CameraObservation,
+)
 
 if TYPE_CHECKING:
     from mani_skill.agents.robots.so100.so_100 import SO100
@@ -55,12 +62,24 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
 
+        # Detect camera observation components
+        self._wrist_cam_component: WristCamera | None = None
+        self._overhead_cam_component: OverheadCamera | None = None
+        if config.observations is not None:
+            for comp in config.observations:
+                if isinstance(comp, WristCamera):
+                    self._wrist_cam_component = comp
+                elif isinstance(comp, OverheadCamera):
+                    self._overhead_cam_component = comp
+
     def _default_reconfiguration_freq(self) -> int:
         """Return the default reconfiguration frequency based on camera mode.
 
         Wrist/both camera modes need scene reconfiguration every episode
         so that the wrist camera updates correctly.
         """
+        if self._wrist_cam_component is not None:
+            return 1
         return 1 if self.config.camera_mode in ("wrist", "both") else 0
 
     # Tensor equivalent of so101_nexus_core.rewards.reach_progress
@@ -104,21 +123,15 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         cfg = self._robot_cfg
         configs: list[CameraConfig] = []
 
-        if self.camera_mode in ("fixed", "both"):
-            pose = sapien_utils.look_at(cfg["sensor_cam_eye_pos"], cfg["sensor_cam_target_pos"])
-            configs.append(
-                CameraConfig(
-                    "base_camera",
-                    pose,
-                    self.camera_width,
-                    self.camera_height,
-                    _SENSOR_CAM_FOV_RAD,
-                    0.01,
-                    100,
-                )
-            )
-
-        if self.camera_mode in ("wrist", "both"):
+        # Wrist camera: prefer observation component, fall back to camera_mode
+        has_wrist = self._wrist_cam_component is not None or self.camera_mode in (
+            "wrist",
+            "both",
+        )
+        if has_wrist:
+            wc = self._wrist_cam_component
+            w = wc.width if wc else self.camera_width
+            h = wc.height if wc else self.camera_height
             mount_link = self.agent.robot.links_map[cfg["wrist_camera_mount_link"]]
             pos_c = cfg["wrist_cam_pos_center"]
             pos_n = cfg["wrist_cam_pos_noise"]
@@ -138,12 +151,54 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                         p=torch.tensor(p, dtype=torch.float32),
                         q=torch.tensor(q, dtype=torch.float32),
                     ),
-                    self.camera_width,
-                    self.camera_height,
+                    w,
+                    h,
                     fov,
                     0.01,
                     100,
                     mount=mount_link,
+                )
+            )
+
+        # Fixed camera: legacy camera_mode only (when no observation components override)
+        has_fixed = (
+            self._wrist_cam_component is None
+            and self._overhead_cam_component is None
+            and self.camera_mode in ("fixed", "both")
+        )
+        if has_fixed:
+            pose = sapien_utils.look_at(cfg["sensor_cam_eye_pos"], cfg["sensor_cam_target_pos"])
+            configs.append(
+                CameraConfig(
+                    "base_camera",
+                    pose,
+                    self.camera_width,
+                    self.camera_height,
+                    _SENSOR_CAM_FOV_RAD,
+                    0.01,
+                    100,
+                )
+            )
+
+        # Overhead camera: observation component
+        if self._overhead_cam_component is not None:
+            oc = self._overhead_cam_component
+            eye, target = compute_overhead_eye_target(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                fov_deg=oc.fov_deg,
+                aspect=oc.width / oc.height,
+            )
+            pose = sapien_utils.look_at(eye, target, up=(1, 0, 0))
+            configs.append(
+                CameraConfig(
+                    "overhead_camera",
+                    pose,
+                    oc.width,
+                    oc.height,
+                    float(np.radians(oc.fov_deg)),
+                    0.01,
+                    100,
                 )
             )
 
@@ -276,6 +331,8 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 continue  # ManiSkill includes qpos automatically
+            if isinstance(comp, _CameraObservation):
+                continue  # Handled via _default_sensor_configs
             if isinstance(comp, EndEffectorPose):
                 obs["tcp_pose"] = self.agent.tcp_pose.raw_pose
             elif isinstance(comp, GraspState):
