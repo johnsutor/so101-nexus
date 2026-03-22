@@ -6,6 +6,18 @@ from so101_nexus_core.config import (
     DIRECTION_VECTORS as DIRECTION_VECTORS,
 )
 from so101_nexus_core.config import (
+    EXTENDED_POSE as EXTENDED_POSE,
+)
+from so101_nexus_core.config import (
+    POSES as POSES,
+)
+from so101_nexus_core.config import (
+    Pose as Pose,
+)
+from so101_nexus_core.config import (
+    REST_POSE as REST_POSE,
+)
+from so101_nexus_core.config import (
     ROBOT_CAMERA_PRESETS as ROBOT_CAMERA_PRESETS,
 )
 from so101_nexus_core.config import (
