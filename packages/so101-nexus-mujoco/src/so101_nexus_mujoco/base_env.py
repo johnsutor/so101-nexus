@@ -188,9 +188,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
             )
         state_size = (
-            len(SO101_JOINT_NAMES)
-            if self.config.obs_mode == "visual"
-            else self._state_obs_size()
+            len(SO101_JOINT_NAMES) if self.config.obs_mode == "visual" else self._state_obs_size()
         )
         obs_dict: dict[str, spaces.Space] = {
             "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64),
@@ -198,12 +196,18 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self._wrist_cam_component is not None:
             wc = self._wrist_cam_component
             obs_dict["wrist_camera"] = spaces.Box(
-                low=0, high=255, shape=(wc.height, wc.width, 3), dtype=np.uint8,
+                low=0,
+                high=255,
+                shape=(wc.height, wc.width, 3),
+                dtype=np.uint8,
             )
         if self._overhead_cam_component is not None:
             oc = self._overhead_cam_component
             obs_dict["overhead_camera"] = spaces.Box(
-                low=0, high=255, shape=(oc.height, oc.width, 3), dtype=np.uint8,
+                low=0,
+                high=255,
+                shape=(oc.height, oc.width, 3),
+                dtype=np.uint8,
             )
         return spaces.Dict(obs_dict)
 
@@ -540,10 +544,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
         """Build observation from component list, optionally including camera images."""
         state = self._compute_obs_components()
-        has_any_camera = (
-            self._wrist_renderer is not None
-            or self._overhead_obs_renderer is not None
-        )
+        has_any_camera = self._wrist_renderer is not None or self._overhead_obs_renderer is not None
         if not has_any_camera:
             return state
 
