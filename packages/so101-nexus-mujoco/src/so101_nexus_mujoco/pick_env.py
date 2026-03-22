@@ -351,6 +351,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             angle_half,
             self.config.min_object_separation,
             active_bounding_radii,
+            center=self.config.spawn_center,
         )
 
         # Place active slots at their sampled positions.

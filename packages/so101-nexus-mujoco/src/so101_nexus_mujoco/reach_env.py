@@ -93,11 +93,19 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         self._finish_model_setup()
 
     def _task_reset(self) -> None:
-        half = self.config.target_workspace_half_extent
-        center = np.array([0.15, 0.0, 0.15])
-        self._target_pos = center + self.np_random.uniform(-half, half, size=3)
-        # Keep target above floor
-        self._target_pos[2] = max(self._target_pos[2], 0.05)
+        rng = self.np_random
+        cx, cy = self.config.spawn_center
+        min_r = self.config.spawn_min_radius
+        max_r = self.config.spawn_max_radius
+        angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
+
+        r = rng.uniform(min_r, max_r)
+        theta = rng.uniform(-angle_half, angle_half)
+        x = cx + r * np.cos(theta)
+        y = cy + r * np.sin(theta)
+        z = self.config.target_radius  # rest on ground
+
+        self._target_pos = np.array([x, y, z])
         self.model.site_pos[self._target_site_id] = self._target_pos
 
     def _get_component_data(self, component: object) -> np.ndarray:

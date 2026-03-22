@@ -18,6 +18,7 @@ def sample_separated_positions(
     min_clearance: float,
     bounding_radii: list[float],
     max_attempts: int = 100,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> list[tuple[float, float]]:
     """Sample 2D positions in a polar arc with bounding-radius-aware separation.
 
@@ -25,16 +26,39 @@ def sample_separated_positions(
     circle (radius = bounding_radii[i]) plus `min_clearance` does not overlap any
     already-placed bounding circle. Falls back to the last sampled position if no
     valid placement is found within the attempt budget.
+
+    Parameters
+    ----------
+    rng : np.random.Generator
+        Source of randomness.
+    count : int
+        Number of positions to sample.
+    min_r : float
+        Minimum radial distance from ``center``.
+    max_r : float
+        Maximum radial distance from ``center``.
+    angle_half : float
+        Half-angle of the arc in radians; samples are drawn from
+        ``[-angle_half, angle_half]``.
+    min_clearance : float
+        Minimum gap between bounding circles of any two placed objects.
+    bounding_radii : list[float]
+        Per-object bounding radius used for overlap checks.
+    max_attempts : int, optional
+        Maximum placement retries per object before falling back.
+    center : tuple[float, float], optional
+        XY offset applied to all sampled positions. Defaults to ``(0.0, 0.0)``.
     """
     if max_attempts < 1:
         raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    cx, cy = center
     positions: list[tuple[float, float]] = []
     for idx in range(count):
         for _ in range(max_attempts):
             r = rng.uniform(min_r, max_r)
             theta = rng.uniform(-angle_half, angle_half)
-            x = r * np.cos(theta)
-            y = r * np.sin(theta)
+            x = cx + r * np.cos(theta)
+            y = cy + r * np.sin(theta)
             if all(
                 np.sqrt((x - px) ** 2 + (y - py) ** 2)
                 >= bounding_radii[idx] + bounding_radii[j] + min_clearance

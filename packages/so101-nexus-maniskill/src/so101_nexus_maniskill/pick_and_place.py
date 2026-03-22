@@ -114,12 +114,13 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             min_r = cfg["spawn_min_radius"]
             max_r = cfg["spawn_max_radius"]
             angle_half = cfg["spawn_angle_half_range"]
+            cx, cy = cfg["cube_spawn_center"]
 
             r_t = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
             theta_t = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
             target_xyz = torch.zeros((b, 3), device=self.device)
-            target_xyz[:, 0] = r_t * torch.cos(theta_t)
-            target_xyz[:, 1] = r_t * torch.sin(theta_t)
+            target_xyz[:, 0] = cx + r_t * torch.cos(theta_t)
+            target_xyz[:, 1] = cy + r_t * torch.sin(theta_t)
             target_xyz[:, 2] = 0.001
             target_q = torch.tensor([[0.7071068, 0.7071068, 0.0, 0.0]], device=self.device).expand(
                 b, -1
@@ -130,8 +131,8 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             for _ in range(100):
                 r_c = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
                 theta_c = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
-                xyz[:, 0] = r_c * torch.cos(theta_c)
-                xyz[:, 1] = r_c * torch.sin(theta_c)
+                xyz[:, 0] = cx + r_c * torch.cos(theta_c)
+                xyz[:, 1] = cy + r_c * torch.sin(theta_c)
                 dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
                 if (dists >= self.config.min_cube_target_separation).all():
                     break

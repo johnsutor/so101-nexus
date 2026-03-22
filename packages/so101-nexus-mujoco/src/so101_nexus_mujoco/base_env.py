@@ -9,6 +9,7 @@ import mujoco
 import numpy as np
 from gymnasium import spaces
 
+from so101_nexus_core.camera_utils import compute_overhead_camera_params
 from so101_nexus_core.config import (
     SO101_JOINT_NAMES,
     ControlMode,
@@ -410,8 +411,24 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """Render the current frame and return an RGB array, or None."""
         if self.render_mode == "rgb_array":
             if self._renderer is None:
-                self._renderer = mujoco.Renderer(self.model, height=480, width=640)
-            self._renderer.update_scene(self.data)
+                self._renderer = mujoco.Renderer(
+                    self.model,
+                    height=self.config.camera.render_height,
+                    width=self.config.camera.render_width,
+                )
+            if not hasattr(self, "_overhead_cam"):
+                params = compute_overhead_camera_params(
+                    spawn_center=self.config.spawn_center,
+                    spawn_max_radius=self.config.spawn_max_radius,
+                    aspect=self.config.camera.render_width / self.config.camera.render_height,
+                )
+                self._overhead_cam = mujoco.MjvCamera()
+                self._overhead_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+                self._overhead_cam.lookat[:] = params["lookat"]
+                self._overhead_cam.distance = params["distance"]
+                self._overhead_cam.elevation = params["elevation"]
+                self._overhead_cam.azimuth = params["azimuth"]
+            self._renderer.update_scene(self.data, camera=self._overhead_cam)
             return self._renderer.render()
         if self.render_mode == "human":
             if self._viewer is None:

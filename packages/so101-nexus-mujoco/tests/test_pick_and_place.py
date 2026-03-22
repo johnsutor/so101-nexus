@@ -110,10 +110,11 @@ class TestEpisodeLogic:
     def test_cube_spawns_in_bounds(self, env):
         min_r = _CFG.spawn_min_radius
         max_r = _CFG.spawn_max_radius
+        cx, cy = _CFG.spawn_center
         for _ in range(5):
             env.reset()
             cube_pos = env.unwrapped._get_cube_pose()[:2]
-            r = float(np.sqrt(cube_pos[0] ** 2 + cube_pos[1] ** 2))
+            r = float(np.sqrt((cube_pos[0] - cx) ** 2 + (cube_pos[1] - cy) ** 2))
             assert min_r <= r <= max_r
 
     def test_minimum_cube_target_separation(self, env):
@@ -213,7 +214,8 @@ class TestCameraModes:
         assert "state" in obs
         assert "wrist_camera" in obs
         assert obs["state"].shape == (24,)
-        assert obs["wrist_camera"].shape == (224, 224, 3)
+        cam = env.config.camera
+        assert obs["wrist_camera"].shape == (cam.height, cam.width, 3)
         assert obs["wrist_camera"].dtype == np.uint8
         env.close()
 
@@ -248,3 +250,16 @@ class TestRenderModes:
         assert isinstance(frame, np.ndarray)
         assert frame.ndim == 3
         env.close()
+
+
+def test_spawn_center_offsets_cube_and_target():
+    """Cube and target should be offset by spawn_center."""
+    config = PickAndPlaceConfig(spawn_angle_half_range_deg=30.0)
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    cube_xs = []
+    for seed in range(20):
+        env.reset(seed=seed)
+        cube_pos = env.unwrapped._get_cube_pose()[:2]
+        cube_xs.append(cube_pos[0])
+    env.close()
+    assert np.mean(cube_xs) > 0.10

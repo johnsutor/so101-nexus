@@ -1,6 +1,7 @@
 """Tests for MuJoCoReach-v1."""
 
 import gymnasium as gym
+import numpy as np
 import pytest
 
 import so101_nexus_mujoco  # noqa: F401
@@ -48,3 +49,24 @@ class TestReachEnv:
         obs, _ = env.reset()
         assert obs.shape == (13,)  # 6 + 7
         env.close()
+
+
+def test_target_on_ground():
+    """Reach target should spawn on the ground plane."""
+    env = gym.make("MuJoCoReach-v1")
+    for seed in range(20):
+        env.reset(seed=seed)
+        target_z = env.unwrapped._target_pos[2]
+        assert target_z < 0.05, f"Target z={target_z} is too high (seed={seed})"
+    env.close()
+
+
+def test_target_uses_spawn_center():
+    """Target should be offset by spawn_center."""
+    env = gym.make("MuJoCoReach-v1")
+    xs = []
+    for seed in range(20):
+        env.reset(seed=seed)
+        xs.append(env.unwrapped._target_pos[0])
+    env.close()
+    assert np.mean(xs) > 0.10

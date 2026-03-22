@@ -1,6 +1,7 @@
 """Tests for the unified MuJoCo PickEnv / PickLiftEnv."""
 
 import gymnasium as gym
+import numpy as np
 import pytest
 
 import so101_nexus_mujoco  # noqa: F401
@@ -62,3 +63,18 @@ class TestPickEnvObjectConfig:
         obs, _ = env.reset()
         assert obs.shape == (18,)
         env.close()
+
+
+def test_spawn_center_offsets_object_positions():
+    """Objects should be offset by spawn_center, not centered at origin."""
+    config = PickConfig(spawn_angle_half_range_deg=30.0)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    positions = []
+    for seed in range(20):
+        env.reset(seed=seed)
+        slot = env.unwrapped._slots[env.unwrapped._target_slot_idx]
+        obj_pos = env.unwrapped.data.qpos[slot.qpos_addr : slot.qpos_addr + 2].copy()
+        positions.append(obj_pos)
+    env.close()
+    positions = np.array(positions)
+    assert positions[:, 0].mean() > 0.10
