@@ -6,6 +6,8 @@ so the camera always bounds the full scene.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 # Default vertical FOV in degrees (MuJoCo default for free cameras).
@@ -46,7 +48,7 @@ def compute_overhead_camera_params(
     margin: float = 0.10,
     fov_deg: float = _DEFAULT_VFOV_DEG,
     aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Compute overhead (top-down) camera parameters that tightly bound the scene.
 
     The lookat is centered on the bounding box of the robot + spawn area.
@@ -139,7 +141,7 @@ def compute_angled_camera_params(
     azimuth: float = 160.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
     aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Compute angled (privileged) camera parameters that view the full scene.
 
     Parameters

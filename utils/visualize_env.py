@@ -20,6 +20,8 @@ import mujoco
 if TYPE_CHECKING:
     import numpy as np
 
+    from so101_nexus_core.config import EnvironmentConfig
+
 import so101_nexus_mujoco  # noqa: F401
 from so101_nexus_core.camera_utils import (
     compute_angled_camera_params,
@@ -42,7 +44,7 @@ RENDER_HEIGHT = 480
 class _MuJoCoEnvProtocol(Protocol):
     model: mujoco.MjModel
     data: mujoco.MjData
-    config: object
+    config: EnvironmentConfig
 
 
 def _capture_views(env: gymnasium.Env) -> list[CameraView]:
