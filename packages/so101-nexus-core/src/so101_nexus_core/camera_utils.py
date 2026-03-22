@@ -56,6 +56,35 @@ def compute_overhead_camera_params(
     }
 
 
+def compute_overhead_eye_target(
+    spawn_center: tuple[float, float] = (0.15, 0.0),
+    spawn_max_radius: float = 0.40,
+    margin: float = 0.15,
+    fov_deg: float = _DEFAULT_VFOV_DEG,
+) -> tuple[list[float], list[float]]:
+    """Compute eye and target positions for an overhead look-at camera.
+
+    Returns positions suitable for ``sapien_utils.look_at(eye, target)``
+    or any eye/target camera API.  The camera looks straight down with
+    the robot's forward direction (+X) pointing up in the image.
+
+    Returns
+    -------
+    (eye, target) — each a 3-element list [x, y, z].
+    """
+    params = compute_overhead_camera_params(
+        spawn_center=spawn_center,
+        spawn_max_radius=spawn_max_radius,
+        margin=margin,
+        fov_deg=fov_deg,
+    )
+    lookat = params["lookat"]
+    distance = params["distance"]
+    eye = [float(lookat[0]), float(lookat[1]), float(distance)]
+    target = [float(lookat[0]), float(lookat[1]), 0.0]
+    return eye, target
+
+
 def compute_angled_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
