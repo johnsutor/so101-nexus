@@ -23,8 +23,10 @@ from so101_nexus_core.observations import (
     JointPositions,
     ObjectOffset,
     ObjectPose,
+    OverheadCamera,
     TargetOffset,
     TargetPosition,
+    WristCamera,
 )
 
 N_STEPS = 3
@@ -350,3 +352,138 @@ def test_seeded_reset_reproducible(env_id):
     obs2, _ = env.reset(seed=42)
     np.testing.assert_array_equal(obs1, obs2)
     env.close()
+
+
+# ---------------------------------------------------------------------------
+# Observation-driven camera tests
+# ---------------------------------------------------------------------------
+
+_ENV_CLS_MAP: dict[str, tuple] = {}  # populated lazily
+
+
+def _get_env_cls_map():
+    """Lazily import env classes to avoid top-level import overhead."""
+    if not _ENV_CLS_MAP:
+        from so101_nexus_mujoco.look_at_env import LookAtEnv
+        from so101_nexus_mujoco.move_env import MoveEnv
+        from so101_nexus_mujoco.pick_and_place import PickAndPlaceEnv
+        from so101_nexus_mujoco.pick_env import PickLiftEnv
+        from so101_nexus_mujoco.reach_env import ReachEnv
+
+        _ENV_CLS_MAP.update(
+            {
+                "reach": (ReachEnv, ReachConfig),
+                "lookat": (LookAtEnv, LookAtConfig),
+                "move": (MoveEnv, MoveConfig),
+                "pick": (PickLiftEnv, PickConfig),
+                "pickandplace": (PickAndPlaceEnv, PickAndPlaceConfig),
+            }
+        )
+    return _ENV_CLS_MAP
+
+
+_OBS_CAM_PARAMS = ["reach", "lookat", "move", "pick", "pickandplace"]
+
+
+class TestObservationDrivenCameras:
+    """E2E tests for OverheadCamera and WristCamera observation components."""
+
+    @pytest.mark.parametrize("env_key", _OBS_CAM_PARAMS)
+    def test_overhead_camera_obs(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
+        env = env_cls(config=cfg)
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert "state" in obs and "overhead_camera" in obs
+        assert obs["overhead_camera"].shape == (48, 64, 3)
+        assert obs["overhead_camera"].dtype == np.uint8
+        obs2, _, _, _, _ = env.step(env.action_space.sample())
+        assert "overhead_camera" in obs2
+        env.close()
+
+    @pytest.mark.parametrize("env_key", _OBS_CAM_PARAMS)
+    def test_wrist_camera_obs_component(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(observations=[JointPositions(), WristCamera(width=64, height=48)])
+        env = env_cls(config=cfg)
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert "state" in obs and "wrist_camera" in obs
+        assert obs["wrist_camera"].shape == (48, 64, 3)
+        assert obs["wrist_camera"].dtype == np.uint8
+        env.close()
+
+    @pytest.mark.parametrize("env_key", _OBS_CAM_PARAMS)
+    def test_both_cameras_obs(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(
+            observations=[
+                JointPositions(),
+                WristCamera(width=64, height=48),
+                OverheadCamera(width=32, height=24),
+            ]
+        )
+        env = env_cls(config=cfg)
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert set(obs.keys()) == {"state", "wrist_camera", "overhead_camera"}
+        assert obs["wrist_camera"].shape == (48, 64, 3)
+        assert obs["overhead_camera"].shape == (24, 32, 3)
+        env.close()
+
+    @pytest.mark.parametrize("env_key", _OBS_CAM_PARAMS)
+    def test_no_camera_flat_obs(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(observations=[JointPositions()])
+        env = env_cls(config=cfg)
+        obs, info = env.reset()
+        assert isinstance(obs, np.ndarray)
+        assert obs.shape == (6,)
+        env.close()
+
+    @pytest.mark.parametrize("env_key", _OBS_CAM_PARAMS)
+    def test_visual_with_overhead(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(
+            obs_mode="visual",
+            camera_mode="wrist",
+            observations=[JointPositions(), OverheadCamera(width=64, height=48)],
+        )
+        env = env_cls(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert isinstance(obs, dict)
+        assert obs["state"].shape == (6,)
+        assert "privileged_state" in info
+        assert "overhead_camera" in obs
+        env.close()
+
+    @pytest.mark.parametrize("env_key", ["reach", "pick"])
+    def test_visual_with_both(self, env_key):
+        env_cls, config_cls = _get_env_cls_map()[env_key]
+        cfg = config_cls(
+            obs_mode="visual",
+            camera_mode="wrist",
+            observations=[
+                JointPositions(),
+                WristCamera(width=64, height=48),
+                OverheadCamera(width=32, height=24),
+            ],
+        )
+        env = env_cls(config=cfg, camera_mode="wrist")
+        obs, info = env.reset()
+        assert obs["state"].shape == (6,)
+        assert "privileged_state" in info
+        assert "wrist_camera" in obs and "overhead_camera" in obs
+        env.close()
+
+    def test_render_independent_of_overhead_obs(self):
+        from so101_nexus_mujoco.reach_env import ReachEnv
+
+        cfg = ReachConfig(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
+        env = ReachEnv(config=cfg, render_mode="rgb_array")
+        env.reset()
+        frame = env.render()
+        assert frame is not None
+        assert frame.dtype == np.uint8
+        env.close()
