@@ -134,6 +134,24 @@ class CameraConfig:
         )
 
 
+class RenderConfig:
+    """Render camera resolution settings (visualization only, not observations).
+
+    Args:
+        width: Render image width in pixels.
+        height: Render image height in pixels.
+    """
+
+    def __init__(self, width: int = 640, height: int = 480) -> None:
+        self.width = width
+        self.height = height
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"render dimensions must be > 0, got {self.width}x{self.height}")
+
+    def __repr__(self) -> str:
+        return f"RenderConfig(width={self.width}, height={self.height})"
+
+
 JointSpec = float | tuple[float, float]
 
 
@@ -428,6 +446,7 @@ class EnvironmentConfig:
 
     Args:
         camera: Camera configuration.
+        render: Render camera resolution settings (visualization only).
         reward: Reward configuration.
         robot: Robot configuration.
         ground_colors: Ground plane color(s).
@@ -448,6 +467,7 @@ class EnvironmentConfig:
     def __init__(
         self,
         camera: CameraConfig | None = None,
+        render: RenderConfig | None = None,
         reward: RewardConfig | None = None,
         robot: RobotConfig | None = None,
         ground_colors: ColorConfig = "gray",
@@ -465,6 +485,7 @@ class EnvironmentConfig:
         observations: list[Observation] | None = None,
     ) -> None:
         self.camera = camera if camera is not None else CameraConfig()
+        self.render = render if render is not None else RenderConfig()
         self.reward = reward if reward is not None else RewardConfig()
         self.robot = robot if robot is not None else RobotConfig()
         self.ground_colors = ground_colors
@@ -507,6 +528,12 @@ class EnvironmentConfig:
                 f"spawn_angle_half_range_deg must be in [0, 180], "
                 f"got {self.spawn_angle_half_range_deg}"
             )
+        if self.observations is not None:
+            from so101_nexus_core.observations import _CameraObservation
+
+            cam_types = [type(c) for c in self.observations if isinstance(c, _CameraObservation)]
+            if len(cam_types) != len(set(cam_types)):
+                raise ValueError("Duplicate camera observation components are not allowed")
 
     def __repr__(self) -> str:  # noqa: D105
         return (

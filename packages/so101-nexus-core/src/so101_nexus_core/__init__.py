@@ -57,6 +57,9 @@ from so101_nexus_core.config import (
     ReachConfig as ReachConfig,
 )
 from so101_nexus_core.config import (
+    RenderConfig as RenderConfig,
+)
+from so101_nexus_core.config import (
     RewardConfig as RewardConfig,
 )
 from so101_nexus_core.config import (
