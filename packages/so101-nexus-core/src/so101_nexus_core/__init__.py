@@ -21,12 +21,6 @@ from so101_nexus_core.config import (
     SO101_JOINT_NAMES as SO101_JOINT_NAMES,
 )
 from so101_nexus_core.config import (
-    CameraConfig as CameraConfig,
-)
-from so101_nexus_core.config import (
-    CameraMode as CameraMode,
-)
-from so101_nexus_core.config import (
     ControlMode as ControlMode,
 )
 from so101_nexus_core.config import (
@@ -55,6 +49,9 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.config import (
     ReachConfig as ReachConfig,
+)
+from so101_nexus_core.config import (
+    RenderConfig as RenderConfig,
 )
 from so101_nexus_core.config import (
     RewardConfig as RewardConfig,

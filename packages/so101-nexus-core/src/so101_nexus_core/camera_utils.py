@@ -14,7 +14,7 @@ import numpy as np
 _DEFAULT_VFOV_DEG: float = 45.0
 
 # Default render resolution (landscape, matching the forward-arc scene shape).
-# Used as fallback when no CameraConfig is available.
+# Used as fallback when no RenderConfig is available.
 DEFAULT_RENDER_WIDTH: int = 640
 DEFAULT_RENDER_HEIGHT: int = 480
 

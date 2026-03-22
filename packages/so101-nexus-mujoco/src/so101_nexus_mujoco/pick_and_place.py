@@ -6,7 +6,6 @@ Provides PickAndPlaceEnv where the robot must move a cube to a visible disc targ
 from __future__ import annotations
 
 import tempfile
-from typing import Literal
 
 import mujoco
 import numpy as np
@@ -81,7 +80,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self,
         config: PickAndPlaceConfig | None = None,
         render_mode: str | None = None,
-        camera_mode: Literal["state_only", "wrist"] = "state_only",
         control_mode: ControlMode = "pd_joint_pos",
         robot_init_qpos_noise: float = 0.02,
     ):
@@ -90,7 +88,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self._init_common(
             config=config,
             render_mode=render_mode,
-            camera_mode=camera_mode,
             control_mode=control_mode,
             robot_init_qpos_noise=robot_init_qpos_noise,
         )

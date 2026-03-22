@@ -189,56 +189,6 @@ class TestRobotSubclasses:
         assert inner.robot_uids == "so101"
 
 
-class TestCameraModes:
-    @pytest.fixture(scope="class")
-    def fixed_cam_env(self):
-        env = gym.make(
-            "ManiSkillPickLiftSO100-v1",
-            config=PickConfig(camera_mode="fixed"),
-            **BASE_KWARGS,
-        )
-        env.reset()
-        yield env
-        env.close()
-
-    @pytest.fixture(scope="class")
-    def wrist_cam_env(self):
-        env = gym.make(
-            "ManiSkillPickLiftSO100-v1",
-            config=PickConfig(camera_mode="wrist"),
-            **BASE_KWARGS,
-        )
-        env.reset()
-        yield env
-        env.close()
-
-    @pytest.fixture(scope="class")
-    def both_cam_env(self):
-        env = gym.make(
-            "ManiSkillPickLiftSO100-v1",
-            config=PickConfig(camera_mode="both"),
-            **BASE_KWARGS,
-        )
-        env.reset()
-        yield env
-        env.close()
-
-    def test_fixed_camera_mode(self, fixed_cam_env):
-        sensor_names = [cfg.uid for cfg in fixed_cam_env.unwrapped._default_sensor_configs]
-        assert "base_camera" in sensor_names
-        assert "wrist_camera" not in sensor_names
-
-    def test_wrist_camera_mode(self, wrist_cam_env):
-        sensor_names = [cfg.uid for cfg in wrist_cam_env.unwrapped._default_sensor_configs]
-        assert "wrist_camera" in sensor_names
-        assert "base_camera" not in sensor_names
-
-    def test_both_camera_mode(self, both_cam_env):
-        sensor_names = [cfg.uid for cfg in both_cam_env.unwrapped._default_sensor_configs]
-        assert "base_camera" in sensor_names
-        assert "wrist_camera" in sensor_names
-
-
 class TestNoTable:
     def test_no_table_scene_builder(self, lift_so101_env):
         inner = lift_so101_env.unwrapped

@@ -21,7 +21,9 @@ from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
     JointPositions,
+    OverheadCamera,
     TargetOffset,
+    WristCamera,
 )
 
 N_STEPS = 3
@@ -280,7 +282,11 @@ def test_reward_bounds(env_id):
     env.close()
 
 
-_camera_mode_env_params = [
+# ---------------------------------------------------------------------------
+# Observation-driven camera tests
+# ---------------------------------------------------------------------------
+
+_obs_cam_env_params = [
     (REACH_ENV_IDS[0], ReachConfig),
     (LOOKAT_ENV_IDS[0], LookAtConfig),
     (MOVE_ENV_IDS[0], MoveConfig),
@@ -289,15 +295,69 @@ _camera_mode_env_params = [
 ]
 
 
-@pytest.mark.parametrize("camera_mode", ["fixed", "wrist", "both"])
-@pytest.mark.parametrize(
-    "env_id,config_cls",
-    _camera_mode_env_params,
-    ids=[eid for eid, _ in _camera_mode_env_params],
-)
-def test_camera_mode(env_id, config_cls, camera_mode):
-    """Each camera mode (fixed, wrist, both) works on every env type."""
-    config = config_cls(camera_mode=camera_mode)
-    env = gym.make(env_id, config=config, **BASE_KWARGS)
-    _run_episode(env)
-    env.close()
+class TestObservationDrivenCameras:
+    """Test camera observation components create correct sensor configs."""
+
+    @pytest.mark.parametrize(
+        "env_id,config_cls",
+        _obs_cam_env_params,
+        ids=[eid for eid, _ in _obs_cam_env_params],
+    )
+    def test_overhead_camera_sensor(self, env_id, config_cls):
+        """OverheadCamera observation component creates an overhead_camera sensor."""
+        config = config_cls(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
+        env = gym.make(env_id, config=config, **BASE_KWARGS)
+        sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
+        assert "overhead_camera" in sensor_names
+        _run_episode(env)
+        env.close()
+
+    @pytest.mark.parametrize(
+        "env_id,config_cls",
+        _obs_cam_env_params,
+        ids=[eid for eid, _ in _obs_cam_env_params],
+    )
+    def test_wrist_camera_sensor(self, env_id, config_cls):
+        """WristCamera observation component creates a wrist_camera sensor."""
+        config = config_cls(observations=[JointPositions(), WristCamera(width=64, height=48)])
+        env = gym.make(env_id, config=config, **BASE_KWARGS)
+        sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
+        assert "wrist_camera" in sensor_names
+        _run_episode(env)
+        env.close()
+
+    @pytest.mark.parametrize(
+        "env_id,config_cls",
+        _obs_cam_env_params,
+        ids=[eid for eid, _ in _obs_cam_env_params],
+    )
+    def test_both_cameras_sensor(self, env_id, config_cls):
+        """Both camera components create both sensors."""
+        config = config_cls(
+            observations=[
+                JointPositions(),
+                WristCamera(width=64, height=48),
+                OverheadCamera(width=32, height=24),
+            ]
+        )
+        env = gym.make(env_id, config=config, **BASE_KWARGS)
+        sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
+        assert "wrist_camera" in sensor_names
+        assert "overhead_camera" in sensor_names
+        _run_episode(env)
+        env.close()
+
+    @pytest.mark.parametrize(
+        "env_id,config_cls",
+        _obs_cam_env_params,
+        ids=[eid for eid, _ in _obs_cam_env_params],
+    )
+    def test_no_camera_no_obs_sensors(self, env_id, config_cls):
+        """No camera components means no overhead/wrist observation sensors."""
+        config = config_cls(observations=[JointPositions()])
+        env = gym.make(env_id, config=config, **BASE_KWARGS)
+        sensor_names = [cfg.uid for cfg in env.unwrapped._default_sensor_configs]
+        assert "overhead_camera" not in sensor_names
+        assert "wrist_camera" not in sensor_names
+        _run_episode(env)
+        env.close()

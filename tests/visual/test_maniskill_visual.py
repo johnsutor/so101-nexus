@@ -8,18 +8,19 @@ import pytest
 
 import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.config import (
-    CameraConfig,
     PickAndPlaceConfig,
     PickConfig,
+    RenderConfig,
 )
 from so101_nexus_core.objects import CubeObject
+from so101_nexus_core.observations import JointPositions, OverheadCamera, WristCamera
 from so101_nexus_core.visualization import CameraView, to_uint8
 
 from .conftest import verify_scene
 
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
-_CAM = CameraConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
+_RENDER = RenderConfig(width=CAMERA_WIDTH, height=CAMERA_HEIGHT)
 
 _PICK_LIFT_ENVS = {
     "ManiSkillPickLiftSO101-v1",
@@ -32,10 +33,39 @@ _PICK_AND_PLACE_ENVS = {
 def _env_kwargs(env_id: str) -> dict:
     """Return config kwargs appropriate for *env_id*."""
     if env_id in _PICK_LIFT_ENVS:
-        return {"config": PickConfig(objects=[CubeObject(color="red")], camera=_CAM)}
+        return {
+            "config": PickConfig(
+                objects=[CubeObject(color="red")],
+                render=_RENDER,
+                observations=[
+                    JointPositions(),
+                    WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                    OverheadCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                ],
+            )
+        }
     if env_id in _PICK_AND_PLACE_ENVS:
-        return {"config": PickAndPlaceConfig(camera=_CAM, cube_colors="red")}
-    return {"config": PickConfig(camera=_CAM)}
+        return {
+            "config": PickAndPlaceConfig(
+                render=_RENDER,
+                cube_colors="red",
+                observations=[
+                    JointPositions(),
+                    WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                    OverheadCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                ],
+            )
+        }
+    return {
+        "config": PickConfig(
+            render=_RENDER,
+            observations=[
+                JointPositions(),
+                WristCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+                OverheadCamera(width=CAMERA_WIDTH, height=CAMERA_HEIGHT),
+            ],
+        )
+    }
 
 
 MANISKILL_SO101_ENVS = [
@@ -45,14 +75,14 @@ MANISKILL_SO101_ENVS = [
 
 
 def capture_maniskill_views(env: gymnasium.Env, obs: dict) -> list[CameraView]:
-    """Capture base_camera, wrist_camera, and render camera views from a ManiSkill env."""
-    base_img = to_uint8(obs["sensor_data"]["base_camera"]["rgb"])
+    """Capture overhead_camera, wrist_camera, and render camera views from a ManiSkill env."""
+    overhead_img = to_uint8(obs["sensor_data"]["overhead_camera"]["rgb"])
     wrist_img = to_uint8(obs["sensor_data"]["wrist_camera"]["rgb"])
 
     render_img = to_uint8(env.render())
 
     return [
-        CameraView(name="base_camera", image=base_img),
+        CameraView(name="overhead_camera", image=overhead_img),
         CameraView(name="wrist_camera", image=wrist_img),
         CameraView(name="render_camera", image=render_img),
     ]
@@ -67,7 +97,6 @@ class TestManiSkillCaptureInfrastructure:
         kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
-            camera_mode="both",
             num_envs=1,
             **_env_kwargs(env_id),
         )
@@ -77,7 +106,7 @@ class TestManiSkillCaptureInfrastructure:
         env.close()
 
         assert len(views) == 3
-        expected_names = {"base_camera", "wrist_camera", "render_camera"}
+        expected_names = {"overhead_camera", "wrist_camera", "render_camera"}
         assert {v.name for v in views} == expected_names
         for v in views:
             assert v.image.dtype == np.uint8
@@ -108,7 +137,6 @@ class TestManiSkillVisual:
         kwargs = dict(
             obs_mode="rgb",
             render_mode="rgb_array",
-            camera_mode="both",
             num_envs=1,
             **_env_kwargs(env_id),
         )

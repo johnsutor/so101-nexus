@@ -78,8 +78,8 @@ class TestEnvCreation:
 
 
 class TestObservationVector:
-    def test_state_only_shape_is_24(self):
-        env = PickAndPlaceEnv(camera_mode="state_only")
+    def test_default_shape_is_24(self):
+        env = PickAndPlaceEnv()
         obs, _ = env.reset()
         assert obs.shape == (24,)
         env.close()
@@ -196,27 +196,6 @@ class TestVisibleTarget:
 
         body_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_BODY, "goal")
         assert body_id == -1
-        env.close()
-
-
-class TestCameraModes:
-    def test_state_only_returns_flat_array(self):
-        env = PickAndPlaceEnv(camera_mode="state_only")
-        obs, _ = env.reset()
-        assert isinstance(obs, np.ndarray)
-        assert obs.shape == (24,)
-        env.close()
-
-    def test_wrist_mode_returns_dict(self):
-        env = PickAndPlaceEnv(camera_mode="wrist")
-        obs, _ = env.reset()
-        assert isinstance(obs, dict)
-        assert "state" in obs
-        assert "wrist_camera" in obs
-        assert obs["state"].shape == (24,)
-        cam = env.config.camera
-        assert obs["wrist_camera"].shape == (cam.height, cam.width, 3)
-        assert obs["wrist_camera"].dtype == np.uint8
         env.close()
 
 

@@ -6,11 +6,11 @@ from so101_nexus_core.config import (
     POSES,
     REST_POSE,
     SO101_JOINT_NAMES,
-    CameraConfig,
     EnvironmentConfig,
     PickAndPlaceConfig,
     PickConfig,
     Pose,
+    RenderConfig,
     RewardConfig,
     RobotConfig,
 )
@@ -33,10 +33,10 @@ class TestConfigInheritance:
         cfg = PickConfig()
         assert cfg.goal_thresh == 0.025
 
-    def test_custom_camera(self):
-        cfg = PickConfig(camera=CameraConfig(width=128, height=128))
-        assert cfg.camera.width == 128
-        assert cfg.camera.height == 128
+    def test_custom_render(self):
+        cfg = PickConfig(render=RenderConfig(width=128, height=128))
+        assert cfg.render.width == 128
+        assert cfg.render.height == 128
 
     def test_custom_reward(self):
         cfg = PickConfig(reward=RewardConfig(action_delta_penalty=0.01))
@@ -54,17 +54,10 @@ class TestConfigConsistency:
         assert len(cfg.spawn_center) == 2
         assert cfg.spawn_half_size > 0
 
-    def test_camera_defaults_valid(self):
-        cfg = CameraConfig()
+    def test_render_defaults_valid(self):
+        cfg = RenderConfig()
         assert cfg.width > 0
         assert cfg.height > 0
-
-    def test_fov_deg_rad_consistent(self):
-        cfg = CameraConfig()
-        deg_lo, deg_hi = cfg.wrist_fov_deg_range
-        rad_lo, rad_hi = cfg.wrist_fov_rad_range
-        assert rad_lo == pytest.approx(np.radians(deg_lo))
-        assert rad_hi == pytest.approx(np.radians(deg_hi))
 
     def test_default_max_episode_steps_is_1024(self):
         cfg = EnvironmentConfig()
@@ -116,28 +109,6 @@ class TestSampleColor:
 
     def test_single_element_list(self):
         assert sample_color(["green"]) == COLOR_MAP["green"]
-
-
-class TestCameraConfigWristParams:
-    def test_camera_config_wrist_pitch_defaults(self):
-        cam = CameraConfig()
-        lo, hi = cam.wrist_pitch_deg_range
-        assert lo == pytest.approx(-34.4, abs=0.1)
-        assert hi == pytest.approx(0.0)
-
-    def test_camera_config_wrist_pitch_rad_range(self):
-        cam = CameraConfig()
-        lo_rad, hi_rad = cam.wrist_pitch_rad_range
-        assert lo_rad == pytest.approx(np.radians(-34.4), abs=0.001)
-        assert hi_rad == pytest.approx(0.0)
-
-    def test_camera_config_wrist_cam_pos_defaults(self):
-        cam = CameraConfig()
-        assert cam.wrist_cam_pos_x_noise == pytest.approx(0.005)
-        assert cam.wrist_cam_pos_y_center == pytest.approx(0.04)
-        assert cam.wrist_cam_pos_y_noise == pytest.approx(0.01)
-        assert cam.wrist_cam_pos_z_center == pytest.approx(-0.04)
-        assert cam.wrist_cam_pos_z_noise == pytest.approx(0.01)
 
 
 class TestRewardWeights:
