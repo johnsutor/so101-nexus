@@ -40,6 +40,60 @@ cam = CameraConfig(width=224, height=224)
 
 ---
 
+## Pose
+
+Defines a named robot arm configuration with fixed and free joints. See [Initial Poses](/docs/concepts/poses) for a conceptual overview.
+
+```python
+from so101_nexus_core import Pose
+
+pose = Pose(
+    name="custom",
+    shoulder_pan_deg=(-110.0, 110.0),  # free: sampled uniformly
+    shoulder_lift_deg=-90.0,            # fixed
+    elbow_flex_deg=90.0,                # fixed
+    wrist_flex_deg=37.8,                # fixed
+    wrist_roll_deg=(-157.0, 163.0),     # free
+    gripper_deg=(-10.0, 100.0),         # free
+)
+```
+
+### Constructor Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `str` | Human-readable identifier |
+| `shoulder_pan_deg` | `float \| tuple[float, float]` | Shoulder pan angle or range (degrees) |
+| `shoulder_lift_deg` | `float \| tuple[float, float]` | Shoulder lift angle or range (degrees) |
+| `elbow_flex_deg` | `float \| tuple[float, float]` | Elbow flex angle or range (degrees) |
+| `wrist_flex_deg` | `float \| tuple[float, float]` | Wrist flex angle or range (degrees) |
+| `wrist_roll_deg` | `float \| tuple[float, float]` | Wrist roll angle or range (degrees) |
+| `gripper_deg` | `float \| tuple[float, float]` | Gripper angle or range (degrees) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `sample(rng)` | `tuple[float, ...]` | Sample concrete joint angles in degrees |
+| `sample_rad(rng)` | `tuple[float, ...]` | Sample concrete joint angles in radians |
+
+### Built-in Poses
+
+| Name | Constant | Description |
+|------|----------|-------------|
+| `"rest"` | `REST_POSE` | Arm curled in rest position, free shoulder_pan/wrist_roll/gripper |
+| `"extended"` | `EXTENDED_POSE` | Arm extended forward, free shoulder_pan/wrist_roll/gripper |
+
+Access via the `POSES` dict or by constant:
+
+```python
+from so101_nexus_core import POSES, REST_POSE
+
+pose = POSES["rest"]   # same as REST_POSE
+```
+
+---
+
 ## RobotConfig
 
 Controls the arm rest pose and grasping thresholds.
@@ -55,6 +109,7 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `rest_qpos_deg` | `tuple[float, ...]` | `(0.0, -90.0, 90.0, 37.82, 0.0, -63.03)` | Rest joint positions in degrees, one per joint |
+| `init_pose` | `str \| Pose \| None` | `None` | Initial pose for resets. String looks up from `POSES`, `Pose` instance used directly, `None` uses legacy rest + noise. |
 | `grasp_force_threshold` | `float` | `0.5` | Minimum contact force to count as a grasp |
 | `static_vel_threshold` | `float` | `0.2` | Maximum velocity to consider the arm stationary |
 
@@ -64,6 +119,7 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 |----------|------|-------------|
 | `rest_qpos_rad` | `tuple[float, ...]` | `rest_qpos_deg` converted to radians |
 | `rest_qpos` | `tuple[float, ...]` | Alias for `rest_qpos_rad` |
+| `resolve_pose()` | `Pose \| None` | Returns the resolved `Pose` object, or `None` |
 
 ---
 

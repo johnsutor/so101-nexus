@@ -1,0 +1,72 @@
+---
+title: Initial Poses
+description: How to configure the robot's starting configuration for each episode.
+---
+
+# Initial Poses
+
+By default, the robot starts each episode in a fixed **rest pose** with small noise. The pose system lets you configure more diverse starting configurations — useful for training policies that generalize across different initial arm positions.
+
+## How Poses Work
+
+A `Pose` defines 6 joint angles — one per joint. Each joint can be:
+
+- **Fixed** (`float`): the same angle every episode (e.g., `shoulder_lift_deg=-90.0`)
+- **Free** (`tuple[float, float]`): sampled uniformly from a range each episode (e.g., `shoulder_pan_deg=(-110.0, 110.0)`)
+
+This lets you keep some joints in known-good configurations while varying others for diversity.
+
+## Built-in Poses
+
+| Name | Description | Free joints |
+|------|-------------|-------------|
+| `rest` | Arm curled up (default rest configuration) | shoulder_pan, wrist_roll, gripper |
+| `extended` | Arm stretched forward | shoulder_pan, wrist_roll, gripper |
+
+## Using Poses
+
+### Set a pose in config
+
+```python
+from so101_nexus_core import RobotConfig, PickConfig
+
+# Use a built-in pose by name
+robot = RobotConfig(init_pose="rest")
+config = PickConfig(robot=robot)
+```
+
+### Create a custom pose
+
+```python
+from so101_nexus_core import Pose, RobotConfig, PickConfig
+
+my_pose = Pose(
+    name="looking_left",
+    shoulder_pan_deg=90.0,          # fixed: rotated left
+    shoulder_lift_deg=-90.0,        # fixed
+    elbow_flex_deg=90.0,            # fixed
+    wrist_flex_deg=37.8,            # fixed
+    wrist_roll_deg=(-157.0, 163.0), # free: full range
+    gripper_deg=(-10.0, 100.0),     # free: full range
+)
+
+robot = RobotConfig(init_pose=my_pose)
+config = PickConfig(robot=robot)
+```
+
+### Default behavior (no pose)
+
+When `init_pose` is `None` (the default), the robot uses the legacy behavior: `rest_qpos_deg` plus Gaussian noise scaled by `robot_init_qpos_noise`. This is fully backward compatible.
+
+## Joint Reference
+
+| Joint | Index | Description | Range |
+|-------|-------|-------------|-------|
+| `shoulder_pan` | 0 | Base rotation | -110 to 110 |
+| `shoulder_lift` | 1 | Shoulder elevation | -100 to 100 |
+| `elbow_flex` | 2 | Elbow bend | -97 to 97 |
+| `wrist_flex` | 3 | Wrist pitch | -95 to 95 |
+| `wrist_roll` | 4 | Wrist rotation | -157 to 163 |
+| `gripper` | 5 | Gripper open/close | -10 to 100 |
+
+All angles are in degrees.
