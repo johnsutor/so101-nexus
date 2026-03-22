@@ -11,24 +11,47 @@ import numpy as np
 # Default vertical FOV in degrees (MuJoCo default for free cameras).
 _DEFAULT_VFOV_DEG: float = 45.0
 
+# Default render resolution (landscape, matching the forward-arc scene shape).
+OVERHEAD_RENDER_WIDTH: int = 640
+OVERHEAD_RENDER_HEIGHT: int = 480
 
-def _distance_for_radius(radius: float, fov_deg: float = _DEFAULT_VFOV_DEG) -> float:
-    """Compute minimum camera distance to see a circle of given radius.
 
-    Uses the half-angle of the field of view to compute the distance
-    from which a circle of ``radius`` fits entirely in frame.
+def _scene_bounds(
+    spawn_center: tuple[float, float],
+    spawn_max_radius: float,
+    margin: float,
+) -> tuple[float, float, float, float]:
+    """Compute the axis-aligned bounding box of the visible scene.
+
+    The scene includes the robot at the origin and the forward spawn arc.
+
+    Returns
+    -------
+    (x_min, x_max, y_min, y_max) in world coordinates.
     """
-    half_fov_rad = np.radians(fov_deg / 2.0)
-    return float(radius / np.tan(half_fov_rad))
+    cx, cy = spawn_center
+    # Farthest forward spawn point + margin.
+    x_max = cx + spawn_max_radius + margin
+    # Robot base is at origin; include a small margin behind it.
+    x_min = -margin
+    # Sideways extent: spawn arc can reach ±(max_r) from cy.
+    y_max = cy + spawn_max_radius + margin
+    y_min = cy - spawn_max_radius - margin
+    return x_min, x_max, y_min, y_max
 
 
 def compute_overhead_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
-    margin: float = 0.15,
+    margin: float = 0.10,
     fov_deg: float = _DEFAULT_VFOV_DEG,
+    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
 ) -> dict[str, object]:
-    """Compute overhead (top-down) camera parameters that bound the spawn area.
+    """Compute overhead (top-down) camera parameters that tightly bound the scene.
+
+    The lookat is centered on the bounding box of the robot + spawn area.
+    The camera distance is chosen so the full scene fits in frame given
+    the vertical FOV and image aspect ratio.
 
     Parameters
     ----------
@@ -40,17 +63,38 @@ def compute_overhead_camera_params(
         Extra padding in metres beyond the spawn boundary.
     fov_deg:
         Vertical field of view of the camera in degrees.
+    aspect:
+        Image width / height ratio (used to check horizontal fit).
 
     Returns
     -------
     dict with keys: lookat (3,), distance, elevation, azimuth.
     """
-    cx, cy = spawn_center
-    visible_radius = np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
-    distance = _distance_for_radius(visible_radius, fov_deg)
+    x_min, x_max, y_min, y_max = _scene_bounds(spawn_center, spawn_max_radius, margin)
+
+    # Center the camera on the bounding box.
+    look_x = (x_min + x_max) / 2.0
+    look_y = (y_min + y_max) / 2.0
+
+    # Half-extents the camera must cover.
+    # In the overhead view with azimuth=0 and robot facing +X:
+    #   image vertical  -> world X axis
+    #   image horizontal -> world Y axis
+    half_x = (x_max - x_min) / 2.0
+    half_y = (y_max - y_min) / 2.0
+
+    half_vfov_rad = np.radians(fov_deg / 2.0)
+    # Distance needed to fit the vertical (X) extent.
+    dist_for_x = half_x / np.tan(half_vfov_rad)
+    # Distance needed to fit the horizontal (Y) extent given the aspect ratio.
+    half_hfov_rad = np.arctan(np.tan(half_vfov_rad) * aspect)
+    dist_for_y = half_y / np.tan(half_hfov_rad)
+
+    distance = float(max(dist_for_x, dist_for_y))
+
     return {
-        "lookat": np.array([cx, cy, 0.0]),
-        "distance": float(distance),
+        "lookat": np.array([look_x, look_y, 0.0]),
+        "distance": distance,
         "elevation": -90,
         "azimuth": 0,
     }
@@ -59,8 +103,9 @@ def compute_overhead_camera_params(
 def compute_overhead_eye_target(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
-    margin: float = 0.15,
+    margin: float = 0.10,
     fov_deg: float = _DEFAULT_VFOV_DEG,
+    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
 ) -> tuple[list[float], list[float]]:
     """Compute eye and target positions for an overhead look-at camera.
 
@@ -77,6 +122,7 @@ def compute_overhead_eye_target(
         spawn_max_radius=spawn_max_radius,
         margin=margin,
         fov_deg=fov_deg,
+        aspect=aspect,
     )
     lookat = params["lookat"]
     distance = params["distance"]
@@ -88,10 +134,11 @@ def compute_overhead_eye_target(
 def compute_angled_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
-    margin: float = 0.15,
+    margin: float = 0.10,
     elevation: float = -30.0,
     azimuth: float = 160.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
+    aspect: float = OVERHEAD_RENDER_WIDTH / OVERHEAD_RENDER_HEIGHT,
 ) -> dict[str, object]:
     """Compute angled (privileged) camera parameters that view the full scene.
 
@@ -109,17 +156,24 @@ def compute_angled_camera_params(
         Camera azimuth angle in degrees.
     fov_deg:
         Vertical field of view in degrees.
+    aspect:
+        Image width / height ratio.
 
     Returns
     -------
     dict with keys: lookat (3,), distance, elevation, azimuth.
     """
-    cx, cy = spawn_center
-    visible_radius = np.sqrt(cx**2 + cy**2) + spawn_max_radius + margin
-    distance = _distance_for_radius(visible_radius, fov_deg) * 1.2
+    # Use the same scene bounds but pull the camera back a bit for the angle.
+    params = compute_overhead_camera_params(
+        spawn_center=spawn_center,
+        spawn_max_radius=spawn_max_radius,
+        margin=margin,
+        fov_deg=fov_deg,
+        aspect=aspect,
+    )
     return {
-        "lookat": np.array([cx, cy, 0.0]),
-        "distance": float(distance),
+        "lookat": params["lookat"],
+        "distance": params["distance"] * 1.2,
         "elevation": elevation,
         "azimuth": azimuth,
     }
