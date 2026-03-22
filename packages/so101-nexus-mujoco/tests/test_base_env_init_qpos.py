@@ -56,7 +56,7 @@ def test_reset_with_init_pose_rest():
         qpos_deg = np.degrees(env.unwrapped._get_current_qpos())
         # shoulder_lift is fixed at -90
         assert qpos_deg[1] == pytest.approx(-90.0, abs=0.1)
-        # shoulder_pan is free [-110, 110]
+        # Free joint: shoulder_pan within full range
         assert -110.0 <= qpos_deg[0] <= 110.0
     finally:
         env.close()

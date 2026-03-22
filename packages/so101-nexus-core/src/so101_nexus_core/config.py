@@ -196,7 +196,7 @@ class Pose:
         """Return a concrete 6-tuple of joint angles in radians."""
         return tuple(float(np.radians(v)) for v in self.sample(rng))
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return f"Pose(name={self.name!r})"
 
 

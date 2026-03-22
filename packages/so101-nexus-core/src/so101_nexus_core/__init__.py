@@ -12,9 +12,6 @@ from so101_nexus_core.config import (
     POSES as POSES,
 )
 from so101_nexus_core.config import (
-    Pose as Pose,
-)
-from so101_nexus_core.config import (
     REST_POSE as REST_POSE,
 )
 from so101_nexus_core.config import (
@@ -52,6 +49,9 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.config import (
     PickConfig as PickConfig,
+)
+from so101_nexus_core.config import (
+    Pose as Pose,
 )
 from so101_nexus_core.config import (
     ReachConfig as ReachConfig,
