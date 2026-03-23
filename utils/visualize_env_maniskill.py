@@ -20,6 +20,16 @@ from typing import TYPE_CHECKING
 import gymnasium
 
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.config import PickAndPlaceConfig
+from so101_nexus_core.observations import (
+    EndEffectorPose,
+    GraspState,
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
+    WristCamera,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -49,13 +59,22 @@ def _extract_views(obs: dict) -> list[CameraView]:
 
 def main():
     """Run a short ManiSkill rollout and save a tiled camera view to disk."""
+    config = PickAndPlaceConfig(
+        observations=[
+            EndEffectorPose(),
+            GraspState(),
+            TargetPosition(),
+            ObjectPose(),
+            ObjectOffset(),
+            TargetOffset(),
+            WristCamera(width=TILE_W, height=TILE_H),
+        ],
+    )
     env = gymnasium.make(
         ENV_ID,
         obs_mode="rgb",
         render_mode="rgb_array",
-        camera_mode="both",
-        camera_width=TILE_W,
-        camera_height=TILE_H,
+        config=config,
         num_envs=1,
     )
     obs, info = env.reset(seed=42)
