@@ -97,12 +97,7 @@ def _capture_views(env: gymnasium.Env) -> list[CameraView]:
 
 def main():
     """Run a short rollout and save a tiled camera view to disk."""
-    env = gymnasium.make(
-        ENV_ID,
-        camera_mode="wrist",
-        camera_width=RENDER_WIDTH,
-        camera_height=RENDER_HEIGHT,
-    )
+    env = gymnasium.make(ENV_ID)
     obs, info = env.reset(seed=42)
 
     views = _capture_views(env)

@@ -33,6 +33,7 @@ import plotly.graph_objects as go
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.env_ids import all_registered_env_ids
+from so101_nexus_core.observations import WristCamera
 
 ROBOT_JOINT_NAMES: dict[str, tuple[str, ...]] = {
     "so100": SO101_JOINT_NAMES,
@@ -180,7 +181,6 @@ def recording_thread(
 
     env = gym.make(
         env_id,
-        camera_mode="wrist",
         render_mode="rgb_array",
         **_recording_env_kwargs(env_id, camera_width, camera_height),
     )
@@ -315,7 +315,38 @@ def _keyboard_shortcuts_js() -> str:
 """
 
 
-def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) -> dict:  # noqa: PLR0912
+def _resolve_env_config(env_ctor: type) -> object | None:
+    """Resolve the default config object for an environment class, or ``None``."""
+    config_param = inspect.signature(env_ctor.__init__).parameters.get("config")
+    if config_param is None:
+        return None
+
+    base_config = config_param.default
+    if base_config is not None:
+        return base_config
+
+    # Find the config class from type annotations (as string)
+    config_class_name = None
+    for cls in inspect.getmro(env_ctor):
+        if hasattr(cls, "__annotations__") and "config" in cls.__annotations__:
+            config_class_name = cls.__annotations__["config"]
+            break
+
+    if not isinstance(config_class_name, str):
+        return None
+
+    try:
+        from so101_nexus_core import config as config_module
+
+        config_class = getattr(config_module, config_class_name, None)
+        if config_class is not None:
+            return config_class()
+    except Exception:
+        pass
+    return None
+
+
+def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) -> dict:
     """Return ``gym.make`` kwargs for teleop recording with the requested camera size."""
     import_backend_for_env_id(env_id)
     spec = gym.spec(env_id)
@@ -328,48 +359,31 @@ def _recording_env_kwargs(env_id: str, camera_width: int, camera_height: int) ->
     else:
         env_ctor = entry_point
 
-    signature_target = env_ctor.__init__ if inspect.isclass(env_ctor) else env_ctor
-    config_param = inspect.signature(signature_target).parameters.get("config")
-    if config_param is None:
+    if not inspect.isclass(env_ctor):
         return kwargs
 
-    # If there's a default config, use it; otherwise try to create one from the type annotation
-    base_config = config_param.default
+    base_config = _resolve_env_config(env_ctor)
     if base_config is None:
-        # Find the config class from type annotations (as string)
-        config_class_name = None
-        for cls in inspect.getmro(env_ctor):
-            if hasattr(cls, "__annotations__") and "config" in cls.__annotations__:
-                config_class_name = cls.__annotations__["config"]
-                break
-
-        if isinstance(config_class_name, str):
-            # Try to resolve the string to a class
-            try:
-                # Import so101_nexus_core.config to get config classes
-                from so101_nexus_core import config as config_module
-
-                config_class = getattr(config_module, config_class_name, None)
-                if config_class is not None:
-                    base_config = config_class()
-            except Exception:
-                pass
-
-        if base_config is None:
-            return kwargs
-
-    if not hasattr(base_config, "camera"):
         return kwargs
 
-    # Create a new camera config with updated dimensions by copying all attributes
-    camera_attrs = vars(base_config.camera).copy()
-    camera_attrs["width"] = camera_width
-    camera_attrs["height"] = camera_height
-    updated_camera = base_config.camera.__class__(**camera_attrs)
+    # Update WristCamera dimensions in the observations list
+    observations: list | None = getattr(base_config, "observations", None)
+    if observations is None:
+        return kwargs
+    updated_obs = []
+    found_wrist = False
+    for comp in observations:
+        if isinstance(comp, WristCamera):
+            updated_obs.append(WristCamera(width=camera_width, height=camera_height))
+            found_wrist = True
+        else:
+            updated_obs.append(comp)
 
-    # Create a new config with updated camera by copying all attributes
+    if not found_wrist:
+        updated_obs.append(WristCamera(width=camera_width, height=camera_height))
+
     config_attrs = vars(base_config).copy()
-    config_attrs["camera"] = updated_camera
+    config_attrs["observations"] = updated_obs
     updated_config = base_config.__class__(**config_attrs)
     kwargs["config"] = updated_config
     return kwargs
