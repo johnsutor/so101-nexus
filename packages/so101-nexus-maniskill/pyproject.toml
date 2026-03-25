@@ -1,6 +1,6 @@
 [project]
 name = "so101-nexus-maniskill"
-version = "0.3.3"
+version = "0.3.4"
 description = "ManiSkill simulation environments for the SO-101 robot arm"
 requires-python = ">=3.12"
 dynamic = ["dependencies"]
