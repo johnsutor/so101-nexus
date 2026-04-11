@@ -17,11 +17,15 @@ conflicts = [
         { package = "so101-nexus-maniskill" },
         { package = "so101-nexus-mujoco" },
     ],
-    [
-        { package = "so101-nexus-maniskill" },
-        { package = "so101-nexus-core", extra = "teleop" },
-    ],
 ]
+
+# Pin mani-skill to a specific main-branch commit until they cut a release
+# that supports gymnasium>=1.1.1. This is what unblocks running teleop
+# (lerobot[feetech]>=0.5.0 needs gymnasium>=1.1.1) alongside the ManiSkill
+# backend in a single environment. Drop this override once mani-skill ships
+# the next stable release.
+[tool.uv.sources]
+mani-skill = { git = "https://github.com/haosulab/ManiSkill.git", rev = "81d3a4320babadc0add4e6f9ee61050d0903576a" }
 
 [dependency-groups]
 dev = ["hypothesis>=6.140.0", "pytest-cov>=7.0.0", "ruff", "ty"]

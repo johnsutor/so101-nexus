@@ -3,18 +3,23 @@ title: Teleop Dataset Recording
 description: Record demonstration datasets by teleoperating a simulated robot with a physical leader arm.
 ---
 
-SO101-Nexus ships with a Gradio-based teleoperation recorder as part of the
-core package. You control a simulated robot using a physical SO-100 or SO-101
-leader arm, and demonstrations are written out as LeRobot v3 datasets ready
-to push to the HuggingFace Hub.
+SO101-Nexus ships with a Gradio-based teleop recorder in the core package.
+You drive a simulated robot with a physical SO-100 or SO-101 leader arm,
+and demonstrations are saved as LeRobot v3 datasets ready to push to the
+HuggingFace Hub.
 
 ## Installation
 
-Teleop dependencies (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`)
-are packaged as an optional extra on `so101-nexus-core`:
+Teleop deps (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`) live
+in the `teleop` extra on `so101-nexus-core`. Install them alongside the
+backend you want to record against:
 
 ```bash
+# MuJoCo
 uv sync --package so101-nexus-mujoco --extra teleop
+
+# ManiSkill
+uv sync --package so101-nexus-maniskill --extra teleop
 ```
 
 With pip:
@@ -23,40 +28,41 @@ With pip:
 pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
 ```
 
-> **Teleop runs in the mujoco environment only.**
-> `lerobot[feetech]>=0.5.0` requires `gymnasium>=1.1.1`, but `mani-skill`
-> pins `gymnasium<1.1.1`, so the two cannot coexist in a single environment.
-> ManiSkill envs can still be *selected* in the teleop UI — the env id is
-> resolved dynamically — but you must launch teleop from the mujoco env.
+> **ManiSkill main-branch pin.** `lerobot[feetech]>=0.5.0` requires
+> `gymnasium>=1.1.1`, but the latest released ManiSkill (3.0.0b22) pins
+> `gymnasium<1.1.1`. The workspace temporarily sources `mani-skill` from
+> the upstream `main` branch via `[tool.uv.sources]`. Drop the override
+> once ManiSkill cuts a release that supports `gymnasium>=1.1.1`.
 
-## Hardware requirements
+## Hardware
 
 - A physical SO-100 or SO-101 leader arm connected via USB.
-- A Linux machine with the leader arm's serial port accessible.
+- A Linux host with access to the leader arm's serial port.
 
 ## Finding the serial port
 
-On Linux you may need to make the serial device writable before running the
-port finder or launching teleop:
+Make the device writable if needed, then use the LeRobot port discovery
+tool:
 
 ```bash
 sudo chmod 666 /dev/ttyACM0
-```
-
-Use the LeRobot port discovery tool to identify the leader arm's port:
-
-```bash
 lerobot-find-port
 ```
 
-## Launching the teleop recorder
+## Launching the recorder
+
+Each backend exposes a `teleop` subcommand:
 
 ```bash
+# MuJoCo
 uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
+
+# ManiSkill
+uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
-This opens a Gradio web UI in your browser. Most configuration happens in
-the UI — the CLI only takes a handful of connection-level options.
+A Gradio UI opens in your browser. Most settings live in the UI; the CLI
+only takes connection-level options.
 
 ### CLI arguments
 
@@ -68,55 +74,54 @@ the UI — the CLI only takes a handful of connection-level options.
 
 ## Cameras and recorded fields
 
-The recorder captures **both** the wrist camera and the overhead camera by
-default, so you can decide after the fact which views you want in your
-dataset without having to re-record.
+The recorder captures **both** the wrist camera and the overhead camera on
+every step, so you can decide after the fact which views end up in your
+dataset without re-recording.
 
-Under **Advanced Settings → Dataset fields**, a progressively disclosed
-accordion lets you choose which fields are persisted into the LeRobot
-dataset:
+Under **Advanced Settings, Dataset fields**, a checkbox group selects which
+fields are persisted:
 
-- `observation.state` — always saved (disabled, cannot be unchecked)
-- `action` — always saved (disabled, cannot be unchecked)
-- `observation.images.wrist` — optional, on by default
-- `observation.images.overhead` — optional, on by default
-- `task` — optional, on by default
+- `observation.state` always saved (disabled checkbox)
+- `action` always saved (disabled checkbox)
+- `observation.images.wrist` optional, on by default
+- `observation.images.overhead` optional, on by default
+- `task` optional, on by default
 
 Deselecting an optional field removes it from both the declared dataset
 feature schema and every recorded frame. `observation.state` and `action`
-are forced on because a LeRobot dataset without them is not useful for
-training.
+stay forced on because a LeRobot dataset without them is not trainable.
 
 ### Camera resolution
 
-Separate sliders for wrist and overhead camera width/height let you pick
-the resolution captured at recording time. Both cameras are automatically
-wired into the environment's observation config even if the task's default
-config only includes one.
+Separate width and height sliders for the wrist and overhead cameras
+control the recording resolution. Both cameras are wired into the
+environment's observation config automatically, even when the task's
+default config only declares one.
 
 ## Session flow
 
-1. **Configure.** Pick the environment, robot type, episode count, FPS,
-   camera resolutions, action space, countdown timer, and dataset fields.
-2. **Record.** A countdown plays, then the simulation mirrors your leader
-   arm in real time. The live wrist-camera feed shows in the UI.
-3. **Review.** After each episode, the UI shows a video replay plus a
+1. **Configure.** Pick the env, robot type, episode count, FPS, camera
+   resolutions, action space, countdown, and dataset fields.
+2. **Record.** A countdown plays, then the simulation mirrors the leader
+   arm. The live wrist feed renders in the UI.
+3. **Review.** After each episode, the UI shows a video replay and a
    joint-state plot.
-4. **Approve or discard.** Accept the episode to write it into the dataset
+4. **Approve or discard.** Accept to write the episode into the dataset,
    or discard and re-record.
-5. **Push to Hub.** Once all episodes are done, push directly from the UI.
+5. **Push.** When all episodes are done, push to the HuggingFace Hub from
+   the UI.
 
 ## Recorded dataset format
 
-Datasets are saved in the LeRobot v3 format. Depending on which fields you
-selected, recorded datasets may include:
+Datasets use the LeRobot v3 format. Depending on your selection, frames
+include:
 
-- `observation.state` — joint positions (6D) at each timestep (always present)
-- `action` — commanded joint positions or deltas (always present)
-- `observation.images.wrist_cam` — wrist camera frames (optional)
-- `observation.images.overhead_cam` — overhead camera frames (optional)
-- `task` — language description of the task (optional)
+- `observation.state`: joint positions (6D), always present
+- `action`: commanded joint positions or deltas, always present
+- `observation.images.wrist_cam`: wrist camera frames, optional
+- `observation.images.overhead_cam`: overhead camera frames, optional
+- `task`: language description, optional
 
-`observation.state` contains the raw joint positions from the leader arm,
-not the simulator's internal state vector, so datasets stay compatible with
+`observation.state` is the raw joint reading from the leader arm, not the
+simulator's internal state vector, so the dataset stays compatible with
 sim-to-real transfer and vision-based policy training.

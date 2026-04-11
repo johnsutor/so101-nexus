@@ -14,3 +14,6 @@ class CustomMetadataHook(MetadataHookInterface):
             "mani_skill",
             "setuptools<82",
         ]
+        metadata["optional-dependencies"] = {
+            "teleop": [f"so101-nexus-core[teleop]=={version}"],
+        }
