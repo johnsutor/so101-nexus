@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test test-mujoco test-maniskill test-visual test-visual-mujoco test-visual-maniskill test-visual-qwen
+.PHONY: format lint typecheck test test-core test-mujoco test-maniskill test-visual test-visual-mujoco test-visual-maniskill test-visual-qwen
 
 format:
 	uv run ruff format
@@ -10,7 +10,10 @@ lint:
 typecheck:
 	uv run ty check
 
-test: test-mujoco test-maniskill
+test: test-core test-mujoco test-maniskill
+
+test-core:
+	uv run pytest packages/so101-nexus-core/tests/ --cov=packages/so101-nexus-core/src/so101_nexus_core
 
 test-mujoco:
 	uv run --package so101-nexus-mujoco pytest packages/so101-nexus-mujoco/tests/ --cov=packages/so101-nexus-mujoco/src/so101_nexus_mujoco
