@@ -32,6 +32,6 @@ def main() -> None:
         import so101_nexus_mujoco  # noqa: F401 — register gym envs eagerly
         from so101_nexus_core.teleop.app import main as teleop_main
 
-        teleop_main(args)
+        teleop_main(args, backend="mujoco")
     else:  # pragma: no cover - argparse enforces valid commands
         parser.error(f"unknown command: {args.command}")

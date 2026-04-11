@@ -18,7 +18,7 @@ import numpy as np
 if TYPE_CHECKING:
     from so101_nexus_core.teleop.recorder import _WritableTextStream
 
-from so101_nexus_core.env_ids import all_registered_env_ids
+from so101_nexus_core.env_ids import env_ids_for_backend
 from so101_nexus_core.teleop.dataset import (
     FieldSelection,
     build_features,
@@ -829,8 +829,21 @@ def _import_gradio():
     return gr
 
 
-def main(args: argparse.Namespace | None = None) -> None:
-    """Launch the Gradio teleop recorder app."""
+def main(
+    args: argparse.Namespace | None = None,
+    backend: str | None = None,
+) -> None:
+    """Launch the Gradio teleop recorder app.
+
+    Parameters
+    ----------
+    args
+        Parsed CLI args (``--leader-port``, ``--leader-id``,
+        ``--wrist-roll-offset-deg``). If ``None``, parses ``sys.argv``.
+    backend
+        Restrict the env dropdown to a single backend (``"mujoco"`` or
+        ``"maniskill"``). When ``None``, all registered envs are shown.
+    """
     gr = _import_gradio()
 
     if args is None:
@@ -859,7 +872,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         "warning": None,
     }
 
-    all_env_ids = all_registered_env_ids()
+    all_env_ids = env_ids_for_backend(backend)  # type: ignore[arg-type]
 
     with gr.Blocks(title="SO Nexus Teleop Recorder") as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
