@@ -4360,6 +4360,11 @@ dependencies = [
     { name = "so101-nexus-core", marker = "extra == 'project-18-so101-nexus-mujoco' or (extra == 'extra-16-so101-nexus-core-teleop' and extra == 'project-21-so101-nexus-maniskill')" },
 ]
 
+[package.optional-dependencies]
+teleop = [
+    { name = "so101-nexus-core", extra = ["teleop"], marker = "extra == 'project-18-so101-nexus-mujoco' or (extra == 'extra-16-so101-nexus-core-teleop' and extra == 'project-21-so101-nexus-maniskill')" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -4375,7 +4380,9 @@ requires-dist = [
     { name = "gymnasium", specifier = ">=1.0.0" },
     { name = "mujoco", specifier = ">=3.0.0" },
     { name = "so101-nexus-core", editable = "packages/so101-nexus-core" },
+    { name = "so101-nexus-core", extras = ["teleop"], marker = "extra == 'teleop'", editable = "packages/so101-nexus-core" },
 ]
+provides-extras = ["teleop"]
 
 [package.metadata.requires-dev]
 dev = [

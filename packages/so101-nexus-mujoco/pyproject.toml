@@ -3,7 +3,7 @@ name = "so101-nexus-mujoco"
 version = "0.3.4"
 description = "MuJoCo simulation environments for the SO-101 robot arm"
 requires-python = ">=3.12"
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "optional-dependencies"]
 license = "Apache-2.0"
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -11,15 +11,10 @@ to push to the HuggingFace Hub.
 ## Installation
 
 Teleop dependencies (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`)
-are packaged as an optional extra on `so101-nexus-core`. Install them with
-your chosen backend:
+are packaged as an optional extra on `so101-nexus-core`:
 
 ```bash
-# MuJoCo
 uv sync --package so101-nexus-mujoco --extra teleop
-
-# ManiSkill (note: ManiSkill and teleop must use separate environments)
-uv sync --package so101-nexus-maniskill --extra teleop --prerelease=allow
 ```
 
 With pip:
@@ -27,6 +22,12 @@ With pip:
 ```bash
 pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
 ```
+
+> **Teleop runs in the mujoco environment only.**
+> `lerobot[feetech]>=0.5.0` requires `gymnasium>=1.1.1`, but `mani-skill`
+> pins `gymnasium<1.1.1`, so the two cannot coexist in a single environment.
+> ManiSkill envs can still be *selected* in the teleop UI — the env id is
+> resolved dynamically — but you must launch teleop from the mujoco env.
 
 ## Hardware requirements
 
@@ -50,14 +51,8 @@ lerobot-find-port
 
 ## Launching the teleop recorder
 
-Each backend exposes a `teleop` subcommand on a backend-specific CLI:
-
 ```bash
-# MuJoCo
 uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
-
-# ManiSkill
-uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
 This opens a Gradio web UI in your browser. Most configuration happens in

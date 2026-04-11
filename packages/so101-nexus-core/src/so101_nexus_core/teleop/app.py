@@ -810,9 +810,28 @@ def _wire_events(
     finalize_btn.click(fn=finalize_and_close, outputs=[done_status])
 
 
+_TELEOP_INSTALL_HINT = (
+    "Teleop dependencies are not installed. Install them with one of:\n"
+    "  uv sync --package so101-nexus-mujoco --extra teleop\n"
+    "  uv sync --package so101-nexus-maniskill --extra teleop --prerelease=allow\n"
+    "  pip install 'so101-nexus-core[teleop]'"
+)
+
+
+def _import_gradio():
+    """Import ``gradio`` and verify it is the real package, not an orphaned namespace."""
+    try:
+        import gradio as gr
+    except ImportError as exc:
+        raise SystemExit(_TELEOP_INSTALL_HINT) from exc
+    if not hasattr(gr, "Blocks"):
+        raise SystemExit(_TELEOP_INSTALL_HINT)
+    return gr
+
+
 def main(args: argparse.Namespace | None = None) -> None:
     """Launch the Gradio teleop recorder app."""
-    import gradio as gr
+    gr = _import_gradio()
 
     if args is None:
         parser = argparse.ArgumentParser(description="Gradio-based teleop recorder")
