@@ -53,6 +53,9 @@ conflicts = [[
     { package = "so101-nexus-maniskill" },
 ]]
 
+[options]
+prerelease-mode = "allow"
+
 [manifest]
 members = [
     "so101-nexus-core",

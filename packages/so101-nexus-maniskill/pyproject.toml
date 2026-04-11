@@ -19,6 +19,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.scripts]
+so101-nexus-maniskill = "so101_nexus_maniskill.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
