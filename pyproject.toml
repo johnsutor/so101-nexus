@@ -19,18 +19,13 @@ conflicts = [
     ],
     [
         { package = "so101-nexus-maniskill" },
-        { package = "so101-nexus-workspace", group = "teleop" },
-    ],
-    [
-        { package = "so101-nexus-maniskill" },
-        { package = "so101-nexus-mujoco", group = "teleop" },
+        { package = "so101-nexus-core", extra = "teleop" },
     ],
 ]
 
 [dependency-groups]
 dev = ["hypothesis>=6.140.0", "pytest-cov>=7.0.0", "ruff", "ty"]
 visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
-teleop = ["lerobot[feetech]>=0.5.0", "gradio>=5.0.0", "plotly>=6.0.0"]
 
 [tool.ruff]
 line-length = 100

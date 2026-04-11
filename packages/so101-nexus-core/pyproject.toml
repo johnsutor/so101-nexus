@@ -21,6 +21,13 @@ classifiers = [
 
 [project.optional-dependencies]
 viz = ["Pillow"]
+teleop = [
+    "lerobot[feetech]>=0.5.0",
+    "gradio>=5.0.0",
+    "plotly>=6.0.0",
+    "opencv-python>=4.8.0",
+    "Pillow",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/so101_nexus_core"]
