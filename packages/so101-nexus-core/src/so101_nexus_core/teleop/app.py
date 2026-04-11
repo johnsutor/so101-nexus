@@ -11,9 +11,12 @@ import argparse
 import contextlib
 import sys
 import threading
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from so101_nexus_core.teleop.recorder import _WritableTextStream
 
 from so101_nexus_core.env_ids import all_registered_env_ids
 from so101_nexus_core.teleop.dataset import (
@@ -192,8 +195,8 @@ def _cb_start_init(
         error=None,
     )
 
-    tee_out = TeeStream(cast("object", sys.stdout))
-    tee_err = TeeStream(cast("object", sys.stderr))
+    tee_out = TeeStream(cast("_WritableTextStream", sys.stdout))
+    tee_err = TeeStream(cast("_WritableTextStream", sys.stderr))
     init_state["tee_stdout"], init_state["tee_stderr"] = tee_out, tee_err
     sys.stdout, sys.stderr = tee_out, tee_err  # type: ignore[assignment]
 
