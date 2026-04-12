@@ -229,7 +229,7 @@ def _cb_poll_init(session: dict, init_state: dict):
     import gradio as gr
 
     if init_state.get("processed"):
-        return (gr.update(), gr.update(), gr.update(), gr.update())
+        return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
 
     tee_out = init_state.get("tee_stdout")
     tee_err = init_state.get("tee_stderr")
@@ -240,7 +240,13 @@ def _cb_poll_init(session: dict, init_state: dict):
             log += "\n" + err_text
 
     if not init_state["done"]:
-        return (gr.update(value=log or "Starting..."), gr.update(), gr.update(), gr.update())
+        return (
+            gr.update(value=log or "Starting..."),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+        )
 
     if tee_out:
         sys.stdout = tee_out._original  # type: ignore[assignment]
@@ -252,6 +258,7 @@ def _cb_poll_init(session: dict, init_state: dict):
     if init_state["error"]:
         return (
             gr.update(value=log + f"\n\nERROR: {init_state['error']}"),
+            gr.update(visible=True),
             gr.update(),
             gr.update(),
             gr.update(),
@@ -268,6 +275,7 @@ def _cb_poll_init(session: dict, init_state: dict):
     n = s["state"].num_episodes
     return (
         gr.update(value=log),
+        gr.update(),
         gr.Walkthrough(selected=2),
         gr.update(value=header, visible=True),
         gr.update(visible=True, value=_progress_text(0, n)),
@@ -465,6 +473,18 @@ def _cb_discard_episode(session: dict):
     )
 
 
+def _cb_retry_init(init_state: dict):
+    """Reset init state and return to Configure step for retry."""
+    import gradio as gr
+
+    init_state.update(running=False, done=False, processed=False, error=None)
+    return (
+        gr.Walkthrough(selected=0),
+        gr.update(value=""),
+        gr.update(visible=False),
+    )
+
+
 def _cb_push_to_hub(session: dict):
     """Push the completed dataset to HuggingFace Hub."""
     import gradio as gr
@@ -590,8 +610,9 @@ def _build_init_step(gr):
     """Build the Initialize step contents."""
     gr.Markdown("### Initializing Session...")
     init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
+    retry_btn = gr.Button("Back to Configure", variant="secondary", visible=False)
     init_timer = gr.Timer(value=0.25)
-    return init_log, init_timer
+    return init_log, retry_btn, init_timer
 
 
 def _build_record_step(gr):
@@ -640,6 +661,7 @@ def _wire_events(
     init_btn,
     init_inputs,
     init_log,
+    retry_btn,
     init_timer,
     record_status,
     start_btn,
@@ -681,10 +703,16 @@ def _wire_events(
     def stop_recording() -> None:
         session["state"].should_stop = True
 
+    retry_init = functools.partial(_cb_retry_init, init_state)
+
     init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough])
     init_timer.tick(
         fn=poll_init,
-        outputs=[init_log, walkthrough, session_header, progress_status],
+        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status],
+    )
+    retry_btn.click(
+        fn=retry_init,
+        outputs=[walkthrough, init_log, retry_btn],
     )
     start_btn.click(
         fn=start_recording,
@@ -809,7 +837,7 @@ def main(
                 ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
 
             with gr.Step("Initialize", id=1):
-                init_log, init_timer = _build_init_step(gr)
+                init_log, retry_btn, init_timer = _build_init_step(gr)
 
             with gr.Step("Record", id=2):
                 (
@@ -863,6 +891,7 @@ def main(
             init_btn=init_btn,
             init_inputs=init_inputs,
             init_log=init_log,
+            retry_btn=retry_btn,
             init_timer=init_timer,
             record_status=record_status,
             start_btn=start_btn,
