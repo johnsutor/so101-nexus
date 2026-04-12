@@ -18,8 +18,10 @@ import numpy as np
 if TYPE_CHECKING:
     from so101_nexus_core.teleop.recorder import _WritableTextStream
 
-from so101_nexus_core.env_ids import env_ids_for_backend
+from so101_nexus_core.env_ids import Backend, env_ids_for_backend
 from so101_nexus_core.teleop.dataset import (
+    OVERHEAD_KEY,
+    WRIST_KEY,
     FieldSelection,
     build_features,
     build_frame,
@@ -43,6 +45,8 @@ from so101_nexus_core.teleop.session import (
     make_state_plot,
 )
 
+_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, "task"]
+
 
 def _noop(n: int):
     """Return *n* ``gr.update()`` sentinels."""
@@ -59,8 +63,8 @@ def _progress_text(completed: int, total: int) -> str:
 def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
     """Construct a :class:`FieldSelection` from the checkbox-group value list."""
     return FieldSelection(
-        wrist_image="observation.images.wrist" in field_selection_value,
-        overhead_image="observation.images.overhead" in field_selection_value,
+        wrist_image=WRIST_KEY in field_selection_value,
+        overhead_image=OVERHEAD_KEY in field_selection_value,
         task="task" in field_selection_value,
     )
 
@@ -343,7 +347,7 @@ def _cb_poll_recording(session: dict):
             frame = cv2.resize(frame, (wrist_w, wrist_h), interpolation=cv2.INTER_LINEAR)
         n = len(s.episode_actions)
         ep = s.episodes_completed + 1
-        status = f"Recording episode {ep}/{s.num_episodes} — {n} frames ({n / fps:.1f}s)"
+        status = f"Recording episode {ep}/{s.num_episodes}: {n} frames ({n / fps:.1f}s)"
         return (
             gr.update(value=status),
             gr.update(value=frame, visible=True),
@@ -490,7 +494,7 @@ def _cb_finalize_and_close(session: dict):
         raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
     with contextlib.suppress(Exception):
         session["leader"].disconnect()
-    return "Session finalized — you can close this tab."
+    return "Session finalized. You can close this tab."
 
 
 # ---------------------------------------------------------------------------
@@ -542,16 +546,8 @@ def _build_setup_screen(
             gr.Checkbox(value=True, interactive=False, label="observation.state (always on)")
             gr.Checkbox(value=True, interactive=False, label="action (always on)")
             field_selection_input = gr.CheckboxGroup(
-                choices=[
-                    "observation.images.wrist",
-                    "observation.images.overhead",
-                    "task",
-                ],
-                value=[
-                    "observation.images.wrist",
-                    "observation.images.overhead",
-                    "task",
-                ],
+                choices=_OPTIONAL_FIELD_CHOICES,
+                value=list(_OPTIONAL_FIELD_CHOICES),
                 label="Optional fields",
             )
 
@@ -831,7 +827,7 @@ def _import_gradio():
 
 def main(
     args: argparse.Namespace | None = None,
-    backend: str | None = None,
+    backend: Backend | None = None,
 ) -> None:
     """Launch the Gradio teleop recorder app.
 
@@ -872,7 +868,7 @@ def main(
         "warning": None,
     }
 
-    all_env_ids = env_ids_for_backend(backend)  # type: ignore[arg-type]
+    all_env_ids = env_ids_for_backend(backend)
 
     with gr.Blocks(title="SO Nexus Teleop Recorder") as app:
         gr.Markdown("# SO Nexus Teleop Recorder")

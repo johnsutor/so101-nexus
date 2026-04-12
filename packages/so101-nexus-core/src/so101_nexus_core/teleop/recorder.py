@@ -169,7 +169,7 @@ def recording_thread(
                 wrist_image = obs.get("wrist_camera")
                 overhead_image = obs.get("overhead_camera")
 
-            # The leader arm action IS the observation.state for the dataset —
+            # The leader arm action IS the observation.state for the dataset:
             # it matches what real robot joint encoders would report.
             state.episode_actions.append(action.astype(np.float32))
             state.episode_states.append(action.astype(np.float32))

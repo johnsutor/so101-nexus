@@ -1,7 +1,7 @@
 """Dataset field selection, feature schema, and per-frame builders.
 
 The selection surfaces in the Gradio UI as checkboxes. ``observation.state``
-and ``action`` are always written — they are not user-toggleable. Everything
+and ``action`` are always written; they are not user-toggleable. Everything
 else can be opted out of, in which case it is excluded from both the declared
 LeRobot feature schema and every recorded frame.
 """
@@ -104,14 +104,14 @@ def build_frame(
     if selection.wrist_image:
         if wrist_image is None:
             raise ValueError(
-                "wrist_image selected but no wrist frame was recorded — "
+                "wrist_image selected but no wrist frame was recorded;"
                 "check that the env exposes a WristCamera observation."
             )
         frame[WRIST_KEY] = wrist_image
     if selection.overhead_image:
         if overhead_image is None:
             raise ValueError(
-                "overhead_image selected but no overhead frame was recorded — "
+                "overhead_image selected but no overhead frame was recorded;"
                 "check that the env exposes an OverheadCamera observation."
             )
         frame[OVERHEAD_KEY] = overhead_image

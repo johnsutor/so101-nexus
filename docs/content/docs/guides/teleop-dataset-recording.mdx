@@ -22,11 +22,17 @@ uv sync --package so101-nexus-mujoco --extra teleop
 uv sync --package so101-nexus-maniskill --extra teleop
 ```
 
-With pip:
+With pip (mujoco only):
 
 ```bash
 pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
 ```
+
+> **Pip cannot install ManiSkill+teleop today.** The git pin below is uv
+> only. Pip users will resolve the released ManiSkill, which still pins
+> `gymnasium<1.1.1` and conflicts with `lerobot[feetech]>=0.5.0`. Use uv
+> for the ManiSkill+teleop combination until ManiSkill releases a stable
+> version with the new gymnasium support.
 
 > **ManiSkill main-branch pin.** `lerobot[feetech]>=0.5.0` requires
 > `gymnasium>=1.1.1`, but the latest released ManiSkill (3.0.0b22) pins
@@ -83,8 +89,8 @@ fields are persisted:
 
 - `observation.state` always saved (disabled checkbox)
 - `action` always saved (disabled checkbox)
-- `observation.images.wrist` optional, on by default
-- `observation.images.overhead` optional, on by default
+- `observation.images.wrist_cam` optional, on by default
+- `observation.images.overhead_cam` optional, on by default
 - `task` optional, on by default
 
 Deselecting an optional field removes it from both the declared dataset
