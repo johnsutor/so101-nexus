@@ -223,5 +223,13 @@ __marimo__/
 wandb/*
 runs/*
 
-# Code 
+# Node.js (puppeteer, etc.)
+node_modules/
+package.json
+package-lock.json
+
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Code
 docs/superpowers
