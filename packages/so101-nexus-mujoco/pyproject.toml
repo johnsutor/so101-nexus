@@ -3,7 +3,7 @@ name = "so101-nexus-mujoco"
 version = "0.3.4"
 description = "MuJoCo simulation environments for the SO-101 robot arm"
 requires-python = ">=3.12"
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "optional-dependencies"]
 license = "Apache-2.0"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -19,6 +19,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.scripts]
+so101-nexus-mujoco = "so101_nexus_mujoco.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -26,7 +29,6 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [{ include-group = "test" }]
 test = ["pytest>=7.0.0", "pytest-cov>=7.0.0"]
-teleop = ["lerobot[feetech]>=0.5.0", "gradio>=5.0.0", "plotly>=6.0.0"]
 
 [tool.hatch.metadata.hooks.custom]
 

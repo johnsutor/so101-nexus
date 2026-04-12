@@ -14,3 +14,6 @@ class CustomMetadataHook(MetadataHookInterface):
             "mujoco>=3.0.0",
             "gymnasium>=1.0.0",
         ]
+        metadata["optional-dependencies"] = {
+            "teleop": [f"so101-nexus-core[teleop]=={version}"],
+        }

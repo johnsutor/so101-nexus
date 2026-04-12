@@ -5,7 +5,7 @@ description: Gymnasium-compatible simulation environments for SO-100 and SO-101 
 
 SO101-Nexus provides [Gymnasium](https://gymnasium.farama.org/)-compatible simulation environments for the [SO-100 and SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arms.
 
-There are very few standardized simulation environments available for these arms. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded environments across multiple physics backends, enabling consistent experimentation and benchmarking. Robust policies should generalize across simulators before being deployed in the real world -- sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
+There are very few standardized simulation environments available for these arms. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded environments across multiple physics backends, enabling consistent experimentation and benchmarking. Robust policies should generalize across simulators before being deployed in the real world; sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
 
 SO101-Nexus also provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
 
@@ -17,6 +17,7 @@ SO101-Nexus also provides a foundation for training text-conditioned embodied po
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards
 - **YCB object support** -- use real-world object meshes from the YCB dataset
 - **Sim-to-real transfer** -- environments match the physical SO-100 and SO-101 arms
+- **[Built-in teleoperation](/docs/guides/teleop-dataset-recording)** -- record LeRobot datasets with a physical SO-100 or SO-101 leader arm, capturing wrist and overhead cameras out of the box
 
 ## Quick Examples
 
@@ -89,3 +90,4 @@ All five tasks are available on both the MuJoCo and ManiSkill backends. ManiSkil
 - **[ManiSkill Quickstart](/docs/getting-started/quickstart-maniskill)** -- run batched GPU-accelerated environments
 - **[Working with Objects](/docs/guides/working-with-objects)** -- use cubes, YCB objects, or custom meshes
 - **[Customizing Environments](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, and more
+- **[Teleop Dataset Recording](/docs/guides/teleop-dataset-recording)** -- collect demonstrations with a physical leader arm and push them to the HuggingFace Hub

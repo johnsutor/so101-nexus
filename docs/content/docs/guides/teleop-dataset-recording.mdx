@@ -3,41 +3,74 @@ title: Teleop Dataset Recording
 description: Record demonstration datasets by teleoperating a simulated robot with a physical leader arm.
 ---
 
-SO101-Nexus includes a teleoperation script at `examples/teleop.py` that lets you control a simulated robot using a physical SO-100 or SO-101 leader arm. Demonstrations are recorded as LeRobot v3 datasets and can be pushed directly to the HuggingFace Hub.
+SO101-Nexus ships with a Gradio-based teleop recorder in the core package.
+You drive a simulated robot with a physical SO-100 or SO-101 leader arm,
+and demonstrations are saved as LeRobot v3 datasets ready to push to the
+HuggingFace Hub.
 
-## Hardware requirements
+## Installation
 
-- A physical SO-100 or SO-101 leader arm connected via USB
-- A Linux machine with the leader arm's serial port accessible
+Teleop deps (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`) live
+in the `teleop` extra on `so101-nexus-core`. Install them alongside the
+backend you want to record against:
+
+```bash
+# MuJoCo
+uv sync --package so101-nexus-mujoco --extra teleop
+
+# ManiSkill
+uv sync --package so101-nexus-maniskill --extra teleop
+```
+
+With pip (mujoco only):
+
+```bash
+pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
+```
+
+> **Pip cannot install ManiSkill+teleop today.** The git pin below is uv
+> only. Pip users will resolve the released ManiSkill, which still pins
+> `gymnasium<1.1.1` and conflicts with `lerobot[feetech]>=0.5.0`. Use uv
+> for the ManiSkill+teleop combination until ManiSkill releases a stable
+> version with the new gymnasium support.
+
+> **ManiSkill main-branch pin.** `lerobot[feetech]>=0.5.0` requires
+> `gymnasium>=1.1.1`, but the latest released ManiSkill (3.0.0b22) pins
+> `gymnasium<1.1.1`. The workspace temporarily sources `mani-skill` from
+> the upstream `main` branch via `[tool.uv.sources]`. Drop the override
+> once ManiSkill cuts a release that supports `gymnasium>=1.1.1`.
+
+## Hardware
+
+- A physical SO-100 or SO-101 leader arm connected via USB.
+- A Linux host with access to the leader arm's serial port.
 
 ## Finding the serial port
 
-If you're on Linux, you may need to make the serial devices writable before running the port finder or launching teleop:
+Make the device writable if needed, then use the LeRobot port discovery
+tool:
 
 ```bash
 sudo chmod 666 /dev/ttyACM0
-sudo chmod 666 /dev/ttyACM1
-```
-
-Assuming you have already [installed LeRobot](https://huggingface.co/docs/lerobot/installation), you can use the LeRobot port discovery tool to identify the leader arm's serial port:
-
-```bash
 lerobot-find-port
 ```
 
-This will list connected devices with their port paths (typically `/dev/ttyACM0` or similar).
+## Launching the recorder
 
-## Launching the teleop interface
+Each backend exposes a `teleop` subcommand:
 
 ```bash
-uv run --package so101-nexus-mujoco --group teleop \
-    python examples/teleop.py \
-    --leader-port /dev/ttyACM0
+# MuJoCo
+uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
+
+# ManiSkill
+uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
-This opens a Gradio web UI in your browser.
+A Gradio UI opens in your browser. Most settings live in the UI; the CLI
+only takes connection-level options.
 
-## CLI arguments
+### CLI arguments
 
 | Argument | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -45,37 +78,56 @@ This opens a Gradio web UI in your browser.
 | `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
 | `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
 
-## Gradio UI configuration
+## Cameras and recorded fields
 
-The web interface provides controls for the recording session:
+The recorder captures **both** the wrist camera and the overhead camera on
+every step, so you can decide after the fact which views end up in your
+dataset without re-recording.
 
-| Setting | Description |
-| --- | --- |
-| Environment | Which simulation environment to use |
-| Robot type | SO-100 or SO-101 |
-| Episodes | Number of episodes to record |
-| FPS | Recording frame rate |
-| Camera resolution | Resolution of recorded camera frames |
-| Action space | `joint_pos` (absolute) or `joint_pos_delta` (relative) |
-| Countdown | Seconds of countdown before recording starts |
+Under **Advanced Settings, Dataset fields**, a checkbox group selects which
+fields are persisted:
+
+- `observation.state` always saved (disabled checkbox)
+- `action` always saved (disabled checkbox)
+- `observation.images.wrist_cam` optional, on by default
+- `observation.images.overhead_cam` optional, on by default
+- `task` optional, on by default
+
+Deselecting an optional field removes it from both the declared dataset
+feature schema and every recorded frame. `observation.state` and `action`
+stay forced on because a LeRobot dataset without them is not trainable.
+
+### Camera resolution
+
+Separate width and height sliders for the wrist and overhead cameras
+control the recording resolution. Both cameras are wired into the
+environment's observation config automatically, even when the task's
+default config only declares one.
 
 ## Session flow
 
-1. **Configure.** Set the environment, robot type, number of episodes, FPS, camera resolution, action space, and countdown timer in the Gradio UI.
-2. **Record.** A countdown plays before each episode begins. Teleoperate the simulated robot by moving the physical leader arm. The simulation mirrors your movements in real time.
-3. **Review.** After each episode, the UI displays a video replay and diagnostic plots of the recorded trajectory.
-4. **Approve or discard.** Accept the episode to add it to the dataset, or discard it and re-record.
-5. **Push to Hub.** Once all episodes are recorded, push the completed dataset to the HuggingFace Hub directly from the UI.
+1. **Configure.** Pick the env, robot type, episode count, FPS, camera
+   resolutions, action space, countdown, and dataset fields.
+2. **Record.** A countdown plays, then the simulation mirrors the leader
+   arm. The live wrist feed renders in the UI.
+3. **Review.** After each episode, the UI shows a video replay and a
+   joint-state plot.
+4. **Approve or discard.** Accept to write the episode into the dataset,
+   or discard and re-record.
+5. **Push.** When all episodes are done, push to the HuggingFace Hub from
+   the UI.
 
 ## Recorded dataset format
 
-Datasets are saved in the LeRobot v3 format, which includes:
+Datasets use the LeRobot v3 format. Depending on your selection, frames
+include:
 
-- **`observation.state`**: Joint positions (6D) at each timestep, matching what real robot encoders would report
-- **`action`**: Commanded joint positions (or deltas, depending on action space)
-- **`observation.images.wrist_cam`**: Camera frames at the configured resolution
-- Episode metadata (environment, robot type, timestamps)
+- `observation.state`: joint positions (6D), always present
+- `action`: commanded joint positions or deltas, always present
+- `observation.images.wrist_cam`: wrist camera frames, optional
+- `observation.images.overhead_cam`: overhead camera frames, optional
+- `task`: language description, optional
 
-The `observation.state` field always contains the raw joint positions from the leader arm, not the simulator's internal state vector (which may include privileged information like object positions). This ensures datasets are compatible with sim-to-real transfer and vision-based policy training.
-
-These datasets are compatible with LeRobot training pipelines and can be loaded with the standard LeRobot dataset API.
+`observation.state` is the raw joint reading from the leader arm, not the
+simulator's internal state vector, so the dataset stays compatible with
+sim-to-real transfer and vision-based policy training.
