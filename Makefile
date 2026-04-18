@@ -3,6 +3,7 @@
         coverage clean-coverage
 
 COV_FAIL_UNDER ?= 85
+export COV_FAIL_UNDER
 
 format:
 	uv run ruff format
@@ -20,7 +21,7 @@ test: clean-coverage
 	uv run coverage report --fail-under=$(COV_FAIL_UNDER)
 
 clean-coverage:
-	rm -f .coverage .coverage.*
+	rm -rf .coverage .coverage.* htmlcov
 
 test-core:
 	COVERAGE_FILE=.coverage.core uv run --package so101-nexus-core --prerelease=allow pytest packages/so101-nexus-core/tests \
@@ -35,7 +36,7 @@ test-maniskill:
 	  packages/so101-nexus-maniskill/tests --cov=so101_nexus_maniskill --cov-report=
 
 coverage:
-	uv run coverage combine || true
+	uv run coverage combine
 	uv run coverage report --fail-under=$(COV_FAIL_UNDER)
 	uv run coverage html
 
