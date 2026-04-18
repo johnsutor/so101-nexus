@@ -89,7 +89,8 @@ def _run_episode(env, n_steps: int = N_STEPS):
 @pytest.mark.parametrize("env_id,config_cls", ENV_MATRIX)
 def test_gymnasium_contract(env_id: str, config_cls: type):
     """Every env satisfies the shared Gymnasium contract."""
-    run_env_contract(env_id, config_cls)
+    del config_cls  # parametrized for symmetry with other matrix tests.
+    run_env_contract(env_id)
 
 
 # ---------------------------------------------------------------------------

@@ -15,10 +15,10 @@ import numpy as np
 
 def run_env_contract(
     env_id: str,
-    config_cls: type | None = None,
     *,
-    reward_range: tuple[float, float] = (-0.1, 1.0),
+    reward_range: tuple[float, float] = (0.0, 1.0),
     n_steps: int = 3,
+    seed: int = 42,
     make_kwargs: dict[str, Any] | None = None,
 ) -> None:
     """Run the shared Gymnasium contract against ``env_id``.
@@ -39,14 +39,13 @@ def run_env_contract(
     ----------
     env_id : str
         Gymnasium environment id to construct.
-    config_cls : type or None
-        Backend-agnostic config class (``ReachConfig`` etc.) — kept in
-        the signature so callers can parametrize on it even if this
-        smoke pass doesn't instantiate a custom config.
     reward_range : tuple of float
         Inclusive ``(low, high)`` bounds on per-step reward.
     n_steps : int
         Number of random-action steps to run.
+    seed : int
+        Seed used for the reproducibility check (``reset(seed=...)``
+        called twice must yield identical observations).
     make_kwargs : dict, optional
         Extra keyword arguments forwarded to ``gym.make``.
     """
@@ -75,8 +74,8 @@ def run_env_contract(
             assert "success" in info
 
         # Seeded reset reproducibility.
-        obs1, _ = env.reset(seed=42)
-        obs2, _ = env.reset(seed=42)
+        obs1, _ = env.reset(seed=seed)
+        obs2, _ = env.reset(seed=seed)
         _assert_obs_equal(obs1, obs2)
 
         # Multiple resets.

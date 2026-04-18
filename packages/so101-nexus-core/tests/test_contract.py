@@ -16,5 +16,5 @@ def test_contract_signature():
 
     sig = inspect.signature(run_env_contract)
     assert "env_id" in sig.parameters
-    assert "config_cls" in sig.parameters
     assert "reward_range" in sig.parameters
+    assert "seed" in sig.parameters
