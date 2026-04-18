@@ -338,9 +338,10 @@ def test_task_description_starts_with_capital(env_id):
         env.close()
 
 
-def test_pick_and_place_task_description_includes_colors():
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_task_description_includes_colors(env_id):
     env = gym.make(
-        "ManiSkillPickAndPlaceSO100-v1",
+        env_id,
         config=PickAndPlaceConfig(cube_colors="green", target_colors="blue"),
         **BASE_KWARGS,
     )
@@ -646,7 +647,7 @@ def test_pick_and_place_target_visible(env_id):
 
 @pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
 def test_pick_and_place_cube_target_separation(env_id):
-    cfg = PickAndPlaceConfig()
+    min_sep = PickAndPlaceConfig().min_cube_target_separation
     env = gym.make(env_id, **BASE_KWARGS)
     try:
         for _ in range(5):
@@ -654,7 +655,7 @@ def test_pick_and_place_cube_target_separation(env_id):
             cube_xy = env.unwrapped.obj.pose.p[0, :2].cpu()
             target_xy = env.unwrapped.target_site.pose.p[0, :2].cpu()
             dist = torch.linalg.norm(cube_xy - target_xy).item()
-            assert dist >= cfg.min_cube_target_separation - 1e-4
+            assert dist >= min_sep - 1e-4
     finally:
         env.close()
 
