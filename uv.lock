@@ -23,6 +23,9 @@ conflicts = [[
     { package = "so101-nexus-mujoco" },
 ]]
 
+[options]
+prerelease-mode = "allow"
+
 [manifest]
 members = [
     "so101-nexus-core",

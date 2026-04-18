@@ -113,6 +113,20 @@ exclude_lines = [
 ]
 show_missing = true
 
+[tool.coverage.paths]
+core = [
+    "packages/so101-nexus-core/src/so101_nexus_core",
+    "**/site-packages/so101_nexus_core",
+]
+mujoco = [
+    "packages/so101-nexus-mujoco/src/so101_nexus_mujoco",
+    "**/site-packages/so101_nexus_mujoco",
+]
+maniskill = [
+    "packages/so101-nexus-maniskill/src/so101_nexus_maniskill",
+    "**/site-packages/so101_nexus_maniskill",
+]
+
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "-ra"]
 testpaths = [
@@ -123,12 +137,4 @@ testpaths = [
 ]
 markers = [
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
-]
-
-[tool.coverage.paths]
-source = [
-    "packages/so101-nexus-core/src",
-    "packages/so101-nexus-mujoco/src",
-    "packages/so101-nexus-maniskill/src",
-    "**/site-packages",
 ]
