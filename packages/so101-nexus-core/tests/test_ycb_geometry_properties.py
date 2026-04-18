@@ -92,9 +92,9 @@ def test_rest_pose_always_returns_finite_values(n, scale, seed):
     # Quaternion norm ≈ 1.
     np.testing.assert_allclose(np.linalg.norm(quat), 1.0, atol=1e-6)
     assert np.isfinite(spawn_z)
-    # Spawn z puts the lowest point at `margin` above the ground.
-    # With arbitrary vertex positions, spawn_z can be negative if the lowest point is well above margin.
-    assert isinstance(spawn_z, (float, np.floating))
+    # Spawn z corresponds to -min-of-thinnest-axis + margin; may be negative
+    # when the input happens to put all vertices above the origin on that axis.
+    assert isinstance(spawn_z, float)
 
 
 @given(
