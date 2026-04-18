@@ -70,8 +70,8 @@ def run_env_contract(
             reward_f = float(reward)
             assert np.isfinite(reward_f), f"non-finite reward {reward} for {env_id}"
             assert low <= reward_f <= high, f"reward {reward_f} out of [{low}, {high}] for {env_id}"
-            assert isinstance(terminated, (bool, np.bool_))
-            assert isinstance(truncated, (bool, np.bool_))
+            _assert_bool_like(terminated, "terminated")
+            _assert_bool_like(truncated, "truncated")
             assert "success" in info
 
         # Seeded reset reproducibility.
@@ -85,6 +85,22 @@ def run_env_contract(
             assert obs is not None
     finally:
         env.close()
+
+
+def _assert_bool_like(x: Any, name: str) -> None:
+    """Assert ``x`` is a scalar boolean-coercible value.
+
+    Accepts ``bool``, ``numpy.bool_``, and scalar tensor-like objects that
+    expose ``__bool__`` (e.g. ``torch.Tensor`` with one element). This keeps
+    the contract usable across CPU/NumPy-only backends (MuJoCo) and
+    tensor-native backends (ManiSkill) without importing torch here.
+    """
+    if isinstance(x, (bool, np.bool_)):
+        return
+    try:
+        bool(x)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise AssertionError(f"{name} is not bool-coercible: {x!r}") from exc
 
 
 def _assert_obs_equal(a: Any, b: Any) -> None:
