@@ -57,6 +57,8 @@ def test_seeded_reset_is_deterministic(env_id, seed):
         obs2, _ = env.reset(seed=seed)
         if isinstance(obs1, dict):
             assert obs1.keys() == obs2.keys()
+            for k in obs1:
+                np.testing.assert_array_equal(np.asarray(obs1[k]), np.asarray(obs2[k]))
         else:
             np.testing.assert_array_equal(np.asarray(obs1), np.asarray(obs2))
     finally:

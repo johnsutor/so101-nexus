@@ -35,7 +35,7 @@ def test_obs_always_in_observation_space(env_id, seed):
     env = gym.make(env_id)
     try:
         obs, _ = env.reset(seed=seed)
-        assert env.observation_space.contains(obs) or isinstance(obs, dict)
+        assert env.observation_space.contains(obs)
         obs, reward, term, trunc, info = env.step(env.action_space.sample())
         assert np.isfinite(float(reward))
     finally:
@@ -67,12 +67,9 @@ def test_seeded_reset_is_deterministic(env_id, seed):
 @pytest.mark.parametrize("env_id", ENV_IDS)
 def test_random_actions_never_crash(env_id):
     env = gym.make(env_id)
-    rng = np.random.default_rng(0)
     try:
         env.reset(seed=0)
         for _ in range(20):
-            action = env.action_space.sample()
-            _ = rng.uniform(-1, 1, size=action.shape)
-            env.step(action)
+            env.step(env.action_space.sample())
     finally:
         env.close()
