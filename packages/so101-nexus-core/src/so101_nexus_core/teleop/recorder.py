@@ -68,6 +68,7 @@ class RecordingState:
     task_description: str = ""
     episode_duration: float = 0.0
     live_frame: np.ndarray | None = None
+    live_overhead_frame: np.ndarray | None = None
 
     episodes_completed: int = 0
     num_episodes: int = 0
@@ -81,6 +82,7 @@ class RecordingState:
         self.task_description = ""
         self.episode_duration = 0.0
         self.live_frame = None
+        self.live_overhead_frame = None
         self.recording_finished = False
 
 
@@ -178,6 +180,7 @@ def recording_thread(
                 state.live_frame = wrist_image.copy()
             if overhead_image is not None:
                 state.episode_overhead_images.append(overhead_image)
+                state.live_overhead_frame = overhead_image.copy()
 
             if terminated or truncated:
                 break

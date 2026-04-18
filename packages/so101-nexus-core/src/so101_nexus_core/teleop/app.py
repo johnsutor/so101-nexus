@@ -48,13 +48,6 @@ from so101_nexus_core.teleop.session import (
 _OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, "task"]
 
 
-def _noop(n: int):
-    """Return *n* ``gr.update()`` sentinels."""
-    import gradio as gr
-
-    return tuple(gr.update() for _ in range(n))
-
-
 def _progress_text(completed: int, total: int) -> str:
     """Format a progress string for the episode counter."""
     return f"**Episode {completed} / {total}**"
@@ -196,6 +189,7 @@ def _cb_start_init(
         warning=check_robot_env_mismatch(env_id, robot_type),
         running=True,
         done=False,
+        processed=False,
         error=None,
     )
 
@@ -227,15 +221,15 @@ def _cb_start_init(
         daemon=True,
     ).start()
 
-    return gr.update(visible=False), gr.update(visible=True)
+    return gr.Walkthrough(selected=1)
 
 
 def _cb_poll_init(session: dict, init_state: dict):
     """Poll the init thread and stream log output to the UI."""
     import gradio as gr
 
-    if init_state["processed"]:
-        return _noop(7)
+    if init_state.get("processed"):
+        return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
 
     tee_out = init_state.get("tee_stdout")
     tee_err = init_state.get("tee_stderr")
@@ -246,7 +240,13 @@ def _cb_poll_init(session: dict, init_state: dict):
             log += "\n" + err_text
 
     if not init_state["done"]:
-        return (gr.update(value=log or "Starting..."), *_noop(6))
+        return (
+            gr.update(value=log or "Starting..."),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+        )
 
     if tee_out:
         sys.stdout = tee_out._original  # type: ignore[assignment]
@@ -258,11 +258,9 @@ def _cb_poll_init(session: dict, init_state: dict):
     if init_state["error"]:
         return (
             gr.update(value=log + f"\n\nERROR: {init_state['error']}"),
-            gr.update(visible=False),
-            gr.update(),
-            gr.update(),
-            gr.update(),
             gr.update(visible=True),
+            gr.update(),
+            gr.update(),
             gr.update(),
         )
 
@@ -277,17 +275,15 @@ def _cb_poll_init(session: dict, init_state: dict):
     n = s["state"].num_episodes
     return (
         gr.update(value=log),
-        gr.update(visible=False),
-        gr.update(visible=True),
-        gr.update(value=header, visible=True),
-        gr.update(value="Ready to record. Click the button below."),
-        gr.update(visible=True, value=_progress_text(0, n)),
         gr.update(),
+        gr.Walkthrough(selected=2),
+        gr.update(value=header, visible=True),
+        gr.update(visible=True, value=_progress_text(0, n)),
     )
 
 
 def _cb_start_recording(session: dict):
-    """Launch the recording thread and switch to the recording screen."""
+    """Launch the recording thread and update UI to recording state."""
     import gradio as gr
 
     s = session["state"]
@@ -310,8 +306,8 @@ def _cb_start_recording(session: dict):
         daemon=True,
     ).start()
     return (
+        gr.update(value="Starting..."),
         gr.update(visible=False),
-        gr.update(visible=True),
         gr.update(visible=False),
         gr.update(visible=False),
     )
@@ -324,44 +320,59 @@ def _cb_poll_recording(session: dict):
 
     s = session.get("state")
     if s is None:
-        return _noop(9)
+        return tuple(gr.update() for _ in range(10))
     fps = session["fps"]
     if s.countdown_value > 0:
         return (
             gr.update(value="Get ready..."),
             gr.update(visible=False),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(visible=False),
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
         )
     if s.is_recording:
         wrist_w, wrist_h = session["wrist_wh"]
-        frame = s.live_frame
-        if frame is None:
-            frame = np.zeros((wrist_h, wrist_w, 3), dtype=np.uint8)
-        elif frame.shape[0] != wrist_h or frame.shape[1] != wrist_w:
-            frame = cv2.resize(frame, (wrist_w, wrist_h), interpolation=cv2.INTER_LINEAR)
+        overhead_w, overhead_h = session["overhead_wh"]
+
+        wrist_frame = s.live_frame
+        if wrist_frame is None:
+            wrist_frame = np.zeros((wrist_h, wrist_w, 3), dtype=np.uint8)
+        elif wrist_frame.shape[0] != wrist_h or wrist_frame.shape[1] != wrist_w:
+            wrist_frame = cv2.resize(
+                wrist_frame, (wrist_w, wrist_h), interpolation=cv2.INTER_LINEAR
+            )
+
+        overhead_frame = s.live_overhead_frame
+        if overhead_frame is None:
+            overhead_frame = np.zeros((overhead_h, overhead_w, 3), dtype=np.uint8)
+        elif overhead_frame.shape[0] != overhead_h or overhead_frame.shape[1] != overhead_w:
+            overhead_frame = cv2.resize(
+                overhead_frame, (overhead_w, overhead_h), interpolation=cv2.INTER_LINEAR
+            )
+
         n = len(s.episode_actions)
         ep = s.episodes_completed + 1
         status = f"Recording episode {ep}/{s.num_episodes}: {n} frames ({n / fps:.1f}s)"
         return (
             gr.update(value=status),
-            gr.update(value=frame, visible=True),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(),
-            gr.update(visible=True),
             gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(value=wrist_frame, visible=True),
+            gr.update(value=overhead_frame, visible=True),
+            gr.update(visible=True),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
         )
     if s.recording_finished:
         return _recording_finished_updates(session, s, fps)
-    return _noop(9)
+    return tuple(gr.update() for _ in range(10))
 
 
 def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
@@ -381,14 +392,15 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     s.recording_finished = False
     return (
         gr.update(value="Recording complete."),
-        gr.update(value=None, visible=False),
         gr.update(visible=False),
-        gr.update(visible=True),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.Walkthrough(selected=3),
         gr.update(value=video_path),
         gr.update(value=fig),
         gr.update(value=meta),
-        gr.update(visible=False),
-        gr.update(visible=False),
     )
 
 
@@ -434,17 +446,13 @@ def _cb_approve_episode(session: dict):
             f"**FPS:** {session['fps']}"
         )
         return (
-            gr.update(visible=False),
-            gr.update(visible=False),
-            gr.update(visible=True),
+            gr.Walkthrough(selected=4),
             gr.update(),
             gr.update(value=progress),
             gr.update(value=info),
         )
     return (
-        gr.update(visible=False),
-        gr.update(visible=True),
-        gr.update(visible=False),
+        gr.Walkthrough(selected=2),
         gr.update(value="Episode saved! Ready to record the next one. Click the button below."),
         gr.update(value=progress),
         gr.update(),
@@ -459,12 +467,21 @@ def _cb_discard_episode(session: dict):
     session["dataset"].clear_episode_buffer()
     s.clear_episode()
     return (
-        gr.update(visible=False),
-        gr.update(visible=True),
-        gr.update(visible=False),
+        gr.Walkthrough(selected=2),
         gr.update(value="Episode discarded. Ready to re-record. Click the button below."),
         gr.update(value=_progress_text(s.episodes_completed, s.num_episodes)),
-        gr.update(),
+    )
+
+
+def _cb_retry_init(init_state: dict):
+    """Reset init state and return to Configure step for retry."""
+    import gradio as gr
+
+    init_state.update(running=False, done=False, processed=False, error=None)
+    return (
+        gr.Walkthrough(selected=0),
+        gr.update(value=""),
+        gr.update(visible=False),
     )
 
 
@@ -508,53 +525,68 @@ def _build_setup_screen(
     default_leader_id: str,
     wrist_roll_offset: float,
 ):
-    """Build and return the setup-screen Group and all its input components."""
-    with gr.Group(visible=True) as setup_screen:
-        gr.Markdown("## Session Configuration")
-        env_id_input = gr.Dropdown(
-            choices=all_env_ids,
-            value=all_env_ids[0] if all_env_ids else None,
-            label="Environment",
+    """Build the Configure step contents and return all input components."""
+    gr.Markdown("### Environment & Robot")
+    env_id_input = gr.Dropdown(
+        choices=all_env_ids,
+        value=all_env_ids[0] if all_env_ids else None,
+        label="Environment",
+    )
+    with gr.Row():
+        robot_type_input = gr.Radio(choices=["so100", "so101"], value="so101", label="Robot Type")
+        action_space_input = gr.Radio(
+            choices=["joint_pos", "joint_pos_delta"],
+            value="joint_pos_delta",
+            label="Action Space",
+        )
+
+    gr.Markdown("### Recording")
+    with gr.Row():
+        num_episodes_input = gr.Number(value=5, precision=0, label="Number of Episodes")
+        fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS")
+        countdown_input = gr.Slider(minimum=0, maximum=10, value=3, step=1, label="Countdown (s)")
+
+    gr.Markdown("### Dataset & Storage")
+    repo_id_input = gr.Textbox(
+        label="HuggingFace Repo ID (optional)",
+        placeholder="username/dataset-name",
+        info="Leave blank for local-only recording",
+    )
+    field_selection_input = gr.CheckboxGroup(
+        choices=_OPTIONAL_FIELD_CHOICES,
+        value=list(_OPTIONAL_FIELD_CHOICES),
+        label="Dataset fields",
+        info="observation.state and action are always saved",
+    )
+
+    with gr.Accordion("Advanced Settings", open=False):
+        leader_id_input = gr.Textbox(label="Leader Arm ID", value=default_leader_id)
+        wrist_roll_offset_deg_input = gr.Slider(
+            minimum=-180,
+            maximum=180,
+            value=wrist_roll_offset,
+            step=1,
+            label="Wrist Roll Offset (deg)",
         )
         with gr.Row():
-            robot_type_input = gr.Radio(
-                choices=["so100", "so101"], value="so101", label="Robot Type"
+            wrist_camera_width_input = gr.Slider(
+                minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Width"
             )
-            num_episodes_input = gr.Number(value=5, precision=0, label="Number of Episodes")
-
-        with gr.Accordion("Advanced Settings", open=False):
-            (
-                leader_id_input,
-                repo_id_input,
-                fps_input,
-                action_space_input,
-                wrist_roll_offset_deg_input,
-                wrist_camera_width_input,
-                wrist_camera_height_input,
-                overhead_camera_width_input,
-                overhead_camera_height_input,
-                max_steps_input,
-                countdown_input,
-            ) = _build_advanced_settings(gr, default_leader_id, wrist_roll_offset)
-
-        with gr.Accordion("Dataset fields (choose what to persist)", open=False):
-            gr.Markdown(
-                "`observation.state` and `action` are always saved. "
-                "Deselect any of the optional fields below to exclude them "
-                "from the saved dataset."
+            wrist_camera_height_input = gr.Slider(
+                minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Height"
             )
-            gr.Checkbox(value=True, interactive=False, label="observation.state (always on)")
-            gr.Checkbox(value=True, interactive=False, label="action (always on)")
-            field_selection_input = gr.CheckboxGroup(
-                choices=_OPTIONAL_FIELD_CHOICES,
-                value=list(_OPTIONAL_FIELD_CHOICES),
-                label="Optional fields",
+        with gr.Row():
+            overhead_camera_width_input = gr.Slider(
+                minimum=64, maximum=1024, value=640, step=32, label="Overhead Camera Width"
             )
+            overhead_camera_height_input = gr.Slider(
+                minimum=64, maximum=1024, value=480, step=32, label="Overhead Camera Height"
+            )
+        max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
 
-        init_btn = gr.Button("Initialize Session", variant="primary")
+    init_btn = gr.Button("Initialize Session", variant="primary")
 
     return (
-        setup_screen,
         init_btn,
         env_id_input,
         robot_type_input,
@@ -574,152 +606,75 @@ def _build_setup_screen(
     )
 
 
-def _build_advanced_settings(gr, default_leader_id: str, wrist_roll_offset: float):
-    """Build Advanced Settings rows and return their input components."""
+def _build_init_step(gr):
+    """Build the Initialize step contents."""
+    gr.Markdown("### Initializing Session...")
+    init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
+    retry_btn = gr.Button("Back to Configure", variant="secondary", visible=False)
+    init_timer = gr.Timer(value=0.25)
+    return init_log, retry_btn, init_timer
+
+
+def _build_record_step(gr):
+    """Build the Record step contents."""
+    record_status = gr.Markdown("Ready to record. Click the button below to begin.")
+    start_btn = gr.Button("Start Recording", variant="primary")
+    countdown_area = gr.Markdown("Get ready...", visible=False)
     with gr.Row():
-        leader_id_input = gr.Textbox(label="Leader Arm ID", value=default_leader_id)
-        repo_id_input = gr.Textbox(
-            label="HuggingFace Repo ID (optional)",
-            placeholder="username/dataset-name",
-            info="Leave blank for local-only recording",
-        )
+        wrist_feed = gr.Image(label="Wrist Camera", height=480, visible=False)
+        overhead_feed = gr.Image(label="Overhead Camera", height=480, visible=False)
+    stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
+    rec_timer = gr.Timer(value=0.1)
+    return record_status, start_btn, countdown_area, wrist_feed, overhead_feed, stop_btn, rec_timer
+
+
+def _build_review_step(gr):
+    """Build the Review step contents."""
+    gr.Markdown("### Review Episode")
     with gr.Row():
-        fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS")
-        action_space_input = gr.Radio(
-            choices=["joint_pos", "joint_pos_delta"],
-            value="joint_pos_delta",
-            label="Action Space",
-        )
+        with gr.Column(scale=2):
+            review_video = gr.Video(label="Episode Video")
+        with gr.Column(scale=1):
+            state_plot = gr.Plot(label="Joint States")
+            episode_metadata = gr.Markdown()
     with gr.Row():
-        wrist_roll_offset_deg_input = gr.Slider(
-            minimum=-180,
-            maximum=180,
-            value=wrist_roll_offset,
-            step=1,
-            label="Wrist Roll Offset (deg)",
-        )
+        approve_btn = gr.Button("Approve", variant="primary")
+        discard_btn = gr.Button("Discard", variant="stop")
+    return review_video, state_plot, episode_metadata, approve_btn, discard_btn
+
+
+def _build_complete_step(gr):
+    """Build the Complete step contents."""
+    gr.Markdown("### All episodes recorded!")
+    done_info = gr.Markdown("")
+    done_status = gr.Markdown("")
     with gr.Row():
-        wrist_camera_width_input = gr.Slider(
-            minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Width"
-        )
-        wrist_camera_height_input = gr.Slider(
-            minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Height"
-        )
-    with gr.Row():
-        overhead_camera_width_input = gr.Slider(
-            minimum=64, maximum=1024, value=640, step=32, label="Overhead Camera Width"
-        )
-        overhead_camera_height_input = gr.Slider(
-            minimum=64, maximum=1024, value=480, step=32, label="Overhead Camera Height"
-        )
-    with gr.Row():
-        max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
-        countdown_input = gr.Slider(minimum=0, maximum=10, value=3, step=1, label="Countdown (s)")
-    return (
-        leader_id_input,
-        repo_id_input,
-        fps_input,
-        action_space_input,
-        wrist_roll_offset_deg_input,
-        wrist_camera_width_input,
-        wrist_camera_height_input,
-        overhead_camera_width_input,
-        overhead_camera_height_input,
-        max_steps_input,
-        countdown_input,
-    )
-
-
-def _build_screens(gr):
-    """Build and return the non-setup screen Groups and their key components."""
-    with gr.Group(visible=False) as init_screen:
-        gr.Markdown("## Initializing Session...")
-        init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
-        init_timer = gr.Timer(value=0.25)
-
-    with gr.Group(visible=False) as ready_screen:
-        ready_status = gr.Markdown("Ready to record.")
-        start_btn = gr.Button("Start Recording", variant="primary")
-
-    with gr.Group(visible=False) as recording_screen:
-        recording_status = gr.Markdown("Starting...")
-        countdown_area = gr.Markdown("Get ready...", visible=False)
-        live_feed = gr.Image(label="Live Camera Feed", height=640, visible=False)
-        stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
-        rec_timer = gr.Timer(value=0.1)
-
-    with gr.Group(visible=False) as review_screen:
-        gr.Markdown("## Review Episode")
-        with gr.Row():
-            with gr.Column():
-                review_video = gr.Video(label="Episode Video")
-            with gr.Column():
-                state_plot = gr.Plot(label="Joint States")
-        episode_metadata = gr.Markdown()
-        with gr.Row():
-            approve_btn = gr.Button("Approve", variant="primary")
-            discard_btn = gr.Button("Discard", variant="stop")
-
-    with gr.Group(visible=False) as done_screen:
-        gr.Markdown("## All episodes recorded!")
-        done_info = gr.Markdown("")
-        done_status = gr.Markdown("")
-        with gr.Row():
-            push_btn = gr.Button("Push to Hub", variant="primary")
-            finalize_btn = gr.Button("Finalize & Close")
-
-    return (
-        init_screen,
-        init_log,
-        init_timer,
-        ready_screen,
-        ready_status,
-        start_btn,
-        recording_screen,
-        recording_status,
-        countdown_area,
-        live_feed,
-        stop_btn,
-        rec_timer,
-        review_screen,
-        review_video,
-        state_plot,
-        episode_metadata,
-        approve_btn,
-        discard_btn,
-        done_screen,
-        done_info,
-        done_status,
-        push_btn,
-        finalize_btn,
-    )
+        push_btn = gr.Button("Push to Hub", variant="primary")
+        finalize_btn = gr.Button("Finalize & Close")
+    return done_info, done_status, push_btn, finalize_btn
 
 
 def _wire_events(
     gr,
     *,
-    setup_screen,
+    walkthrough,
     init_btn,
     init_inputs,
-    init_screen,
     init_log,
+    retry_btn,
     init_timer,
-    ready_screen,
-    ready_status,
+    record_status,
     start_btn,
-    recording_screen,
-    recording_status,
     countdown_area,
-    live_feed,
+    wrist_feed,
+    overhead_feed,
     stop_btn,
     rec_timer,
-    review_screen,
     review_video,
     state_plot,
     episode_metadata,
     approve_btn,
     discard_btn,
-    done_screen,
     done_info,
     done_status,
     push_btn,
@@ -748,59 +703,44 @@ def _wire_events(
     def stop_recording() -> None:
         session["state"].should_stop = True
 
-    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[setup_screen, init_screen])
+    retry_init = functools.partial(_cb_retry_init, init_state)
+
+    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough])
     init_timer.tick(
         fn=poll_init,
-        outputs=[
-            init_log,
-            init_screen,
-            ready_screen,
-            session_header,
-            ready_status,
-            progress_status,
-            setup_screen,
-        ],
+        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status],
+    )
+    retry_btn.click(
+        fn=retry_init,
+        outputs=[walkthrough, init_log, retry_btn],
     )
     start_btn.click(
         fn=start_recording,
-        outputs=[ready_screen, recording_screen, review_screen, done_screen],
+        outputs=[record_status, start_btn, wrist_feed, overhead_feed],
     )
     stop_btn.click(fn=stop_recording)
     rec_timer.tick(
         fn=poll_recording,
         outputs=[
-            recording_status,
-            live_feed,
-            recording_screen,
-            review_screen,
+            record_status,
+            start_btn,
+            countdown_area,
+            wrist_feed,
+            overhead_feed,
+            stop_btn,
+            walkthrough,
             review_video,
             state_plot,
             episode_metadata,
-            stop_btn,
-            countdown_area,
         ],
     )
     approve_btn.click(
         fn=approve_episode,
-        outputs=[
-            review_screen,
-            ready_screen,
-            done_screen,
-            ready_status,
-            progress_status,
-            done_info,
-        ],
+        outputs=[walkthrough, record_status, progress_status, done_info],
     )
     discard_btn.click(
         fn=discard_episode,
-        outputs=[
-            review_screen,
-            ready_screen,
-            done_screen,
-            ready_status,
-            progress_status,
-            done_info,
-        ],
+        outputs=[walkthrough, record_status, progress_status],
     )
     push_btn.click(fn=push_to_hub, outputs=[done_status])
     finalize_btn.click(fn=finalize_and_close, outputs=[done_status])
@@ -870,56 +810,62 @@ def main(
 
     all_env_ids = env_ids_for_backend(backend)
 
-    with gr.Blocks(title="SO Nexus Teleop Recorder") as app:
+    with gr.Blocks(title="SO Nexus Teleop Recorder", fill_width=True) as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
 
-        (
-            setup_screen,
-            init_btn,
-            env_id_input,
-            robot_type_input,
-            num_episodes_input,
-            leader_id_input,
-            repo_id_input,
-            fps_input,
-            action_space_input,
-            wrist_roll_offset_deg_input,
-            wrist_camera_width_input,
-            wrist_camera_height_input,
-            overhead_camera_width_input,
-            overhead_camera_height_input,
-            max_steps_input,
-            countdown_input,
-            field_selection_input,
-        ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
+        with gr.Walkthrough(selected=0) as walkthrough:
+            with gr.Step("Configure", id=0):
+                (
+                    init_btn,
+                    env_id_input,
+                    robot_type_input,
+                    num_episodes_input,
+                    leader_id_input,
+                    repo_id_input,
+                    fps_input,
+                    action_space_input,
+                    wrist_roll_offset_deg_input,
+                    wrist_camera_width_input,
+                    wrist_camera_height_input,
+                    overhead_camera_width_input,
+                    overhead_camera_height_input,
+                    max_steps_input,
+                    countdown_input,
+                    field_selection_input,
+                ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
 
-        (
-            init_screen,
-            init_log,
-            init_timer,
-            ready_screen,
-            ready_status,
-            start_btn,
-            recording_screen,
-            recording_status,
-            countdown_area,
-            live_feed,
-            stop_btn,
-            rec_timer,
-            review_screen,
-            review_video,
-            state_plot,
-            episode_metadata,
-            approve_btn,
-            discard_btn,
-            done_screen,
-            done_info,
-            done_status,
-            push_btn,
-            finalize_btn,
-        ) = _build_screens(gr)
+            with gr.Step("Initialize", id=1):
+                init_log, retry_btn, init_timer = _build_init_step(gr)
+
+            with gr.Step("Record", id=2):
+                (
+                    record_status,
+                    start_btn,
+                    countdown_area,
+                    wrist_feed,
+                    overhead_feed,
+                    stop_btn,
+                    rec_timer,
+                ) = _build_record_step(gr)
+
+            with gr.Step("Review", id=3):
+                (
+                    review_video,
+                    state_plot,
+                    episode_metadata,
+                    approve_btn,
+                    discard_btn,
+                ) = _build_review_step(gr)
+
+            with gr.Step("Complete", id=4):
+                (
+                    done_info,
+                    done_status,
+                    push_btn,
+                    finalize_btn,
+                ) = _build_complete_step(gr)
 
         init_inputs = [
             env_id_input,
@@ -941,28 +887,24 @@ def main(
 
         _wire_events(
             gr,
-            setup_screen=setup_screen,
+            walkthrough=walkthrough,
             init_btn=init_btn,
             init_inputs=init_inputs,
-            init_screen=init_screen,
             init_log=init_log,
+            retry_btn=retry_btn,
             init_timer=init_timer,
-            ready_screen=ready_screen,
-            ready_status=ready_status,
+            record_status=record_status,
             start_btn=start_btn,
-            recording_screen=recording_screen,
-            recording_status=recording_status,
             countdown_area=countdown_area,
-            live_feed=live_feed,
+            wrist_feed=wrist_feed,
+            overhead_feed=overhead_feed,
             stop_btn=stop_btn,
             rec_timer=rec_timer,
-            review_screen=review_screen,
             review_video=review_video,
             state_plot=state_plot,
             episode_metadata=episode_metadata,
             approve_btn=approve_btn,
             discard_btn=discard_btn,
-            done_screen=done_screen,
             done_info=done_info,
             done_status=done_status,
             push_btn=push_btn,
