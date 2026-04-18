@@ -95,9 +95,13 @@ exclude = ["**/tests/**"]
 
 [tool.coverage.run]
 source = ["."]
+parallel = true
+concurrency = ["thread"]
+data_file = ".coverage"
 omit = [
     "**/__init__.py",
     "**/tests/*",
+    "**/cli.py",
 ]
 
 [tool.coverage.report]
@@ -119,4 +123,12 @@ testpaths = [
 ]
 markers = [
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
+]
+
+[tool.coverage.paths]
+source = [
+    "packages/so101-nexus-core/src",
+    "packages/so101-nexus-mujoco/src",
+    "packages/so101-nexus-maniskill/src",
+    "**/site-packages",
 ]
