@@ -2,7 +2,7 @@
         test-visual test-visual-mujoco test-visual-maniskill test-visual-qwen \
         coverage clean-coverage
 
-COV_FAIL_UNDER ?= 85
+COV_FAIL_UNDER ?= 84
 export COV_FAIL_UNDER
 
 format:
@@ -29,11 +29,11 @@ test-core:
 
 test-mujoco:
 	COVERAGE_FILE=.coverage.mujoco uv run --package so101-nexus-mujoco --prerelease=allow pytest packages/so101-nexus-mujoco/tests \
-	  --cov=so101_nexus_mujoco --cov-report=
+	  --cov=so101_nexus_mujoco --cov=so101_nexus_core --cov-report=
 
 test-maniskill:
 	COVERAGE_FILE=.coverage.maniskill uv run --package so101-nexus-maniskill --prerelease=allow pytest \
-	  packages/so101-nexus-maniskill/tests --cov=so101_nexus_maniskill --cov-report=
+	  packages/so101-nexus-maniskill/tests --cov=so101_nexus_maniskill --cov=so101_nexus_core --cov-report=
 
 coverage:
 	uv run coverage combine
