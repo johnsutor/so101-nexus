@@ -6,6 +6,8 @@ import math
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
@@ -264,3 +266,44 @@ class TestCenterOffset:
             center=(0.0, 0.0),
         )
         assert pos_no_center == pos_origin
+
+
+# Property-based tests using Hypothesis
+@given(
+    count=st.integers(min_value=1, max_value=5),
+    min_r=st.floats(min_value=0.05, max_value=0.15, allow_nan=False, allow_infinity=False),
+    max_r_delta=st.floats(min_value=0.05, max_value=0.3, allow_nan=False, allow_infinity=False),
+    angle_half=st.floats(min_value=0.1, max_value=1.5, allow_nan=False, allow_infinity=False),
+    seed=st.integers(min_value=0, max_value=2**31 - 1),
+)
+@settings(max_examples=100)
+def test_sample_separated_positions_count(count, min_r, max_r_delta, angle_half, seed):
+    rng = np.random.default_rng(seed)
+    max_r = min_r + max_r_delta
+    positions = sample_separated_positions(
+        rng,
+        count=count,
+        min_r=min_r,
+        max_r=max_r,
+        angle_half=angle_half,
+        min_clearance=0.01,
+        bounding_radii=[0.02] * count,
+    )
+    assert len(positions) == count
+    for x, y in positions:
+        assert np.isfinite(x) and np.isfinite(y)
+
+
+@given(seed=st.integers(min_value=0, max_value=2**31 - 1))
+@settings(max_examples=200)
+def test_random_yaw_quat_is_unit(seed):
+    rng = np.random.default_rng(seed)
+    q = random_yaw_quat(rng)
+    assert q.shape == (4,)
+    np.testing.assert_allclose(np.linalg.norm(q), 1.0, atol=1e-6)
+    # Yaw-only: x and y components are zero.
+    assert q[1] == 0.0
+    assert q[2] == 0.0
+
+
+# (Invalid-max_attempts error case already covered by test_max_attempts_zero_raises above.)
