@@ -167,6 +167,7 @@ def test_all_observation_components_combined(env_id, config_cls):
         ("MuJoCoReach-v1", "tcp_to_target_dist"),
         ("MuJoCoMove-v1", "tcp_to_target_dist"),
         ("MuJoCoLookAt-v1", "orientation_error"),
+        ("MuJoCoPickLift-v1", "lift_height"),
     ],
 )
 def test_env_info_has_extra_key(env_id, extra_key):
