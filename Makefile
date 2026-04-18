@@ -23,15 +23,15 @@ clean-coverage:
 	rm -f .coverage .coverage.*
 
 test-core:
-	uv run --package so101-nexus-core --prerelease=allow pytest packages/so101-nexus-core/tests \
+	COVERAGE_FILE=.coverage.core uv run --package so101-nexus-core --prerelease=allow pytest packages/so101-nexus-core/tests \
 	  --cov=so101_nexus_core --cov-report=
 
 test-mujoco:
-	uv run --package so101-nexus-mujoco --prerelease=allow pytest packages/so101-nexus-mujoco/tests \
+	COVERAGE_FILE=.coverage.mujoco uv run --package so101-nexus-mujoco --prerelease=allow pytest packages/so101-nexus-mujoco/tests \
 	  --cov=so101_nexus_mujoco --cov-report=
 
 test-maniskill:
-	uv run --package so101-nexus-maniskill --prerelease=allow pytest \
+	COVERAGE_FILE=.coverage.maniskill uv run --package so101-nexus-maniskill --prerelease=allow pytest \
 	  packages/so101-nexus-maniskill/tests --cov=so101_nexus_maniskill --cov-report=
 
 coverage:
