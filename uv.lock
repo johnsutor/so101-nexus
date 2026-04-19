@@ -4042,11 +4042,15 @@ viz = [
 [package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
+    { name = "imageio", extra = ["ffmpeg"] },
+    { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
 test = [
     { name = "hypothesis" },
+    { name = "imageio", extra = ["ffmpeg"] },
+    { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -4069,11 +4073,15 @@ provides-extras = ["viz", "teleop"]
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6.140.0" },
+    { name = "imageio", extras = ["ffmpeg"] },
+    { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
 test = [
     { name = "hypothesis", specifier = ">=6.140.0" },
+    { name = "imageio", extras = ["ffmpeg"] },
+    { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
