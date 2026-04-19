@@ -8,6 +8,8 @@ from hypothesis import strategies as st
 
 from so101_nexus_core.env_ids import all_registered_env_ids, env_ids_for_backend
 
+pytest.importorskip("gymnasium")
+
 
 @pytest.fixture(autouse=True)
 def _register_both_backends(monkeypatch):

@@ -132,6 +132,7 @@ class TestAddLabel:
 
 class TestSaveFrameGrid:
     def test_produces_png(self, tmp_path):
+        pytest.importorskip("imageio")
         frames = [np.zeros((100, 100, 3), dtype=np.uint8) for _ in range(8)]
         path = str(tmp_path / "grid.png")
         save_frame_grid(frames, path)
@@ -145,6 +146,7 @@ class TestSaveFrameGrid:
 
 class TestSaveVideo:
     def test_produces_mp4(self, tmp_path):
+        pytest.importorskip("imageio")
         frames = [np.zeros((100, 100, 3), dtype=np.uint8) for _ in range(10)]
         path = str(tmp_path / "video.mp4")
         save_video(frames, path, fps=10)

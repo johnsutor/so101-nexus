@@ -643,7 +643,10 @@ def test_visual_obs_mode(env_id, config_cls):
         env.close()
 
 
-@pytest.mark.parametrize("env_id,config_cls", [("MuJoCoReach-v1", ReachConfig), ("MuJoCoPickLift-v1", PickConfig)])
+@pytest.mark.parametrize(
+    "env_id,config_cls",
+    [("MuJoCoReach-v1", ReachConfig), ("MuJoCoPickLift-v1", PickConfig)],
+)
 def test_visual_obs_mode_with_both_cameras(env_id, config_cls):
     cfg = config_cls(
         obs_mode="visual",

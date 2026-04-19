@@ -7,8 +7,15 @@ import pytest
 
 @pytest.fixture
 def _require_gradio():
-    """Skip if gradio is not installed."""
-    pytest.importorskip("gradio")
+    """Skip if gradio is not (functionally) installed.
+
+    ``importorskip`` alone is not enough: a broken install can leave an
+    empty namespace package that passes ``import gradio`` but lacks the
+    public API. Verify ``Blocks`` is present before proceeding.
+    """
+    gr = pytest.importorskip("gradio")
+    if not hasattr(gr, "Blocks"):
+        pytest.skip("gradio is present but missing public API (Blocks)")
 
 
 @pytest.mark.usefixtures("_require_gradio")

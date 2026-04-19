@@ -94,5 +94,5 @@ def test_import_backend_for_env_id_mujoco():
 
 
 def test_import_backend_for_env_id_rejects_unknown():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ManiSkill"):
         import_backend_for_env_id("OtherBackendEnv-v1")

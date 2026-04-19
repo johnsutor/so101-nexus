@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import gymnasium as gym
 import numpy as np
 
 
@@ -49,6 +48,8 @@ def run_env_contract(
     make_kwargs : dict, optional
         Extra keyword arguments forwarded to ``gym.make``.
     """
+    import gymnasium as gym
+
     kwargs = dict(make_kwargs or {})
     env = gym.make(env_id, **kwargs)
     try:

@@ -291,7 +291,8 @@ def test_sample_separated_positions_count(count, min_r, max_r_delta, angle_half,
     )
     assert len(positions) == count
     for x, y in positions:
-        assert np.isfinite(x) and np.isfinite(y)
+        assert np.isfinite(x)
+        assert np.isfinite(y)
 
 
 @given(seed=st.integers(min_value=0, max_value=2**31 - 1))
