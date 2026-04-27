@@ -7,55 +7,38 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-format:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-
+          python-version: "3.12"
       - name: Install dev dependencies
         run: uv sync --group dev
-
-      - name: Check formatting and lint
+      - name: Lint
         run: make lint
 
-  test-mujoco:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [core, mujoco, maniskill]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MuJoCo dependencies
+      - name: System deps (mujoco)
+        if: matrix.backend == 'mujoco'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install MuJoCo package with test dependencies
-        run: uv sync --package so101-nexus-mujoco --group test
-
-      - name: Run MuJoCo tests
-        run: xvfb-run -a make test-mujoco
-
-  test-maniskill:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Vulkan drivers (software rendering)
+      - name: System deps (maniskill)
+        if: matrix.backend == 'maniskill'
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers libvulkan1
@@ -66,10 +49,51 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
-      - name: Install ManiSkill package with test dependencies
-        run: uv sync --package so101-nexus-maniskill --group test --prerelease=allow
+      - name: Install backend
+        run: |
+          case "${{ matrix.backend }}" in
+            core)      uv sync --package so101-nexus-core --group test ;;
+            mujoco)    uv sync --package so101-nexus-mujoco --group test ;;
+            maniskill) uv sync --package so101-nexus-maniskill --group test --prerelease=allow ;;
+          esac
 
-      - name: Run ManiSkill tests
-        run: make test-maniskill
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.backend }}" = "mujoco" ]; then
+            xvfb-run -a make test-mujoco
+          else
+            make test-${{ matrix.backend }}
+          fi
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.backend }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+
+  coverage:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dev dependencies
+        run: uv sync --group dev
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - name: Combine and report
+        run: |
+          uv run coverage combine
+          uv run coverage report --fail-under=84

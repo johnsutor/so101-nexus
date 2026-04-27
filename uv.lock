@@ -4039,6 +4039,22 @@ viz = [
     { name = "pillow" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "imageio", extra = ["ffmpeg"] },
+    { name = "pillow" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+test = [
+    { name = "hypothesis" },
+    { name = "imageio", extra = ["ffmpeg"] },
+    { name = "pillow" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
@@ -4053,6 +4069,22 @@ requires-dist = [
     { name = "trimesh" },
 ]
 provides-extras = ["viz", "teleop"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
+    { name = "imageio", extras = ["ffmpeg"] },
+    { name = "pillow" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+]
+test = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
+    { name = "imageio", extras = ["ffmpeg"] },
+    { name = "pillow" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+]
 
 [[package]]
 name = "so101-nexus-maniskill"
@@ -4071,10 +4103,12 @@ teleop = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hypothesis" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
 test = [
+    { name = "hypothesis" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -4090,10 +4124,12 @@ provides-extras = ["teleop"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
 test = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
@@ -4115,10 +4151,12 @@ teleop = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hypothesis" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
 test = [
+    { name = "hypothesis" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -4134,10 +4172,12 @@ provides-extras = ["teleop"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
 test = [
+    { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]

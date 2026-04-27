@@ -95,9 +95,13 @@ exclude = ["**/tests/**"]
 
 [tool.coverage.run]
 source = ["."]
+parallel = true
+concurrency = ["thread"]
+data_file = ".coverage"
 omit = [
     "**/__init__.py",
     "**/tests/*",
+    "**/cli.py",
 ]
 
 [tool.coverage.report]
@@ -108,6 +112,20 @@ exclude_lines = [
     "raise NotImplementedError",
 ]
 show_missing = true
+
+[tool.coverage.paths]
+core = [
+    "packages/so101-nexus-core/src/so101_nexus_core",
+    "**/site-packages/so101_nexus_core",
+]
+mujoco = [
+    "packages/so101-nexus-mujoco/src/so101_nexus_mujoco",
+    "**/site-packages/so101_nexus_mujoco",
+]
+maniskill = [
+    "packages/so101-nexus-maniskill/src/so101_nexus_maniskill",
+    "**/site-packages/so101_nexus_maniskill",
+]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "-ra"]

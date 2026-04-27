@@ -5,13 +5,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 from so101_nexus_core import ycb_geometry
+from so101_nexus_core.ycb_geometry import get_mujoco_ycb_rest_pose
 
 
 def test_get_maniskill_ycb_spawn_z_reads_metadata(monkeypatch: pytest.MonkeyPatch):
@@ -74,3 +75,38 @@ def test_get_mujoco_ycb_rest_pose_thin_z_property(min_z: float, max_z: float, ma
     quat, spawn_z = ycb_geometry.get_mujoco_ycb_rest_pose(verts, margin=margin)
     assert np.allclose(quat, np.array([1.0, 0.0, 0.0, 0.0]))
     assert spawn_z == pytest.approx(-min_z + margin)
+
+
+@given(
+    n=st.integers(min_value=4, max_value=64),
+    scale=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
+    seed=st.integers(min_value=0, max_value=2**31 - 1),
+)
+@settings(max_examples=100)
+def test_rest_pose_always_returns_finite_values(n, scale, seed):
+    rng = np.random.default_rng(seed)
+    verts = rng.uniform(-scale, scale, size=(n, 3)).astype(np.float64)
+    quat, spawn_z = get_mujoco_ycb_rest_pose(verts, margin=1e-3)
+
+    assert np.all(np.isfinite(quat))
+    # Quaternion norm ≈ 1.
+    np.testing.assert_allclose(np.linalg.norm(quat), 1.0, atol=1e-6)
+    assert np.isfinite(spawn_z)
+    # Spawn z corresponds to -min-of-thinnest-axis + margin; may be negative
+    # when the input happens to put all vertices above the origin on that axis.
+    assert isinstance(spawn_z, float)
+
+
+@given(
+    n=st.integers(min_value=4, max_value=64),
+    scale=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
+    seed=st.integers(min_value=0, max_value=2**31 - 1),
+)
+@settings(max_examples=100)
+def test_rest_pose_deterministic(n, scale, seed):
+    rng = np.random.default_rng(seed)
+    verts = rng.uniform(-scale, scale, size=(n, 3)).astype(np.float64)
+    q1, z1 = get_mujoco_ycb_rest_pose(verts, margin=1e-3)
+    q2, z2 = get_mujoco_ycb_rest_pose(verts, margin=1e-3)
+    np.testing.assert_array_equal(q1, q2)
+    assert z1 == z2

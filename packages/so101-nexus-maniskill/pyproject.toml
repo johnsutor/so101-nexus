@@ -28,7 +28,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [{ include-group = "test" }]
-test = ["pytest>=7.0.0", "pytest-cov>=7.0.0"]
+test = ["pytest>=7.0.0", "pytest-cov>=7.0.0", "hypothesis>=6.140.0"]
 
 [tool.hatch.metadata.hooks.custom]
 
