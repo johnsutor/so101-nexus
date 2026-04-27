@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import io
+import threading
+
 import numpy as np
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.teleop.recorder import (
     RecordingState,
+    TeeStream,
     compute_delta_actions,
     convert_leader_action,
 )
@@ -67,3 +71,60 @@ def test_convert_leader_action_applies_wrist_roll_offset_only_to_wrist_roll() ->
             np.testing.assert_allclose(value, -np.pi / 2)
         else:
             np.testing.assert_allclose(value, 0.0)
+
+
+def test_tee_stream_write_duplicates_to_original_and_buffer() -> None:
+    original = io.StringIO()
+    tee = TeeStream(original)
+
+    n = tee.write("hello")
+
+    assert n == len("hello")
+    assert original.getvalue() == "hello"
+    assert tee.get_output() == "hello"
+
+
+def test_tee_stream_flush_delegates_to_original() -> None:
+    calls = {"flush": 0}
+
+    class _StubStream:
+        def write(self, s: str) -> int:
+            return len(s)
+
+        def flush(self) -> None:
+            calls["flush"] += 1
+
+    tee = TeeStream(_StubStream())
+    tee.flush()
+
+    assert calls["flush"] == 1
+
+
+def test_tee_stream_get_output_accumulates_across_writes() -> None:
+    tee = TeeStream(io.StringIO())
+
+    tee.write("foo")
+    tee.write("bar")
+    tee.write("baz")
+
+    assert tee.get_output() == "foobarbaz"
+
+
+def test_tee_stream_concurrent_writes_preserve_total_length() -> None:
+    tee = TeeStream(io.StringIO())
+    payload = "abcdefgh"
+    n_threads = 8
+    writes_per_thread = 100
+
+    def worker() -> None:
+        for _ in range(writes_per_thread):
+            tee.write(payload)
+
+    threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    expected = len(payload) * n_threads * writes_per_thread
+    assert len(tee.get_output()) == expected
