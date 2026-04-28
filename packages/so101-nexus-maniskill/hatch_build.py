@@ -11,7 +11,7 @@ class CustomMetadataHook(MetadataHookInterface):
         version = metadata["version"]
         metadata["dependencies"] = [
             f"so101-nexus-core=={version}",
-            "mani_skill",
+            "mani_skill>=3.0.1",
             "setuptools<82",
         ]
         metadata["optional-dependencies"] = {
