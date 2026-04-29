@@ -52,6 +52,22 @@ uv sync --package so101-nexus-mujoco
 uv sync --package so101-nexus-maniskill --prerelease=allow
 ```
 
+## Try teleop with uvx
+
+You can launch the Gradio teleop recorder against either backend without a permanent install. `uvx` resolves the package, the `teleop` extra, and runs the CLI in an ephemeral environment:
+
+```bash
+# MuJoCo
+uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0
+
+# ManiSkill
+uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
+    so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+```
+
+Pass `--leader-port` to point at your serial device. See the [teleop guide](https://so101-nexus.com/docs/guides/teleop-dataset-recording) for hardware setup and the full session walkthrough.
+
 ## Quick Start
 
 ```python
