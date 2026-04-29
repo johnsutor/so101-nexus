@@ -17,6 +17,21 @@ pip install so101-nexus-maniskill
 
 Each backend package pulls in `so101-nexus-core` automatically.
 
+## Try without installing
+
+If you only want to try the teleop recorder, [uv](https://docs.astral.sh/uv/) can run it in an ephemeral environment with no permanent install:
+
+```bash
+# MuJoCo
+uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop
+
+# ManiSkill
+uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
+    so101-nexus-maniskill teleop
+```
+
+See the [teleop guide](/docs/guides/teleop-dataset-recording) for hardware requirements and full usage.
+
 ## Install from Source
 
 Clone the repository, then use `uv` to sync the backend you want:
