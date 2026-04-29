@@ -52,7 +52,7 @@ uv sync --package so101-nexus-mujoco
 uv sync --package so101-nexus-maniskill --prerelease=allow
 ```
 
-## Try teleop with uvx
+## Try Teleop with uvx
 
 You can launch the Gradio teleop recorder against either backend without a permanent install. `uvx` resolves the package, the `teleop` extra, and runs the CLI in an ephemeral environment:
 
