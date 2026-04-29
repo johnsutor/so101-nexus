@@ -8,6 +8,22 @@ You drive a simulated robot with a physical SO-100 or SO-101 leader arm,
 and demonstrations are saved as LeRobot v3 datasets ready to push to the
 HuggingFace Hub.
 
+## Quickstart with uvx
+
+If you have [uv](https://docs.astral.sh/uv/) installed, you can launch the recorder against either backend without setting up a venv. `uvx` resolves the package and the `teleop` extra into an ephemeral environment:
+
+```bash
+# MuJoCo
+uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0
+
+# ManiSkill
+uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
+    so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+```
+
+This is the fastest way to try teleop end to end. The rest of this guide assumes you have run a regular install for repeat use, but the `uvx` command above is enough for a one-off session.
+
 ## Installation
 
 Teleop deps (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`) live
