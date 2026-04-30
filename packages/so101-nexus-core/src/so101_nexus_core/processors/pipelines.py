@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Any
 
-from lerobot.processor import DataProcessorPipeline
+from lerobot.processor import (
+    AddBatchDimensionProcessorStep,
+    DataProcessorPipeline,
+    DeviceProcessorStep,
+    ProcessorStep,
+    RenameObservationsProcessorStep,
+)
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.processors.action import (
@@ -13,8 +19,12 @@ from so101_nexus_core.processors.action import (
     JointOffsetActionStep,
     LeaderActionToJointArrayStep,
 )
+from so101_nexus_core.processors.observation import Hwc2ChwImageObservationStep
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    import gymnasium as gym
     import numpy as np
 
 
@@ -67,4 +77,73 @@ def make_default_leader_action_pipeline(
         name="so101_leader_action_pipeline",
         to_transition=_leader_action_to_transition,
         to_output=_leader_action_to_output,
+    )
+
+
+def _infer_rename_map(keys: Iterable[str]) -> dict[str, str]:
+    """Infer the so101-nexus -> lerobot key rename map from a set of obs keys.
+
+    - ``"state"`` becomes ``"observation.state"``.
+    - ``"<name>_camera"`` becomes ``"observation.images.<name>"``.
+    Other keys are left out of the map (they pass through unchanged).
+    """
+    rename: dict[str, str] = {}
+    for key in keys:
+        if key == "state":
+            rename[key] = "observation.state"
+        elif key.endswith("_camera"):
+            camera_name = key[: -len("_camera")]
+            rename[key] = f"observation.images.{camera_name}"
+    return rename
+
+
+def _env_observation_to_transition(data: dict[str, Any]) -> dict[str, Any]:
+    return {"observation": data["observation"]}
+
+
+def _env_observation_to_output(transition: dict[str, Any]) -> dict[str, Any]:
+    return transition["observation"]
+
+
+def make_default_env_observation_pipeline(
+    observation_space: gym.spaces.Dict,
+    *,
+    device: str | Any = None,  # str | torch.device | None
+    add_batch_dim: bool = False,
+) -> DataProcessorPipeline:
+    """Build the default env-observation pipeline.
+
+    Steps:
+    1. Rename ``state`` and ``*_camera`` keys to LeRobot conventions.
+    2. Convert HWC uint8 images to CHW float32 tensors in ``[0, 1]``.
+    3. (Optional) Add a leading batch dimension to state and image tensors.
+    4. (Optional) Move tensors to ``device``.
+
+    Parameters
+    ----------
+    observation_space
+        The wrapped env's ``observation_space``. The rename map is inferred from
+        its top-level keys.
+    device
+        If set, the default pipeline appends a ``DeviceProcessorStep`` to move
+        tensors onto this device.
+    add_batch_dim
+        If true, the default pipeline appends an ``AddBatchDimensionProcessorStep``.
+    """
+    rename_map = _infer_rename_map(observation_space.spaces.keys())
+    image_keys = tuple(v for k, v in rename_map.items() if k.endswith("_camera"))
+    steps: list[ProcessorStep] = [
+        RenameObservationsProcessorStep(rename_map=rename_map),
+        Hwc2ChwImageObservationStep(image_keys=image_keys),
+    ]
+    if add_batch_dim:
+        steps.append(AddBatchDimensionProcessorStep())
+    if device is not None:
+        steps.append(DeviceProcessorStep(device=str(device)))
+
+    return DataProcessorPipeline(
+        steps=steps,
+        name="so101_env_observation_pipeline",
+        to_transition=_env_observation_to_transition,
+        to_output=_env_observation_to_output,
     )

@@ -96,3 +96,64 @@ def test_default_leader_pipeline_save_and_load_round_trip(tmp_path) -> None:
     )
     assert len(reloaded.steps) == len(pipeline.steps)
     assert [type(s).__name__ for s in reloaded.steps] == [type(s).__name__ for s in pipeline.steps]
+
+
+def test_default_env_pipeline_renames_state_and_camera_keys() -> None:
+    import gymnasium as gym
+
+    from so101_nexus_core.processors.pipelines import make_default_env_observation_pipeline
+
+    space = gym.spaces.Dict(
+        {
+            "state": gym.spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32),
+            "wrist_camera": gym.spaces.Box(low=0, high=255, shape=(64, 64, 3), dtype=np.uint8),
+            "overhead_camera": gym.spaces.Box(low=0, high=255, shape=(64, 64, 3), dtype=np.uint8),
+        }
+    )
+    pipeline = make_default_env_observation_pipeline(space)
+
+    obs = {
+        "state": np.zeros(6, dtype=np.float32),
+        "wrist_camera": np.full((64, 64, 3), 128, dtype=np.uint8),
+        "overhead_camera": np.full((64, 64, 3), 64, dtype=np.uint8),
+    }
+    out = pipeline({"observation": obs})
+
+    assert set(out.keys()) >= {
+        "observation.state",
+        "observation.images.wrist",
+        "observation.images.overhead",
+    }
+    assert out["observation.images.wrist"].shape == (3, 64, 64)
+    assert out["observation.images.overhead"].shape == (3, 64, 64)
+
+
+def test_default_env_pipeline_passes_unknown_keys_through() -> None:
+    import gymnasium as gym
+
+    from so101_nexus_core.processors.pipelines import make_default_env_observation_pipeline
+
+    space = gym.spaces.Dict(
+        {
+            "state": gym.spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32),
+            "task_description": gym.spaces.Text(max_length=128),
+        }
+    )
+    pipeline = make_default_env_observation_pipeline(space)
+    obs = {"state": np.zeros(6, dtype=np.float32), "task_description": "pick up the cube"}
+    out = pipeline({"observation": obs})
+
+    assert "task_description" in out
+    assert out["task_description"] == "pick up the cube"
+
+
+def test_infer_rename_map_state_and_cameras() -> None:
+    from so101_nexus_core.processors.pipelines import _infer_rename_map
+
+    keys = ("state", "wrist_camera", "overhead_camera", "extra")
+    mapping = _infer_rename_map(keys)
+    assert mapping == {
+        "state": "observation.state",
+        "wrist_camera": "observation.images.wrist",
+        "overhead_camera": "observation.images.overhead",
+    }
