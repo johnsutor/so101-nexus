@@ -81,7 +81,7 @@ def make_default_leader_action_pipeline(
     )
 
 
-def _infer_rename_map(keys: Iterable[str]) -> dict[str, str]:
+def infer_lerobot_rename_map(keys: Iterable[str]) -> dict[str, str]:
     """Infer the so101-nexus -> lerobot key rename map from a set of obs keys.
 
     - ``"state"`` becomes ``"observation.state"``.
@@ -131,7 +131,7 @@ def make_default_env_observation_pipeline(
     add_batch_dim
         If true, the default pipeline appends an ``AddBatchDimensionProcessorStep``.
     """
-    rename_map = _infer_rename_map(observation_space.spaces.keys())
+    rename_map = infer_lerobot_rename_map(observation_space.spaces.keys())
     image_keys = tuple(v for k, v in rename_map.items() if k.endswith("_camera"))
     steps: list[ProcessorStep] = [
         RenameObservationsProcessorStep(rename_map=rename_map),

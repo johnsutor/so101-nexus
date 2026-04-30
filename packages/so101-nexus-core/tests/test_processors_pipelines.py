@@ -149,11 +149,11 @@ def test_default_env_pipeline_passes_unknown_keys_through() -> None:
     assert out["task_description"] == "pick up the cube"
 
 
-def test_infer_rename_map_state_and_cameras() -> None:
-    from so101_nexus_core.processors.pipelines import _infer_rename_map
+def test_infer_lerobot_rename_map_state_and_cameras() -> None:
+    from so101_nexus_core.processors.pipelines import infer_lerobot_rename_map
 
     keys = ("state", "wrist_camera", "overhead_camera", "extra")
-    mapping = _infer_rename_map(keys)
+    mapping = infer_lerobot_rename_map(keys)
     assert mapping == {
         "state": "observation.state",
         "wrist_camera": "observation.images.wrist",

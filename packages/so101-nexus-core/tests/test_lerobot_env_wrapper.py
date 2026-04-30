@@ -131,3 +131,17 @@ def test_make_lerobot_env_factory_returns_wrapped_env() -> None:
         assert "observation.state" in obs
     finally:
         gym.envs.registration.registry.pop("LeRobotWrapperTest-v0", None)
+
+
+def test_wrapper_with_custom_pipeline_keeps_underlying_observation_space() -> None:
+    """When a custom pipeline is supplied, observation_space is left untouched."""
+    from lerobot.processor import DataProcessorPipeline
+
+    from so101_nexus_core.processors.lerobot_env_wrapper import LeRobotEnvWrapper
+
+    base = _FakeSO101Env()
+    custom_pipeline = DataProcessorPipeline(steps=[])
+    env = LeRobotEnvWrapper(base, pipeline=custom_pipeline)
+
+    # Underlying env's observation_space is preserved
+    assert set(env.observation_space.spaces.keys()) == set(base.observation_space.spaces.keys())

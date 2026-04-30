@@ -8,7 +8,7 @@ import gymnasium as gym
 import numpy as np
 
 from so101_nexus_core.processors.pipelines import (
-    _infer_rename_map,
+    infer_lerobot_rename_map,
     make_default_env_observation_pipeline,
 )
 
@@ -57,7 +57,11 @@ class LeRobotEnvWrapper(gym.ObservationWrapper):
         Underlying gym environment whose ``observation_space`` is a
         :class:`gym.spaces.Dict`.
     pipeline
-        Optional override pipeline. When ``None`` a sensible default is built.
+        Optional override pipeline. When ``None`` a sensible default is built
+        and ``observation_space`` is automatically derived to reflect the
+        renamed keys and CHW image shapes. When supplied, ``observation_space``
+        is left equal to the underlying env's space; the caller is responsible
+        for overriding it if they want it to match their pipeline's output.
     device
         If set, the default pipeline appends a ``DeviceProcessorStep`` to move
         tensors onto this device.
@@ -79,19 +83,28 @@ class LeRobotEnvWrapper(gym.ObservationWrapper):
                 "LeRobotEnvWrapper requires a Dict observation_space; "
                 f"got {type(env.observation_space).__name__}.",
             )
-        self.pipeline = pipeline or make_default_env_observation_pipeline(
-            env.observation_space,
-            device=device,
-            add_batch_dim=add_batch_dim,
-        )
-        rename_map = _infer_rename_map(env.observation_space.spaces.keys())
-        image_keys = tuple(v for k, v in rename_map.items() if k.endswith("_camera"))
-        self.observation_space = _derive_observation_space(
-            env.observation_space,
-            rename_map=rename_map,
-            image_keys=image_keys,
-            add_batch_dim=add_batch_dim,
-        )
+        if pipeline is None:
+            self.pipeline = make_default_env_observation_pipeline(
+                env.observation_space,
+                device=device,
+                add_batch_dim=add_batch_dim,
+            )
+            rename_map = infer_lerobot_rename_map(env.observation_space.spaces.keys())
+            image_keys = tuple(
+                v for k, v in rename_map.items() if k.endswith("_camera")
+            )
+            self.observation_space = _derive_observation_space(
+                env.observation_space,
+                rename_map=rename_map,
+                image_keys=image_keys,
+                add_batch_dim=add_batch_dim,
+            )
+        else:
+            # Custom pipeline: we cannot infer the post-pipeline shape, so we leave
+            # observation_space as the underlying env's space. Callers passing a
+            # custom pipeline are responsible for setting observation_space themselves
+            # if they want it to reflect the transformed shape.
+            self.pipeline = pipeline
 
     def observation(self, observation: dict[str, Any]) -> dict[str, Any]:
         """Run the configured pipeline over the observation dict."""
