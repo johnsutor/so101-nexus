@@ -6,23 +6,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+from lerobot.processor import ActionProcessorStep, ProcessorStepRegistry
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 
-# At runtime, we need to import these for class definition and decoration.
-# These will be available when the module is actually used (e.g., in maniskill backend).
-try:
-    from lerobot.processor import ActionProcessorStep, ProcessorStepRegistry, RobotAction
-except ImportError:
-    # Graceful fallback if lerobot is not installed (e.g., during base package import).
-    # The classes will be unusable, but import won't fail.
-    ActionProcessorStep = object  # type: ignore
-    ProcessorStepRegistry = None  # type: ignore
-    RobotAction = dict
-
 if TYPE_CHECKING:
     from lerobot.configs.types import PipelineFeatureType, PolicyFeature
-    from lerobot.processor import EnvAction, PolicyAction
+    from lerobot.processor import EnvAction, PolicyAction, RobotAction
 
 
 @dataclass
@@ -49,11 +39,9 @@ class LeaderActionToJointArrayStep(ActionProcessorStep):
         self, action: PolicyAction | RobotAction | EnvAction,
     ) -> PolicyAction | RobotAction | EnvAction:
         """Convert the leader-arm dict to an ordered ndarray of joint values."""
-        # action is a RobotAction (dict) from the leader, not a tensor or array
-        assert isinstance(action, dict)
-        action_dict = cast("RobotAction", action)
+        leader = cast("RobotAction", action)
         return np.array(
-            [action_dict[f"{name}.pos"] for name in self.joint_names],
+            [leader[f"{name}.pos"] for name in self.joint_names],
             dtype=np.float64,
         )
 
