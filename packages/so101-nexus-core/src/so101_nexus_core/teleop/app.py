@@ -303,6 +303,7 @@ def _cb_start_recording(session: dict):
             session["wrist_wh"],
             session["overhead_wh"],
         ),
+        kwargs={"action_pipeline": session.get("action_pipeline")},
         daemon=True,
     ).start()
     return (
