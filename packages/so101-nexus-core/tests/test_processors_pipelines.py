@@ -157,3 +157,32 @@ def test_infer_rename_map_state_and_cameras() -> None:
         "wrist_camera": "observation.images.wrist",
         "overhead_camera": "observation.images.overhead",
     }
+
+
+def test_default_env_pipeline_with_add_batch_dim_does_not_raise() -> None:
+    """Regression: AddBatchDimensionProcessorStep does bracket-access on action/comp data
+    keys, so the to_transition helper must produce a complete EnvTransition.
+    """
+    import gymnasium as gym
+
+    from so101_nexus_core.processors.pipelines import make_default_env_observation_pipeline
+
+    space = gym.spaces.Dict(
+        {
+            "state": gym.spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32),
+            "wrist_camera": gym.spaces.Box(low=0, high=255, shape=(8, 8, 3), dtype=np.uint8),
+        }
+    )
+    # This should not raise KeyError when AddBatchDimensionProcessorStep does bracket access
+    # on the transition produced by _env_observation_to_transition.
+    pipeline = make_default_env_observation_pipeline(space, add_batch_dim=True)
+
+    obs = {
+        "state": np.zeros(6, dtype=np.float32),
+        "wrist_camera": np.full((8, 8, 3), 255, dtype=np.uint8),
+    }
+    out = pipeline({"observation": obs})
+
+    # Verify that the pipeline ran successfully and produced output
+    assert "observation.state" in out
+    assert "observation.images.wrist" in out

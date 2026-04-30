@@ -12,6 +12,7 @@ from lerobot.processor import (
     ProcessorStep,
     RenameObservationsProcessorStep,
 )
+from lerobot.processor.converters import create_transition
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.processors.action import (
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 
 
 def _leader_action_to_transition(data: dict[str, Any]) -> dict[str, Any]:
-    return {"action": data["action"]}
+    return create_transition(action=data["action"])
 
 
 def _leader_action_to_output(transition: dict[str, Any]) -> "np.ndarray":  # noqa: UP037
@@ -98,7 +99,7 @@ def _infer_rename_map(keys: Iterable[str]) -> dict[str, str]:
 
 
 def _env_observation_to_transition(data: dict[str, Any]) -> dict[str, Any]:
-    return {"observation": data["observation"]}
+    return create_transition(observation=data["observation"])
 
 
 def _env_observation_to_output(transition: dict[str, Any]) -> dict[str, Any]:
