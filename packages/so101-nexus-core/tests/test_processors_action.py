@@ -47,3 +47,24 @@ def test_leader_action_to_joint_array_registered_in_registry() -> None:
 
     cls = ProcessorStepRegistry.get("so101_leader_action_to_joint_array")
     assert cls is LeaderActionToJointArrayStep
+
+
+def test_degrees_to_radians_action_step() -> None:
+    from so101_nexus_core.processors.action import DegreesToRadiansActionStep
+
+    step = DegreesToRadiansActionStep()
+    out = step({"action": np.array([0.0, 90.0, 180.0, -90.0])})
+
+    np.testing.assert_allclose(
+        out["action"],
+        np.deg2rad(np.array([0.0, 90.0, 180.0, -90.0])),
+    )
+
+
+def test_degrees_to_radians_registered_in_registry() -> None:
+    from lerobot.processor.pipeline import ProcessorStepRegistry
+
+    from so101_nexus_core.processors.action import DegreesToRadiansActionStep
+
+    cls = ProcessorStepRegistry.get("so101_degrees_to_radians_action")
+    assert cls is DegreesToRadiansActionStep

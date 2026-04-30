@@ -54,3 +54,26 @@ class LeaderActionToJointArrayStep(ActionProcessorStep):
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features
+
+
+@dataclass
+@ProcessorStepRegistry.register(name="so101_degrees_to_radians_action")
+class DegreesToRadiansActionStep(ActionProcessorStep):
+    """Convert an action vector from degrees to radians.
+
+    Operates on a numpy array; the action is assumed to already be ordered (typically
+    after :class:`LeaderActionToJointArrayStep`).
+    """
+
+    def action(
+        self, action: PolicyAction | RobotAction | EnvAction,
+    ) -> PolicyAction | RobotAction | EnvAction:
+        """Convert the action vector from degrees to radians."""
+        arr = cast("EnvAction", action)
+        return np.deg2rad(arr)
+
+    def transform_features(
+        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+    ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
+        """Pass features through unchanged; this step does not alter feature shapes."""
+        return features
