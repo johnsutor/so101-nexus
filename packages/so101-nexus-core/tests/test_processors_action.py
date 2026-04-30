@@ -68,3 +68,33 @@ def test_degrees_to_radians_registered_in_registry() -> None:
 
     cls = ProcessorStepRegistry.get("so101_degrees_to_radians_action")
     assert cls is DegreesToRadiansActionStep
+
+
+def test_joint_offset_action_step_offsets_only_target_index() -> None:
+    from so101_nexus_core.processors.action import JointOffsetActionStep
+
+    step = JointOffsetActionStep(joint_index=4, offset_rad=-np.pi / 2)
+    inp = np.zeros(6)
+    out = step({"action": inp})
+
+    expected = np.zeros(6)
+    expected[4] = -np.pi / 2
+    np.testing.assert_allclose(out["action"], expected)
+
+
+def test_joint_offset_action_step_does_not_mutate_input() -> None:
+    from so101_nexus_core.processors.action import JointOffsetActionStep
+
+    step = JointOffsetActionStep(joint_index=0, offset_rad=1.5)
+    inp = np.zeros(6)
+    _ = step({"action": inp})
+
+    np.testing.assert_array_equal(inp, np.zeros(6))
+
+
+def test_joint_offset_action_step_registered() -> None:
+    from lerobot.processor.pipeline import ProcessorStepRegistry
+
+    from so101_nexus_core.processors.action import JointOffsetActionStep
+
+    assert ProcessorStepRegistry.get("so101_joint_offset_action") is JointOffsetActionStep

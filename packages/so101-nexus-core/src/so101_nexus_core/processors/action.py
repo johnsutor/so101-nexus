@@ -77,3 +77,43 @@ class DegreesToRadiansActionStep(ActionProcessorStep):
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features
+
+
+@dataclass
+@ProcessorStepRegistry.register(name="so101_joint_offset_action")
+class JointOffsetActionStep(ActionProcessorStep):
+    """Add a constant offset (in radians) to a single joint index of the action vector.
+
+    Generic over the target joint so the step can be reused for any per-joint
+    calibration shift, not just the SO101 wrist_roll. The action vector is assumed
+    to already be in radians by the time this step runs.
+
+    Parameters
+    ----------
+    joint_index
+        Zero-based index of the joint in the action vector.
+    offset_rad
+        Constant offset to add, in radians.
+    """
+
+    joint_index: int = 0
+    offset_rad: float = 0.0
+
+    def action(
+        self, action: PolicyAction | RobotAction | EnvAction,
+    ) -> PolicyAction | RobotAction | EnvAction:
+        """Add ``offset_rad`` to ``joint_index`` of a copy of the action vector."""
+        arr = cast("EnvAction", action)
+        out = arr.copy()
+        out[self.joint_index] = out[self.joint_index] + self.offset_rad
+        return out
+
+    def get_config(self) -> dict[str, Any]:
+        """Return init kwargs for serialization round-trips."""
+        return {"joint_index": self.joint_index, "offset_rad": self.offset_rad}
+
+    def transform_features(
+        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+    ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
+        """Pass features through unchanged; this step does not alter feature shapes."""
+        return features
