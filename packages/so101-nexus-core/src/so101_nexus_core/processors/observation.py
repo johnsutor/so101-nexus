@@ -60,7 +60,8 @@ class Hwc2ChwImageObservationStep(ObservationProcessorStep):
         return {"image_keys": list(self.image_keys)}
 
     def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+        self,
+        features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features

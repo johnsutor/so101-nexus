@@ -56,7 +56,8 @@ def test_wrapper_renames_keys_and_converts_images() -> None:
     assert obs["observation.images.wrist"].shape == (3, 8, 8)
     assert obs["observation.images.wrist"].dtype == torch.float32
     assert torch.allclose(
-        obs["observation.images.wrist"], torch.ones_like(obs["observation.images.wrist"]),
+        obs["observation.images.wrist"],
+        torch.ones_like(obs["observation.images.wrist"]),
     )
 
 

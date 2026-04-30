@@ -68,7 +68,8 @@ def test_default_leader_pipeline_supports_custom_joint_order() -> None:
         "shoulder_pan",
     )
     pipeline = make_default_leader_action_pipeline(
-        joint_names=custom_order, wrist_roll_offset_deg=0.0,
+        joint_names=custom_order,
+        wrist_roll_offset_deg=0.0,
     )
     leader_action = {f"{n}.pos": float(i) for i, n in enumerate(custom_order)}
     out = pipeline({"action": leader_action})
@@ -92,7 +93,8 @@ def test_default_leader_pipeline_save_and_load_round_trip(tmp_path) -> None:
     pipeline.save_pretrained(str(tmp_path), config_filename="processor.json")
 
     reloaded = DataProcessorPipeline.from_pretrained(
-        str(tmp_path), config_filename="processor.json",
+        str(tmp_path),
+        config_filename="processor.json",
     )
     assert len(reloaded.steps) == len(pipeline.steps)
     assert [type(s).__name__ for s in reloaded.steps] == [type(s).__name__ for s in pipeline.steps]

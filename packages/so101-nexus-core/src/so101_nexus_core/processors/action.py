@@ -36,7 +36,8 @@ class LeaderActionToJointArrayStep(ActionProcessorStep):
     joint_names: tuple[str, ...] = field(default_factory=lambda: SO101_JOINT_NAMES)
 
     def action(
-        self, action: PolicyAction | RobotAction | EnvAction,
+        self,
+        action: PolicyAction | RobotAction | EnvAction,
     ) -> PolicyAction | RobotAction | EnvAction:
         """Convert the leader-arm dict to an ordered ndarray of joint values."""
         leader = cast("RobotAction", action)
@@ -50,7 +51,8 @@ class LeaderActionToJointArrayStep(ActionProcessorStep):
         return {"joint_names": list(self.joint_names)}
 
     def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+        self,
+        features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features
@@ -66,14 +68,16 @@ class DegreesToRadiansActionStep(ActionProcessorStep):
     """
 
     def action(
-        self, action: PolicyAction | RobotAction | EnvAction,
+        self,
+        action: PolicyAction | RobotAction | EnvAction,
     ) -> PolicyAction | RobotAction | EnvAction:
         """Convert the action vector from degrees to radians."""
         arr = cast("EnvAction", action)
         return np.deg2rad(arr)
 
     def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+        self,
+        features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features
@@ -100,7 +104,8 @@ class JointOffsetActionStep(ActionProcessorStep):
     offset_rad: float = 0.0
 
     def action(
-        self, action: PolicyAction | RobotAction | EnvAction,
+        self,
+        action: PolicyAction | RobotAction | EnvAction,
     ) -> PolicyAction | RobotAction | EnvAction:
         """Add ``offset_rad`` to ``joint_index`` of a copy of the action vector."""
         arr = cast("EnvAction", action)
@@ -113,7 +118,8 @@ class JointOffsetActionStep(ActionProcessorStep):
         return {"joint_index": self.joint_index, "offset_rad": self.offset_rad}
 
     def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
+        self,
+        features: dict[PipelineFeatureType, dict[str, PolicyFeature]],
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
         """Pass features through unchanged; this step does not alter feature shapes."""
         return features

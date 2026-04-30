@@ -109,5 +109,8 @@ def make_lerobot_env(
     """Build a :class:`LeRobotEnvWrapper` around a registered gym env id."""
     base = gym.make(env_id, **make_kwargs)
     return LeRobotEnvWrapper(
-        base, pipeline=pipeline, device=device, add_batch_dim=add_batch_dim,
+        base,
+        pipeline=pipeline,
+        device=device,
+        add_batch_dim=add_batch_dim,
     )
