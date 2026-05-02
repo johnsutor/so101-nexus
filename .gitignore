@@ -233,3 +233,7 @@ package-lock.json
 
 # Code
 docs/superpowers
+
+# Claude Code local config
+CLAUDE.md
+.claude/
