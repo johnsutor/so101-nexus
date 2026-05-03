@@ -1,27 +1,22 @@
-"""Tests for backend-filtered env id helpers (mujoco side).
-
-These live in the mujoco package because they need a real backend
-imported into ``gymnasium.envs.registry`` to assert against.
-"""
+"""Tests for backend-filtered env id helpers (mujoco side)."""
 
 from __future__ import annotations
 
 import so101_nexus_mujoco  # noqa: F401 — registers MuJoCo gym envs
-from so101_nexus_core.env_ids import all_registered_env_ids, env_ids_for_backend
+from so101_nexus_core.testing.env_id_filter import (
+    assert_none_backend_includes,
+    run_env_id_filter_contract,
+)
 
 
-def test_mujoco_filter_returns_only_mujoco_envs() -> None:
-    ids = env_ids_for_backend("mujoco")
-    assert len(ids) >= 5
-    assert all(i.startswith("MuJoCo") for i in ids)
+def test_mujoco_filter_returns_only_mujoco_envs():
+    run_env_id_filter_contract(
+        "mujoco",
+        prefix="MuJoCo",
+        must_include=["MuJoCoPickAndPlace-v1"],
+        min_count=5,
+    )
 
 
-def test_mujoco_filter_includes_pick_and_place() -> None:
-    ids = env_ids_for_backend("mujoco")
-    assert "MuJoCoPickAndPlace-v1" in ids
-
-
-def test_none_backend_includes_mujoco_envs() -> None:
-    ids = env_ids_for_backend(None)
-    assert any(i.startswith("MuJoCo") for i in ids)
-    assert ids == all_registered_env_ids()
+def test_none_backend_includes_mujoco_envs():
+    assert_none_backend_includes("MuJoCo")

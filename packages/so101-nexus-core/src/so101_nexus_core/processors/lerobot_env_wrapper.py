@@ -90,9 +90,7 @@ class LeRobotEnvWrapper(gym.ObservationWrapper):
                 add_batch_dim=add_batch_dim,
             )
             rename_map = infer_lerobot_rename_map(env.observation_space.spaces.keys())
-            image_keys = tuple(
-                v for k, v in rename_map.items() if k.endswith("_camera")
-            )
+            image_keys = tuple(v for k, v in rename_map.items() if k.endswith("_camera"))
             self.observation_space = _derive_observation_space(
                 env.observation_space,
                 rename_map=rename_map,

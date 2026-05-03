@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import gymnasium as gym
-import numpy as np
-import pytest
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
-
 import so101_nexus_maniskill  # noqa: F401
+from so101_nexus_core.testing.invariants import register_env_invariant_tests
 
 BASE_KWARGS = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
 
@@ -25,41 +20,17 @@ ENV_IDS = [
     "ManiSkillPickAndPlaceSO101-v1",
 ]
 
-
-@pytest.mark.parametrize("env_id", ENV_IDS)
-@given(seed=st.integers(min_value=0, max_value=2**31 - 1))
-@settings(
+(
+    test_reward_is_finite,
+    test_seeded_reset_is_deterministic,
+    _test_random_actions_unused,
+) = register_env_invariant_tests(
+    ENV_IDS,
+    base_kwargs=BASE_KWARGS,
     max_examples=10,
-    deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    check_obs_in_space=False,
+    db_namespace="maniskill",
 )
-def test_reward_is_finite(env_id, seed):
-    env = gym.make(env_id, **BASE_KWARGS)
-    try:
-        env.reset(seed=seed)
-        _, reward, _, _, _ = env.step(env.action_space.sample())
-        assert np.isfinite(float(reward))
-    finally:
-        env.close()
-
-
-@pytest.mark.parametrize("env_id", ENV_IDS)
-@given(seed=st.integers(min_value=0, max_value=2**31 - 1))
-@settings(
-    max_examples=10,
-    deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
-def test_seeded_reset_is_deterministic(env_id, seed):
-    env = gym.make(env_id, **BASE_KWARGS)
-    try:
-        obs1, _ = env.reset(seed=seed)
-        obs2, _ = env.reset(seed=seed)
-        if isinstance(obs1, dict):
-            assert obs1.keys() == obs2.keys()
-            for k in obs1:
-                np.testing.assert_array_equal(np.asarray(obs1[k]), np.asarray(obs2[k]))
-        else:
-            np.testing.assert_array_equal(np.asarray(obs1), np.asarray(obs2))
-    finally:
-        env.close()
+# ManiSkill historically did not run the random-actions test (tensor batched
+# envs handle that via test_envs.py). Drop the unused third test.
+del _test_random_actions_unused

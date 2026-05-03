@@ -14,9 +14,17 @@ from so101_nexus_core.testing.cli_contract import (
     run_parser_wrist_roll_offset_contract,
 )
 from so101_nexus_core.testing.contract import run_env_contract
+from so101_nexus_core.testing.env_id_filter import (
+    assert_none_backend_includes,
+    run_env_id_filter_contract,
+)
+from so101_nexus_core.testing.invariants import register_env_invariant_tests
 
 __all__ = [
+    "assert_none_backend_includes",
+    "register_env_invariant_tests",
     "run_env_contract",
+    "run_env_id_filter_contract",
     "run_main_dispatches_teleop",
     "run_parser_contract",
     "run_parser_requires_subcommand",
