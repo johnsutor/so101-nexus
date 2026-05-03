@@ -1,9 +1,6 @@
-"""Unit tests for pure helpers in so101_nexus_core.teleop.app.
+"""Unit tests for pure helpers in so101_nexus_core.teleop.controllers.
 
-The ``app`` module is designed to be importable on a base install; gradio,
-lerobot, and cv2 are imported lazily inside ``main()`` and individual
-callbacks. These tests exercise the pure-logic helpers that need no
-gradio runtime.
+These tests exercise the pure-logic helpers that need no gradio runtime.
 """
 
 from __future__ import annotations
@@ -14,17 +11,30 @@ import types
 import numpy as np
 import pytest
 
-from so101_nexus_core.teleop.app import (
-    _build_field_selection,
-    _cb_poll_init,
-    _cb_poll_recording,
-    _cb_retry_init,
-    _connect_leader,
-    _create_dataset,
-    _progress_text,
+from so101_nexus_core.teleop.controllers import (
+    build_field_selection as _build_field_selection,
+)
+from so101_nexus_core.teleop.controllers import (
+    cb_poll_init as _cb_poll_init,
+)
+from so101_nexus_core.teleop.controllers import (
+    cb_poll_recording as _cb_poll_recording,
+)
+from so101_nexus_core.teleop.controllers import (
+    cb_retry_init as _cb_retry_init,
+)
+from so101_nexus_core.teleop.controllers import (
+    connect_leader as _connect_leader,
+)
+from so101_nexus_core.teleop.controllers import (
+    create_dataset as _create_dataset,
+)
+from so101_nexus_core.teleop.controllers import (
+    progress_text as _progress_text,
 )
 from so101_nexus_core.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
 from so101_nexus_core.teleop.recorder import RecordingState
+from so101_nexus_core.teleop.state import InitState, TeleopSession
 
 
 @pytest.fixture
@@ -87,7 +97,7 @@ def test_connect_leader_wraps_connect_failure_in_runtime_error(monkeypatch) -> N
     def _fake_get_leader(_robot_type, _port, _leader_id):
         return _FailingLeader()
 
-    monkeypatch.setattr("so101_nexus_core.teleop.app.get_leader", _fake_get_leader)
+    monkeypatch.setattr("so101_nexus_core.teleop.controllers.get_leader", _fake_get_leader)
 
     with pytest.raises(RuntimeError, match="Failed to connect on /dev/ttyACM0") as excinfo:
         _connect_leader("so101", "/dev/ttyACM0", "leader_a")
@@ -102,7 +112,7 @@ def test_connect_leader_includes_permission_recovery_commands(monkeypatch) -> No
             raise OSError("permission denied")
 
     monkeypatch.setattr(
-        "so101_nexus_core.teleop.app.get_leader",
+        "so101_nexus_core.teleop.controllers.get_leader",
         lambda *_a, **_kw: _FailingLeader(),
     )
 
@@ -121,7 +131,7 @@ def test_connect_leader_returns_connected_leader_on_success(monkeypatch) -> None
             state["connected"] = True
 
     monkeypatch.setattr(
-        "so101_nexus_core.teleop.app.get_leader",
+        "so101_nexus_core.teleop.controllers.get_leader",
         lambda *_a, **_kw: _OkLeader(),
     )
 
@@ -195,48 +205,45 @@ def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
 
 
 def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
-    init_state = {
-        "done": True,
-        "processed": False,
-        "error": "Failed to connect on /dev/ttyACM0: permission denied",
-        "tee_stdout": types.SimpleNamespace(get_output=lambda: "Connecting leader arm..."),
-        "tee_stderr": None,
-        "running": True,
-        "warning": None,
-    }
+    init_state = InitState(
+        done=True,
+        processed=False,
+        error="Failed to connect on /dev/ttyACM0: permission denied",
+        running=True,
+        warning=None,
+    )
+    init_state.append_log("Connecting leader arm...")
 
-    outputs = _cb_poll_init({}, init_state)
+    outputs = _cb_poll_init(TeleopSession(), init_state)
 
     assert "permission denied" in outputs[0]["value"].lower()
     assert outputs[1]["visible"] is True
-    assert init_state["processed"] is True
+    assert init_state.processed is True
 
 
 def test_retry_init_resets_failed_state(fake_gradio) -> None:
-    init_state = {
-        "running": True,
-        "done": True,
-        "processed": True,
-        "error": "boom",
-    }
+    init_state = InitState(
+        running=True,
+        done=True,
+        processed=True,
+        error="boom",
+    )
 
     outputs = _cb_retry_init(init_state)
 
-    assert init_state == {
-        "running": False,
-        "done": False,
-        "processed": False,
-        "error": None,
-    }
+    assert init_state.running is False
+    assert init_state.done is False
+    assert init_state.processed is False
+    assert init_state.error is None
     assert outputs[1]["value"] == ""
     assert outputs[2]["visible"] is False
 
 
 def test_poll_recording_countdown_uses_dedicated_countdown_area(fake_gradio) -> None:
-    session = {
-        "state": RecordingState(countdown_value=3),
-        "fps": 30,
-    }
+    session = TeleopSession(
+        state=RecordingState(countdown_value=3),
+        fps=30,
+    )
 
     outputs = _cb_poll_recording(session)
 
@@ -255,12 +262,12 @@ def test_poll_recording_shows_live_feeds_only_while_recording(fake_gradio, monke
     state.live_frame = np.zeros((4, 4, 3), dtype=np.uint8)
     state.live_overhead_frame = np.zeros((4, 4, 3), dtype=np.uint8)
     state.episode_actions.append(np.zeros(6, dtype=np.float32))
-    session = {
-        "state": state,
-        "fps": 30,
-        "wrist_wh": (4, 4),
-        "overhead_wh": (4, 4),
-    }
+    session = TeleopSession(
+        state=state,
+        fps=30,
+        wrist_wh=(4, 4),
+        overhead_wh=(4, 4),
+    )
 
     outputs = _cb_poll_recording(session)
 

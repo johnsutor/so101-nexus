@@ -24,27 +24,27 @@ def test_app_builds_with_walkthrough() -> None:
     import gradio as gr
 
     from so101_nexus_core.env_ids import env_ids_for_backend
-    from so101_nexus_core.teleop.app import (
-        _build_complete_step,
-        _build_init_step,
-        _build_record_step,
-        _build_review_step,
-        _build_setup_screen,
+    from so101_nexus_core.teleop.view import (
+        build_complete_step,
+        build_init_step,
+        build_record_step,
+        build_review_step,
+        build_setup_screen,
     )
 
     all_env_ids = env_ids_for_backend("mujoco")
 
     with gr.Blocks(), gr.Walkthrough(selected=0) as wt:
         with gr.Step("Configure", id=0):
-            _build_setup_screen(gr, all_env_ids, "test_leader", -90.0)
+            build_setup_screen(gr, all_env_ids, "test_leader", -90.0)
         with gr.Step("Initialize", id=1):
-            _build_init_step(gr)
+            build_init_step(gr)
         with gr.Step("Record", id=2):
-            _build_record_step(gr)
+            build_record_step(gr)
         with gr.Step("Review", id=3):
-            _build_review_step(gr)
+            build_review_step(gr)
         with gr.Step("Complete", id=4):
-            _build_complete_step(gr)
+            build_complete_step(gr)
 
     step_children = [c for c in wt.children if isinstance(c, gr.Step)]
     assert len(step_children) == 5
@@ -55,7 +55,7 @@ def test_record_step_has_dual_camera_feeds() -> None:
     """Verify the Record step contains two Image components for dual camera."""
     import gradio as gr
 
-    from so101_nexus_core.teleop.app import _build_record_step
+    from so101_nexus_core.teleop.view import build_record_step
 
     with gr.Blocks():
         (
@@ -66,7 +66,7 @@ def test_record_step_has_dual_camera_feeds() -> None:
             overhead_feed,
             _stop_btn,
             _rec_timer,
-        ) = _build_record_step(gr)
+        ) = build_record_step(gr)
 
     assert isinstance(wrist_feed, gr.Image)
     assert isinstance(overhead_feed, gr.Image)
