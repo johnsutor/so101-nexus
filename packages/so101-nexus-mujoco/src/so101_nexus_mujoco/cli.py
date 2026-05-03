@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from so101_nexus_core.teleop.leader import DEFAULT_WRIST_ROLL_OFFSET_DEG
 
@@ -29,6 +30,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "teleop":
+        os.environ.setdefault("MUJOCO_GL", "egl")
         import so101_nexus_mujoco  # noqa: F401 — register gym envs eagerly
         from so101_nexus_core.teleop.app import main as teleop_main
 
