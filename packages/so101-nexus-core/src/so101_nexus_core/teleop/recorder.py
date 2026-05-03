@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 
 if TYPE_CHECKING:
+    from lerobot.processor import DataProcessorPipeline
+
     from so101_nexus_core.teleop.leader import LeaderProtocol
 
 
@@ -86,22 +88,6 @@ class RecordingState:
         self.recording_finished = False
 
 
-def convert_leader_action(
-    action: dict,
-    joint_names: tuple[str, ...],
-    wrist_roll_offset_deg: float,
-) -> np.ndarray:
-    """Convert leader arm joint readings (degrees) to radians."""
-    converted: list[float] = []
-    wrist_roll_offset_rad = np.deg2rad(wrist_roll_offset_deg)
-    for name in joint_names:
-        value = np.deg2rad(action[f"{name}.pos"])
-        if name == "wrist_roll":
-            value += wrist_roll_offset_rad
-        converted.append(value)
-    return np.array(converted, dtype=np.float64)
-
-
 def compute_delta_actions(actions: list[np.ndarray]) -> list[np.ndarray]:
     """Convert absolute joint positions to frame-to-frame deltas."""
     deltas: list[np.ndarray] = [np.zeros_like(actions[0])]
@@ -121,11 +107,28 @@ def recording_thread(
     wrist_roll_offset_deg: float,
     wrist_wh: tuple[int, int],
     overhead_wh: tuple[int, int],
+    action_pipeline: DataProcessorPipeline | None = None,
 ) -> None:
-    """Run a countdown, then record at *fps* until stopped or max_steps reached."""
+    """Run a countdown, then record at *fps* until stopped or max_steps reached.
+
+    Parameters
+    ----------
+    action_pipeline
+        Optional ``DataProcessorPipeline`` consuming a ``{"action": leader_dict}``
+        transition and returning a ``np.ndarray`` of joint targets in radians.
+        When ``None``, the default pipeline (deg-to-rad + wrist-roll offset) is
+        constructed via
+        :func:`so101_nexus_core.processors.pipelines.make_default_leader_action_pipeline`.
+    """
     import gymnasium as gym
 
+    from so101_nexus_core.processors.pipelines import make_default_leader_action_pipeline
     from so101_nexus_core.teleop.session import _recording_env_kwargs
+
+    pipeline = action_pipeline or make_default_leader_action_pipeline(
+        joint_names=joint_names,
+        wrist_roll_offset_deg=wrist_roll_offset_deg,
+    )
 
     for i in range(countdown, 0, -1):
         state.countdown_value = i
@@ -139,11 +142,7 @@ def recording_thread(
     )
     try:
         leader_action = leader.get_action()
-        init_qpos = convert_leader_action(
-            leader_action,
-            joint_names,
-            wrist_roll_offset_deg=wrist_roll_offset_deg,
-        )
+        init_qpos = pipeline({"action": leader_action})
         obs, _ = env.reset(options={"init_qpos": init_qpos})
         state.clear_episode()
         state.task_description = getattr(env.unwrapped, "task_description", "")
@@ -158,11 +157,7 @@ def recording_thread(
                 break
 
             leader_action = leader.get_action()
-            action = convert_leader_action(
-                leader_action,
-                joint_names,
-                wrist_roll_offset_deg=wrist_roll_offset_deg,
-            )
+            action = pipeline({"action": leader_action})
             obs, _, terminated, truncated, _ = env.step(action)
 
             wrist_image = None

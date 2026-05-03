@@ -2,6 +2,7 @@
   "title": "Concepts",
   "pages": [
     "backend-support",
+    "lerobot-compatibility",
     "observations-and-camera-modes",
     "poses",
     "tasks-and-success-conditions"

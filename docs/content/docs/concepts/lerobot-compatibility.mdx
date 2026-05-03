@@ -1,0 +1,42 @@
+---
+title: LeRobot compatibility
+description: How SO101-Nexus stays aligned with the LeRobot ecosystem.
+---
+
+SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosystem as a first-class peer. When LeRobot ships an abstraction, we use it directly rather than reimplementing one of our own.
+
+## What this means in practice
+
+- **Processor pipelines.** Teleop conversions and optional env-observation transforms are implemented as `lerobot.processor.DataProcessorPipeline` instances composed of steps that subclass `ActionProcessorStep`, `ObservationProcessorStep`, and friends. Every custom step is registered with `ProcessorStepRegistry`, which means pipelines are serializable via `save_pretrained` and shareable on the HuggingFace Hub.
+- **Observation conventions.** When you opt into the wrapper, observations follow LeRobot's canonical keys: `observation.state` for the proprioceptive state vector and `observation.images.<name>` for camera frames in CHW float32 form.
+- **Hardware drivers.** SO leader and follower configs come straight from `lerobot.teleoperators.so_leader` and `lerobot.robots.so_follower`. We do not wrap or re-export them.
+- **Datasets.** Recordings use `LeRobotDataset` directly.
+
+## Using LeRobot processors with SO101-Nexus envs
+
+```python
+import gymnasium as gym
+import so101_nexus_mujoco  # noqa: F401
+from so101_nexus_core.processors import make_lerobot_env
+
+env = make_lerobot_env("MuJoCoPickLift-v1", render_mode="rgb_array")
+obs, _ = env.reset()
+# obs is now {"observation.state": ..., "observation.images.wrist": ..., ...}
+```
+
+To customize the pipeline, build one yourself and pass it in:
+
+```python
+from lerobot.processor import DataProcessorPipeline, RenameObservationsProcessorStep
+from so101_nexus_core.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
+
+pipeline = DataProcessorPipeline(steps=[
+    RenameObservationsProcessorStep(rename_map={"state": "observation.state"}),
+    Hwc2ChwImageObservationStep(image_keys=("observation.state",)),
+])
+env = LeRobotEnvWrapper(gym.make("MuJoCoPickLift-v1"), pipeline=pipeline)
+```
+
+## Custom teleop pipelines
+
+The default leader pipeline (`make_default_leader_action_pipeline`) preserves the historical recording behavior: degrees from the leader, radians on the way to the env, with a wrist-roll calibration shift. To customize, build a `DataProcessorPipeline` and pass it through the recorder's session dict as `action_pipeline`.
