@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from so101_nexus_core.observations import GazeDirection
 from so101_nexus_core.tasks.metrics import OrientationError
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def make_look_at_spec(config: LookAtConfig) -> PrimitiveTargetSpec:  # noqa: D103
-    target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
+    target_obj = cast("CubeObject", config.objects[0])
     return PrimitiveTargetSpec(
         marker=TargetMarker(
             name="look_target",

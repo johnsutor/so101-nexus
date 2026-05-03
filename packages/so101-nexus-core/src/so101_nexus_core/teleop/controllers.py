@@ -414,6 +414,7 @@ def cb_approve_episode(session: TeleopSession):
         actions = compute_delta_actions(actions)
 
     sel = session.field_selection
+    assert sel is not None, "field_selection not populated — init must succeed first"
     for i in range(len(actions)):
         wrist_img = s.episode_wrist_images[i] if i < len(s.episode_wrist_images) else None
         overhead_img = s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None

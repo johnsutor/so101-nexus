@@ -106,6 +106,7 @@ class PrimitiveTargetMuJoCoEnv(SO101NexusMuJoCoBaseEnv):
         ground_rgba = sample_color(config.ground_colors)
         color_rgba = None
         if not spec.marker.is_kinematic:
+            assert spec.marker.color_name is not None, "dynamic marker requires color_name"
             color_rgba = COLOR_MAP[spec.marker.color_name]
         xml_string = _build_primitive_scene_xml(spec.marker, ground_rgba, color_rgba)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
@@ -142,6 +143,7 @@ class PrimitiveTargetMuJoCoEnv(SO101NexusMuJoCoBaseEnv):
             self.model.site_pos[self._target_site_id] = pos
         else:
             addr = self._target_qpos_addr
+            assert addr is not None, "_target_qpos_addr is None on a non-kinematic marker"
             self.data.qpos[addr : addr + 3] = pos
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 

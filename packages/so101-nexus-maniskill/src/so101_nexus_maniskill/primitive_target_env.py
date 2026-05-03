@@ -72,6 +72,7 @@ class PrimitiveTargetManiSkillEnv(SO101NexusManiSkillBaseEnv):
 
     def _build_dynamic_marker(self, name: str, env_idx: int) -> Actor:
         marker = self._spec.marker
+        assert marker.color_name is not None, "dynamic marker requires color_name"
         return actors.build_cube(
             self.scene,
             half_size=marker.size,
