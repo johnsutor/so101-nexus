@@ -23,8 +23,8 @@ from so101_nexus_core.teleop.app import (
     _create_dataset,
     _progress_text,
 )
-from so101_nexus_core.teleop.recorder import RecordingState
 from so101_nexus_core.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
+from so101_nexus_core.teleop.recorder import RecordingState
 
 
 @pytest.fixture
@@ -33,9 +33,12 @@ def fake_gradio(monkeypatch):
         def __init__(self, *, selected):
             self.selected = selected
 
+    def _walkthrough_factory(**kwargs):
+        return _Walkthrough(**kwargs)
+
     fake = types.SimpleNamespace(
         update=lambda **kwargs: kwargs,
-        Walkthrough=lambda **kwargs: _Walkthrough(**kwargs),
+        Walkthrough=_walkthrough_factory,
         Warning=lambda _msg: None,
     )
     monkeypatch.setitem(sys.modules, "gradio", fake)
@@ -243,7 +246,9 @@ def test_poll_recording_countdown_uses_dedicated_countdown_area(fake_gradio) -> 
 
 
 def test_poll_recording_shows_live_feeds_only_while_recording(fake_gradio, monkeypatch) -> None:
-    fake_cv2 = types.SimpleNamespace(resize=lambda frame, size, interpolation=None: frame, INTER_LINEAR=1)
+    fake_cv2 = types.SimpleNamespace(
+        resize=lambda frame, size, interpolation=None: frame, INTER_LINEAR=1
+    )
     monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
 
     state = RecordingState(is_recording=True, num_episodes=5, episodes_completed=1)

@@ -69,11 +69,6 @@ def _current_init_log(init_state: dict) -> str:
     return init_state.get("log_text", "")
 
 
-# ---------------------------------------------------------------------------
-# Init-worker helpers
-# ---------------------------------------------------------------------------
-
-
 def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
     """Connect and return the leader arm, or raise RuntimeError."""
     leader = get_leader(robot_type, leader_port, leader_id)
@@ -237,10 +232,6 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
         gr.update(value="Starting..."),
         gr.update(visible=False),
     )
-
-# ---------------------------------------------------------------------------
-# Gradio callbacks (module-level; receive session/init_state as parameters)
-# ---------------------------------------------------------------------------
 
 
 def _cb_start_init(
@@ -582,11 +573,6 @@ def _cb_finalize_and_close(session: dict):
     with contextlib.suppress(Exception):
         session["leader"].disconnect()
     return "Session finalized. You can close this tab."
-
-
-# ---------------------------------------------------------------------------
-# UI builder helpers
-# ---------------------------------------------------------------------------
 
 
 def _build_setup_screen(

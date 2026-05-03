@@ -89,7 +89,9 @@ def format_leader_connection_error(port: str, exc: Exception) -> str:
             diag = LeaderPortDiagnostic(
                 kind="not_found",
                 message=f"Serial device '{port}' could not be opened.",
-                recovery_hint="Check the USB connection and run 'lerobot-find-port' to locate the arm.",
+                recovery_hint=(
+                    "Check the USB connection and run 'lerobot-find-port' to locate the arm."
+                ),
             )
 
     message = f"Failed to connect on {port}: {details}"
