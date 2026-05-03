@@ -1,0 +1,157 @@
+---
+title: Teleop Dataset Recording
+description: Record demonstration datasets by teleoperating a simulated robot with a physical leader arm.
+---
+
+SO101-Nexus ships with a Gradio-based teleop recorder in the core package.
+You drive a simulated robot with a physical SO-100 or SO-101 leader arm,
+and demonstrations are saved as LeRobot v3 datasets ready to push to the
+HuggingFace Hub.
+
+## Quickstart with uvx
+
+If you have [uv](https://docs.astral.sh/uv/) installed, you can launch the recorder against either backend without setting up a venv. `uvx` resolves the package and the `teleop` extra into an ephemeral environment:
+
+```bash
+# MuJoCo
+uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0
+
+# ManiSkill
+uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
+    so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+```
+
+This is the fastest way to try teleop end to end. The rest of this guide assumes you have run a regular install for repeat use, but the `uvx` command above is enough for a one-off session.
+
+## Installation
+
+Teleop deps (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`) live
+in the `teleop` extra on `so101-nexus-core`. Install them alongside the
+backend you want to record against:
+
+```bash
+# MuJoCo
+uv sync --package so101-nexus-mujoco --extra teleop
+
+# ManiSkill
+uv sync --package so101-nexus-maniskill --extra teleop
+```
+
+With pip:
+
+```bash
+# MuJoCo
+pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
+
+# ManiSkill
+pip install "so101-nexus-core[teleop]" so101-nexus-maniskill
+```
+
+## Hardware
+
+- A physical SO-100 or SO-101 leader arm connected via USB.
+- A Linux host with access to the leader arm's serial port.
+
+## Finding the serial port
+
+Make the device writable if needed, then use the LeRobot port discovery
+tool:
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+lerobot-find-port
+```
+
+If the recorder starts before the port is writable, the Initialize step now
+stays open and shows exact recovery commands. Fix the port in another
+terminal, then click `Retry Initialization` in the same browser session.
+
+## Launching the recorder
+
+Each backend exposes a `teleop` subcommand:
+
+```bash
+# MuJoCo
+uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
+
+# ManiSkill
+uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+```
+
+A Gradio UI opens in your browser. Most settings live in the UI; the CLI
+only takes connection-level options.
+
+If initialization fails because `/dev/ttyACM*` is missing or not writable,
+teleop now keeps the session alive and prints targeted recovery guidance
+instead of forcing a browser restart.
+
+### CLI arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
+| `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
+| `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+
+## Cameras and recorded fields
+
+The recorder captures **both** the wrist camera and the overhead camera on
+every step, so you can decide after the fact which views end up in your
+dataset without re-recording.
+
+Under **Advanced Settings, Dataset fields**, a checkbox group selects which
+fields are persisted:
+
+- `observation.state` always saved (disabled checkbox)
+- `action` always saved (disabled checkbox)
+- `observation.images.wrist_cam` optional, on by default
+- `observation.images.overhead_cam` optional, on by default
+- `task` optional, on by default
+
+Deselecting an optional field removes it from both the declared dataset
+feature schema and every recorded frame. `observation.state` and `action`
+stay forced on because a LeRobot dataset without them is not trainable.
+
+### Camera resolution
+
+Separate width and height sliders for the wrist and overhead cameras
+control the recording resolution. Both cameras are wired into the
+environment's observation config automatically, even when the task's
+default config only declares one.
+
+## Session flow
+
+1. **Configure.** Pick the env, robot type, episode count, FPS, camera
+   resolutions, action space, countdown, and dataset fields.
+2. **Initialize.** The app connects to the leader arm and creates the
+   dataset. If the port is unavailable or blocked by permissions, fix it
+   and retry from the same page.
+3. **Record.** A countdown plays, then the simulation mirrors the leader
+   arm. The live wrist feed renders in the UI.
+4. **Review.** After each episode, the UI shows a video replay and a
+   joint-state plot.
+5. **Approve or discard.** Accept to write the episode into the dataset,
+   or discard and re-record.
+6. **Push.** When all episodes are done, push to the HuggingFace Hub from
+   the UI.
+
+## Recorded dataset format
+
+Datasets use the LeRobot v3 format. Depending on your selection, frames
+include:
+
+- `observation.state`: joint positions (6D), always present
+- `action`: commanded joint positions or deltas, always present
+- `observation.images.wrist_cam`: wrist camera frames, optional
+- `observation.images.overhead_cam`: overhead camera frames, optional
+- `task`: language description, optional
+
+`observation.state` is the raw joint reading from the leader arm, not the
+simulator's internal state vector, so the dataset stays compatible with
+sim-to-real transfer and vision-based policy training.
+
+## Troubleshooting
+
+For Ubuntu viewer/runtime issues such as `libdecor-gtk` warnings, see
+[Teleoperation Troubleshooting](/docs/teleoperation/troubleshooting).

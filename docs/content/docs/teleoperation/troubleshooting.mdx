@@ -1,0 +1,62 @@
+---
+title: Teleoperation Troubleshooting
+description: Fix common teleop startup and runtime issues on Linux, including serial permissions and Ubuntu libdecor warnings.
+---
+
+## Serial port permissions
+
+If teleop cannot open `/dev/ttyACM*`, fix the device permissions and retry
+initialization in the same browser session:
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+lerobot-find-port
+```
+
+The teleop UI now stays on the Initialize step and shows recovery guidance
+instead of forcing a restart.
+
+## Ubuntu `libdecor-gtk` warnings
+
+On Ubuntu, you may see warnings like:
+
+```text
+libdecor-gtk-WARNING: Failed to initialize GTK
+Failed to load plugin 'libdecor-gtk.so': failed to init
+```
+
+For teleop, this is usually **non-fatal**. The SO101-Nexus teleop recorder
+uses offscreen `rgb_array` rendering for the simulation feed, not the MuJoCo
+human viewer path, so dataset recording can still work even if native window
+decoration support is incomplete.
+
+If you want to eliminate the warning or ensure native viewer dependencies are
+present, install the Ubuntu runtime packages that provide `libdecor` and GTK:
+
+```bash
+# Ubuntu 24.04+
+sudo apt install libdecor-0-0 libdecor-0-plugin-1-gtk libgtk-3-0t64
+
+# Ubuntu 22.04
+sudo apt install libdecor-0-0 libgtk-3-0
+```
+
+Ubuntu package references:
+
+- `libdecor-0-0`: https://packages.ubuntu.com/plucky/amd64/libs/libdecor-0-0
+- `libdecor-0-plugin-1-gtk`: https://packages.ubuntu.com/plucky/amd64/libs/libdecor-0-plugin-1-gtk
+- `libgtk-3-0`: https://packages.ubuntu.com/jammy/libgtk-3-0
+
+If you are only using teleop through the browser and recording works, you do
+not need to treat this warning as a hard failure.
+
+## When the warning is actually a problem
+
+Treat it as actionable if:
+
+- the app crashes before the Gradio UI becomes usable
+- the simulation viewer fails to render at all
+- you are intentionally running a native MuJoCo human-viewer workflow outside
+  the teleop browser flow
+
+In those cases, install the packages above first, then retry.
