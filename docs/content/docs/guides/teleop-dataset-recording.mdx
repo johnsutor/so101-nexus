@@ -63,6 +63,10 @@ sudo chmod 666 /dev/ttyACM0
 lerobot-find-port
 ```
 
+If the recorder starts before the port is writable, the Initialize step now
+stays open and shows exact recovery commands. Fix the port in another
+terminal, then click `Retry Initialization` in the same browser session.
+
 ## Launching the recorder
 
 Each backend exposes a `teleop` subcommand:
@@ -77,6 +81,10 @@ uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 
 A Gradio UI opens in your browser. Most settings live in the UI; the CLI
 only takes connection-level options.
+
+If initialization fails because `/dev/ttyACM*` is missing or not writable,
+teleop now keeps the session alive and prints targeted recovery guidance
+instead of forcing a browser restart.
 
 ### CLI arguments
 
@@ -116,13 +124,16 @@ default config only declares one.
 
 1. **Configure.** Pick the env, robot type, episode count, FPS, camera
    resolutions, action space, countdown, and dataset fields.
-2. **Record.** A countdown plays, then the simulation mirrors the leader
+2. **Initialize.** The app connects to the leader arm and creates the
+   dataset. If the port is unavailable or blocked by permissions, fix it
+   and retry from the same page.
+3. **Record.** A countdown plays, then the simulation mirrors the leader
    arm. The live wrist feed renders in the UI.
-3. **Review.** After each episode, the UI shows a video replay and a
+4. **Review.** After each episode, the UI shows a video replay and a
    joint-state plot.
-4. **Approve or discard.** Accept to write the episode into the dataset,
+5. **Approve or discard.** Accept to write the episode into the dataset,
    or discard and re-record.
-5. **Push.** When all episodes are done, push to the HuggingFace Hub from
+6. **Push.** When all episodes are done, push to the HuggingFace Hub from
    the UI.
 
 ## Recorded dataset format

@@ -15,6 +15,8 @@ from so101_nexus_core.teleop.leader import (
     DEFAULT_WRIST_ROLL_OFFSET_DEG,
     ROBOT_JOINT_NAMES,
     check_robot_env_mismatch,
+    diagnose_leader_port,
+    format_leader_connection_error,
     get_leader,
     import_backend_for_env_id,
 )
@@ -96,3 +98,35 @@ def test_import_backend_for_env_id_mujoco():
 def test_import_backend_for_env_id_rejects_unknown():
     with pytest.raises(ValueError, match="ManiSkill"):
         import_backend_for_env_id("OtherBackendEnv-v1")
+
+
+def test_diagnose_leader_port_reports_missing_path(monkeypatch):
+    monkeypatch.setattr("so101_nexus_core.teleop.leader.os.path.exists", lambda _path: False)
+
+    diag = diagnose_leader_port("/dev/ttyACM9")
+
+    assert diag.kind == "not_found"
+    assert "/dev/ttyACM9" in diag.message
+    assert "lerobot-find-port" in diag.recovery_hint
+
+
+def test_diagnose_leader_port_reports_permission_denied(monkeypatch):
+    monkeypatch.setattr("so101_nexus_core.teleop.leader.os.path.exists", lambda _path: True)
+    monkeypatch.setattr("so101_nexus_core.teleop.leader.os.access", lambda _path, _mode: False)
+
+    diag = diagnose_leader_port("/dev/ttyACM0")
+
+    assert diag.kind == "permission_denied"
+    assert "/dev/ttyACM0" in diag.message
+    assert "chmod" in diag.recovery_hint
+
+
+def test_format_leader_connection_error_includes_recovery_hint(monkeypatch):
+    monkeypatch.setattr("so101_nexus_core.teleop.leader.os.path.exists", lambda _path: True)
+    monkeypatch.setattr("so101_nexus_core.teleop.leader.os.access", lambda _path, _mode: False)
+
+    msg = format_leader_connection_error("/dev/ttyACM0", OSError("permission denied"))
+
+    assert "Failed to connect on /dev/ttyACM0" in msg
+    assert "permission denied" in msg.lower()
+    assert "chmod 666 /dev/ttyACM0" in msg
