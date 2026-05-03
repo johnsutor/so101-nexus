@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -54,6 +55,7 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
     """
 
     config: ReachConfig
+    default_config_cls: ClassVar[type[ReachConfig]] = ReachConfig
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
     task_description = "Move the robot's end-effector to the target position."

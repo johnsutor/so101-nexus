@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import torch
 from mani_skill.utils.building import actors
@@ -28,6 +28,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     """
 
     config: LookAtConfig
+    default_config_cls: ClassVar[type[LookAtConfig]] = LookAtConfig
 
     def __init__(
         self,

@@ -9,6 +9,7 @@ Supported object types: ``CubeObject``, ``YCBObject``, ``MeshObject``.
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -189,6 +190,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     """
 
     config: PickConfig
+    default_config_cls: ClassVar[type[PickConfig]] = PickConfig
 
     def __init__(
         self,

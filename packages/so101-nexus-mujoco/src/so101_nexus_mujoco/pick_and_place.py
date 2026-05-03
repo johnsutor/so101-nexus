@@ -6,6 +6,7 @@ Provides PickAndPlaceEnv where the robot must move a cube to a visible disc targ
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -75,6 +76,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     """Pick-and-place environment with a cube target and a visible goal marker."""
 
     config: PickAndPlaceConfig
+    default_config_cls: ClassVar[type[PickAndPlaceConfig]] = PickAndPlaceConfig
 
     def __init__(
         self,

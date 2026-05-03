@@ -27,33 +27,15 @@ def _default_repo_id(env_id: str) -> str:
 
 
 def _resolve_env_config(env_ctor: type) -> object | None:
-    """Resolve the default config object for an environment class, or ``None``."""
-    config_param = inspect.signature(env_ctor.__init__).parameters.get("config")
-    if config_param is None:
-        return None
+    """Return a default-constructed config for *env_ctor*, or None.
 
-    base_config = config_param.default
-    if base_config is not None and base_config is not inspect.Parameter.empty:
-        return base_config
-
-    config_class_name: object = None
-    for cls in inspect.getmro(env_ctor):
-        if hasattr(cls, "__annotations__") and "config" in cls.__annotations__:
-            config_class_name = cls.__annotations__["config"]
-            break
-
-    if not isinstance(config_class_name, str):
-        return None
-
-    try:
-        from so101_nexus_core import config as config_module
-
-        config_class = getattr(config_module, config_class_name, None)
-        if config_class is not None:
-            return config_class()
-    except Exception:
-        return None
-    return None
+    Env classes opt in by exposing `default_config_cls: ClassVar[type]`.
+    A class without the attribute returns None; an attribute pointing at a
+    class whose `__init__` raises propagates the exception (a real env
+    config that cannot default-construct is a programming error).
+    """
+    cls = getattr(env_ctor, "default_config_cls", None)
+    return cls() if cls is not None else None
 
 
 def _replace_wrist_camera(existing: WristCamera, width: int, height: int) -> WristCamera:

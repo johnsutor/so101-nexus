@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -55,6 +56,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     """
 
     config: MoveConfig
+    default_config_cls: ClassVar[type[MoveConfig]] = MoveConfig
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 

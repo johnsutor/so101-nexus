@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import sapien
 import torch
@@ -24,6 +24,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
     """
 
     config: MoveConfig
+    default_config_cls: ClassVar[type[MoveConfig]] = MoveConfig
 
     def __init__(
         self,

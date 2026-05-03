@@ -61,27 +61,6 @@ def test_default_repo_id_sanitizes_slashes_and_spaces() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _NoConfigParamEnv:
-    def __init__(self):
-        pass
-
-
-def test_resolve_env_config_no_config_param() -> None:
-    assert _resolve_env_config(_NoConfigParamEnv) is None
-
-
-_DEFAULT_SENTINEL = object()
-
-
-class _DefaultConfigEnv:
-    def __init__(self, config=_DEFAULT_SENTINEL):
-        self.config = config
-
-
-def test_resolve_env_config_returns_explicit_default() -> None:
-    assert _resolve_env_config(_DefaultConfigEnv) is _DEFAULT_SENTINEL
-
-
 class _NoAnnotationEnv:
     def __init__(self, config):
         self.config = config
@@ -92,49 +71,86 @@ def test_resolve_env_config_returns_none_when_no_string_annotation() -> None:
     assert _resolve_env_config(_NoAnnotationEnv) is None
 
 
-class _StringAnnotationEnv:
-    config: "ReachConfig"
+class _EnvWithDefaultConfig:
+    default_config_cls = ReachConfig
 
     def __init__(self, config=None):
         self.config = config
 
 
-def test_resolve_env_config_resolves_string_annotation() -> None:
-    """String annotation naming a class on so101_nexus_core.config → instance returned."""
-    result = _resolve_env_config(_StringAnnotationEnv)
+class _EnvWithoutDefaultConfig:
+    def __init__(self, config=None):
+        self.config = config
 
+
+class _RaisingConfig:
+    def __init__(self):
+        raise RuntimeError("boom")
+
+
+class _EnvWithRaisingConfig:
+    default_config_cls = _RaisingConfig
+
+    def __init__(self, config=None):
+        self.config = config
+
+
+def test_resolve_env_config_uses_default_config_cls() -> None:
+    """Env class with default_config_cls returns a config instance."""
+    result = _resolve_env_config(_EnvWithDefaultConfig)
     assert isinstance(result, ReachConfig)
 
 
-class _UnknownAnnotationEnv:
-    config: "DefinitelyNotARealConfigClass"  # noqa: F821 — intentionally unresolvable
-
-    def __init__(self, config=None):
-        self.config = config
+def test_resolve_env_config_returns_none_without_attribute() -> None:
+    """Env class without default_config_cls returns None."""
+    assert _resolve_env_config(_EnvWithoutDefaultConfig) is None
 
 
-def test_resolve_env_config_returns_none_for_unknown_annotation() -> None:
-    """String annotation that doesn't resolve on the config module → returns None."""
-    assert _resolve_env_config(_UnknownAnnotationEnv) is None
+def test_resolve_env_config_propagates_init_errors() -> None:
+    """A default_config_cls whose __init__ raises propagates the error.
+
+    Behavior change vs the old reflection path which silently swallowed
+    the exception: a real env config that cannot construct is a bug
+    worth surfacing.
+    """
+    import pytest
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _resolve_env_config(_EnvWithRaisingConfig)
 
 
-def test_resolve_env_config_returns_none_when_instantiation_raises(monkeypatch) -> None:
-    """Annotated config class that raises in __init__ → swallowed, returns None."""
-    from so101_nexus_core import config as config_module
+def test_every_real_env_class_declares_default_config_cls() -> None:
+    """Regression guard: every env class on every backend has the attribute."""
+    import importlib
 
-    class _RaisingFakeConfig:
-        def __init__(self):
-            raise RuntimeError("boom")
+    cases = [
+        ("so101_nexus_mujoco.reach_env", "ReachEnv"),
+        ("so101_nexus_mujoco.move_env", "MoveEnv"),
+        ("so101_nexus_mujoco.look_at_env", "LookAtEnv"),
+        ("so101_nexus_mujoco.pick_env", "PickEnv"),
+        ("so101_nexus_mujoco.pick_env", "PickLiftEnv"),
+        ("so101_nexus_mujoco.pick_and_place", "PickAndPlaceEnv"),
+        ("so101_nexus_maniskill.reach_env", "ReachEnv"),
+        ("so101_nexus_maniskill.move_env", "MoveEnv"),
+        ("so101_nexus_maniskill.look_at_env", "LookAtEnv"),
+        ("so101_nexus_maniskill.pick_env", "PickEnv"),
+        ("so101_nexus_maniskill.pick_env", "PickLiftEnv"),
+        ("so101_nexus_maniskill.pick_and_place", "PickAndPlaceEnv"),
+    ]
+    from so101_nexus_core.config import EnvironmentConfig
 
-    monkeypatch.setattr(config_module, "_RaisingFakeConfig", _RaisingFakeConfig, raising=False)
-
-    class _RaisingConfigEnv:
-        config: "_RaisingFakeConfig"
-
-        def __init__(self, config=None):
-            self.config = config
-
-    assert _resolve_env_config(_RaisingConfigEnv) is None
+    for module_name, class_name in cases:
+        try:
+            mod = importlib.import_module(module_name)
+        except ImportError:
+            # Backend not installed in this test environment; skip.
+            continue
+        cls = getattr(mod, class_name)
+        attr = getattr(cls, "default_config_cls", None)
+        assert attr is not None, f"{class_name} missing default_config_cls"
+        assert issubclass(attr, EnvironmentConfig), (
+            f"{class_name}.default_config_cls is not an EnvironmentConfig subclass"
+        )
 
 
 # ---------------------------------------------------------------------------

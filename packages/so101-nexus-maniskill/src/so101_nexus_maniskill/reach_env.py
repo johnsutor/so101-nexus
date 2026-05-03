@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import sapien
 import torch
@@ -24,6 +24,7 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
     """
 
     config: ReachConfig
+    default_config_cls: ClassVar[type[ReachConfig]] = ReachConfig
     task_description = "Move the robot's end-effector to the target position."
 
     def __init__(
