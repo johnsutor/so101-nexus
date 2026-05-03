@@ -48,4 +48,5 @@ test = [
     "hypothesis>=6.140.0",
     "imageio[ffmpeg]",
     "Pillow",
+    "lerobot>=0.5.0",
 ]
