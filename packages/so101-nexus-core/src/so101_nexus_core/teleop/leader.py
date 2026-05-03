@@ -75,24 +75,24 @@ def diagnose_leader_port(port: str) -> LeaderPortDiagnostic:
 
 def format_leader_connection_error(port: str, exc: Exception) -> str:
     """Return a user-facing connection error with recovery guidance."""
-    diag = diagnose_leader_port(port)
     details = str(exc).strip() or type(exc).__name__
-    if diag.kind == "ok":
-        lower_details = details.lower()
-        if "permission denied" in lower_details:
-            diag = LeaderPortDiagnostic(
-                kind="permission_denied",
-                message=f"Serial device '{port}' rejected the connection with a permission error.",
-                recovery_hint=_permission_recovery_hint(port),
-            )
-        elif "no such file" in lower_details or "could not connect on port" in lower_details:
-            diag = LeaderPortDiagnostic(
-                kind="not_found",
-                message=f"Serial device '{port}' could not be opened.",
-                recovery_hint=(
-                    "Check the USB connection and run 'lerobot-find-port' to locate the arm."
-                ),
-            )
+    lower_details = details.lower()
+    if "permission denied" in lower_details:
+        diag = LeaderPortDiagnostic(
+            kind="permission_denied",
+            message=f"Serial device '{port}' rejected the connection with a permission error.",
+            recovery_hint=_permission_recovery_hint(port),
+        )
+    elif "no such file" in lower_details or "could not connect on port" in lower_details:
+        diag = LeaderPortDiagnostic(
+            kind="not_found",
+            message=f"Serial device '{port}' could not be opened.",
+            recovery_hint=(
+                "Check the USB connection and run 'lerobot-find-port' to locate the arm."
+            ),
+        )
+    else:
+        diag = diagnose_leader_port(port)
 
     message = f"Failed to connect on {port}: {details}"
     if diag.kind != "ok":
