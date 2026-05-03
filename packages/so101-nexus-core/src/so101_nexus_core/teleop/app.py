@@ -9,14 +9,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import sys
 import threading
-from typing import TYPE_CHECKING, cast
 
 import numpy as np
-
-if TYPE_CHECKING:
-    from so101_nexus_core.teleop.recorder import _WritableTextStream
 
 from so101_nexus_core.env_ids import Backend, env_ids_for_backend
 from so101_nexus_core.teleop.dataset import (
@@ -30,12 +25,12 @@ from so101_nexus_core.teleop.leader import (
     DEFAULT_WRIST_ROLL_OFFSET_DEG,
     ROBOT_JOINT_NAMES,
     check_robot_env_mismatch,
+    format_leader_connection_error,
     get_leader,
     import_backend_for_env_id,
 )
 from so101_nexus_core.teleop.recorder import (
     RecordingState,
-    TeeStream,
     compute_delta_actions,
     recording_thread,
 )
@@ -62,22 +57,25 @@ def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
     )
 
 
-# ---------------------------------------------------------------------------
-# Init-worker helpers
-# ---------------------------------------------------------------------------
+def _append_init_log(init_state: dict, message: str) -> None:
+    """Append a line of init log text captured only for this teleop session."""
+    lines = init_state.setdefault("log_lines", [])
+    lines.append(message)
+    init_state["log_text"] = "\n".join(lines)
+
+
+def _current_init_log(init_state: dict) -> str:
+    """Return the accumulated init log text."""
+    return init_state.get("log_text", "")
 
 
 def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
     """Connect and return the leader arm, or raise RuntimeError."""
-    print(f"Connecting leader arm on {leader_port} (id={leader_id})...")
     leader = get_leader(robot_type, leader_port, leader_id)
     try:
         leader.connect()
     except Exception as exc:
-        raise RuntimeError(
-            f"Failed to connect on {leader_port}: {exc}\n"
-            "Is the arm plugged in? Run 'lerobot-find-port' to list ports."
-        ) from exc
+        raise RuntimeError(format_leader_connection_error(leader_port, exc)) from exc
     return leader
 
 
@@ -118,9 +116,10 @@ def _run_init_worker(
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
     try:
+        _append_init_log(init_state, f"Connecting leader arm on {leader_port} (id={leader_id})...")
         import_backend_for_env_id(env_id)
         leader = _connect_leader(robot_type, leader_port, leader_id)
-        print("Creating LeRobot dataset...")
+        _append_init_log(init_state, "Creating LeRobot dataset...")
         features = build_features(field_selection, joint_names, wrist_wh, overhead_wh)
         dataset = _create_dataset(repo_id, fps, robot_type, features, leader)
         session.update(
@@ -139,16 +138,100 @@ def _run_init_worker(
             wrist_roll_offset_deg=wrist_roll_offset_deg,
             field_selection=field_selection,
         )
-        print("Initialization complete.")
+        _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
     except Exception as exc:
         init_state["error"] = str(exc)
         init_state["done"] = True
 
 
-# ---------------------------------------------------------------------------
-# Gradio callbacks (module-level; receive session/init_state as parameters)
-# ---------------------------------------------------------------------------
+def _normalized_init_config(
+    leader_id_default: str,
+    env_id: str,
+    robot_type: str,
+    leader_id: str,
+    fps: float,
+    wrist_camera_width: float,
+    wrist_camera_height: float,
+    overhead_camera_width: float,
+    overhead_camera_height: float,
+    repo_id: str,
+    num_episodes: float,
+    action_space: str,
+    max_steps: float,
+    countdown: float,
+    wrist_roll_offset_deg: float,
+    field_selection_value: list[str],
+) -> dict:
+    """Validate UI inputs and return a normalized init config dict."""
+    fps_i = int(fps)
+    wrist_wh = (int(wrist_camera_width), int(wrist_camera_height))
+    overhead_wh = (int(overhead_camera_width), int(overhead_camera_height))
+    num_ep_i, max_steps_i, countdown_i = int(num_episodes), int(max_steps), int(countdown)
+    repo_id_value = (repo_id or "").strip() or _default_repo_id(env_id)
+    leader_id_value = (leader_id or "").strip() or leader_id_default
+    field_selection = _build_field_selection(field_selection_value)
+
+    return {
+        "env_id": env_id,
+        "robot_type": robot_type,
+        "leader_id": leader_id_value,
+        "fps": fps_i,
+        "wrist_wh": wrist_wh,
+        "overhead_wh": overhead_wh,
+        "repo_id": repo_id_value,
+        "num_episodes": num_ep_i,
+        "action_space": action_space,
+        "max_steps": max_steps_i,
+        "countdown": countdown_i,
+        "wrist_roll_offset_deg": float(wrist_roll_offset_deg),
+        "field_selection": field_selection,
+    }
+
+
+def _start_init_attempt(session: dict, init_state: dict, leader_port: str, config: dict):
+    """Reset init state and launch a fresh initialization attempt."""
+    import gradio as gr
+
+    init_state.update(
+        warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
+        running=True,
+        done=False,
+        processed=False,
+        error=None,
+        log_lines=[],
+        log_text="",
+        last_config=config,
+    )
+
+    threading.Thread(
+        target=_run_init_worker,
+        args=(
+            session,
+            init_state,
+            leader_port,
+            config["env_id"],
+            config["robot_type"],
+            config["leader_id"],
+            config["fps"],
+            config["wrist_wh"],
+            config["overhead_wh"],
+            config["repo_id"],
+            config["num_episodes"],
+            config["action_space"],
+            config["max_steps"],
+            config["countdown"],
+            config["wrist_roll_offset_deg"],
+            config["field_selection"],
+        ),
+        daemon=True,
+    ).start()
+
+    return (
+        gr.Walkthrough(selected=1),
+        gr.update(value="Starting..."),
+        gr.update(visible=False),
+    )
 
 
 def _cb_start_init(
@@ -175,53 +258,28 @@ def _cb_start_init(
     """Validate inputs and launch the init worker thread."""
     import gradio as gr
 
-    fps_i = int(fps)
-    wrist_wh = (int(wrist_camera_width), int(wrist_camera_height))
-    overhead_wh = (int(overhead_camera_width), int(overhead_camera_height))
-    num_ep_i, max_steps_i, countdown_i = int(num_episodes), int(max_steps), int(countdown)
-    if max_steps_i < 1:
-        raise gr.Error("Max Steps must be at least 1.")
-    repo_id_value = (repo_id or "").strip() or _default_repo_id(env_id)
-    leader_id_value = (leader_id or "").strip() or leader_id_default
-    field_selection = _build_field_selection(field_selection_value)
-
-    init_state.update(
-        warning=check_robot_env_mismatch(env_id, robot_type),
-        running=True,
-        done=False,
-        processed=False,
-        error=None,
+    config = _normalized_init_config(
+        leader_id_default,
+        env_id,
+        robot_type,
+        leader_id,
+        fps,
+        wrist_camera_width,
+        wrist_camera_height,
+        overhead_camera_width,
+        overhead_camera_height,
+        repo_id,
+        num_episodes,
+        action_space,
+        max_steps,
+        countdown,
+        wrist_roll_offset_deg,
+        field_selection_value,
     )
+    if config["max_steps"] < 1:
+        raise gr.Error("Max Steps must be at least 1.")
 
-    tee_out = TeeStream(cast("_WritableTextStream", sys.stdout))
-    tee_err = TeeStream(cast("_WritableTextStream", sys.stderr))
-    init_state["tee_stdout"], init_state["tee_stderr"] = tee_out, tee_err
-    sys.stdout, sys.stderr = tee_out, tee_err  # type: ignore[assignment]
-
-    threading.Thread(
-        target=_run_init_worker,
-        args=(
-            session,
-            init_state,
-            leader_port,
-            env_id,
-            robot_type,
-            leader_id_value,
-            fps_i,
-            wrist_wh,
-            overhead_wh,
-            repo_id_value,
-            num_ep_i,
-            action_space,
-            max_steps_i,
-            countdown_i,
-            float(wrist_roll_offset_deg),
-            field_selection,
-        ),
-        daemon=True,
-    ).start()
-
-    return gr.Walkthrough(selected=1)
+    return _start_init_attempt(session, init_state, leader_port, config)
 
 
 def _cb_poll_init(session: dict, init_state: dict):
@@ -231,13 +289,7 @@ def _cb_poll_init(session: dict, init_state: dict):
     if init_state.get("processed"):
         return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
 
-    tee_out = init_state.get("tee_stdout")
-    tee_err = init_state.get("tee_stderr")
-    log = tee_out.get_output() if tee_out else ""
-    if tee_err:
-        err_text = tee_err.get_output()
-        if err_text:
-            log += "\n" + err_text
+    log = _current_init_log(init_state)
 
     if not init_state["done"]:
         return (
@@ -248,10 +300,6 @@ def _cb_poll_init(session: dict, init_state: dict):
             gr.update(),
         )
 
-    if tee_out:
-        sys.stdout = tee_out._original  # type: ignore[assignment]
-    if tee_err:
-        sys.stderr = tee_err._original  # type: ignore[assignment]
     init_state["running"] = False
     init_state["processed"] = True
 
@@ -316,7 +364,6 @@ def _cb_start_recording(session: dict):
 
 def _cb_poll_recording(session: dict):
     """Poll the recording thread for live frames and detect completion."""
-    import cv2
     import gradio as gr
 
     s = session.get("state")
@@ -325,7 +372,7 @@ def _cb_poll_recording(session: dict):
     fps = session["fps"]
     if s.countdown_value > 0:
         return (
-            gr.update(value="Get ready..."),
+            gr.update(value=""),
             gr.update(visible=False),
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             gr.update(visible=False),
@@ -337,6 +384,8 @@ def _cb_poll_recording(session: dict):
             gr.update(),
         )
     if s.is_recording:
+        import cv2
+
         wrist_w, wrist_h = session["wrist_wh"]
         overhead_w, overhead_h = session["overhead_wh"]
 
@@ -475,15 +524,26 @@ def _cb_discard_episode(session: dict):
 
 
 def _cb_retry_init(init_state: dict):
-    """Reset init state and return to Configure step for retry."""
+    """Reset init state and start a fresh initialization attempt."""
     import gradio as gr
 
-    init_state.update(running=False, done=False, processed=False, error=None)
-    return (
-        gr.Walkthrough(selected=0),
-        gr.update(value=""),
-        gr.update(visible=False),
-    )
+    last_config = init_state.get("last_config")
+    if last_config is None:
+        init_state.update(running=False, done=False, processed=False, error=None)
+        return (
+            gr.Walkthrough(selected=0),
+            gr.update(value=""),
+            gr.update(visible=False),
+        )
+    raise RuntimeError("_cb_retry_init requires session and leader_port")
+
+
+def _cb_retry_init_with_session(session: dict, init_state: dict, leader_port: str):
+    """Retry initialization with the last submitted config."""
+    last_config = init_state.get("last_config")
+    if last_config is None:
+        return _cb_retry_init(init_state)
+    return _start_init_attempt(session, init_state, leader_port, last_config)
 
 
 def _cb_push_to_hub(session: dict):
@@ -513,11 +573,6 @@ def _cb_finalize_and_close(session: dict):
     with contextlib.suppress(Exception):
         session["leader"].disconnect()
     return "Session finalized. You can close this tab."
-
-
-# ---------------------------------------------------------------------------
-# UI builder helpers
-# ---------------------------------------------------------------------------
 
 
 def _build_setup_screen(
@@ -611,7 +666,7 @@ def _build_init_step(gr):
     """Build the Initialize step contents."""
     gr.Markdown("### Initializing Session...")
     init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
-    retry_btn = gr.Button("Back to Configure", variant="secondary", visible=False)
+    retry_btn = gr.Button("Retry Initialization", variant="secondary", visible=False)
     init_timer = gr.Timer(value=0.25)
     return init_log, retry_btn, init_timer
 
@@ -704,9 +759,9 @@ def _wire_events(
     def stop_recording() -> None:
         session["state"].should_stop = True
 
-    retry_init = functools.partial(_cb_retry_init, init_state)
+    retry_init = functools.partial(_cb_retry_init_with_session, session, init_state, leader_port)
 
-    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough])
+    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
     init_timer.tick(
         fn=poll_init,
         outputs=[init_log, retry_btn, walkthrough, session_header, progress_status],
@@ -804,9 +859,10 @@ def main(
         "done": False,
         "processed": False,
         "error": None,
-        "tee_stdout": None,
-        "tee_stderr": None,
         "warning": None,
+        "log_lines": [],
+        "log_text": "",
+        "last_config": None,
     }
 
     all_env_ids = env_ids_for_backend(backend)

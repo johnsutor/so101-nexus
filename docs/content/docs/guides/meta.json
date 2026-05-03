@@ -4,7 +4,6 @@
     "customizing-environments",
     "working-with-objects",
     "ycb-assets",
-    "training-with-ppo",
-    "teleop-dataset-recording"
+    "training-with-ppo"
   ]
 }
