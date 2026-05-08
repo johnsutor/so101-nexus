@@ -5,6 +5,7 @@
     "configs",
     "objects",
     "assets-and-geometry",
-    "environment-registry"
+    "environment-registry",
+    "lerobot-processors"
   ]
 }
