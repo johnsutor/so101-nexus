@@ -10,8 +10,9 @@ from __future__ import annotations
 import io
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import numpy as np
 
@@ -19,6 +20,9 @@ if TYPE_CHECKING:
     from lerobot.processor import DataProcessorPipeline
 
     from so101_nexus_core.teleop.leader import LeaderProtocol
+
+
+PREVIEW_MAX_DIM = 320
 
 
 class _WritableTextStream(Protocol):
@@ -62,6 +66,7 @@ class RecordingState:
     should_stop: bool = False
     countdown_value: int = 0
     recording_finished: bool = False
+    error: str | None = None
 
     episode_actions: list[np.ndarray] = field(default_factory=list)
     episode_states: list[np.ndarray] = field(default_factory=list)
@@ -71,6 +76,7 @@ class RecordingState:
     episode_duration: float = 0.0
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
+    live_preview: np.ndarray | None = None
 
     episodes_completed: int = 0
     num_episodes: int = 0
@@ -85,7 +91,9 @@ class RecordingState:
         self.episode_duration = 0.0
         self.live_frame = None
         self.live_overhead_frame = None
+        self.live_preview = None
         self.recording_finished = False
+        self.error = None
 
 
 def compute_delta_actions(actions: list[np.ndarray]) -> list[np.ndarray]:
@@ -94,6 +102,65 @@ def compute_delta_actions(actions: list[np.ndarray]) -> list[np.ndarray]:
     for i in range(1, len(actions)):
         deltas.append(actions[i] - actions[i - 1])
     return deltas
+
+
+def _make_preview_frame(
+    wrist: np.ndarray | None,
+    overhead: np.ndarray | None,
+    max_dim: int = PREVIEW_MAX_DIM,
+) -> np.ndarray | None:
+    """Combine wrist and overhead frames into one downscaled side-by-side preview."""
+    import cv2
+
+    def _fit(img: np.ndarray) -> np.ndarray:
+        h, w = img.shape[:2]
+        scale = max_dim / max(h, w)
+        if scale >= 1.0:
+            return img
+        return cv2.resize(
+            img,
+            (round(w * scale), round(h * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    tiles: list[np.ndarray] = []
+    if wrist is not None:
+        tiles.append(_fit(wrist))
+    if overhead is not None:
+        tiles.append(_fit(overhead))
+    if not tiles:
+        return None
+
+    target_h = max(tile.shape[0] for tile in tiles)
+    padded: list[np.ndarray] = []
+    for tile in tiles:
+        pad = target_h - tile.shape[0]
+        padded_tile = np.pad(tile, ((0, pad), (0, 0), (0, 0))) if pad else tile
+        padded.append(padded_tile)
+
+    out = padded[0]
+    gutter = np.zeros((target_h, 4, 3), dtype=out.dtype)
+    for tile in padded[1:]:
+        out = np.concatenate([out, gutter, tile], axis=1)
+    return out
+
+
+def _publish_camera_frames(state: RecordingState, obs: object) -> None:
+    """Copy camera observations into episode buffers and the UI preview slot."""
+    wrist_image = None
+    overhead_image = None
+    if isinstance(obs, Mapping):
+        camera_obs = cast("Mapping[str, np.ndarray]", obs)
+        wrist_image = camera_obs.get("wrist_camera")
+        overhead_image = camera_obs.get("overhead_camera")
+
+    if wrist_image is not None:
+        state.episode_wrist_images.append(wrist_image)
+        state.live_frame = wrist_image
+    if overhead_image is not None:
+        state.episode_overhead_images.append(overhead_image)
+        state.live_overhead_frame = overhead_image
+    state.live_preview = _make_preview_frame(wrist_image, overhead_image)
 
 
 def recording_thread(
@@ -140,6 +207,7 @@ def recording_thread(
         render_mode="rgb_array",
         **_recording_env_kwargs(env_id, wrist_wh, overhead_wh),
     )
+    state.error = None
     try:
         leader_action = leader.get_action()
         init_qpos = pipeline({"action": leader_action})
@@ -160,22 +228,11 @@ def recording_thread(
             action = pipeline({"action": leader_action})
             obs, _, terminated, truncated, _ = env.step(action)
 
-            wrist_image = None
-            overhead_image = None
-            if isinstance(obs, dict):
-                wrist_image = obs.get("wrist_camera")
-                overhead_image = obs.get("overhead_camera")
-
             # The leader arm action IS the observation.state for the dataset:
             # it matches what real robot joint encoders would report.
             state.episode_actions.append(action.astype(np.float32))
             state.episode_states.append(action.astype(np.float32))
-            if wrist_image is not None:
-                state.episode_wrist_images.append(wrist_image)
-                state.live_frame = wrist_image.copy()
-            if overhead_image is not None:
-                state.episode_overhead_images.append(overhead_image)
-                state.live_overhead_frame = overhead_image.copy()
+            _publish_camera_frames(state, obs)
 
             if terminated or truncated:
                 break
@@ -185,6 +242,8 @@ def recording_thread(
                 time.sleep(sleep_time)
 
         state.episode_duration = time.monotonic() - start_time
+    except Exception as exc:
+        state.error = f"{type(exc).__name__}: {exc}"
     finally:
         env.close()
         state.is_recording = False

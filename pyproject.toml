@@ -80,7 +80,13 @@ convention = "numpy"
 known-first-party = ["so101_nexus_core", "so101_nexus_maniskill", "so101_nexus_mujoco"]
 
 [tool.ty.analysis]
-replace-imports-with-any = ["mujoco", "mujoco.**"]
+replace-imports-with-any = [
+    "gradio",
+    "gradio.**",
+    "hatchling.metadata.plugin.interface",
+    "mujoco",
+    "mujoco.**",
+]
 
 [tool.ty.src]
 exclude = ["**/tests/**"]

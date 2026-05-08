@@ -16,6 +16,7 @@ import pytest
 
 from so101_nexus_core.teleop.app import (
     _build_field_selection,
+    _build_record_step,
     _cb_poll_init,
     _cb_poll_recording,
     _cb_retry_init,
@@ -241,31 +242,95 @@ def test_poll_recording_countdown_uses_dedicated_countdown_area(fake_gradio) -> 
     outputs = _cb_poll_recording(session)
 
     assert outputs[0]["value"] == ""
+    assert len(outputs) == 9
     assert outputs[2]["visible"] is True
     assert "Get ready" in outputs[2]["value"]
 
 
-def test_poll_recording_shows_live_feeds_only_while_recording(fake_gradio, monkeypatch) -> None:
-    fake_cv2 = types.SimpleNamespace(
-        resize=lambda frame, size, interpolation=None: frame, INTER_LINEAR=1
-    )
-    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
-
+def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=5, episodes_completed=1)
-    state.live_frame = np.zeros((4, 4, 3), dtype=np.uint8)
-    state.live_overhead_frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    state.live_preview = np.full((90, 160, 3), 200, dtype=np.uint8)
     state.episode_actions.append(np.zeros(6, dtype=np.float32))
     session = {
         "state": state,
         "fps": 30,
-        "wrist_wh": (4, 4),
-        "overhead_wh": (4, 4),
     }
 
     outputs = _cb_poll_recording(session)
 
+    assert len(outputs) == 9
     assert "Recording episode 2/5" in outputs[0]["value"]
     assert outputs[2]["visible"] is False
     assert outputs[3]["visible"] is True
+    np.testing.assert_array_equal(outputs[3]["value"], state.live_preview)
     assert outputs[4]["visible"] is True
-    assert outputs[5]["visible"] is True
+
+
+def test_record_step_countdown_area_starts_blank() -> None:
+    """The hidden countdown markdown must not ship a stale 'Get ready' value."""
+
+    class _FakeComponent:
+        def __init__(self, value=None, **kwargs):
+            self.value = value
+            for key, val in kwargs.items():
+                setattr(self, key, val)
+
+    class _FakeRow:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc_info):
+            return False
+
+    def _markdown(value="", **kwargs):
+        return _FakeComponent(value, **kwargs)
+
+    def _button(value="", **kwargs):
+        return _FakeComponent(value, **kwargs)
+
+    def _component(**kwargs):
+        return _FakeComponent(**kwargs)
+
+    fake_gr = types.SimpleNamespace(
+        Markdown=_markdown,
+        Button=_button,
+        Image=_component,
+        Timer=_component,
+        Row=_FakeRow,
+    )
+
+    components = _build_record_step(fake_gr)
+
+    countdown_area = components[2]
+    assert countdown_area.value == ""
+    assert countdown_area.visible is False
+
+
+def test_poll_recording_failed_empty_episode_warns_without_plot_error(
+    fake_gradio, monkeypatch
+) -> None:
+    import so101_nexus_core.teleop.app as app_mod
+
+    warnings: list[str] = []
+    fake_gradio.Warning = warnings.append
+
+    monkeypatch.setattr(app_mod, "make_review_video", lambda _images, _fps: None)
+
+    def _fail_on_empty_plot(*_args, **_kwargs):
+        raise AssertionError("empty failed recordings should not build a plot")
+
+    monkeypatch.setattr(app_mod, "make_state_plot", _fail_on_empty_plot)
+
+    state = RecordingState(recording_finished=True, error="RuntimeError: boom", num_episodes=1)
+    session = {
+        "state": state,
+        "fps": 30,
+        "joint_names": ("joint_a",),
+    }
+
+    outputs = _cb_poll_recording(session)
+
+    assert len(outputs) == 9
+    assert warnings == ["Recording failed: RuntimeError: boom"]
+    assert state.error is None
+    assert outputs[7]["value"] is None
