@@ -75,6 +75,10 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
                 name=f"look_target-{i}",
                 body_type="kinematic",
                 scene_idxs=[i],
+                initial_pose=Pose.create_from_pq(
+                    p=[0, 0, obj.half_size],
+                    q=[1, 0, 0, 0],
+                ),
             )
             targets.append(target)
             self.remove_from_state_dict_registry(target)
@@ -85,7 +89,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
-            self._reset_robot(env_idx)
+            self._reset_robot(env_idx, options)
 
             half = self.config.spawn_half_size
             cx, cy = self.config.spawn_center

@@ -107,10 +107,11 @@ def _build_actor(
             name=name,
             body_type="dynamic",
             scene_idxs=[env_idx],
+            initial_pose=sapien.Pose(p=[0, 0, obj.half_size], q=[1, 0, 0, 0]),
         )
     if isinstance(obj, YCBObject):
         builder = actors.get_actor_builder(env.scene, id=f"ycb:{obj.model_id}")
-        builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+        builder.initial_pose = sapien.Pose(p=[0, 0, _obj_spawn_z(obj)], q=[1, 0, 0, 0])
         builder.set_scene_idxs([env_idx])
         return builder.build(name=name)
     raise TypeError(
@@ -227,7 +228,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
-            self._reset_robot(env_idx)
+            self._reset_robot(env_idx, options)
 
             cfg = self._robot_cfg
             min_r = cfg["spawn_min_radius"]

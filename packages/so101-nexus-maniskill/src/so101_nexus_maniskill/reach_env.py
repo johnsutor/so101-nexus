@@ -78,7 +78,7 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
-            self._reset_robot(env_idx)
+            self._reset_robot(env_idx, options)
 
             half = self.config.target_workspace_half_extent
             center = torch.tensor([0.15, 0.0, 0.15], device=self.device)

@@ -9,6 +9,8 @@ of this file.
 
 from __future__ import annotations
 
+import importlib
+
 import gymnasium as gym
 import numpy as np
 import pytest
@@ -527,6 +529,31 @@ class TestObservationDrivenCameras:
             _run_episode(env)
         finally:
             env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id",
+    [
+        "ManiSkillReachSO101-v1",
+        "ManiSkillLookAtSO101-v1",
+        "ManiSkillMoveSO101-v1",
+        "ManiSkillPickLiftSO101-v1",
+        "ManiSkillPickAndPlaceSO101-v1",
+    ],
+)
+def test_actor_builders_set_initial_poses(monkeypatch, env_id):
+    """Scene loading should follow ManiSkill's initial-pose guidance."""
+    actor_builder = importlib.import_module("mani_skill.utils.building.actor_builder")
+    warnings: list[str] = []
+    monkeypatch.setattr(actor_builder.logger, "warn", warnings.append)
+
+    env = gym.make(env_id, **BASE_KWARGS)
+    try:
+        env.reset()
+    finally:
+        env.close()
+
+    assert not any("No initial pose set for actor builder" in w for w in warnings)
 
 
 # ---------------------------------------------------------------------------

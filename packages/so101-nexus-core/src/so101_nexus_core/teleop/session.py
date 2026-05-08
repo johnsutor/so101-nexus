@@ -61,13 +61,27 @@ def _resolve_env_ctor(env_id: str):
 
     import_backend_for_env_id(env_id)
     spec = gym.spec(env_id)
+    kwargs = dict(spec.kwargs)
     entry_point = spec.entry_point
     if isinstance(entry_point, str):
         module_name, attr_name = entry_point.split(":")
         env_ctor = getattr(importlib.import_module(module_name), attr_name)
     else:
         env_ctor = entry_point
-    return env_ctor, dict(spec.kwargs)
+    if not isinstance(env_ctor, type):
+        env_ctor = _resolve_maniskill_env_ctor(env_id) or env_ctor
+    return env_ctor, kwargs
+
+
+def _resolve_maniskill_env_ctor(env_id: str) -> type | None:
+    """Return ManiSkill's registered env class for *env_id*, if available."""
+    try:
+        registration = importlib.import_module("mani_skill.utils.registration")
+    except ImportError:
+        return None
+    env_spec = getattr(registration, "REGISTERED_ENVS", {}).get(env_id)
+    env_cls = getattr(env_spec, "cls", None)
+    return env_cls if isinstance(env_cls, type) else None
 
 
 def _wire_camera_observations(
@@ -120,6 +134,9 @@ def _recording_env_kwargs(
     config_attrs["observations"] = updated_obs
     updated_config = base_config.__class__(**config_attrs)
     kwargs["config"] = updated_config
+    if env_id.startswith("ManiSkill"):
+        kwargs["obs_mode"] = "rgb"
+        kwargs["control_mode"] = "pd_joint_pos"
     return kwargs
 
 

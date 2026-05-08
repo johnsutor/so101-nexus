@@ -84,7 +84,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
-            self._reset_robot(env_idx)
+            self._reset_robot(env_idx, options)
 
             # Step physics once to get accurate TCP position after robot reset
             self.scene.step()

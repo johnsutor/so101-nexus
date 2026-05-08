@@ -153,6 +153,10 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
         camera_obs = cast("Mapping[str, np.ndarray]", obs)
         wrist_image = camera_obs.get("wrist_camera")
         overhead_image = camera_obs.get("overhead_camera")
+        if wrist_image is None:
+            wrist_image = _extract_maniskill_camera_rgb(camera_obs, "wrist_camera")
+        if overhead_image is None:
+            overhead_image = _extract_maniskill_camera_rgb(camera_obs, "overhead_camera")
 
     if wrist_image is not None:
         state.episode_wrist_images.append(wrist_image)
@@ -161,6 +165,32 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
         state.episode_overhead_images.append(overhead_image)
         state.live_overhead_frame = overhead_image
     state.live_preview = _make_preview_frame(wrist_image, overhead_image)
+
+
+def _extract_maniskill_camera_rgb(
+    obs: Mapping[str, object],
+    camera_name: str,
+) -> np.ndarray | None:
+    """Extract an RGB image from ManiSkill's nested ``sensor_data`` observation."""
+    sensor_data = obs.get("sensor_data")
+    if not isinstance(sensor_data, Mapping):
+        return None
+    camera_data = sensor_data.get(camera_name)
+    if not isinstance(camera_data, Mapping):
+        return None
+
+    image = camera_data.get("rgb")
+    if image is None:
+        image = camera_data.get("Color")
+    if image is None:
+        return None
+
+    from so101_nexus_core.visualization import to_uint8
+
+    rgb = to_uint8(image)
+    if rgb.shape[-1] > 3:
+        rgb = rgb[..., :3]
+    return rgb
 
 
 def recording_thread(

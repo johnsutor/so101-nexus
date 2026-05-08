@@ -13,6 +13,7 @@ import pytest
 from so101_nexus_core.teleop.recorder import (
     RecordingState,
     TeeStream,
+    _publish_camera_frames,
     compute_delta_actions,
     recording_thread,
 )
@@ -95,6 +96,25 @@ def test_recording_thread_accepts_optional_action_pipeline_kwarg() -> None:
     sig = inspect.signature(recording_thread)
     assert "action_pipeline" in sig.parameters
     assert sig.parameters["action_pipeline"].default is None
+
+
+def test_publish_camera_frames_extracts_maniskill_sensor_data() -> None:
+    """ManiSkill RGB observations store camera frames under sensor_data."""
+    state = RecordingState()
+    obs = {
+        "sensor_data": {
+            "wrist_camera": {"rgb": np.full((1, 8, 10, 3), 128, dtype=np.uint8)},
+            "overhead_camera": {"rgb": np.full((1, 6, 12, 3), 64, dtype=np.uint8)},
+        }
+    }
+
+    _publish_camera_frames(state, obs)
+
+    assert len(state.episode_wrist_images) == 1
+    assert state.episode_wrist_images[0].shape == (8, 10, 3)
+    assert len(state.episode_overhead_images) == 1
+    assert state.episode_overhead_images[0].shape == (6, 12, 3)
+    assert state.live_preview is not None
 
 
 def test_recording_thread_populates_live_preview() -> None:
