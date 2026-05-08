@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -71,8 +72,8 @@ def test_main_sets_egl_for_teleop_when_gl_backend_is_unset(monkeypatch):
     assert called["gl"] == "egl"
 
 
-def test_main_preserves_explicit_mujoco_gl_override(monkeypatch):
-    """Teleop must not overwrite an explicit backend selected by the user."""
+def test_main_forces_mujoco_gl_egl_for_teleop(monkeypatch):
+    """Teleop must force EGL even if the parent shell selected another backend."""
     called = {}
 
     def _fake_teleop_main(args, backend: str):
@@ -82,10 +83,23 @@ def test_main_preserves_explicit_mujoco_gl_override(monkeypatch):
     import so101_nexus_core.teleop.app as app_mod
 
     monkeypatch.setattr(app_mod, "main", _fake_teleop_main)
-    monkeypatch.setattr("sys.argv", ["so101-nexus-mujoco", "teleop"])
-    monkeypatch.setenv("MUJOCO_GL", "osmesa")
+    monkeypatch.setattr(sys, "argv", ["so101-nexus-mujoco", "teleop"])
+    monkeypatch.setenv("MUJOCO_GL", "glfw")
 
     mujoco_cli.main()
 
     assert called["backend"] == "mujoco"
-    assert called["gl"] == "osmesa"
+    assert called["gl"] == "egl"
+
+
+def test_main_warns_when_running_inside_vscode(monkeypatch, capsys):
+    import so101_nexus_core.teleop.app as app_mod
+
+    monkeypatch.setattr(app_mod, "main", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(sys, "argv", ["so101-nexus-mujoco", "teleop"])
+    monkeypatch.setenv("TERM_PROGRAM", "vscode")
+
+    mujoco_cli.main()
+
+    captured = capsys.readouterr()
+    assert "VS Code" in captured.err or "VS Code" in captured.out

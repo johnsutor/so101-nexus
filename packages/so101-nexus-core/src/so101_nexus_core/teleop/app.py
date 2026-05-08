@@ -30,6 +30,7 @@ from so101_nexus_core.teleop.leader import (
     import_backend_for_env_id,
 )
 from so101_nexus_core.teleop.recorder import (
+    PREVIEW_MAX_DIM,
     RecordingState,
     compute_delta_actions,
     recording_thread,
@@ -358,7 +359,6 @@ def _cb_start_recording(session: dict):
         gr.update(value="Starting..."),
         gr.update(visible=False),
         gr.update(visible=False),
-        gr.update(visible=False),
     )
 
 
@@ -368,7 +368,7 @@ def _cb_poll_recording(session: dict):
 
     s = session.get("state")
     if s is None:
-        return tuple(gr.update() for _ in range(10))
+        return tuple(gr.update() for _ in range(9))
     fps = session["fps"]
     if s.countdown_value > 0:
         return (
@@ -377,33 +377,15 @@ def _cb_poll_recording(session: dict):
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             gr.update(visible=False),
             gr.update(visible=False),
-            gr.update(visible=False),
             gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
         )
     if s.is_recording:
-        import cv2
-
-        wrist_w, wrist_h = session["wrist_wh"]
-        overhead_w, overhead_h = session["overhead_wh"]
-
-        wrist_frame = s.live_frame
-        if wrist_frame is None:
-            wrist_frame = np.zeros((wrist_h, wrist_w, 3), dtype=np.uint8)
-        elif wrist_frame.shape[0] != wrist_h or wrist_frame.shape[1] != wrist_w:
-            wrist_frame = cv2.resize(
-                wrist_frame, (wrist_w, wrist_h), interpolation=cv2.INTER_LINEAR
-            )
-
-        overhead_frame = s.live_overhead_frame
-        if overhead_frame is None:
-            overhead_frame = np.zeros((overhead_h, overhead_w, 3), dtype=np.uint8)
-        elif overhead_frame.shape[0] != overhead_h or overhead_frame.shape[1] != overhead_w:
-            overhead_frame = cv2.resize(
-                overhead_frame, (overhead_w, overhead_h), interpolation=cv2.INTER_LINEAR
-            )
+        preview = s.live_preview
+        if preview is None:
+            preview = np.zeros((180, PREVIEW_MAX_DIM * 2 + 4, 3), dtype=np.uint8)
 
         n = len(s.episode_actions)
         ep = s.episodes_completed + 1
@@ -412,17 +394,19 @@ def _cb_poll_recording(session: dict):
             gr.update(value=status),
             gr.update(visible=False),
             gr.update(visible=False),
-            gr.update(value=wrist_frame, visible=True),
-            gr.update(value=overhead_frame, visible=True),
+            gr.update(value=preview, visible=True),
             gr.update(visible=True),
             gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
         )
+    if s.error:
+        gr.Warning(f"Recording failed: {s.error}")
+        s.error = None
     if s.recording_finished:
         return _recording_finished_updates(session, s, fps)
-    return tuple(gr.update() for _ in range(10))
+    return tuple(gr.update() for _ in range(9))
 
 
 def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
@@ -431,7 +415,7 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
 
     jn = session["joint_names"]
     video_path = make_review_video(s.episode_wrist_images, fps)
-    fig = make_state_plot(s.episode_states, jn, fps)
+    fig = make_state_plot(s.episode_states, jn, fps) if s.episode_states else None
     n = len(s.episode_actions)
     meta = (
         f"**Episode {s.episodes_completed + 1} / {s.num_episodes}**\n\n"
@@ -442,7 +426,6 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     s.recording_finished = False
     return (
         gr.update(value="Recording complete."),
-        gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=False),
@@ -675,13 +658,18 @@ def _build_record_step(gr):
     """Build the Record step contents."""
     record_status = gr.Markdown("Ready to record. Click the button below to begin.")
     start_btn = gr.Button("Start Recording", variant="primary")
-    countdown_area = gr.Markdown("Get ready...", visible=False)
-    with gr.Row():
-        wrist_feed = gr.Image(label="Wrist Camera", height=480, visible=False)
-        overhead_feed = gr.Image(label="Overhead Camera", height=480, visible=False)
+    countdown_area = gr.Markdown("", visible=False)
+    preview_feed = gr.Image(
+        label="Live Preview (wrist | overhead)",
+        height=320,
+        visible=False,
+        show_label=True,
+        show_download_button=False,
+        interactive=False,
+    )
     stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
     rec_timer = gr.Timer(value=0.1)
-    return record_status, start_btn, countdown_area, wrist_feed, overhead_feed, stop_btn, rec_timer
+    return record_status, start_btn, countdown_area, preview_feed, stop_btn, rec_timer
 
 
 def _build_review_step(gr):
@@ -722,8 +710,7 @@ def _wire_events(
     record_status,
     start_btn,
     countdown_area,
-    wrist_feed,
-    overhead_feed,
+    preview_feed,
     stop_btn,
     rec_timer,
     review_video,
@@ -772,7 +759,7 @@ def _wire_events(
     )
     start_btn.click(
         fn=start_recording,
-        outputs=[record_status, start_btn, wrist_feed, overhead_feed],
+        outputs=[record_status, start_btn, preview_feed],
     )
     stop_btn.click(fn=stop_recording)
     rec_timer.tick(
@@ -781,8 +768,7 @@ def _wire_events(
             record_status,
             start_btn,
             countdown_area,
-            wrist_feed,
-            overhead_feed,
+            preview_feed,
             stop_btn,
             walkthrough,
             review_video,
@@ -901,8 +887,7 @@ def main(
                     record_status,
                     start_btn,
                     countdown_area,
-                    wrist_feed,
-                    overhead_feed,
+                    preview_feed,
                     stop_btn,
                     rec_timer,
                 ) = _build_record_step(gr)
@@ -953,8 +938,7 @@ def main(
             record_status=record_status,
             start_btn=start_btn,
             countdown_area=countdown_area,
-            wrist_feed=wrist_feed,
-            overhead_feed=overhead_feed,
+            preview_feed=preview_feed,
             stop_btn=stop_btn,
             rec_timer=rec_timer,
             review_video=review_video,
