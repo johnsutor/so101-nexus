@@ -14,7 +14,7 @@
     <a href="https://github.com/johnsutor/so101-nexus/releases"><img alt="GitHub release" src="https://img.shields.io/github/release/johnsutor/so101-nexus.svg"></a>
 </p>
 
-> **Beta** — APIs may change between releases. Feedback and bug reports are welcome.
+> **Beta**: APIs may change between releases. Feedback and bug reports are welcome.
 
 </div>
 

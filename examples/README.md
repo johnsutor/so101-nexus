@@ -46,20 +46,20 @@ For deeper coverage of session configuration, dataset layout, and troubleshootin
 
 The CLI opens a Gradio UI in your browser where you configure all recording parameters:
 
-- **Environment ID** — dropdown of all registered environments
-- **Robot Type** — SO100 or SO101 (warns if it mismatches the selected environment)
-- **HuggingFace Repo ID** — where the dataset will be stored
-- **FPS, Camera Width/Height** — recording resolution and framerate
-- **Number of Episodes, Action Space** — dataset structure
-- **Max Episode Duration, Countdown** — recording timing
+- **Environment ID**: dropdown of all registered environments
+- **Robot Type**: SO100 or SO101 (warns if it mismatches the selected environment)
+- **Hugging Face Repo ID**: where the dataset will be stored
+- **FPS, Camera Width/Height**: recording resolution and framerate
+- **Number of Episodes, Action Space**: dataset structure
+- **Max Episode Duration, Countdown**: recording timing
 
 Click **Initialize Session** to connect the leader arm and create the environment and dataset.
 
 ### Recording flow
 
-1. Click **Start Recording** (or press Enter) — a countdown gives you time to grab the leader arm
-2. Teleoperate the simulated robot — the live wrist camera feed is shown in the UI
-3. Click **Stop Recording** (or wait for max duration) — the episode ends
+1. Click **Start Recording** (or press Enter). A countdown gives you time to grab the leader arm.
+2. Teleoperate the simulated robot. The live wrist camera feed is shown in the UI.
+3. Click **Stop Recording** (or wait for max duration). The episode ends.
 4. **Review** the episode: video playback, joint state trajectory plot, task description, and metadata
 5. **Approve** to save the episode to the dataset, or **Discard** to drop it
 6. Repeat until all episodes are recorded

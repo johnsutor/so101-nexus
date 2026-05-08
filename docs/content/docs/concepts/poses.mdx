@@ -5,11 +5,11 @@ description: How to configure the robot's starting configuration for each episod
 
 # Initial Poses
 
-By default, the robot starts each episode in a fixed **rest pose** with small noise. The pose system lets you configure more diverse starting configurations — useful for training policies that generalize across different initial arm positions.
+By default, the robot starts each episode in a fixed **rest pose** with small noise. The pose system lets you configure more diverse starting configurations, which is useful for training policies that generalize across different initial arm positions.
 
 ## How Poses Work
 
-A `Pose` defines 6 joint angles — one per joint. Each joint can be:
+A `Pose` defines 6 joint angles, one per joint. Each joint can be:
 
 - **Fixed** (`float`): the same angle every episode (e.g., `shoulder_lift_deg=-90.0`)
 - **Free** (`tuple[float, float]`): sampled uniformly from a range each episode (e.g., `shoulder_pan_deg=(-110.0, 110.0)`)

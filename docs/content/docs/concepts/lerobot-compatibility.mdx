@@ -7,7 +7,7 @@ SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosyst
 
 ## What this means in practice
 
-- **Processor pipelines.** Teleop conversions and optional env-observation transforms are implemented as `lerobot.processor.DataProcessorPipeline` instances composed of steps that subclass `ActionProcessorStep`, `ObservationProcessorStep`, and friends. Every custom step is registered with `ProcessorStepRegistry`, which means pipelines are serializable via `save_pretrained` and shareable on the HuggingFace Hub.
+- **Processor pipelines.** Teleop conversions and optional env-observation transforms are implemented as `lerobot.processor.DataProcessorPipeline` instances composed of steps that subclass `ActionProcessorStep`, `ObservationProcessorStep`, and friends. Every custom step is registered with `ProcessorStepRegistry`, which means pipelines are serializable via `save_pretrained` and shareable on the Hugging Face Hub.
 - **Observation conventions.** When you opt into the wrapper, observations follow LeRobot's canonical keys: `observation.state` for the proprioceptive state vector and `observation.images.<name>` for camera frames in CHW float32 form.
 - **Hardware drivers.** SO leader and follower configs come straight from `lerobot.teleoperators.so_leader` and `lerobot.robots.so_follower`. We do not wrap or re-export them.
 - **Datasets.** Recordings use `LeRobotDataset` directly.

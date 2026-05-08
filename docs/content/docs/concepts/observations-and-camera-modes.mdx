@@ -135,8 +135,8 @@ config = PickConfig(observations=[
 ])
 env = gym.make("MuJoCoPickLift-v1", config=config)
 obs, info = env.reset()
-print(obs["state"].shape)          # (18,) — state components
-print(obs["wrist_camera"].shape)   # (224, 224, 3) — camera image
+print(obs["state"].shape)          # (18,): state components
+print(obs["wrist_camera"].shape)   # (224, 224, 3): camera image
 env.close()
 ```
 
