@@ -30,12 +30,21 @@ This will list connected serial devices. Note the port (e.g. `/dev/ttyACM0` or `
 
 ### Launch the recorder
 
+Teleoperation lives behind the backend CLI, not a standalone script:
+
 ```bash
-uv run --package so101-nexus-mujoco --group teleop python examples/teleop.py \
-  --leader-port /dev/ttyACM0
+uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
 ```
 
-This opens a Gradio UI in your browser where you configure all recording parameters:
+For ManiSkill, swap the package:
+
+```bash
+uv run --prerelease=allow so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+```
+
+For deeper coverage of session configuration, dataset layout, and troubleshooting, see [/docs/teleoperation/overview](https://so101-nexus.github.io/docs/teleoperation/overview).
+
+The CLI opens a Gradio UI in your browser where you configure all recording parameters:
 
 - **Environment ID** — dropdown of all registered environments
 - **Robot Type** — SO100 or SO101 (warns if it mismatches the selected environment)

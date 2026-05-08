@@ -61,11 +61,18 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 
 Distractors are extra objects placed in the scene that the agent must ignore. They increase task difficulty by requiring the agent to identify the correct target.
 
+The pool you pass via `objects` must contain at least `n_distractors + 1` entries: one becomes the target each reset, and the rest are distractors.
+
 ```python
 from so101_nexus_core import PickConfig, CubeObject
 
 config = PickConfig(
-    objects=CubeObject(color="green"),
+    objects=[
+        CubeObject(color="green"),
+        CubeObject(color="blue"),
+        CubeObject(color="yellow"),
+        CubeObject(color="orange"),
+    ],
     n_distractors=3,
     min_object_separation=0.04,  # prevents objects from overlapping
 )

@@ -51,9 +51,7 @@ ManiSkill supports running multiple environment instances in parallel via the `n
 ```python
 import gymnasium as gym
 import so101_nexus_maniskill
-
-from so101_nexus_maniskill.config import PickConfig
-from so101_nexus_maniskill.objects import CubeObject
+from so101_nexus_core import CubeObject, PickConfig
 
 # Single environment
 env = gym.make(

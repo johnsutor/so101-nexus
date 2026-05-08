@@ -3,7 +3,7 @@ title: YCB Assets
 description: Download, cache, and use YCB object meshes in SO101-Nexus environments.
 ---
 
-SO101-Nexus includes a subset of the YCB (Yale-Columbia-Berkeley) object dataset. Mesh assets are downloaded from HuggingFace on first use and cached locally.
+SO101-Nexus includes a subset of the YCB (Yale-Columbia-Berkeley) object dataset. Mesh assets are downloaded from the Hugging Face Hub on first use and cached locally.
 
 ## Available objects
 
@@ -78,9 +78,9 @@ visual = get_ycb_visual_mesh("011_banana")
 
 These functions do not trigger a download. Call `ensure_ycb_assets` first if the assets may not be cached yet.
 
-## Custom HuggingFace repository
+## Custom Hugging Face repository
 
-By default, assets are fetched from the project's HuggingFace repository. You can override this by setting the `SO101_YCB_HF_REPO` environment variable:
+By default, assets are fetched from the `ai-habitat/ycb` Hugging Face dataset. You can override this by setting the `SO101_YCB_HF_REPO` environment variable:
 
 ```bash
 export SO101_YCB_HF_REPO="your-org/your-ycb-repo"
@@ -98,4 +98,4 @@ rm -rf ~/.cache/so101_nexus/ycb/011_banana
 
 **Invalid model ID.** Passing a `model_id` not in the supported set will raise an error. Check `YCB_OBJECTS` for the full list of valid IDs.
 
-**Firewall or proxy issues.** Asset downloads use the HuggingFace Hub client. If you are behind a proxy, configure the standard `HF_HUB_DISABLE_TELEMETRY`, `HTTPS_PROXY`, or `HF_ENDPOINT` environment variables as needed.
+**Firewall or proxy issues.** Asset downloads use the Hugging Face Hub client. If you are behind a proxy, configure the standard `HF_HUB_DISABLE_TELEMETRY`, `HTTPS_PROXY`, or `HF_ENDPOINT` environment variables as needed.

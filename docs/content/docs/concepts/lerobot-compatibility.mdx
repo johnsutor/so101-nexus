@@ -14,12 +14,18 @@ SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosyst
 
 ## Using LeRobot processors with SO101-Nexus envs
 
+`LeRobotEnvWrapper` requires a `Dict` observation space. Configure the env with at least one camera component (or pick another component beyond the default state-only set) before wrapping it.
+
 ```python
-import gymnasium as gym
 import so101_nexus_mujoco  # noqa: F401
+from so101_nexus_core import JointPositions, PickConfig, WristCamera
 from so101_nexus_core.processors import make_lerobot_env
 
-env = make_lerobot_env("MuJoCoPickLift-v1", render_mode="rgb_array")
+config = PickConfig(
+    obs_mode="visual",
+    observations=[JointPositions(), WristCamera(width=224, height=224)],
+)
+env = make_lerobot_env("MuJoCoPickLift-v1", config=config, render_mode="rgb_array")
 obs, _ = env.reset()
 # obs is now {"observation.state": ..., "observation.images.wrist": ..., ...}
 ```
@@ -27,14 +33,27 @@ obs, _ = env.reset()
 To customize the pipeline, build one yourself and pass it in:
 
 ```python
+import gymnasium as gym
 from lerobot.processor import DataProcessorPipeline, RenameObservationsProcessorStep
+from so101_nexus_core import JointPositions, PickConfig, WristCamera
 from so101_nexus_core.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
 
-pipeline = DataProcessorPipeline(steps=[
-    RenameObservationsProcessorStep(rename_map={"state": "observation.state"}),
-    Hwc2ChwImageObservationStep(image_keys=("observation.state",)),
-])
-env = LeRobotEnvWrapper(gym.make("MuJoCoPickLift-v1"), pipeline=pipeline)
+config = PickConfig(
+    obs_mode="visual",
+    observations=[JointPositions(), WristCamera(width=224, height=224)],
+)
+pipeline = DataProcessorPipeline(
+    steps=[
+        RenameObservationsProcessorStep(
+            rename_map={
+                "state": "observation.state",
+                "wrist_camera": "observation.images.wrist",
+            }
+        ),
+        Hwc2ChwImageObservationStep(image_keys=("observation.images.wrist",)),
+    ]
+)
+env = LeRobotEnvWrapper(gym.make("MuJoCoPickLift-v1", config=config), pipeline=pipeline)
 ```
 
 ## Custom teleop pipelines
