@@ -13,6 +13,7 @@ from so101_nexus_core.config import (
     RenderConfig,
     RewardConfig,
     RobotConfig,
+    _normalize_objects,
 )
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject
@@ -218,6 +219,32 @@ class TestPickConfig:
         cfg = PickConfig(objects=obj)
         assert isinstance(cfg.objects, list)
         assert len(cfg.objects) == 1
+
+
+class TestObjectNormalization:
+    def test_normalize_objects_uses_default_when_none(self):
+        default = CubeObject(color="blue")
+
+        result = _normalize_objects(None, default)
+
+        assert result == [default]
+
+    def test_normalize_objects_wraps_single_object(self):
+        obj = CubeObject(color="green")
+
+        result = _normalize_objects(obj, CubeObject())
+
+        assert result == [obj]
+
+    def test_normalize_objects_copies_iterable_and_rejects_empty(self):
+        objects = [CubeObject(color="red")]
+
+        result = _normalize_objects(objects, CubeObject())
+
+        assert result == objects
+        assert result is not objects
+        with pytest.raises(ValueError, match="objects must not be empty"):
+            _normalize_objects([], CubeObject())
 
 
 def test_robot_config_grasp_force_threshold_default():

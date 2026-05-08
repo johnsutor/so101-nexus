@@ -9,7 +9,7 @@ Supported object types: ``CubeObject``, ``YCBObject``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import sapien
@@ -141,6 +141,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
     """
 
     config: PickConfig
+    default_config_cls: ClassVar[type[PickConfig]] = PickConfig
 
     def __init__(
         self,

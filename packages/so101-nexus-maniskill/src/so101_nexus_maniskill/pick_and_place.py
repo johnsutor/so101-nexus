@@ -1,6 +1,6 @@
 """ManiSkill pick-and-place task environment for SO101-Nexus."""
 
-from typing import Any
+from typing import Any, ClassVar
 
 import sapien
 import torch
@@ -22,6 +22,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
 
     config: PickAndPlaceConfig
+    default_config_cls: ClassVar[type[PickAndPlaceConfig]] = PickAndPlaceConfig
 
     def __init__(
         self,

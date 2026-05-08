@@ -2,45 +2,33 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import sys
+from typing import TYPE_CHECKING
 
-from so101_nexus_core.teleop.leader import DEFAULT_WRIST_ROLL_OFFSET_DEG
+from so101_nexus_core.teleop.cli import build_teleop_parser, run_teleop
+
+if TYPE_CHECKING:
+    import argparse
 
 
 def _build_parser() -> argparse.ArgumentParser:
     """Construct the top-level argparse parser for the mujoco backend CLI."""
-    parser = argparse.ArgumentParser(prog="so101-nexus-mujoco")
-    sub = parser.add_subparsers(dest="command", required=True)
+    return build_teleop_parser(prog="so101-nexus-mujoco")
 
-    teleop = sub.add_parser("teleop", help="Launch the Gradio teleop recorder")
-    teleop.add_argument("--leader-port", type=str, default="/dev/ttyACM0")
-    teleop.add_argument("--leader-id", type=str, default="so101_leader")
-    teleop.add_argument(
-        "--wrist-roll-offset-deg",
-        type=float,
-        default=DEFAULT_WRIST_ROLL_OFFSET_DEG,
-    )
-    return parser
+
+def _setup_teleop_backend() -> None:
+    """Prepare MuJoCo for teleop recording before launching the app."""
+    os.environ["MUJOCO_GL"] = "egl"
+    if os.environ.get("TERM_PROGRAM") == "vscode":
+        print(
+            "Note: detected VS Code integrated terminal. Forcing MUJOCO_GL=egl "
+            "to avoid GLFW/libdecor launch failures.",
+            file=sys.stderr,
+        )
+    import so101_nexus_mujoco  # noqa: F401 — register gym envs eagerly
 
 
 def main() -> None:
     """Dispatch to the requested subcommand."""
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.command == "teleop":
-        os.environ["MUJOCO_GL"] = "egl"
-        if os.environ.get("TERM_PROGRAM") == "vscode":
-            print(
-                "Note: detected VS Code integrated terminal. Forcing MUJOCO_GL=egl "
-                "to avoid GLFW/libdecor launch failures.",
-                file=sys.stderr,
-            )
-        import so101_nexus_mujoco  # noqa: F401 — register gym envs eagerly
-        from so101_nexus_core.teleop.app import main as teleop_main
-
-        teleop_main(args, backend="mujoco")
-    else:  # pragma: no cover - argparse enforces valid commands
-        parser.error(f"unknown command: {args.command}")
+    run_teleop("mujoco", pre_dispatch=_setup_teleop_backend)
