@@ -84,9 +84,19 @@ replace-imports-with-any = [
     "gradio",
     "gradio.**",
     "hatchling.metadata.plugin.interface",
+    "mani_skill",
+    "mani_skill.**",
     "mujoco",
     "mujoco.**",
+    "sapien",
+    "sapien.**",
+    "transforms3d",
+    "transforms3d.**",
+    "tyro",
 ]
+
+[tool.ty.environment]
+extra-paths = ["packages/so101-nexus-maniskill/src"]
 
 [tool.ty.src]
 exclude = ["**/tests/**"]
