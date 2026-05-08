@@ -27,20 +27,16 @@ def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     offenders = []
     for path in TEXT_DOCS:
         text = _read(path)
-        if "—" in text or "–" in text or emoji.search(text):
+        if "—" in text or "–" in text or emoji.search(text):  # noqa: RUF001
             offenders.append(str(path.relative_to(ROOT)))
-    assert offenders == [], (
-        "Found em dashes, en dashes, or emoji in user-facing docs: " f"{offenders}"
-    )
+    assert offenders == [], f"Found em dashes, en dashes, or emoji in user-facing docs: {offenders}"
 
 
 def test_environment_nav_lists_all_environment_pages() -> None:
     """The environments sidebar must expose every ``*.mdx`` env page."""
     meta = json.loads((DOCS / "environments" / "meta.json").read_text(encoding="utf-8"))
     pages = {page for page in meta["pages"] if not page.startswith("---")}
-    files = {
-        path.stem for path in (DOCS / "environments").glob("*.mdx") if path.stem != "index"
-    }
+    files = {path.stem for path in (DOCS / "environments").glob("*.mdx") if path.stem != "index"}
     missing = sorted(files - pages)
     assert missing == [], f"Environment pages missing from nav: {missing}"
 
