@@ -83,6 +83,10 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
                 name=f"cube-{i}",
                 body_type="dynamic",
                 scene_idxs=[i],
+                initial_pose=sapien.Pose(
+                    p=[0, 0, self.cube_half_size],
+                    q=[1, 0, 0, 0],
+                ),
             )
             objs.append(cube)
             self.remove_from_state_dict_registry(cube)
@@ -99,6 +103,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
                 material=sapien.render.RenderMaterial(base_color=sample_color(self.target_colors)),
             )
             builder.initial_pose = sapien.Pose(p=[0, 0, 0], q=[0.7071068, 0.7071068, 0, 0])
+            builder.set_scene_idxs([i])
             target = builder.build_kinematic(name=f"target_site-{i}")
             targets.append(target)
             self.remove_from_state_dict_registry(target)
@@ -109,7 +114,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
-            self._reset_robot(env_idx)
+            self._reset_robot(env_idx, options)
 
             cfg = self._robot_cfg
             min_r = cfg["spawn_min_radius"]

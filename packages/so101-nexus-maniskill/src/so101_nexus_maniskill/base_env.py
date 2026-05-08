@@ -261,10 +261,12 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                     for part in render_shape.parts:
                         part.material.set_base_color(color)
 
-    def _reset_robot(self, env_idx: torch.Tensor) -> None:
+    def _reset_robot(self, env_idx: torch.Tensor, options: dict | None = None) -> None:
         b = len(env_idx)
-        pose = self.config.robot.resolve_pose()
-        if pose is not None:
+        init_qpos = self._init_qpos_from_options(options, b)
+        if init_qpos is not None:
+            qpos = init_qpos
+        elif (pose := self.config.robot.resolve_pose()) is not None:
             # Sample a pose per environment using NumPy RNG seeded from torch for reproducibility
             seed = int(torch.randint(0, 2**31, (1,)).item())
             np_rng = np.random.default_rng(seed)
@@ -281,6 +283,22 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             qpos = qpos + noise
         self.agent.reset(qpos)
         self.agent.robot.set_pose(sapien.Pose(p=[0, 0, 0], q=self._robot_cfg["base_quat"]))
+
+    def _init_qpos_from_options(self, options: dict | None, batch_size: int) -> torch.Tensor | None:
+        """Return a validated reset qpos from ``options['init_qpos']``, if present."""
+        if options is None or "init_qpos" not in options:
+            return None
+
+        expected = len(self.agent.keyframes["rest"].qpos)
+        raw_qpos = torch.as_tensor(options["init_qpos"], dtype=torch.float32, device=self.device)
+        if raw_qpos.shape == (expected,):
+            return raw_qpos.unsqueeze(0).expand(batch_size, -1).clone()
+        if raw_qpos.shape == (batch_size, expected):
+            return raw_qpos.clone()
+        raise ValueError(
+            f"init_qpos shape {tuple(raw_qpos.shape)} != expected "
+            f"({expected},) or ({batch_size}, {expected})"
+        )
 
     def _store_initial_obj_z(self, env_idx: torch.Tensor, z: torch.Tensor) -> None:
         if self._initial_obj_z is None:
