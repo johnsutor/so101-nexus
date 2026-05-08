@@ -471,6 +471,21 @@ class EnvironmentConfig:
         )
 
 
+def _normalize_objects(
+    objects: list[SceneObject] | SceneObject | None,
+    default: SceneObject,
+) -> list[SceneObject]:
+    """Return a non-empty scene object list from a flexible object input."""
+    if objects is None:
+        return [default]
+    if isinstance(objects, SceneObject):
+        return [objects]
+    normalized = list(objects)
+    if not normalized:
+        raise ValueError("objects must not be empty")
+    return normalized
+
+
 class PickConfig(EnvironmentConfig):
     """Config for the unified pick environment.
 
@@ -500,18 +515,11 @@ class PickConfig(EnvironmentConfig):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        if objects is None:
-            self.objects: list[SceneObject] = [CubeObject()]
-        elif isinstance(objects, SceneObject):
-            self.objects = [objects]
-        else:
-            self.objects = list(objects)
+        self.objects = _normalize_objects(objects, CubeObject())
         self.n_distractors = n_distractors
         self.lift_threshold = lift_threshold
         self.max_goal_height = max_goal_height
         self.min_object_separation = min_object_separation
-        if not self.objects:
-            raise ValueError("objects must not be empty")
         if self.n_distractors < 0:
             raise ValueError(f"n_distractors must be >= 0, got {self.n_distractors}")
         if self.n_distractors > 0 and len(self.objects) < self.n_distractors + 1:
@@ -649,12 +657,7 @@ class LookAtConfig(EnvironmentConfig):
     ) -> None:
         kwargs.setdefault("max_episode_steps", 256)
         super().__init__(**kwargs)
-        if objects is None:
-            self.objects: list[SceneObject] = [CubeObject()]
-        elif isinstance(objects, SceneObject):
-            self.objects = [objects]
-        else:
-            self.objects = list(objects)
+        self.objects = _normalize_objects(objects, CubeObject())
         self.orientation_success_threshold_deg = orientation_success_threshold_deg
         if self.observations is None:
             self.observations = [JointPositions()]

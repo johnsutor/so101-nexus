@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import mujoco
 import numpy as np
@@ -70,6 +70,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     """
 
     config: LookAtConfig
+    default_config_cls: ClassVar[type[LookAtConfig]] = LookAtConfig
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 

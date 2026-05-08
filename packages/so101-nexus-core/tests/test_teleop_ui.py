@@ -51,8 +51,8 @@ def test_app_builds_with_walkthrough() -> None:
 
 
 @pytest.mark.usefixtures("_require_gradio")
-def test_record_step_has_dual_camera_feeds() -> None:
-    """Verify the Record step contains two Image components for dual camera."""
+def test_record_step_has_combined_camera_preview() -> None:
+    """Verify the Record step contains the combined wrist/overhead preview image."""
     import gradio as gr
 
     from so101_nexus_core.teleop.app import _build_record_step
@@ -62,13 +62,10 @@ def test_record_step_has_dual_camera_feeds() -> None:
             _record_status,
             _start_btn,
             _countdown_area,
-            wrist_feed,
-            overhead_feed,
+            preview_feed,
             _stop_btn,
             _rec_timer,
         ) = _build_record_step(gr)
 
-    assert isinstance(wrist_feed, gr.Image)
-    assert isinstance(overhead_feed, gr.Image)
-    assert wrist_feed.label == "Wrist Camera"
-    assert overhead_feed.label == "Overhead Camera"
+    assert isinstance(preview_feed, gr.Image)
+    assert preview_feed.label == "Live Preview (wrist | overhead)"

@@ -664,7 +664,6 @@ def _build_record_step(gr):
         height=320,
         visible=False,
         show_label=True,
-        show_download_button=False,
         interactive=False,
     )
     stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)

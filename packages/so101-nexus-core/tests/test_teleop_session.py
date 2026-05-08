@@ -4,10 +4,6 @@ These tests cover ``_default_repo_id``, ``_resolve_env_config``,
 ``_replace_wrist_camera``, ``_replace_overhead_camera``, and
 ``_wire_camera_observations`` — all of which are pure-logic helpers
 that don't require gymnasium or any optional dependency.
-
-Note: this module deliberately does NOT use ``from __future__ import annotations``
-because some tests rely on the runtime form of class annotations being a real
-type vs. a string.
 """
 
 import datetime
@@ -61,80 +57,34 @@ def test_default_repo_id_sanitizes_slashes_and_spaces() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _NoConfigParamEnv:
-    def __init__(self):
-        pass
+class _ExplicitConfigEnv:
+    default_config_cls = ReachConfig
 
 
-def test_resolve_env_config_no_config_param() -> None:
-    assert _resolve_env_config(_NoConfigParamEnv) is None
-
-
-_DEFAULT_SENTINEL = object()
-
-
-class _DefaultConfigEnv:
-    def __init__(self, config=_DEFAULT_SENTINEL):
-        self.config = config
-
-
-def test_resolve_env_config_returns_explicit_default() -> None:
-    assert _resolve_env_config(_DefaultConfigEnv) is _DEFAULT_SENTINEL
-
-
-class _NoAnnotationEnv:
-    def __init__(self, config):
-        self.config = config
-
-
-def test_resolve_env_config_returns_none_when_no_string_annotation() -> None:
-    """No `config` class annotation → config_class_name stays None → returns None."""
-    assert _resolve_env_config(_NoAnnotationEnv) is None
-
-
-class _StringAnnotationEnv:
-    config: "ReachConfig"
-
-    def __init__(self, config=None):
-        self.config = config
-
-
-def test_resolve_env_config_resolves_string_annotation() -> None:
-    """String annotation naming a class on so101_nexus_core.config → instance returned."""
-    result = _resolve_env_config(_StringAnnotationEnv)
+def test_resolve_env_config_uses_default_config_cls() -> None:
+    result = _resolve_env_config(_ExplicitConfigEnv)
 
     assert isinstance(result, ReachConfig)
 
 
-class _UnknownAnnotationEnv:
-    config: "DefinitelyNotARealConfigClass"  # noqa: F821 — intentionally unresolvable
-
-    def __init__(self, config=None):
-        self.config = config
+class _NoDefaultConfigEnv:
+    pass
 
 
-def test_resolve_env_config_returns_none_for_unknown_annotation() -> None:
-    """String annotation that doesn't resolve on the config module → returns None."""
-    assert _resolve_env_config(_UnknownAnnotationEnv) is None
+def test_resolve_env_config_returns_none_without_default_config_cls() -> None:
+    assert _resolve_env_config(_NoDefaultConfigEnv) is None
 
 
-def test_resolve_env_config_returns_none_when_instantiation_raises(monkeypatch) -> None:
-    """Annotated config class that raises in __init__ → swallowed, returns None."""
-    from so101_nexus_core import config as config_module
-
-    class _RaisingFakeConfig:
-        def __init__(self):
+def test_resolve_env_config_propagates_config_construction_errors() -> None:
+    class _RaisingConfig:
+        def __init__(self) -> None:
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(config_module, "_RaisingFakeConfig", _RaisingFakeConfig, raising=False)
-
     class _RaisingConfigEnv:
-        config: "_RaisingFakeConfig"
+        default_config_cls = _RaisingConfig
 
-        def __init__(self, config=None):
-            self.config = config
-
-    assert _resolve_env_config(_RaisingConfigEnv) is None
+    with pytest.raises(RuntimeError, match="boom"):
+        _resolve_env_config(_RaisingConfigEnv)
 
 
 # ---------------------------------------------------------------------------
