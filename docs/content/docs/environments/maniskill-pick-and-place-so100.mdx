@@ -35,10 +35,6 @@ The episode succeeds when both conditions are met:
 1. The cube is placed at the target location (`is_obj_placed`).
 2. The robot is static (`is_robot_static`).
 
-## Registration
-
-This environment is registered through ManiSkill's `@register_env` decorator rather than the core `all_registered_env_ids()` list. It is available after importing `so101_nexus_maniskill`.
-
 ## Vectorized Simulation
 
 ManiSkill supports running multiple environment instances in parallel via the `num_envs` argument.
@@ -48,8 +44,7 @@ ManiSkill supports running multiple environment instances in parallel via the `n
 ```python
 import gymnasium as gym
 import so101_nexus_maniskill
-
-from so101_nexus_maniskill.config import PickAndPlaceConfig
+from so101_nexus_core import PickAndPlaceConfig
 
 # Single environment
 env = gym.make(

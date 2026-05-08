@@ -38,8 +38,8 @@ config = PickConfig(observations=[
 ])
 env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="rgb_array")
 obs, _ = env.reset()
-print(obs["state"].shape)         # (18,) — flat state vector
-print(obs["wrist_camera"].shape)  # (224, 224, 3) — camera image
+print(obs["state"].shape)         # (18,): flat state vector
+print(obs["wrist_camera"].shape)  # (224, 224, 3): camera image
 ```
 
 You can also add an overhead camera, or both:

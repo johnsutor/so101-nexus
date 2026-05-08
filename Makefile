@@ -1,6 +1,6 @@
 .PHONY: format lint typecheck test test-core test-mujoco test-maniskill \
         test-visual test-visual-mujoco test-visual-maniskill test-visual-qwen \
-        coverage clean-coverage
+        coverage clean-coverage docs-check
 
 COV_FAIL_UNDER ?= 84
 export COV_FAIL_UNDER
@@ -53,3 +53,7 @@ test-visual-maniskill:
 test-visual-qwen:
 	VISUAL_TEST_MODEL="openai/unsloth/Qwen3_5-35B-A3B-UD-Q4_K_M" \
 	VISUAL_TEST_API_BASE="http://127.0.0.1:1337/v1" OPENAI_API_KEY="secret" $(MAKE) test-visual
+
+docs-check:
+	uv run pytest tests/test_docs_consistency.py
+	cd docs && pnpm install --frozen-lockfile && pnpm build

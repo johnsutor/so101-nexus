@@ -47,9 +47,7 @@ The episode succeeds when the angular error between the TCP's gaze direction and
 ```python
 import gymnasium as gym
 import so101_nexus_mujoco
-
-from so101_nexus_core.config import LookAtConfig
-from so101_nexus_mujoco.objects import CubeObject
+from so101_nexus_core import CubeObject, LookAtConfig
 
 env = gym.make(
     "MuJoCoLookAt-v1",
