@@ -96,8 +96,28 @@ def test_import_backend_for_env_id_mujoco():
 
 
 def test_import_backend_for_env_id_rejects_unknown():
-    with pytest.raises(ValueError, match="ManiSkill"):
+    with pytest.raises(ValueError, match="Unknown custom env_id"):
         import_backend_for_env_id("OtherBackendEnv-v1")
+
+
+def test_import_backend_for_env_id_allows_registered_custom_env(monkeypatch):
+    import gymnasium as gym
+
+    class _Spec:
+        pass
+
+    monkeypatch.setattr(gym, "spec", lambda env_id: _Spec())
+
+    import_backend_for_env_id("CustomPick-v1")
+
+
+def test_import_backend_for_env_id_preserves_unexpected_spec_errors(monkeypatch):
+    import gymnasium as gym
+
+    monkeypatch.setattr(gym, "spec", lambda _env_id: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        import_backend_for_env_id("CustomPick-v1")
 
 
 def test_diagnose_leader_port_reports_missing_path(monkeypatch):

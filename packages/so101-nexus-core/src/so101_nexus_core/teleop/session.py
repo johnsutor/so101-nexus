@@ -16,6 +16,14 @@ import tempfile
 import numpy as np
 
 from so101_nexus_core.observations import OverheadCamera, WristCamera
+from so101_nexus_core.teleop.config_customization import (
+    ConfigFactory,
+    ConfigFactoryUpdate,
+    TeleopConfigOverrides,
+    apply_config_factory,
+    apply_config_overrides,
+    load_profile_overrides,
+)
 
 
 def _default_repo_id(env_id: str) -> str:
@@ -115,29 +123,136 @@ def _recording_env_kwargs(
     env_id: str,
     wrist_wh: tuple[int, int],
     overhead_wh: tuple[int, int],
+    *,
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    factory: ConfigFactory | None = None,
 ) -> dict:
     """Return ``gym.make`` kwargs for teleop recording with both cameras sized."""
     env_ctor, kwargs = _resolve_env_ctor(env_id)
-    if not isinstance(env_ctor, type):
-        return kwargs
-
-    base_config = _resolve_env_config(env_ctor)
-    if base_config is None:
-        return kwargs
-
-    observations: list | None = getattr(base_config, "observations", None)
-    if observations is None:
-        return kwargs
-
-    updated_obs = _wire_camera_observations(observations, wrist_wh, overhead_wh)
-    config_attrs = vars(base_config).copy()
-    config_attrs["observations"] = updated_obs
-    updated_config = base_config.__class__(**config_attrs)
-    kwargs["config"] = updated_config
+    base_config = _resolve_env_config(env_ctor) if isinstance(env_ctor, type) else None
+    _apply_recording_config_kwargs(
+        kwargs,
+        base_config=base_config,
+        env_id=env_id,
+        wrist_wh=wrist_wh,
+        overhead_wh=overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        factory=factory,
+    )
     if env_id.startswith("ManiSkill"):
         kwargs["obs_mode"] = "rgb"
         kwargs["control_mode"] = "pd_joint_pos"
     return kwargs
+
+
+def _apply_recording_config_kwargs(
+    kwargs: dict,
+    *,
+    base_config: object | None,
+    env_id: str,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    factory: ConfigFactory | None = None,
+) -> None:
+    """Write recording config and factory kwargs into ``kwargs`` in one place."""
+    config = base_config if base_config is not None else kwargs.get("config")
+    if config is None:
+        factory_update = apply_config_factory(factory, env_id, None)
+        kwargs.update(factory_update.kwargs)
+        if factory_update.config is None:
+            if overrides is not None or profile_path is not None:
+                raise ValueError(
+                    "Teleop environment customization requires a config object. "
+                    "Use an environment with default_config_cls, register a config "
+                    "in Gymnasium kwargs, or provide --env-config-factory."
+                )
+            return
+        config = _build_recording_config(
+            factory_update.config,
+            wrist_wh,
+            overhead_wh,
+            overrides=overrides,
+            profile_path=profile_path,
+            env_id=env_id,
+        )
+        kwargs["config"] = config
+        return
+
+    update = _customize_recording_config(
+        config,
+        wrist_wh,
+        overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        env_id=env_id,
+        factory=factory,
+    )
+    kwargs.update(update.kwargs)
+    kwargs["config"] = update.config
+
+
+def _build_recording_config(
+    base_config: object,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    *,
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    env_id: str | None = None,
+    factory: ConfigFactory | None = None,
+) -> object:
+    """Return a customized recording config with teleop cameras wired last."""
+    update = _customize_recording_config(
+        base_config,
+        wrist_wh,
+        overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        env_id=env_id,
+        factory=factory,
+    )
+    if update.config is None:
+        raise ValueError("recording config factory returned no config")
+    return update.config
+
+
+def _customize_recording_config(
+    base_config: object,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    *,
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    env_id: str | None = None,
+    factory: ConfigFactory | None = None,
+) -> ConfigFactoryUpdate:
+    """Apply profile/UI/factory customization and wire recording cameras."""
+    config = base_config
+    if profile_path is not None and env_id is not None:
+        config = apply_config_overrides(
+            config,
+            load_profile_overrides(profile_path, env_id, config),
+        )
+    if overrides is not None:
+        config = apply_config_overrides(config, overrides)
+
+    factory_update = apply_config_factory(factory, env_id or "", config)
+    config = factory_update.config
+    if config is None:
+        return factory_update
+
+    observations: list | None = getattr(config, "observations", None)
+    if observations is None:
+        return ConfigFactoryUpdate(config, factory_update.kwargs)
+
+    updated_obs = _wire_camera_observations(observations, wrist_wh, overhead_wh)
+    config_attrs = vars(config).copy()
+    config_attrs["observations"] = updated_obs
+    return ConfigFactoryUpdate(config.__class__(**config_attrs), factory_update.kwargs)
 
 
 def make_review_video(images: list[np.ndarray], fps: int) -> str | None:

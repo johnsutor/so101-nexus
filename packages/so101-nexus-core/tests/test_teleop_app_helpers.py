@@ -25,6 +25,9 @@ from so101_nexus_core.teleop.app import (
     _connect_leader,
     _create_dataset,
     _default_env_id,
+    _import_env_modules,
+    _merge_extra_env_ids,
+    _normalized_init_config,
     _progress_text,
 )
 from so101_nexus_core.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
@@ -96,6 +99,158 @@ def test_default_env_id_falls_back_to_first_env() -> None:
     env_ids = ["ManiSkillLookAtSO100-v1", "ManiSkillReachSO100-v1"]
 
     assert _default_env_id(env_ids, "so101") == "ManiSkillLookAtSO100-v1"
+
+
+def test_import_env_modules_imports_each_module(monkeypatch) -> None:
+    imported: list[str] = []
+    monkeypatch.setattr("so101_nexus_core.teleop.app.importlib.import_module", imported.append)
+
+    _import_env_modules(["custom_a", "custom_b"])
+
+    assert imported == ["custom_a", "custom_b"]
+
+
+def test_merge_extra_env_ids_appends_unique_ids() -> None:
+    assert _merge_extra_env_ids(["A-v1"], ["A-v1", "B-v1"]) == ["A-v1", "B-v1"]
+
+
+def test_normalized_init_config_includes_env_overrides() -> None:
+    config = _normalized_init_config(
+        "leader",
+        "MuJoCoPickLift-v1",
+        "so101",
+        "",
+        30,
+        320,
+        240,
+        640,
+        480,
+        "",
+        1,
+        "joint_pos",
+        100,
+        0,
+        -90,
+        [],
+        True,
+        ["cube:green", "ycb:011_banana"],
+        1,
+        ["white"],
+        ["yellow", "orange"],
+        0.15,
+        0.25,
+        60,
+        ["red", "green"],
+        ["blue"],
+    )
+
+    overrides = config["env_overrides"]
+    assert overrides.object_specs == ("cube:green", "ycb:011_banana")
+    assert overrides.n_distractors == 1
+    assert overrides.ground_colors == ("white",)
+    assert overrides.robot_colors == ("yellow", "orange")
+    assert overrides.spawn_min_radius == 0.15
+    assert overrides.spawn_max_radius == 0.25
+    assert overrides.spawn_angle_half_range_deg == 60
+    assert overrides.cube_colors == ("red", "green")
+    assert overrides.target_colors == ("blue",)
+
+
+def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> None:
+    config = _normalized_init_config(
+        "leader",
+        "MuJoCoPickLift-v1",
+        "so101",
+        "",
+        30,
+        320,
+        240,
+        640,
+        480,
+        "",
+        1,
+        "joint_pos",
+        100,
+        0,
+        -90,
+        [],
+        False,
+        ["cube:red"],
+        0,
+        ["gray"],
+        ["yellow"],
+        0.10,
+        0.30,
+        90,
+        ["red"],
+        ["blue"],
+    )
+
+    assert config["env_overrides"] is None
+
+
+def test_normalized_init_config_rejects_invalid_ui_color() -> None:
+    with pytest.raises(ValueError, match="unknown ground_colors"):
+        _normalized_init_config(
+            "leader",
+            "MuJoCoPickLift-v1",
+            "so101",
+            "",
+            30,
+            320,
+            240,
+            640,
+            480,
+            "",
+            1,
+            "joint_pos",
+            100,
+            0,
+            -90,
+            [],
+            True,
+            ["cube:red"],
+            0,
+            ["not-a-color"],
+            ["yellow"],
+            0.10,
+            0.30,
+            90,
+            ["red"],
+            ["blue"],
+        )
+
+
+def test_normalized_init_config_rejects_gray_pick_and_place_ui_color() -> None:
+    with pytest.raises(ValueError, match="unknown cube_colors"):
+        _normalized_init_config(
+            "leader",
+            "MuJoCoPickLift-v1",
+            "so101",
+            "",
+            30,
+            320,
+            240,
+            640,
+            480,
+            "",
+            1,
+            "joint_pos",
+            100,
+            0,
+            -90,
+            [],
+            True,
+            ["cube:red"],
+            0,
+            ["gray"],
+            ["yellow"],
+            0.10,
+            0.30,
+            90,
+            ["gray"],
+            ["blue"],
+        )
 
 
 def test_connect_leader_wraps_connect_failure_in_runtime_error(monkeypatch) -> None:
@@ -220,14 +375,14 @@ def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
         "done": True,
         "processed": False,
         "error": "Failed to connect on /dev/ttyACM0: permission denied",
-        "tee_stdout": types.SimpleNamespace(get_output=lambda: "Connecting leader arm..."),
-        "tee_stderr": None,
+        "log_text": "Connecting leader arm...",
         "running": True,
         "warning": None,
     }
 
     outputs = _cb_poll_init({}, init_state)
 
+    assert "Connecting leader arm" in outputs[0]["value"]
     assert "permission denied" in outputs[0]["value"].lower()
     assert outputs[1]["visible"] is True
     assert init_state["processed"] is True

@@ -7,7 +7,9 @@ These live in the mujoco package because they exercise
 from __future__ import annotations
 
 import so101_nexus_mujoco  # noqa: F401 — registers gym envs
+from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import OverheadCamera, WristCamera
+from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus_core.teleop.session import _recording_env_kwargs
 
 
@@ -45,3 +47,21 @@ def test_recording_env_kwargs_wires_both_cameras() -> None:
     assert len(overhead) == 1
     assert overhead[0].width == 800
     assert overhead[0].height == 600
+
+
+def test_recording_env_kwargs_applies_pick_overrides() -> None:
+    kwargs = _recording_env_kwargs(
+        "MuJoCoPickLift-v1",
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(
+            object_specs=("cube:green", "ycb:011_banana"),
+            n_distractors=1,
+        ),
+    )
+
+    assert kwargs["config"].n_distractors == 1
+    assert isinstance(kwargs["config"].objects[0], CubeObject)
+    assert kwargs["config"].objects[0].color == "green"
+    assert isinstance(kwargs["config"].objects[1], YCBObject)
+    assert kwargs["config"].objects[1].model_id == "011_banana"

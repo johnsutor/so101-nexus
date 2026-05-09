@@ -8,14 +8,19 @@ that don't require gymnasium or any optional dependency.
 
 import datetime
 import re
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from so101_nexus_core.config import ReachConfig
+from so101_nexus_core.config import PickConfig, ReachConfig
+from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import OverheadCamera, WristCamera
+from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus_core.teleop.session import (
+    _build_recording_config,
     _default_repo_id,
+    _recording_env_kwargs,
     _replace_overhead_camera,
     _replace_wrist_camera,
     _resolve_env_config,
@@ -143,6 +148,110 @@ def test_wire_camera_observations_appends_missing_cameras() -> None:
     assert any(isinstance(c, WristCamera) and c.width == 320 for c in out)
     assert any(isinstance(c, OverheadCamera) and c.width == 640 for c in out)
     assert any(isinstance(c, _OtherObservation) for c in out)
+
+
+def test_build_recording_config_applies_overrides_before_camera_wiring() -> None:
+    cfg = _build_recording_config(
+        PickConfig(),
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(
+            object_specs=("cube:green", "ycb:011_banana"),
+            n_distractors=1,
+        ),
+        env_id="MuJoCoPickLift-v1",
+    )
+
+    assert cfg.n_distractors == 1
+    assert isinstance(cfg.objects[0], CubeObject)
+    assert cfg.objects[0].color == "green"
+    assert isinstance(cfg.objects[1], YCBObject)
+    assert cfg.objects[1].model_id == "011_banana"
+    assert any(isinstance(o, WristCamera) for o in cfg.observations)
+    assert any(isinstance(o, OverheadCamera) for o in cfg.observations)
+
+
+def test_build_recording_config_applies_factory_after_profile(tmp_path: Path) -> None:
+    profile = tmp_path / "profile.json"
+    profile.write_text('{"pick":{"n_distractors":1,"object_specs":["cube:red","cube:blue"]}}')
+
+    def _factory(_env_id: str, base_config: object | None) -> PickConfig:
+        assert isinstance(base_config, PickConfig)
+        assert base_config.n_distractors == 1
+        return PickConfig(objects=[CubeObject(color="green")], n_distractors=0)
+
+    cfg = _build_recording_config(
+        PickConfig(),
+        (320, 240),
+        (640, 480),
+        profile_path=str(profile),
+        env_id="MuJoCoPickLift-v1",
+        factory=_factory,
+    )
+
+    assert cfg.n_distractors == 0
+    assert cfg.objects[0].color == "green"
+
+
+def test_recording_env_kwargs_applies_overrides_to_registered_config_kwargs(monkeypatch) -> None:
+    def _entry_point():
+        raise AssertionError("not used")
+
+    monkeypatch.setattr(
+        "so101_nexus_core.teleop.session._resolve_env_ctor",
+        lambda _env_id: (_entry_point, {"config": PickConfig()}),
+    )
+
+    kwargs = _recording_env_kwargs(
+        "CustomPick-v1",
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(
+            object_specs=("cube:green", "ycb:011_banana"),
+            n_distractors=1,
+        ),
+    )
+
+    cfg = kwargs["config"]
+    assert cfg.n_distractors == 1
+    assert cfg.objects[0].color == "green"
+    assert isinstance(cfg.objects[1], YCBObject)
+    assert any(isinstance(o, WristCamera) for o in cfg.observations)
+    assert any(isinstance(o, OverheadCamera) for o in cfg.observations)
+
+
+def test_recording_env_kwargs_applies_overrides_to_factory_config_for_no_default_env(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "so101_nexus_core.teleop.session._resolve_env_ctor",
+        lambda _env_id: (_NoDefaultConfigEnv, {}),
+    )
+
+    kwargs = _recording_env_kwargs(
+        "CustomPick-v1",
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(object_specs=("cube:blue",)),
+        factory=lambda _env_id, _base_config: PickConfig(),
+    )
+
+    assert kwargs["config"].objects[0].color == "blue"
+
+
+def test_recording_env_kwargs_rejects_overrides_without_config(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "so101_nexus_core.teleop.session._resolve_env_ctor",
+        lambda _env_id: (_NoDefaultConfigEnv, {}),
+    )
+
+    with pytest.raises(ValueError, match="requires a config object"):
+        _recording_env_kwargs(
+            "CustomPick-v1",
+            (320, 240),
+            (640, 480),
+            overrides=TeleopConfigOverrides(object_specs=("cube:blue",)),
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -32,6 +32,29 @@ def test_build_teleop_parser_wrist_roll_offset_parses() -> None:
     assert args.wrist_roll_offset_deg == -45.0
 
 
+def test_build_teleop_parser_accepts_env_customization_flags() -> None:
+    parser = build_teleop_parser(prog="so101-nexus-test")
+
+    args = parser.parse_args(
+        [
+            "teleop",
+            "--env-config-profile",
+            "profile.toml",
+            "--env-config-factory",
+            "my_mod:build",
+            "--env-module",
+            "my_custom_envs",
+            "--extra-env-id",
+            "CustomPick-v1",
+        ]
+    )
+
+    assert args.env_config_profile == "profile.toml"
+    assert args.env_config_factory == "my_mod:build"
+    assert args.env_modules == ["my_custom_envs"]
+    assert args.extra_env_ids == ["CustomPick-v1"]
+
+
 def test_run_teleop_invokes_setup_before_app_main(monkeypatch) -> None:
     calls: list[str] = []
 

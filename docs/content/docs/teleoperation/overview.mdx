@@ -93,6 +93,10 @@ instead of forcing a browser restart.
 | `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
 | `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
 | `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+| `--env-config-profile` | `str \| None` | `None` | JSON or TOML profile with environment config overrides |
+| `--env-config-factory` | `str \| None` | `None` | Python `module:function` that returns a config or `gym.make` kwargs |
+| `--env-module` | repeatable `str` | `[]` | Import a module that registers custom Gymnasium environments |
+| `--extra-env-id` | repeatable `str` | `[]` | Add a custom environment ID to the UI dropdown |
 
 ## Cameras and recorded fields
 
@@ -119,6 +123,137 @@ Separate width and height sliders for the wrist and overhead cameras
 control the recording resolution. Both cameras are wired into the
 environment's observation config automatically, even when the task's
 default config only declares one.
+
+## Environment customization
+
+Teleop customization uses the same typed config objects as the regular
+Gymnasium API. The recorder starts from the selected environment's default
+config, applies UI/profile/factory overrides, then wires the wrist and
+overhead camera observations required for recording.
+
+The **Advanced Settings** section exposes common options:
+
+- `Apply Environment Customization`: enables the UI environment overrides
+  below. Leave it off to use the environment's default config unchanged.
+- `Pick Object Pool`: built-in cube and YCB objects for pick tasks
+- `Pick Distractors`: number of distractors to place in pick scenes
+- `Ground Colors` and `Robot Colors`: sampled per reset when multiple
+  colors are selected
+- `Spawn Min Radius`, `Spawn Max Radius`, and `Spawn Angle Half Range (deg)`:
+  spawn-region controls shared by supported tasks
+- `Pick-and-Place Cube Colors` and `Pick-and-Place Target Colors`:
+  sampled cube/target colors for pick-and-place tasks
+
+Options that do not apply to the selected environment are ignored after
+customization is enabled. For example, pick-object settings apply to
+`PickConfig` environments, while pick-and-place color settings apply to
+`PickAndPlaceConfig` environments.
+
+### Config profiles
+
+Use a profile when you want repeatable recording setups. Profiles may be
+JSON or TOML and are merged in this order:
+
+1. flat top-level override keys
+2. `common`
+3. matching task section, either `pick` or `pick_and_place`
+4. `envs.<env_id>`
+
+Later sections override earlier sections.
+
+```toml
+[common]
+ground_colors = ["gray", "white"]
+robot_colors = ["yellow"]
+spawn_min_radius = 0.15
+spawn_max_radius = 0.25
+
+[pick]
+n_distractors = 1
+objects = [
+  { type = "cube", color = "green" },
+  { type = "ycb", model_id = "011_banana" },
+  { type = "ycb", model_id = "058_golf_ball" },
+]
+
+[pick_and_place]
+cube_colors = ["red", "green"]
+target_colors = ["blue"]
+
+[envs.MuJoCoPickLift-v1]
+spawn_angle_half_range_deg = 60.0
+```
+
+Launch with:
+
+```bash
+uv run so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0 \
+    --env-config-profile teleop-profile.toml
+```
+
+The profile object schema matches the object classes documented in
+[Scene Objects](/docs/api/objects). String specs such as `cube:blue` and
+`ycb:011_banana` are supported for built-in UI/CLI object choices. Mesh
+objects use mapping syntax because file paths may contain separator
+characters:
+
+```toml
+[[pick.objects]]
+type = "mesh"
+name = "custom widget"
+collision_mesh_path = "/path/to/collision.stl"
+visual_mesh_path = "/path/to/visual.obj"
+mass = 0.02
+scale = 1.0
+```
+
+`MeshObject` is MuJoCo-only.
+
+### Config factories
+
+For advanced setups, provide a Python factory:
+
+```bash
+uv run so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0 \
+    --env-config-factory my_project.teleop_configs:build_config
+```
+
+The factory receives `(env_id, base_config)`. It may return a config object:
+
+```python
+from so101_nexus_core import CubeObject, PickConfig, YCBObject
+
+
+def build_config(env_id, base_config):
+    return PickConfig(
+        objects=[CubeObject(color="green"), YCBObject("011_banana")],
+        n_distractors=1,
+    )
+```
+
+It may also return a `dict` of `gym.make` kwargs. If the dict includes
+`"config"`, teleop still wires the recording cameras after the factory
+runs.
+
+### Custom environments
+
+Custom environments must be registered with Gymnasium before teleop builds
+the dropdown. Import the registration module and list the environment ID:
+
+```bash
+uv run so101-nexus-mujoco teleop \
+    --leader-port /dev/ttyACM0 \
+    --env-module my_project.envs \
+    --extra-env-id CustomPick-v1
+```
+
+Custom environments should accept SO-100/SO-101 six-joint actions in the
+standard joint order, support `reset(options={"init_qpos": ...})`, and
+return camera observations compatible with the selected recording fields.
+If the unwrapped environment exposes `task_description`, teleop records it
+as the optional `task` field.
 
 ## Session flow
 

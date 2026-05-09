@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import so101_nexus_maniskill  # noqa: F401 - registers gym envs
+from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import OverheadCamera, WristCamera
+from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus_core.teleop.session import _recording_env_kwargs
 
 
@@ -35,3 +37,19 @@ def test_recording_env_kwargs_requests_maniskill_absolute_joint_control() -> Non
     kwargs = _recording_env_kwargs("ManiSkillLookAtSO101-v1", (320, 240), (640, 480))
 
     assert kwargs["control_mode"] == "pd_joint_pos"
+
+
+def test_recording_env_kwargs_preserves_maniskill_rgb_with_overrides() -> None:
+    kwargs = _recording_env_kwargs(
+        "ManiSkillPickLiftSO101-v1",
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(object_specs=("cube:green", "ycb:011_banana")),
+    )
+
+    assert kwargs["obs_mode"] == "rgb"
+    assert kwargs["control_mode"] == "pd_joint_pos"
+    assert isinstance(kwargs["config"].objects[0], CubeObject)
+    assert kwargs["config"].objects[0].color == "green"
+    assert isinstance(kwargs["config"].objects[1], YCBObject)
+    assert kwargs["config"].objects[1].model_id == "011_banana"
