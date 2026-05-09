@@ -419,9 +419,7 @@ def test_cb_push_to_hub_finalizes_before_uploading(fake_gradio) -> None:
 
     result = _cb_push_to_hub({"dataset": _RecordingDataset()})
 
-    assert calls == ["finalize", "push_to_hub"], (
-        f"expected finalize -> push_to_hub, got {calls}"
-    )
+    assert calls == ["finalize", "push_to_hub"], f"expected finalize -> push_to_hub, got {calls}"
     assert "pushed" in result.lower()
 
 
