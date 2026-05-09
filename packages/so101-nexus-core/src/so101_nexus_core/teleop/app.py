@@ -11,8 +11,6 @@ import argparse
 import contextlib
 import threading
 
-import numpy as np
-
 from so101_nexus_core.env_ids import Backend, env_ids_for_backend
 from so101_nexus_core.teleop.dataset import (
     OVERHEAD_KEY,
@@ -30,7 +28,6 @@ from so101_nexus_core.teleop.leader import (
     import_backend_for_env_id,
 )
 from so101_nexus_core.teleop.recorder import (
-    PREVIEW_MAX_DIM,
     RecordingState,
     compute_delta_actions,
     recording_thread,
@@ -55,6 +52,14 @@ def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
         wrist_image=WRIST_KEY in field_selection_value,
         overhead_image=OVERHEAD_KEY in field_selection_value,
         task="task" in field_selection_value,
+    )
+
+
+def _default_env_id(all_env_ids: list[str], robot_type: str) -> str | None:
+    """Return the first env ID matching *robot_type*, falling back to the first env."""
+    robot_token = robot_type.upper()
+    return next((env_id for env_id in all_env_ids if robot_token in env_id), None) or (
+        all_env_ids[0] if all_env_ids else None
     )
 
 
@@ -358,7 +363,7 @@ def _cb_start_recording(session: dict):
     return (
         gr.update(value="Starting..."),
         gr.update(visible=False),
-        gr.update(visible=False),
+        gr.update(value=None, visible=False),
     )
 
 
@@ -384,12 +389,21 @@ def _cb_poll_recording(session: dict):
         )
     if s.is_recording:
         preview = s.live_preview
-        if preview is None:
-            preview = np.zeros((180, PREVIEW_MAX_DIM * 2 + 4, 3), dtype=np.uint8)
-
         n = len(s.episode_actions)
         ep = s.episodes_completed + 1
         status = f"Recording episode {ep}/{s.num_episodes}: {n} frames ({n / fps:.1f}s)"
+        if preview is None:
+            return (
+                gr.update(value=f"{status}\n\nWaiting for camera frame..."),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+            )
         return (
             gr.update(value=status),
             gr.update(visible=False),
@@ -428,7 +442,7 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         gr.update(value="Recording complete."),
         gr.update(visible=False),
         gr.update(visible=False),
-        gr.update(visible=False),
+        gr.update(value=None, visible=False),
         gr.update(visible=False),
         gr.Walkthrough(selected=3),
         gr.update(value=video_path),
@@ -483,12 +497,16 @@ def _cb_approve_episode(session: dict):
             gr.update(),
             gr.update(value=progress),
             gr.update(value=info),
+            gr.update(visible=False),
+            gr.update(value=None, visible=False),
         )
     return (
         gr.Walkthrough(selected=2),
         gr.update(value="Episode saved! Ready to record the next one. Click the button below."),
         gr.update(value=progress),
         gr.update(),
+        gr.update(visible=True),
+        gr.update(value=None, visible=False),
     )
 
 
@@ -503,6 +521,8 @@ def _cb_discard_episode(session: dict):
         gr.Walkthrough(selected=2),
         gr.update(value="Episode discarded. Ready to re-record. Click the button below."),
         gr.update(value=_progress_text(s.episodes_completed, s.num_episodes)),
+        gr.update(visible=True),
+        gr.update(value=None, visible=False),
     )
 
 
@@ -566,13 +586,16 @@ def _build_setup_screen(
 ):
     """Build the Configure step contents and return all input components."""
     gr.Markdown("### Environment & Robot")
+    default_robot_type = "so101"
     env_id_input = gr.Dropdown(
         choices=all_env_ids,
-        value=all_env_ids[0] if all_env_ids else None,
+        value=_default_env_id(all_env_ids, default_robot_type),
         label="Environment",
     )
     with gr.Row():
-        robot_type_input = gr.Radio(choices=["so100", "so101"], value="so101", label="Robot Type")
+        robot_type_input = gr.Radio(
+            choices=["so100", "so101"], value=default_robot_type, label="Robot Type"
+        )
         action_space_input = gr.Radio(
             choices=["joint_pos", "joint_pos_delta"],
             value="joint_pos_delta",
@@ -777,11 +800,11 @@ def _wire_events(
     )
     approve_btn.click(
         fn=approve_episode,
-        outputs=[walkthrough, record_status, progress_status, done_info],
+        outputs=[walkthrough, record_status, progress_status, done_info, start_btn, preview_feed],
     )
     discard_btn.click(
         fn=discard_episode,
-        outputs=[walkthrough, record_status, progress_status],
+        outputs=[walkthrough, record_status, progress_status, start_btn, preview_feed],
     )
     push_btn.click(fn=push_to_hub, outputs=[done_status])
     finalize_btn.click(fn=finalize_and_close, outputs=[done_status])

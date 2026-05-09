@@ -17,11 +17,14 @@ import pytest
 from so101_nexus_core.teleop.app import (
     _build_field_selection,
     _build_record_step,
+    _cb_approve_episode,
+    _cb_discard_episode,
     _cb_poll_init,
     _cb_poll_recording,
     _cb_retry_init,
     _connect_leader,
     _create_dataset,
+    _default_env_id,
     _progress_text,
 )
 from so101_nexus_core.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
@@ -76,6 +79,22 @@ def test_build_field_selection_only_wrist() -> None:
     assert selection.wrist_image is True
     assert selection.overhead_image is False
     assert selection.task is False
+
+
+def test_default_env_id_prefers_matching_robot_variant() -> None:
+    env_ids = [
+        "ManiSkillLookAtSO100-v1",
+        "ManiSkillLookAtSO101-v1",
+        "ManiSkillReachSO100-v1",
+    ]
+
+    assert _default_env_id(env_ids, "so101") == "ManiSkillLookAtSO101-v1"
+
+
+def test_default_env_id_falls_back_to_first_env() -> None:
+    env_ids = ["ManiSkillLookAtSO100-v1", "ManiSkillReachSO100-v1"]
+
+    assert _default_env_id(env_ids, "so101") == "ManiSkillLookAtSO100-v1"
 
 
 def test_connect_leader_wraps_connect_failure_in_runtime_error(monkeypatch) -> None:
@@ -266,6 +285,22 @@ def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> No
     assert outputs[4]["visible"] is True
 
 
+def test_poll_recording_waits_for_real_preview_before_showing_image(fake_gradio) -> None:
+    state = RecordingState(is_recording=True, num_episodes=1)
+    session = {
+        "state": state,
+        "fps": 30,
+    }
+
+    outputs = _cb_poll_recording(session)
+
+    assert len(outputs) == 9
+    assert "Waiting for camera frame" in outputs[0]["value"]
+    assert outputs[3]["visible"] is False
+    assert "value" not in outputs[3]
+    assert outputs[4]["visible"] is True
+
+
 def test_record_step_countdown_area_starts_blank() -> None:
     """The hidden countdown markdown must not ship a stale 'Get ready' value."""
 
@@ -304,6 +339,68 @@ def test_record_step_countdown_area_starts_blank() -> None:
     countdown_area = components[2]
     assert countdown_area.value == ""
     assert countdown_area.visible is False
+
+
+def test_discard_episode_restores_record_controls(fake_gradio) -> None:
+    class _Dataset:
+        def __init__(self) -> None:
+            self.clear_calls = 0
+
+        def clear_episode_buffer(self) -> None:
+            self.clear_calls += 1
+
+    state = RecordingState(num_episodes=3, episodes_completed=1)
+    state.live_preview = np.full((10, 10, 3), 255, dtype=np.uint8)
+    dataset = _Dataset()
+    session = {"state": state, "dataset": dataset}
+
+    outputs = _cb_discard_episode(session)
+
+    assert dataset.clear_calls == 1
+    assert len(outputs) == 5
+    assert outputs[1]["value"].startswith("Episode discarded.")
+    assert outputs[3]["visible"] is True
+    assert outputs[4]["visible"] is False
+    assert outputs[4]["value"] is None
+
+
+def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) -> None:
+    class _Dataset:
+        repo_id = "local/test"
+
+        def __init__(self) -> None:
+            self.frames = []
+            self.saved = 0
+
+        def add_frame(self, frame) -> None:
+            self.frames.append(frame)
+
+        def save_episode(self) -> None:
+            self.saved += 1
+
+    from so101_nexus_core.teleop.dataset import FieldSelection
+
+    state = RecordingState(num_episodes=2, episodes_completed=0)
+    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    state.episode_states.append(np.zeros(6, dtype=np.float32))
+    dataset = _Dataset()
+    session = {
+        "state": state,
+        "dataset": dataset,
+        "action_space": "joint_pos",
+        "field_selection": FieldSelection(wrist_image=False, overhead_image=False, task=False),
+        "env_id": "ManiSkillLookAtSO101-v1",
+        "fps": 30,
+    }
+
+    outputs = _cb_approve_episode(session)
+
+    assert dataset.saved == 1
+    assert len(outputs) == 6
+    assert outputs[1]["value"].startswith("Episode saved!")
+    assert outputs[4]["visible"] is True
+    assert outputs[5]["visible"] is False
+    assert outputs[5]["value"] is None
 
 
 def test_poll_recording_failed_empty_episode_warns_without_plot_error(
