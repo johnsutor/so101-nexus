@@ -26,6 +26,10 @@ def build_teleop_parser(prog: str) -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_WRIST_ROLL_OFFSET_DEG,
     )
+    teleop.add_argument("--env-config-profile", type=str, default=None)
+    teleop.add_argument("--env-config-factory", type=str, default=None)
+    teleop.add_argument("--env-module", action="append", default=[], dest="env_modules")
+    teleop.add_argument("--extra-env-id", action="append", default=[], dest="extra_env_ids")
     return parser
 
 

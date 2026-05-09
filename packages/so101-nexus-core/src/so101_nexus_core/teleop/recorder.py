@@ -19,6 +19,7 @@ import numpy as np
 if TYPE_CHECKING:
     from lerobot.processor import DataProcessorPipeline
 
+    from so101_nexus_core.teleop.config_customization import ConfigFactory, TeleopConfigOverrides
     from so101_nexus_core.teleop.leader import LeaderProtocol
 
 
@@ -175,13 +176,15 @@ def _extract_maniskill_camera_rgb(
     sensor_data = obs.get("sensor_data")
     if not isinstance(sensor_data, Mapping):
         return None
-    camera_data = sensor_data.get(camera_name)
+    sensor_map = cast("Mapping[str, object]", sensor_data)
+    camera_data = sensor_map.get(camera_name)
     if not isinstance(camera_data, Mapping):
         return None
 
-    image = camera_data.get("rgb")
+    camera_map = cast("Mapping[str, object]", camera_data)
+    image = camera_map.get("rgb")
     if image is None:
-        image = camera_data.get("Color")
+        image = camera_map.get("Color")
     if image is None:
         return None
 
@@ -205,6 +208,9 @@ def recording_thread(
     wrist_wh: tuple[int, int],
     overhead_wh: tuple[int, int],
     action_pipeline: DataProcessorPipeline | None = None,
+    customization_overrides: TeleopConfigOverrides | None = None,
+    env_config_profile: str | None = None,
+    env_config_factory: ConfigFactory | None = None,
 ) -> None:
     """Run a countdown, then record at *fps* until stopped or max_steps reached.
 
@@ -235,7 +241,14 @@ def recording_thread(
     env = gym.make(
         env_id,
         render_mode="rgb_array",
-        **_recording_env_kwargs(env_id, wrist_wh, overhead_wh),
+        **_recording_env_kwargs(
+            env_id,
+            wrist_wh,
+            overhead_wh,
+            overrides=customization_overrides,
+            profile_path=env_config_profile,
+            factory=env_config_factory,
+        ),
     )
     state.error = None
     try:

@@ -9,9 +9,19 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import threading
 
+from so101_nexus_core.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus_core.env_ids import Backend, env_ids_for_backend
+from so101_nexus_core.teleop.config_customization import (
+    TeleopConfigOverrides,
+    color_tuple_from_names,
+    default_color_choices,
+    default_cube_color_choices,
+    default_object_choices,
+    load_config_factory,
+)
 from so101_nexus_core.teleop.dataset import (
     OVERHEAD_KEY,
     WRIST_KEY,
@@ -60,6 +70,35 @@ def _default_env_id(all_env_ids: list[str], robot_type: str) -> str | None:
     robot_token = robot_type.upper()
     return next((env_id for env_id in all_env_ids if robot_token in env_id), None) or (
         all_env_ids[0] if all_env_ids else None
+    )
+
+
+def _import_env_modules(module_names: list[str]) -> None:
+    """Import user-specified modules that register custom Gymnasium envs."""
+    for module_name in module_names:
+        importlib.import_module(module_name)
+
+
+def _merge_extra_env_ids(base: list[str], extra: list[str]) -> list[str]:
+    """Return base env ids plus unique extra ids, preserving order."""
+    out = list(base)
+    for env_id in extra:
+        if env_id not in out:
+            out.append(env_id)
+    return out
+
+
+def _optional_color_tuple(
+    value: list[str],
+    *,
+    field_name: str,
+    cube_only: bool = False,
+) -> tuple[ColorName, ...] | None:
+    """Return UI-selected colors as ColorName literals for typed overrides."""
+    return color_tuple_from_names(
+        value,
+        field_name=field_name,
+        valid_colors=CUBE_COLOR_MAP if cube_only else COLOR_MAP,
     )
 
 
@@ -118,6 +157,7 @@ def _run_init_worker(
     countdown: int,
     wrist_roll_offset_deg: float,
     field_selection: FieldSelection,
+    env_overrides: TeleopConfigOverrides | None,
 ) -> None:
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
@@ -143,6 +183,7 @@ def _run_init_worker(
             robot_type=robot_type,
             wrist_roll_offset_deg=wrist_roll_offset_deg,
             field_selection=field_selection,
+            env_overrides=env_overrides,
         )
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
@@ -168,6 +209,16 @@ def _normalized_init_config(
     countdown: float,
     wrist_roll_offset_deg: float,
     field_selection_value: list[str],
+    customize_env_config: bool,
+    object_pool_value: list[str],
+    n_distractors: float,
+    ground_color_value: list[str],
+    robot_color_value: list[str],
+    spawn_min_radius: float,
+    spawn_max_radius: float,
+    spawn_angle_half_range_deg: float,
+    cube_color_value: list[str],
+    target_color_value: list[str],
 ) -> dict:
     """Validate UI inputs and return a normalized init config dict."""
     fps_i = int(fps)
@@ -177,6 +228,33 @@ def _normalized_init_config(
     repo_id_value = (repo_id or "").strip() or _default_repo_id(env_id)
     leader_id_value = (leader_id or "").strip() or leader_id_default
     field_selection = _build_field_selection(field_selection_value)
+    env_overrides = None
+    if customize_env_config:
+        env_overrides = TeleopConfigOverrides(
+            object_specs=tuple(object_pool_value) or None,
+            n_distractors=int(n_distractors),
+            ground_colors=_optional_color_tuple(
+                ground_color_value,
+                field_name="ground_colors",
+            ),
+            robot_colors=_optional_color_tuple(
+                robot_color_value,
+                field_name="robot_colors",
+            ),
+            spawn_min_radius=float(spawn_min_radius),
+            spawn_max_radius=float(spawn_max_radius),
+            spawn_angle_half_range_deg=float(spawn_angle_half_range_deg),
+            cube_colors=_optional_color_tuple(
+                cube_color_value,
+                field_name="cube_colors",
+                cube_only=True,
+            ),
+            target_colors=_optional_color_tuple(
+                target_color_value,
+                field_name="target_colors",
+                cube_only=True,
+            ),
+        )
 
     return {
         "env_id": env_id,
@@ -192,6 +270,7 @@ def _normalized_init_config(
         "countdown": countdown_i,
         "wrist_roll_offset_deg": float(wrist_roll_offset_deg),
         "field_selection": field_selection,
+        "env_overrides": env_overrides,
     }
 
 
@@ -229,6 +308,7 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
             config["countdown"],
             config["wrist_roll_offset_deg"],
             config["field_selection"],
+            config["env_overrides"],
         ),
         daemon=True,
     ).start()
@@ -260,6 +340,16 @@ def _cb_start_init(
     countdown: float,
     wrist_roll_offset_deg: float,
     field_selection_value: list[str],
+    customize_env_config: bool,
+    object_pool_value: list[str],
+    n_distractors: float,
+    ground_color_value: list[str],
+    robot_color_value: list[str],
+    spawn_min_radius: float,
+    spawn_max_radius: float,
+    spawn_angle_half_range_deg: float,
+    cube_color_value: list[str],
+    target_color_value: list[str],
 ):
     """Validate inputs and launch the init worker thread."""
     import gradio as gr
@@ -281,6 +371,16 @@ def _cb_start_init(
         countdown,
         wrist_roll_offset_deg,
         field_selection_value,
+        customize_env_config,
+        object_pool_value,
+        n_distractors,
+        ground_color_value,
+        robot_color_value,
+        spawn_min_radius,
+        spawn_max_radius,
+        spawn_angle_half_range_deg,
+        cube_color_value,
+        target_color_value,
     )
     if config["max_steps"] < 1:
         raise gr.Error("Max Steps must be at least 1.")
@@ -357,7 +457,12 @@ def _cb_start_recording(session: dict):
             session["wrist_wh"],
             session["overhead_wh"],
         ),
-        kwargs={"action_pipeline": session.get("action_pipeline")},
+        kwargs={
+            "action_pipeline": session.get("action_pipeline"),
+            "customization_overrides": session.get("env_overrides"),
+            "env_config_profile": session.get("env_config_profile"),
+            "env_config_factory": session.get("env_config_factory"),
+        },
         daemon=True,
     ).start()
     return (
@@ -650,6 +755,56 @@ def _build_setup_screen(
                 minimum=64, maximum=1024, value=480, step=32, label="Overhead Camera Height"
             )
         max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
+        customize_env_input = gr.Checkbox(
+            value=False,
+            label="Apply Environment Customization",
+            info=(
+                "When off, the environment's default config is used and the "
+                "fields below are ignored."
+            ),
+        )
+        object_pool_input = gr.CheckboxGroup(
+            choices=default_object_choices(),
+            value=["cube:red"],
+            label="Pick Object Pool",
+        )
+        n_distractors_input = gr.Number(value=0, minimum=0, precision=0, label="Pick Distractors")
+        with gr.Row():
+            ground_colors_input = gr.CheckboxGroup(
+                choices=default_color_choices(),
+                value=["gray"],
+                label="Ground Colors",
+            )
+            robot_colors_input = gr.CheckboxGroup(
+                choices=default_color_choices(),
+                value=["yellow"],
+                label="Robot Colors",
+            )
+        with gr.Row():
+            spawn_min_radius_input = gr.Slider(
+                minimum=0.0, maximum=0.5, value=0.10, step=0.01, label="Spawn Min Radius"
+            )
+            spawn_max_radius_input = gr.Slider(
+                minimum=0.01, maximum=0.8, value=0.30, step=0.01, label="Spawn Max Radius"
+            )
+            spawn_angle_half_range_input = gr.Slider(
+                minimum=0,
+                maximum=180,
+                value=90,
+                step=1,
+                label="Spawn Angle Half Range (deg)",
+            )
+        with gr.Row():
+            cube_colors_input = gr.CheckboxGroup(
+                choices=default_cube_color_choices(),
+                value=["red"],
+                label="Pick-and-Place Cube Colors",
+            )
+            target_colors_input = gr.CheckboxGroup(
+                choices=default_cube_color_choices(),
+                value=["blue"],
+                label="Pick-and-Place Target Colors",
+            )
 
     init_btn = gr.Button("Initialize Session", variant="primary")
 
@@ -670,6 +825,16 @@ def _build_setup_screen(
         max_steps_input,
         countdown_input,
         field_selection_input,
+        customize_env_input,
+        object_pool_input,
+        n_distractors_input,
+        ground_colors_input,
+        robot_colors_input,
+        spawn_min_radius_input,
+        spawn_max_radius_input,
+        spawn_angle_half_range_input,
+        cube_colors_input,
+        target_colors_input,
     )
 
 
@@ -860,13 +1025,25 @@ def main(
             type=float,
             default=DEFAULT_WRIST_ROLL_OFFSET_DEG,
         )
+        parser.add_argument("--env-config-profile", type=str, default=None)
+        parser.add_argument("--env-config-factory", type=str, default=None)
+        parser.add_argument("--env-module", action="append", default=[], dest="env_modules")
+        parser.add_argument("--extra-env-id", action="append", default=[], dest="extra_env_ids")
         args = parser.parse_args()
 
     leader_port: str = getattr(args, "leader_port", "/dev/ttyACM0")
     leader_id_default: str = getattr(args, "leader_id", "so101_leader")
     wrist_roll_offset: float = getattr(args, "wrist_roll_offset_deg", DEFAULT_WRIST_ROLL_OFFSET_DEG)
+    env_config_profile: str | None = getattr(args, "env_config_profile", None)
+    env_config_factory = load_config_factory(getattr(args, "env_config_factory", None))
+    env_modules: list[str] = list(getattr(args, "env_modules", []) or [])
+    extra_env_ids: list[str] = list(getattr(args, "extra_env_ids", []) or [])
+    _import_env_modules(env_modules)
 
-    session: dict = {}
+    session: dict = {
+        "env_config_profile": env_config_profile,
+        "env_config_factory": env_config_factory,
+    }
     init_state: dict = {
         "running": False,
         "done": False,
@@ -878,7 +1055,7 @@ def main(
         "last_config": None,
     }
 
-    all_env_ids = env_ids_for_backend(backend)
+    all_env_ids = _merge_extra_env_ids(env_ids_for_backend(backend), extra_env_ids)
 
     with gr.Blocks(title="SO Nexus Teleop Recorder", fill_width=True) as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
@@ -904,6 +1081,16 @@ def main(
                     max_steps_input,
                     countdown_input,
                     field_selection_input,
+                    customize_env_input,
+                    object_pool_input,
+                    n_distractors_input,
+                    ground_colors_input,
+                    robot_colors_input,
+                    spawn_min_radius_input,
+                    spawn_max_radius_input,
+                    spawn_angle_half_range_input,
+                    cube_colors_input,
+                    target_colors_input,
                 ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
 
             with gr.Step("Initialize", id=1):
@@ -952,6 +1139,16 @@ def main(
             countdown_input,
             wrist_roll_offset_deg_input,
             field_selection_input,
+            customize_env_input,
+            object_pool_input,
+            n_distractors_input,
+            ground_colors_input,
+            robot_colors_input,
+            spawn_min_radius_input,
+            spawn_max_radius_input,
+            spawn_angle_half_range_input,
+            cube_colors_input,
+            target_colors_input,
         ]
 
         _wire_events(

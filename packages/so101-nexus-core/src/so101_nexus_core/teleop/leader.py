@@ -130,7 +130,17 @@ def import_backend_for_env_id(env_id: str) -> None:
     """Import the simulator backend that matches the *env_id* prefix."""
     if env_id.startswith("ManiSkill"):
         importlib.import_module("so101_nexus_maniskill")
-    elif env_id.startswith("MuJoCo"):
+        return
+    if env_id.startswith("MuJoCo"):
         importlib.import_module("so101_nexus_mujoco")
-    else:
-        raise ValueError("env_id must start with 'ManiSkill' or 'MuJoCo'")
+        return
+
+    import gymnasium as gym
+
+    try:
+        gym.spec(env_id)
+    except gym.error.Error as exc:
+        raise ValueError(
+            f"Unknown custom env_id {env_id!r}. Import its registration module with "
+            "--env-module and pass it with --extra-env-id."
+        ) from exc
