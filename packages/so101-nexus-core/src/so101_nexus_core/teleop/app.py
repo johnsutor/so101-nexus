@@ -550,10 +550,15 @@ def _cb_retry_init_with_session(session: dict, init_state: dict, leader_port: st
 
 
 def _cb_push_to_hub(session: dict):
-    """Push the completed dataset to HuggingFace Hub."""
+    """Push the completed dataset to HuggingFace Hub.
+
+    Finalize first so LeRobot v3.0 per-episode metadata is flushed to disk
+    before the Hub upload scans the dataset directory.
+    """
     import gradio as gr
 
     try:
+        session["dataset"].finalize()
         session["dataset"].push_to_hub()
     except Exception as exc:
         msg = str(exc).strip() or type(exc).__name__
