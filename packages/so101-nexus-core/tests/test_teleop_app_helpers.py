@@ -43,6 +43,7 @@ def fake_gradio(monkeypatch):
     fake = types.SimpleNamespace(
         update=lambda **kwargs: kwargs,
         Walkthrough=_walkthrough_factory,
+        Error=RuntimeError,
         Warning=lambda _msg: None,
     )
     monkeypatch.setitem(sys.modules, "gradio", fake)
@@ -401,6 +402,84 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     assert outputs[4]["visible"] is True
     assert outputs[5]["visible"] is False
     assert outputs[5]["value"] is None
+
+
+def test_cb_push_to_hub_finalizes_before_uploading(fake_gradio) -> None:
+    """Push to Hub must flush the v3.0 per-episode metadata before upload."""
+    from so101_nexus_core.teleop.app import _cb_push_to_hub
+
+    calls: list[str] = []
+
+    class _RecordingDataset:
+        def finalize(self) -> None:
+            calls.append("finalize")
+
+        def push_to_hub(self) -> None:
+            calls.append("push_to_hub")
+
+    result = _cb_push_to_hub({"dataset": _RecordingDataset()})
+
+    assert calls == ["finalize", "push_to_hub"], (
+        f"expected finalize -> push_to_hub, got {calls}"
+    )
+    assert "pushed" in result.lower()
+
+
+def test_cb_push_to_hub_skips_upload_when_finalize_raises(monkeypatch) -> None:
+    """If finalize() raises, push_to_hub() must not run and the error is wrapped."""
+
+    class _FakeGrError(Exception):
+        pass
+
+    fake_gr = types.SimpleNamespace(Error=_FakeGrError)
+    monkeypatch.setitem(sys.modules, "gradio", fake_gr)
+
+    from so101_nexus_core.teleop.app import _cb_push_to_hub
+
+    calls: list[str] = []
+
+    class _BadFinalizeDataset:
+        def finalize(self) -> None:
+            calls.append("finalize")
+            raise RuntimeError("writer already closed")
+
+        def push_to_hub(self) -> None:
+            calls.append("push_to_hub")
+
+    with pytest.raises(_FakeGrError) as excinfo:
+        _cb_push_to_hub({"dataset": _BadFinalizeDataset()})
+
+    assert calls == ["finalize"]
+    assert "Failed to push to Hub" in str(excinfo.value)
+    assert "writer already closed" in str(excinfo.value)
+
+
+def test_finalize_and_close_after_push_is_idempotent(fake_gradio) -> None:
+    """Push -> Finalize & Close should not error even though finalize ran twice."""
+    from so101_nexus_core.teleop.app import _cb_finalize_and_close, _cb_push_to_hub
+
+    finalize_calls = {"n": 0}
+    disconnect_calls = {"n": 0}
+
+    class _Dataset:
+        def finalize(self) -> None:
+            finalize_calls["n"] += 1
+
+        def push_to_hub(self) -> None:
+            pass
+
+    class _Leader:
+        def disconnect(self) -> None:
+            disconnect_calls["n"] += 1
+
+    session = {"dataset": _Dataset(), "leader": _Leader()}
+
+    _cb_push_to_hub(session)
+    result = _cb_finalize_and_close(session)
+
+    assert finalize_calls["n"] == 2
+    assert disconnect_calls["n"] == 1
+    assert "finalized" in result.lower()
 
 
 def test_poll_recording_failed_empty_episode_warns_without_plot_error(
