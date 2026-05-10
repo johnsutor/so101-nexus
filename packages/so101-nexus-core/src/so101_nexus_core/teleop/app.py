@@ -10,10 +10,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 import importlib
+import logging
 import threading
+from dataclasses import dataclass, field
 
 from so101_nexus_core.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus_core.env_ids import Backend, env_ids_for_backend
+from so101_nexus_core.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus_core.teleop.config_customization import (
     TeleopConfigOverrides,
     color_tuple_from_names,
@@ -44,11 +47,35 @@ from so101_nexus_core.teleop.recorder import (
 )
 from so101_nexus_core.teleop.session import (
     _default_repo_id,
+    _resolve_env_config,
+    _resolve_env_ctor,
     make_review_video,
     make_state_plot,
 )
 
 _OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, "task"]
+_TASK_PENDING_TEXT = "_Task will appear after reset._"
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CustomizationUIState:
+    """UI defaults and capability flags for environment customization controls."""
+
+    customize_visible: bool = False
+    customize_value: bool = False
+    common_visible: bool = False
+    pick_visible: bool = False
+    pick_and_place_visible: bool = False
+    object_specs: list[str] = field(default_factory=lambda: ["cube:red"])
+    n_distractors: int = 0
+    ground_colors: list[str] = field(default_factory=lambda: ["gray"])
+    robot_colors: list[str] = field(default_factory=lambda: ["yellow"])
+    spawn_min_radius: float = 0.10
+    spawn_max_radius: float = 0.30
+    spawn_angle_half_range_deg: float = 90.0
+    cube_colors: list[str] = field(default_factory=lambda: ["red"])
+    target_colors: list[str] = field(default_factory=lambda: ["blue"])
 
 
 def _progress_text(completed: int, total: int) -> str:
@@ -86,6 +113,93 @@ def _merge_extra_env_ids(base: list[str], extra: list[str]) -> list[str]:
         if env_id not in out:
             out.append(env_id)
     return out
+
+
+def _color_config_to_names(value: object, default: list[str]) -> list[str]:
+    """Return a UI-friendly list of color names from a config color value."""
+    if value is None:
+        return list(default)
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value]
+
+
+def _object_spec_from_scene_object(obj: SceneObject) -> str | None:
+    """Return a compact UI object spec for built-in representable objects."""
+    if isinstance(obj, CubeObject):
+        return f"cube:{obj.color}"
+    if isinstance(obj, YCBObject):
+        return f"ycb:{obj.model_id}"
+    return None
+
+
+def _object_specs_from_config(value: object) -> list[str]:
+    """Return object specs for config objects that can be represented in the UI."""
+    if value is None:
+        return ["cube:red"]
+    objects = value if isinstance(value, list | tuple) else [value]
+    return [
+        spec
+        for obj in objects
+        if isinstance(obj, SceneObject)
+        for spec in [_object_spec_from_scene_object(obj)]
+        if spec is not None
+    ]
+
+
+def _customization_ui_state_from_config(config: object | None) -> CustomizationUIState:
+    """Return capability flags and base defaults for the env customization UI."""
+    if config is None:
+        return CustomizationUIState()
+
+    attrs = vars(config)
+    common_keys = {
+        "ground_colors",
+        "robot_colors",
+        "spawn_min_radius",
+        "spawn_max_radius",
+        "spawn_angle_half_range_deg",
+    }
+    common_visible = bool(common_keys & set(attrs))
+    pick_visible = "objects" in attrs and "n_distractors" in attrs
+    pick_and_place_visible = "cube_colors" in attrs or "target_colors" in attrs
+    customize_visible = common_visible or pick_visible or pick_and_place_visible
+
+    return CustomizationUIState(
+        customize_visible=customize_visible,
+        customize_value=customize_visible,
+        common_visible=common_visible,
+        pick_visible=pick_visible,
+        pick_and_place_visible=pick_and_place_visible,
+        object_specs=_object_specs_from_config(attrs.get("objects")),
+        n_distractors=int(attrs.get("n_distractors", 0)),
+        ground_colors=_color_config_to_names(attrs.get("ground_colors"), ["gray"]),
+        robot_colors=_color_config_to_names(attrs.get("robot_colors"), ["yellow"]),
+        spawn_min_radius=float(attrs.get("spawn_min_radius", 0.10)),
+        spawn_max_radius=float(attrs.get("spawn_max_radius", 0.30)),
+        spawn_angle_half_range_deg=float(attrs.get("spawn_angle_half_range_deg", 90.0)),
+        cube_colors=_color_config_to_names(attrs.get("cube_colors"), ["red"]),
+        target_colors=_color_config_to_names(attrs.get("target_colors"), ["blue"]),
+    )
+
+
+def _customization_ui_state_for_env(env_id: str | None) -> CustomizationUIState:
+    """Resolve an env's base config and return UI customization defaults."""
+    if not env_id:
+        return CustomizationUIState()
+    try:
+        env_ctor, kwargs = _resolve_env_ctor(env_id)
+        base_config = _resolve_env_config(env_ctor) if isinstance(env_ctor, type) else None
+        if base_config is None:
+            base_config = kwargs.get("config")
+    except Exception as exc:
+        logger.warning(
+            "Failed to resolve customization defaults for env %s: %s",
+            env_id,
+            exc,
+        )
+        return CustomizationUIState()
+    return _customization_ui_state_from_config(base_config)
 
 
 def _optional_color_tuple(
@@ -388,6 +502,32 @@ def _cb_start_init(
     return _start_init_attempt(session, init_state, leader_port, config)
 
 
+def _cb_update_customization_for_env(env_id: str):
+    """Return Gradio updates for customization controls when the env changes."""
+    import gradio as gr
+
+    state = _customization_ui_state_for_env(env_id)
+    return (
+        gr.update(
+            value=state.customize_value,
+            visible=state.customize_visible,
+            interactive=state.customize_visible,
+        ),
+        gr.update(value=state.object_specs),
+        gr.update(value=state.n_distractors),
+        gr.update(value=state.ground_colors),
+        gr.update(value=state.robot_colors),
+        gr.update(value=state.spawn_min_radius),
+        gr.update(value=state.spawn_max_radius),
+        gr.update(value=state.spawn_angle_half_range_deg),
+        gr.update(value=state.cube_colors),
+        gr.update(value=state.target_colors),
+        gr.update(visible=state.common_visible),
+        gr.update(visible=state.pick_visible),
+        gr.update(visible=state.pick_and_place_visible),
+    )
+
+
 def _cb_poll_init(session: dict, init_state: dict):
     """Poll the init thread and stream log output to the UI."""
     import gradio as gr
@@ -469,7 +609,13 @@ def _cb_start_recording(session: dict):
         gr.update(value="Starting..."),
         gr.update(visible=False),
         gr.update(value=None, visible=False),
+        gr.update(value=_TASK_PENDING_TEXT),
     )
+
+
+def _task_status_text(task_description: str) -> str:
+    """Return the record-step task Markdown for the current episode."""
+    return f"**Task:** {task_description}" if task_description else _TASK_PENDING_TEXT
 
 
 def _cb_poll_recording(session: dict):
@@ -478,7 +624,7 @@ def _cb_poll_recording(session: dict):
 
     s = session.get("state")
     if s is None:
-        return tuple(gr.update() for _ in range(9))
+        return tuple(gr.update() for _ in range(13))
     fps = session["fps"]
     if s.countdown_value > 0:
         return (
@@ -487,6 +633,10 @@ def _cb_poll_recording(session: dict):
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             gr.update(visible=False),
             gr.update(visible=False),
+            gr.update(value=_TASK_PENDING_TEXT),
+            gr.update(),
+            gr.update(),
+            gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
@@ -504,6 +654,10 @@ def _cb_poll_recording(session: dict):
                 gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=True),
+                gr.update(value=_task_status_text(s.task_description)),
+                gr.update(),
+                gr.update(),
+                gr.update(),
                 gr.update(),
                 gr.update(),
                 gr.update(),
@@ -515,6 +669,10 @@ def _cb_poll_recording(session: dict):
             gr.update(visible=False),
             gr.update(value=preview, visible=True),
             gr.update(visible=True),
+            gr.update(value=_task_status_text(s.task_description)),
+            gr.update(),
+            gr.update(),
+            gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
@@ -525,7 +683,7 @@ def _cb_poll_recording(session: dict):
         s.error = None
     if s.recording_finished:
         return _recording_finished_updates(session, s, fps)
-    return tuple(gr.update() for _ in range(9))
+    return tuple(gr.update() for _ in range(13))
 
 
 def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
@@ -549,10 +707,25 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         gr.update(visible=False),
         gr.update(value=None, visible=False),
         gr.update(visible=False),
+        gr.update(value=_task_status_text(s.task_description)),
         gr.Walkthrough(selected=3),
         gr.update(value=video_path),
         gr.update(value=fig),
         gr.update(value=meta),
+        gr.update(value="", visible=False),
+        gr.update(interactive=True),
+        gr.update(interactive=True),
+    )
+
+
+def _cb_prepare_episode_approval():
+    """Show immediate UI feedback before saving/converting an approved episode."""
+    import gradio as gr
+
+    return (
+        gr.update(value="Saving episode...", visible=True),
+        gr.update(interactive=False),
+        gr.update(interactive=False),
     )
 
 
@@ -562,15 +735,18 @@ def _cb_approve_episode(session: dict):
 
     s = session["state"]
     dataset = session["dataset"]
-    actions = list(s.episode_actions)
-    if session["action_space"] == "joint_pos_delta":
-        actions = compute_delta_actions(actions)
 
-    sel = session["field_selection"]
-    for i in range(len(actions)):
-        wrist_img = s.episode_wrist_images[i] if i < len(s.episode_wrist_images) else None
-        overhead_img = s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None
-        try:
+    try:
+        actions = list(s.episode_actions)
+        if session["action_space"] == "joint_pos_delta":
+            actions = compute_delta_actions(actions)
+
+        sel = session["field_selection"]
+        for i in range(len(actions)):
+            wrist_img = s.episode_wrist_images[i] if i < len(s.episode_wrist_images) else None
+            overhead_img = (
+                s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None
+            )
             frame = build_frame(
                 sel,
                 state=s.episode_states[i],
@@ -579,11 +755,24 @@ def _cb_approve_episode(session: dict):
                 wrist_image=wrist_img,
                 overhead_image=overhead_img,
             )
-        except ValueError as exc:
-            raise gr.Error(str(exc)) from exc
-        dataset.add_frame(frame)
+            dataset.add_frame(frame)
 
-    dataset.save_episode()
+        dataset.save_episode()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            dataset.clear_episode_buffer()
+        return (
+            gr.Walkthrough(selected=3),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(value=f"Failed to save episode: {exc}", visible=True),
+            gr.update(interactive=True),
+            gr.update(interactive=True),
+        )
+
     s.episodes_completed += 1
     s.clear_episode()
 
@@ -604,6 +793,9 @@ def _cb_approve_episode(session: dict):
             gr.update(value=info),
             gr.update(visible=False),
             gr.update(value=None, visible=False),
+            gr.update(value="", visible=False),
+            gr.update(interactive=True),
+            gr.update(interactive=True),
         )
     return (
         gr.Walkthrough(selected=2),
@@ -612,6 +804,9 @@ def _cb_approve_episode(session: dict):
         gr.update(),
         gr.update(visible=True),
         gr.update(value=None, visible=False),
+        gr.update(value="", visible=False),
+        gr.update(interactive=True),
+        gr.update(interactive=True),
     )
 
 
@@ -628,6 +823,7 @@ def _cb_discard_episode(session: dict):
         gr.update(value=_progress_text(s.episodes_completed, s.num_episodes)),
         gr.update(visible=True),
         gr.update(value=None, visible=False),
+        gr.update(value="", visible=False),
     )
 
 
@@ -675,6 +871,13 @@ def _cb_push_to_hub(session: dict):
     return "Dataset pushed to HuggingFace Hub!"
 
 
+def _cb_prepare_push_to_hub():
+    """Show immediate UI feedback before the blocking Hub push starts."""
+    import gradio as gr
+
+    return gr.update(value="Pushing dataset to HuggingFace Hub...", visible=True)
+
+
 def _cb_finalize_and_close(session: dict):
     """Finalize the dataset and disconnect all hardware."""
     import gradio as gr
@@ -688,6 +891,13 @@ def _cb_finalize_and_close(session: dict):
     return "Session finalized. You can close this tab."
 
 
+def _cb_prepare_finalize_and_close():
+    """Show immediate UI feedback before dataset finalization starts."""
+    import gradio as gr
+
+    return gr.update(value="Finalizing dataset...", visible=True)
+
+
 def _build_setup_screen(
     gr,
     all_env_ids: list[str],
@@ -697,9 +907,11 @@ def _build_setup_screen(
     """Build the Configure step contents and return all input components."""
     gr.Markdown("### Environment & Robot")
     default_robot_type = "so101"
+    default_env = _default_env_id(all_env_ids, default_robot_type)
+    customization_state = _customization_ui_state_for_env(default_env)
     env_id_input = gr.Dropdown(
         choices=all_env_ids,
-        value=_default_env_id(all_env_ids, default_robot_type),
+        value=default_env,
         label="Environment",
     )
     with gr.Row():
@@ -756,53 +968,72 @@ def _build_setup_screen(
             )
         max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
         customize_env_input = gr.Checkbox(
-            value=False,
+            value=customization_state.customize_value,
             label="Apply Environment Customization",
+            visible=customization_state.customize_visible,
+            interactive=customization_state.customize_visible,
             info=(
                 "When off, the environment's default config is used and the "
                 "fields below are ignored."
             ),
         )
-        object_pool_input = gr.CheckboxGroup(
-            choices=default_object_choices(),
-            value=["cube:red"],
-            label="Pick Object Pool",
-        )
-        n_distractors_input = gr.Number(value=0, minimum=0, precision=0, label="Pick Distractors")
-        with gr.Row():
-            ground_colors_input = gr.CheckboxGroup(
-                choices=default_color_choices(),
-                value=["gray"],
-                label="Ground Colors",
+        with gr.Group(visible=customization_state.pick_visible) as pick_customization_group:
+            object_pool_input = gr.CheckboxGroup(
+                choices=default_object_choices(),
+                value=customization_state.object_specs,
+                label="Pick Object Pool",
             )
-            robot_colors_input = gr.CheckboxGroup(
-                choices=default_color_choices(),
-                value=["yellow"],
-                label="Robot Colors",
-            )
-        with gr.Row():
-            spawn_min_radius_input = gr.Slider(
-                minimum=0.0, maximum=0.5, value=0.10, step=0.01, label="Spawn Min Radius"
-            )
-            spawn_max_radius_input = gr.Slider(
-                minimum=0.01, maximum=0.8, value=0.30, step=0.01, label="Spawn Max Radius"
-            )
-            spawn_angle_half_range_input = gr.Slider(
+            n_distractors_input = gr.Number(
+                value=customization_state.n_distractors,
                 minimum=0,
-                maximum=180,
-                value=90,
-                step=1,
-                label="Spawn Angle Half Range (deg)",
+                precision=0,
+                label="Pick Distractors",
             )
-        with gr.Row():
+        with gr.Group(visible=customization_state.common_visible) as common_customization_group:
+            with gr.Row():
+                ground_colors_input = gr.CheckboxGroup(
+                    choices=default_color_choices(),
+                    value=customization_state.ground_colors,
+                    label="Ground Colors",
+                )
+                robot_colors_input = gr.CheckboxGroup(
+                    choices=default_color_choices(),
+                    value=customization_state.robot_colors,
+                    label="Robot Colors",
+                )
+            with gr.Row():
+                spawn_min_radius_input = gr.Slider(
+                    minimum=0.0,
+                    maximum=0.5,
+                    value=customization_state.spawn_min_radius,
+                    step=0.01,
+                    label="Spawn Min Radius",
+                )
+                spawn_max_radius_input = gr.Slider(
+                    minimum=0.01,
+                    maximum=0.8,
+                    value=customization_state.spawn_max_radius,
+                    step=0.01,
+                    label="Spawn Max Radius",
+                )
+                spawn_angle_half_range_input = gr.Slider(
+                    minimum=0,
+                    maximum=180,
+                    value=customization_state.spawn_angle_half_range_deg,
+                    step=1,
+                    label="Spawn Angle Half Range (deg)",
+                )
+        with gr.Group(
+            visible=customization_state.pick_and_place_visible
+        ) as pick_and_place_customization_group, gr.Row():
             cube_colors_input = gr.CheckboxGroup(
                 choices=default_cube_color_choices(),
-                value=["red"],
+                value=customization_state.cube_colors,
                 label="Pick-and-Place Cube Colors",
             )
             target_colors_input = gr.CheckboxGroup(
                 choices=default_cube_color_choices(),
-                value=["blue"],
+                value=customization_state.target_colors,
                 label="Pick-and-Place Target Colors",
             )
 
@@ -835,6 +1066,9 @@ def _build_setup_screen(
         spawn_angle_half_range_input,
         cube_colors_input,
         target_colors_input,
+        common_customization_group,
+        pick_customization_group,
+        pick_and_place_customization_group,
     )
 
 
@@ -860,8 +1094,9 @@ def _build_record_step(gr):
         interactive=False,
     )
     stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
+    task_status = gr.Markdown(_TASK_PENDING_TEXT)
     rec_timer = gr.Timer(value=0.1)
-    return record_status, start_btn, countdown_area, preview_feed, stop_btn, rec_timer
+    return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
 
 
 def _build_review_step(gr):
@@ -873,10 +1108,11 @@ def _build_review_step(gr):
         with gr.Column(scale=1):
             state_plot = gr.Plot(label="Joint States")
             episode_metadata = gr.Markdown()
+    review_status = gr.Markdown("", visible=False)
     with gr.Row():
         approve_btn = gr.Button("Approve", variant="primary")
         discard_btn = gr.Button("Discard", variant="stop")
-    return review_video, state_plot, episode_metadata, approve_btn, discard_btn
+    return review_video, state_plot, episode_metadata, review_status, approve_btn, discard_btn
 
 
 def _build_complete_step(gr):
@@ -896,6 +1132,8 @@ def _wire_events(
     walkthrough,
     init_btn,
     init_inputs,
+    env_id_input,
+    customization_outputs,
     init_log,
     retry_btn,
     init_timer,
@@ -904,10 +1142,12 @@ def _wire_events(
     countdown_area,
     preview_feed,
     stop_btn,
+    task_status,
     rec_timer,
     review_video,
     state_plot,
     episode_metadata,
+    review_status,
     approve_btn,
     discard_btn,
     done_info,
@@ -940,6 +1180,11 @@ def _wire_events(
 
     retry_init = functools.partial(_cb_retry_init_with_session, session, init_state, leader_port)
 
+    env_id_input.change(
+        fn=_cb_update_customization_for_env,
+        inputs=[env_id_input],
+        outputs=customization_outputs,
+    )
     init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
     init_timer.tick(
         fn=poll_init,
@@ -951,7 +1196,7 @@ def _wire_events(
     )
     start_btn.click(
         fn=start_recording,
-        outputs=[record_status, start_btn, preview_feed],
+        outputs=[record_status, start_btn, preview_feed, task_status],
     )
     stop_btn.click(fn=stop_recording)
     rec_timer.tick(
@@ -962,22 +1207,52 @@ def _wire_events(
             countdown_area,
             preview_feed,
             stop_btn,
+            task_status,
             walkthrough,
             review_video,
             state_plot,
             episode_metadata,
+            review_status,
+            approve_btn,
+            discard_btn,
         ],
     )
     approve_btn.click(
+        fn=_cb_prepare_episode_approval,
+        outputs=[review_status, approve_btn, discard_btn],
+    ).then(
         fn=approve_episode,
-        outputs=[walkthrough, record_status, progress_status, done_info, start_btn, preview_feed],
+        outputs=[
+            walkthrough,
+            record_status,
+            progress_status,
+            done_info,
+            start_btn,
+            preview_feed,
+            review_status,
+            approve_btn,
+            discard_btn,
+        ],
     )
     discard_btn.click(
         fn=discard_episode,
-        outputs=[walkthrough, record_status, progress_status, start_btn, preview_feed],
+        outputs=[
+            walkthrough,
+            record_status,
+            progress_status,
+            start_btn,
+            preview_feed,
+            review_status,
+        ],
     )
-    push_btn.click(fn=push_to_hub, outputs=[done_status])
-    finalize_btn.click(fn=finalize_and_close, outputs=[done_status])
+    push_btn.click(fn=_cb_prepare_push_to_hub, outputs=[done_status]).then(
+        fn=push_to_hub,
+        outputs=[done_status],
+    )
+    finalize_btn.click(fn=_cb_prepare_finalize_and_close, outputs=[done_status]).then(
+        fn=finalize_and_close,
+        outputs=[done_status],
+    )
 
 
 _TELEOP_INSTALL_HINT = (
@@ -1091,6 +1366,9 @@ def main(
                     spawn_angle_half_range_input,
                     cube_colors_input,
                     target_colors_input,
+                    common_customization_group,
+                    pick_customization_group,
+                    pick_and_place_customization_group,
                 ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
 
             with gr.Step("Initialize", id=1):
@@ -1103,6 +1381,7 @@ def main(
                     countdown_area,
                     preview_feed,
                     stop_btn,
+                    task_status,
                     rec_timer,
                 ) = _build_record_step(gr)
 
@@ -1111,6 +1390,7 @@ def main(
                     review_video,
                     state_plot,
                     episode_metadata,
+                    review_status,
                     approve_btn,
                     discard_btn,
                 ) = _build_review_step(gr)
@@ -1156,6 +1436,22 @@ def main(
             walkthrough=walkthrough,
             init_btn=init_btn,
             init_inputs=init_inputs,
+            env_id_input=env_id_input,
+            customization_outputs=[
+                customize_env_input,
+                object_pool_input,
+                n_distractors_input,
+                ground_colors_input,
+                robot_colors_input,
+                spawn_min_radius_input,
+                spawn_max_radius_input,
+                spawn_angle_half_range_input,
+                cube_colors_input,
+                target_colors_input,
+                common_customization_group,
+                pick_customization_group,
+                pick_and_place_customization_group,
+            ],
             init_log=init_log,
             retry_btn=retry_btn,
             init_timer=init_timer,
@@ -1164,10 +1460,12 @@ def main(
             countdown_area=countdown_area,
             preview_feed=preview_feed,
             stop_btn=stop_btn,
+            task_status=task_status,
             rec_timer=rec_timer,
             review_video=review_video,
             state_plot=state_plot,
             episode_metadata=episode_metadata,
+            review_status=review_status,
             approve_btn=approve_btn,
             discard_btn=discard_btn,
             done_info=done_info,

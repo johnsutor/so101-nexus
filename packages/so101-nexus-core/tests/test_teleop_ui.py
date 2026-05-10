@@ -64,8 +64,10 @@ def test_record_step_has_combined_camera_preview() -> None:
             _countdown_area,
             preview_feed,
             _stop_btn,
+            task_status,
             _rec_timer,
         ) = _build_record_step(gr)
 
     assert isinstance(preview_feed, gr.Image)
     assert preview_feed.label == "Live Preview (wrist | overhead)"
+    assert isinstance(task_status, gr.Markdown)

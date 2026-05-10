@@ -8,12 +8,16 @@ gradio runtime.
 
 from __future__ import annotations
 
+import logging
 import sys
 import types
 
 import numpy as np
 import pytest
 
+import so101_nexus_core.teleop.app as teleop_app
+from so101_nexus_core.config import PickAndPlaceConfig, PickConfig
+from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.teleop.app import (
     _build_field_selection,
     _build_record_step,
@@ -187,6 +191,78 @@ def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> No
     )
 
     assert config["env_overrides"] is None
+
+
+def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> None:
+    state = teleop_app._customization_ui_state_from_config(
+        PickConfig(
+            objects=[CubeObject(color="green"), YCBObject(model_id="011_banana")],
+            n_distractors=1,
+            ground_colors=["white"],
+            robot_colors="yellow",
+            spawn_min_radius=0.12,
+            spawn_max_radius=0.28,
+            spawn_angle_half_range_deg=45,
+        )
+    )
+
+    assert state.customize_visible is True
+    assert state.customize_value is True
+    assert state.common_visible is True
+    assert state.pick_visible is True
+    assert state.pick_and_place_visible is False
+    assert state.object_specs == ["cube:green", "ycb:011_banana"]
+    assert state.n_distractors == 1
+    assert state.ground_colors == ["white"]
+    assert state.robot_colors == ["yellow"]
+    assert state.spawn_min_radius == 0.12
+    assert state.spawn_max_radius == 0.28
+    assert state.spawn_angle_half_range_deg == 45
+
+
+def test_customization_ui_state_for_pick_and_place_hides_pick_controls() -> None:
+    state = teleop_app._customization_ui_state_from_config(
+        PickAndPlaceConfig(
+            cube_colors=["red", "green"],
+            target_colors="blue",
+            ground_colors="gray",
+            robot_colors=["yellow", "orange"],
+        )
+    )
+
+    assert state.customize_visible is True
+    assert state.customize_value is True
+    assert state.common_visible is True
+    assert state.pick_visible is False
+    assert state.pick_and_place_visible is True
+    assert state.cube_colors == ["red", "green"]
+    assert state.target_colors == ["blue"]
+    assert state.ground_colors == ["gray"]
+    assert state.robot_colors == ["yellow", "orange"]
+
+
+def test_customization_ui_state_without_config_hides_customization() -> None:
+    state = teleop_app._customization_ui_state_from_config(None)
+
+    assert state.customize_visible is False
+    assert state.customize_value is False
+    assert state.common_visible is False
+    assert state.pick_visible is False
+    assert state.pick_and_place_visible is False
+
+
+def test_customization_ui_state_for_env_logs_resolution_failure(monkeypatch, caplog) -> None:
+    def _raise_on_resolve(_env_id: str):
+        raise RuntimeError("broken default config")
+
+    monkeypatch.setattr(teleop_app, "_resolve_env_ctor", _raise_on_resolve)
+
+    with caplog.at_level(logging.WARNING, logger=teleop_app.__name__):
+        state = teleop_app._customization_ui_state_for_env("BrokenEnv-v1")
+
+    assert state == teleop_app.CustomizationUIState()
+    assert "BrokenEnv-v1" in caplog.text
+    assert "broken default config" in caplog.text
 
 
 def test_normalized_init_config_rejects_invalid_ui_color() -> None:
@@ -417,9 +493,10 @@ def test_poll_recording_countdown_uses_dedicated_countdown_area(fake_gradio) -> 
     outputs = _cb_poll_recording(session)
 
     assert outputs[0]["value"] == ""
-    assert len(outputs) == 9
+    assert len(outputs) == 13
     assert outputs[2]["visible"] is True
     assert "Get ready" in outputs[2]["value"]
+    assert "Task will appear" in outputs[5]["value"]
 
 
 def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> None:
@@ -433,12 +510,28 @@ def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> No
 
     outputs = _cb_poll_recording(session)
 
-    assert len(outputs) == 9
+    assert len(outputs) == 13
     assert "Recording episode 2/5" in outputs[0]["value"]
+    assert "Task will appear" in outputs[5]["value"]
     assert outputs[2]["visible"] is False
     assert outputs[3]["visible"] is True
     np.testing.assert_array_equal(outputs[3]["value"], state.live_preview)
     assert outputs[4]["visible"] is True
+
+
+def test_poll_recording_shows_current_task_during_recording(fake_gradio) -> None:
+    state = RecordingState(is_recording=True, num_episodes=3, episodes_completed=0)
+    state.task_description = "Pick up the red cube."
+    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    session = {
+        "state": state,
+        "fps": 30,
+    }
+
+    outputs = _cb_poll_recording(session)
+
+    assert "Task:" not in outputs[0]["value"]
+    assert outputs[5]["value"] == "**Task:** Pick up the red cube."
 
 
 def test_poll_recording_waits_for_real_preview_before_showing_image(fake_gradio) -> None:
@@ -450,8 +543,9 @@ def test_poll_recording_waits_for_real_preview_before_showing_image(fake_gradio)
 
     outputs = _cb_poll_recording(session)
 
-    assert len(outputs) == 9
+    assert len(outputs) == 13
     assert "Waiting for camera frame" in outputs[0]["value"]
+    assert "Task will appear" in outputs[5]["value"]
     assert outputs[3]["visible"] is False
     assert "value" not in outputs[3]
     assert outputs[4]["visible"] is True
@@ -493,8 +587,10 @@ def test_record_step_countdown_area_starts_blank() -> None:
     components = _build_record_step(fake_gr)
 
     countdown_area = components[2]
+    task_status = components[5]
     assert countdown_area.value == ""
     assert countdown_area.visible is False
+    assert "Task will appear" in task_status.value
 
 
 def test_discard_episode_restores_record_controls(fake_gradio) -> None:
@@ -513,11 +609,13 @@ def test_discard_episode_restores_record_controls(fake_gradio) -> None:
     outputs = _cb_discard_episode(session)
 
     assert dataset.clear_calls == 1
-    assert len(outputs) == 5
+    assert len(outputs) == 6
     assert outputs[1]["value"].startswith("Episode discarded.")
     assert outputs[3]["visible"] is True
     assert outputs[4]["visible"] is False
     assert outputs[4]["value"] is None
+    assert outputs[5]["visible"] is False
+    assert outputs[5]["value"] == ""
 
 
 def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) -> None:
@@ -552,11 +650,70 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     outputs = _cb_approve_episode(session)
 
     assert dataset.saved == 1
-    assert len(outputs) == 6
+    assert len(outputs) == 9
     assert outputs[1]["value"].startswith("Episode saved!")
     assert outputs[4]["visible"] is True
     assert outputs[5]["visible"] is False
     assert outputs[5]["value"] is None
+    assert outputs[6]["visible"] is False
+    assert outputs[7]["interactive"] is True
+    assert outputs[8]["interactive"] is True
+
+
+def test_approve_episode_failure_reenables_review_controls(fake_gradio) -> None:
+    class _Dataset:
+        def __init__(self) -> None:
+            self.frames = []
+            self.saved = 0
+
+        def add_frame(self, frame) -> None:
+            self.frames.append(frame)
+
+        def save_episode(self) -> None:
+            self.saved += 1
+
+    from so101_nexus_core.teleop.dataset import FieldSelection
+
+    state = RecordingState(num_episodes=1, episodes_completed=0)
+    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    state.episode_states.append(np.zeros(6, dtype=np.float32))
+    dataset = _Dataset()
+    session = {
+        "state": state,
+        "dataset": dataset,
+        "action_space": "joint_pos",
+        "field_selection": FieldSelection(wrist_image=True, overhead_image=False, task=False),
+        "env_id": "ManiSkillLookAtSO101-v1",
+        "fps": 30,
+    }
+
+    outputs = _cb_approve_episode(session)
+
+    assert dataset.frames == []
+    assert dataset.saved == 0
+    assert len(outputs) == 9
+    assert outputs[6]["visible"] is True
+    assert "Failed to save episode" in outputs[6]["value"]
+    assert "wrist_image selected" in outputs[6]["value"]
+    assert outputs[7]["interactive"] is True
+    assert outputs[8]["interactive"] is True
+
+
+def test_prepare_episode_approval_shows_saving_status(fake_gradio) -> None:
+    outputs = teleop_app._cb_prepare_episode_approval()
+
+    assert outputs[0]["visible"] is True
+    assert "Saving episode" in outputs[0]["value"]
+    assert outputs[1]["interactive"] is False
+    assert outputs[2]["interactive"] is False
+
+
+def test_prepare_push_and_finalize_show_busy_status(fake_gradio) -> None:
+    push_status = teleop_app._cb_prepare_push_to_hub()
+    finalize_status = teleop_app._cb_prepare_finalize_and_close()
+
+    assert "Pushing dataset" in push_status["value"]
+    assert "Finalizing dataset" in finalize_status["value"]
 
 
 def test_cb_push_to_hub_finalizes_before_uploading(fake_gradio) -> None:
@@ -659,7 +816,7 @@ def test_poll_recording_failed_empty_episode_warns_without_plot_error(
 
     outputs = _cb_poll_recording(session)
 
-    assert len(outputs) == 9
+    assert len(outputs) == 13
     assert warnings == ["Recording failed: RuntimeError: boom"]
     assert state.error is None
     assert outputs[7]["value"] is None

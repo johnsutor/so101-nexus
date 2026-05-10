@@ -263,6 +263,19 @@ def test_pick_mixed_pool_with_distractors():
         env.close()
 
 
+def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
+    from so101_nexus_mujoco.pick_env import _mesh_xml_body
+
+    xml = _mesh_xml_body("pick_slot_0", 0, 0.01)
+
+    assert 'name="pick_slot_0_collision"' in xml
+    assert 'mesh="pick_coll_0"' in xml
+    assert 'group="3"' in xml
+    assert 'name="pick_slot_0_visual"' in xml
+    assert 'mesh="pick_vis_0"' in xml
+    assert 'group="2"' in xml
+
+
 @pytest.mark.parametrize("color", CUBE_COLORS)
 def test_look_at_cube_color(color):
     config = LookAtConfig(objects=[CubeObject(color=color)])  # type: ignore[arg-type]
