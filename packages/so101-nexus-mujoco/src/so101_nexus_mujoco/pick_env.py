@@ -62,11 +62,11 @@ def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
         f'      <geom name="{slot_name}_collision" type="mesh" '
         f'mesh="pick_coll_{asset_index}"\n'
         f'            mass="{mass}" contype="1" conaffinity="1"\n'
-        f'            condim="4" friction="1 0.05 0.001" solref="0.01 1"\n'
+        f'            group="3" condim="4" friction="1 0.05 0.001" solref="0.01 1"\n'
         f'            solimp="0.95 0.99 0.001"/>\n'
         f'      <geom name="{slot_name}_visual" type="mesh" '
         f'mesh="pick_vis_{asset_index}"\n'
-        f'            contype="0" conaffinity="0" mass="0"/>\n'
+        f'            group="2" contype="0" conaffinity="0" mass="0"/>\n'
         f"    </body>\n"
     )
 
