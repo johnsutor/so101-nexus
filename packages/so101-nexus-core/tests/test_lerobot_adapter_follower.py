@@ -100,6 +100,13 @@ class _AbsoluteJointEnv(gym.Env):
         self.closed = True
 
 
+class _FailingInitEnv(gym.Env):
+    metadata = {"render_modes": ["rgb_array"]}
+
+    def __init__(self, **kwargs: Any) -> None:
+        raise ValueError("env constructor failed")
+
+
 @pytest.fixture
 def fake_env_id() -> str:
     env_id = "SO101NexusAdapterFollowerFake-v0"
@@ -110,15 +117,29 @@ def fake_env_id() -> str:
         gym.envs.registration.registry.pop(env_id, None)
 
 
+@pytest.fixture
+def failing_env_id() -> str:
+    env_id = "SO101NexusAdapterFollowerFailing-v0"
+    gym.register(id=env_id, entry_point=_FailingInitEnv)
+    try:
+        yield env_id
+    finally:
+        gym.envs.registration.registry.pop(env_id, None)
+
+
 def _make_config(tmp_path: Path, env_id: str, **kwargs: Any):
     from so101_nexus_core.lerobot_adapter import SimCameraConfig, SimSOFollowerConfig
 
     _write_calibration(tmp_path)
+    cameras = kwargs.pop(
+        "cameras",
+        {"wrist": SimCameraConfig(source="wrist_camera", width=8, height=6, fps=30)},
+    )
     return SimSOFollowerConfig(
         id="sim_test",
         calibration_dir=tmp_path,
         env_id=env_id,
-        cameras={"wrist": SimCameraConfig(source="wrist_camera", width=8, height=6, fps=30)},
+        cameras=cameras,
         **kwargs,
     )
 
@@ -154,6 +175,27 @@ def test_connect_refuses_missing_calibration(tmp_path: Path, fake_env_id: str) -
 
     with pytest.raises(RuntimeError, match="calibration"):
         robot.connect()
+
+
+def test_disconnect_is_idempotent_before_connect(tmp_path: Path, fake_env_id: str) -> None:
+    from so101_nexus_core.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id))
+
+    robot.disconnect()
+
+    assert not robot.is_connected
+
+
+def test_connect_preserves_env_creation_error(tmp_path: Path, failing_env_id: str) -> None:
+    from so101_nexus_core.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, failing_env_id, cameras={}))
+
+    with pytest.raises(ValueError, match="env constructor failed"):
+        robot.connect()
+
+    assert not robot.is_connected
 
 
 def test_connect_builds_env_and_binds_cameras(tmp_path: Path, fake_env_id: str) -> None:

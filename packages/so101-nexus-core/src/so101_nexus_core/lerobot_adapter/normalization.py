@@ -77,6 +77,13 @@ def _validate_gripper_limits(gripper_limits_rad: GripperLimitsRad) -> GripperLim
     return lower, upper
 
 
+def _validate_calibration_range(name: str, calibration: MotorCalibration) -> None:
+    if calibration.range_max == calibration.range_min:
+        raise ValueError(
+            f"Invalid calibration for motor {name!r}: range_min and range_max are equal."
+        )
+
+
 def sim_rad_to_motor_ticks(
     qpos_rad: np.ndarray,
     *,
@@ -91,12 +98,14 @@ def sim_rad_to_motor_ticks(
     ticks: dict[str, int] = {}
     for index, name in enumerate(BODY_MOTOR_NAMES):
         cal = calibration[name]
+        _validate_calibration_range(name, cal)
         mid = (cal.range_min + cal.range_max) / 2
         sign = -1 if cal.drive_mode else 1
         ticks[name] = round(sign * qpos[index] * TICKS_PER_RADIAN + mid)
 
     lower, upper = _validate_gripper_limits(gripper_limits_rad)
     cal = calibration[GRIPPER_NAME]
+    _validate_calibration_range(GRIPPER_NAME, cal)
     frac = (qpos[-1] - lower) / (upper - lower)
     if cal.drive_mode:
         frac = 1 - frac
@@ -114,12 +123,14 @@ def motor_ticks_to_sim_rad(
     qpos = np.zeros(len(MOTOR_NAMES), dtype=np.float64)
     for index, name in enumerate(BODY_MOTOR_NAMES):
         cal = calibration[name]
+        _validate_calibration_range(name, cal)
         mid = (cal.range_min + cal.range_max) / 2
         sign = -1 if cal.drive_mode else 1
         qpos[index] = sign * (int(ticks[name]) - mid) / TICKS_PER_RADIAN
 
     lower, upper = _validate_gripper_limits(gripper_limits_rad)
     cal = calibration[GRIPPER_NAME]
+    _validate_calibration_range(GRIPPER_NAME, cal)
     frac = (int(ticks[GRIPPER_NAME]) - cal.range_min) / (cal.range_max - cal.range_min)
     if cal.drive_mode:
         frac = 1 - frac

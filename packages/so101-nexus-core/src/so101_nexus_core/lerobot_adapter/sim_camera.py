@@ -16,10 +16,12 @@ class SimCamera(Camera):
         self.config = config
         self._env: object | None = None
         self._connected = False
+        self._was_bound = False
 
     def bind_env(self, env: object) -> None:
         """Bind the simulator env that will produce this camera's frames."""
         self._env = env
+        self._was_bound = True
 
     @property
     def is_connected(self) -> bool:
@@ -42,7 +44,9 @@ class SimCamera(Camera):
     def read(self) -> np.ndarray:
         """Read one RGB frame from the simulator."""
         if not self.is_connected:
-            raise RuntimeError("SimCamera.bind_env(env) must be called before connect()")
+            if not self._was_bound:
+                raise RuntimeError("SimCamera.bind_env(env) must be called before connect()")
+            raise RuntimeError("SimCamera is not connected. Run `.connect()` first.")
         frame = self._read_frame()
         return self._validate_shape(self._to_uint8_hwc(frame))
 

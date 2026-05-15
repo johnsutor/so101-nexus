@@ -4048,7 +4048,7 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "imageio", extra = ["ffmpeg"] },
-    { name = "lerobot" },
+    { name = "lerobot", extra = ["feetech"] },
     { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4056,7 +4056,7 @@ dev = [
 test = [
     { name = "hypothesis" },
     { name = "imageio", extra = ["ffmpeg"] },
-    { name = "lerobot" },
+    { name = "lerobot", extra = ["feetech"] },
     { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4081,7 +4081,7 @@ provides-extras = ["viz", "teleop"]
 dev = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", specifier = ">=0.5.0,<0.6" },
+    { name = "lerobot", extras = ["feetech"], specifier = ">=0.5.0,<0.6" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
@@ -4089,7 +4089,7 @@ dev = [
 test = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", specifier = ">=0.5.0,<0.6" },
+    { name = "lerobot", extras = ["feetech"], specifier = ">=0.5.0,<0.6" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },

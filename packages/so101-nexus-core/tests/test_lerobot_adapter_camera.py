@@ -87,7 +87,7 @@ def test_sim_camera_disconnect_clears_env_reference() -> None:
     camera.disconnect()
 
     assert not camera.is_connected
-    with pytest.raises(RuntimeError, match="bind_env"):
+    with pytest.raises(RuntimeError, match="not connected"):
         camera.read()
 
 

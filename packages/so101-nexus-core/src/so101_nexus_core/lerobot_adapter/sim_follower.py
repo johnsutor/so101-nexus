@@ -95,8 +95,6 @@ class SimSOFollower(Robot):
     def connect(self, calibrate: bool = True) -> None:
         """Create the simulator env and bind configured simulator cameras."""
         if not self.is_calibrated:
-            if calibrate:
-                self.calibrate()
             raise RuntimeError(
                 f"Missing or invalid calibration file for {self}: {self.calibration_fpath}"
             )
@@ -213,7 +211,6 @@ class SimSOFollower(Robot):
         )
         return {f"{motor}.pos": value for motor, value in sent_values.items()}
 
-    @check_if_not_connected
     def disconnect(self) -> None:
         """Close the simulator env and disconnect simulator cameras."""
         env = self._env

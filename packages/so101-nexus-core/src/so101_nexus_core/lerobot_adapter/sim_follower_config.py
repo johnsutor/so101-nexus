@@ -10,7 +10,7 @@ from lerobot.robots.config import RobotConfig
 
 
 @RobotConfig.register_subclass("sim_so_follower")
-@dataclass
+@dataclass(kw_only=True)
 class SimSOFollowerConfig(RobotConfig):
     """Configuration for a simulated SO follower controlled through LeRobot."""
 

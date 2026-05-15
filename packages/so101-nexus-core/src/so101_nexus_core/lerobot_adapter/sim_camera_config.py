@@ -8,7 +8,7 @@ from lerobot.cameras import CameraConfig
 
 
 @CameraConfig.register_subclass("sim")
-@dataclass
+@dataclass(kw_only=True)
 class SimCameraConfig(CameraConfig):
     """Configuration for a camera rendered from the active simulator env."""
 

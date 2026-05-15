@@ -135,6 +135,36 @@ def test_gripper_conversion_uses_caller_provided_limits() -> None:
     assert roundtrip[-1] == pytest.approx(lower_upper[1])
 
 
+def test_body_conversion_rejects_equal_calibration_ranges() -> None:
+    from so101_nexus_core.lerobot_adapter.normalization import (
+        motor_ticks_to_sim_rad,
+        sim_rad_to_motor_ticks,
+    )
+
+    calibration = _calibration()
+    calibration["shoulder_pan"] = MotorCalibration(
+        id=1,
+        drive_mode=0,
+        homing_offset=0,
+        range_min=2000,
+        range_max=2000,
+    )
+    ticks = dict.fromkeys(SO101_JOINT_NAMES, 2000)
+
+    with pytest.raises(ValueError, match="shoulder_pan"):
+        sim_rad_to_motor_ticks(
+            np.zeros(6),
+            calibration=calibration,
+            gripper_limits_rad=(-0.2, 1.2),
+        )
+    with pytest.raises(ValueError, match="shoulder_pan"):
+        motor_ticks_to_sim_rad(
+            ticks,
+            calibration=calibration,
+            gripper_limits_rad=(-0.2, 1.2),
+        )
+
+
 class _FakeEnv:
     def __init__(self) -> None:
         self.unwrapped = self
