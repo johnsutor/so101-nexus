@@ -4066,7 +4066,7 @@ test = [
 requires-dist = [
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
     { name = "huggingface-hub" },
-    { name = "lerobot", extras = ["feetech"], marker = "extra == 'teleop'", specifier = ">=0.5.0" },
+    { name = "lerobot", extras = ["feetech"], marker = "extra == 'teleop'", specifier = ">=0.5.0,<0.6" },
     { name = "numpy" },
     { name = "opencv-python", marker = "extra == 'teleop'", specifier = ">=4.8.0" },
     { name = "pillow", marker = "extra == 'teleop'" },
@@ -4081,7 +4081,7 @@ provides-extras = ["viz", "teleop"]
 dev = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", specifier = ">=0.5.0" },
+    { name = "lerobot", specifier = ">=0.5.0,<0.6" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
@@ -4089,7 +4089,7 @@ dev = [
 test = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", specifier = ">=0.5.0" },
+    { name = "lerobot", specifier = ">=0.5.0,<0.6" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
