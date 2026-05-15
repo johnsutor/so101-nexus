@@ -7,7 +7,8 @@ runs LeRobot ChoiceRegistry decorators so ``--robot.type=sim_so_follower`` and
 
 from __future__ import annotations
 
+from so101_nexus_core.lerobot_adapter.sim_camera import SimCamera
 from so101_nexus_core.lerobot_adapter.sim_camera_config import SimCameraConfig
 from so101_nexus_core.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
 
-__all__ = ["SimCameraConfig", "SimSOFollowerConfig"]
+__all__ = ["SimCamera", "SimCameraConfig", "SimSOFollowerConfig"]
