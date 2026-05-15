@@ -68,6 +68,28 @@ uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
 
 Pass `--leader-port` to point at your serial device. See the [teleop guide](https://so101-nexus.com/docs/guides/teleop-dataset-recording) for hardware setup and the full session walkthrough.
 
+## LeRobot CLI Recording
+
+For LeRobot-compatible sim-real datasets, use upstream `lerobot-record` with the simulator follower adapter:
+
+```bash
+lerobot-record \
+  --robot.discover_packages_path=so101_nexus_core.lerobot_adapter \
+  --robot.type=sim_so_follower \
+  --robot.env_id=MuJoCoReach-v1 \
+  --robot.id=my_robot \
+  --robot.calibration_dir=~/.cache/huggingface/lerobot/calibration/robots/so_follower \
+  --robot.use_degrees=true \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM0 \
+  --teleop.id=my_leader \
+  --dataset.repo_id=user/my_sim_reach \
+  --dataset.num_episodes=10 \
+  --dataset.single_task="reach the target"
+```
+
+This path requires the `teleop` extra, targets LeRobot `>=0.5,<0.6`, and records the simulated follower state through LeRobot's standard robot/dataset APIs.
+
 ## Quick Start
 
 ```python

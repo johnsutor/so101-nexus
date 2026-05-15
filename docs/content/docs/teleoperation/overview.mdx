@@ -286,6 +286,17 @@ include:
 simulator's internal state vector, so the dataset stays compatible with
 sim-to-real transfer and vision-based policy training.
 
+For datasets that should match upstream LeRobot SO follower action/state
+semantics, prefer the `lerobot-record` path with
+`--robot.type=sim_so_follower`. That adapter records simulated follower
+qpos through LeRobot's robot API. This Gradio recorder remains available
+as a separate UI path and keeps its historical leader-derived
+`observation.state` behavior.
+
+TODO: decide whether to migrate the Gradio UI onto `SimSOFollower` plus
+upstream `record_loop` after the CLI adapter path is validated in regular
+use.
+
 ## Troubleshooting
 
 For Ubuntu viewer/runtime issues such as `libdecor-gtk` warnings, see
