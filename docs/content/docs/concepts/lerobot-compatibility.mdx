@@ -40,7 +40,25 @@ The default is `--robot.use_degrees=true`, matching LeRobot 0.5 SO follower and 
 --robot.use_degrees=false --teleop.use_degrees=false
 ```
 
-Use a real SO follower calibration when you want the same normalized action/state semantics as a physical follower. For simulator-only tests, create an explicit synthetic calibration file:
+Use a real SO follower calibration when you want the same normalized action/state semantics as a physical follower. Record that once with upstream LeRobot, then point `--robot.calibration_dir` at the directory containing the follower JSON:
+
+```bash
+lerobot-calibrate \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM1 \
+  --robot.id=my_robot
+```
+
+The physical leader has its own calibration path. If it is not calibrated yet, calibrate it separately before recording:
+
+```bash
+lerobot-calibrate \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM0 \
+  --teleop.id=my_leader
+```
+
+For simulator-only tests, create an explicit synthetic follower calibration file:
 
 ```python
 from pathlib import Path
