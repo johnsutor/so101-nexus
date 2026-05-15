@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
-gym = pytest.importorskip("gymnasium")
-pytest.importorskip("lerobot")
-
-from lerobot.teleoperators.config import TeleoperatorConfig
-from lerobot.teleoperators.teleoperator import Teleoperator
-
 from so101_nexus_core.config import SO101_JOINT_NAMES
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+gym = pytest.importorskip("gymnasium")
+teleoperator_config_module = pytest.importorskip("lerobot.teleoperators.config")
+teleoperator_module = pytest.importorskip("lerobot.teleoperators.teleoperator")
+TeleoperatorConfig = teleoperator_config_module.TeleoperatorConfig
+Teleoperator = teleoperator_module.Teleoperator
 
 
 class _RecordLoopEnv(gym.Env):

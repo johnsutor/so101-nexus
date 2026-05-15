@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import draccus
 import pytest
 
+from so101_nexus_core.config import SO101_JOINT_NAMES
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 pytest.importorskip("gymnasium")
-pytest.importorskip("lerobot")
+lerobot_motors = pytest.importorskip("lerobot.motors")
 pytest.importorskip("mujoco")
 pytest.importorskip("so101_nexus_mujoco")
-
-from lerobot.motors import MotorCalibration
-
-from so101_nexus_core.config import SO101_JOINT_NAMES
+MotorCalibration = lerobot_motors.MotorCalibration
 
 
 def _write_calibration(calibration_dir: Path, robot_id: str = "sim_test") -> None:

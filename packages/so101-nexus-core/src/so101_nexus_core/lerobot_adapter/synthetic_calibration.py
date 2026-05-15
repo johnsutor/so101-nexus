@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import draccus
 from lerobot.motors import MotorCalibration
@@ -16,6 +16,9 @@ from so101_nexus_core.lerobot_adapter.normalization import (
     MOTOR_RESOLUTION,
     TICKS_PER_RADIAN,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SYNTHETIC_MID_TICK = MOTOR_RESOLUTION // 2
 _SO101_MJCF = "so101_new_calib.xml"
@@ -55,7 +58,7 @@ def write_synthetic_calibration(calibration_dir: Path, robot_id: str) -> Path:
     calibration_dir.mkdir(parents=True, exist_ok=True)
     fpath = calibration_dir / f"{robot_id}.json"
     with open(fpath, "w") as f, draccus.config_type("json"):
-        draccus.dump(build_synthetic_calibration(), f, indent=4)
+        cast("Any", draccus.dump)(build_synthetic_calibration(), f, indent=4)
     return fpath
 
 

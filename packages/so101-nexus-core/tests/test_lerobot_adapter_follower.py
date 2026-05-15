@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
-gym = pytest.importorskip("gymnasium")
-pytest.importorskip("lerobot")
-
-from lerobot.motors import MotorCalibration
-
 from so101_nexus_core.config import SO101_JOINT_NAMES
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+gym = pytest.importorskip("gymnasium")
+lerobot_motors = pytest.importorskip("lerobot.motors")
+MotorCalibration = lerobot_motors.MotorCalibration
 
 
 def _calibration() -> dict[str, MotorCalibration]:

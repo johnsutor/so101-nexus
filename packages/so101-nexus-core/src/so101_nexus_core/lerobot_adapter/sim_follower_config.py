@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from lerobot.cameras import CameraConfig
+from lerobot.cameras import CameraConfig  # noqa: TC002
 from lerobot.robots.config import RobotConfig
 
 

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import FeetechMotorsBus
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 MOTOR_NAMES = SO101_JOINT_NAMES
 BODY_MOTOR_NAMES = SO101_JOINT_NAMES[:-1]
@@ -91,14 +93,14 @@ def sim_rad_to_motor_ticks(
         cal = calibration[name]
         mid = (cal.range_min + cal.range_max) / 2
         sign = -1 if cal.drive_mode else 1
-        ticks[name] = int(round(sign * qpos[index] * TICKS_PER_RADIAN + mid))
+        ticks[name] = round(sign * qpos[index] * TICKS_PER_RADIAN + mid)
 
     lower, upper = _validate_gripper_limits(gripper_limits_rad)
     cal = calibration[GRIPPER_NAME]
     frac = (qpos[-1] - lower) / (upper - lower)
     if cal.drive_mode:
         frac = 1 - frac
-    ticks[GRIPPER_NAME] = int(round(cal.range_min + frac * (cal.range_max - cal.range_min)))
+    ticks[GRIPPER_NAME] = round(cal.range_min + frac * (cal.range_max - cal.range_min))
     return ticks
 
 
@@ -143,13 +145,15 @@ def _as_qpos_vector(value: Any) -> np.ndarray:
 def read_sim_qpos(env: object) -> np.ndarray:
     """Read current simulator joint positions in SO101 joint order."""
     unwrapped = _unwrap_env(env)
-    if hasattr(unwrapped, "_get_current_qpos"):
-        return _as_qpos_vector(unwrapped._get_current_qpos())
+    get_current_qpos = getattr(unwrapped, "_get_current_qpos", None)
+    if callable(get_current_qpos):
+        return _as_qpos_vector(get_current_qpos())
 
     agent = getattr(unwrapped, "agent", None)
     robot = getattr(agent, "robot", None)
-    if robot is not None and hasattr(robot, "get_qpos"):
-        return _as_qpos_vector(robot.get_qpos())
+    get_qpos = getattr(robot, "get_qpos", None)
+    if callable(get_qpos):
+        return _as_qpos_vector(get_qpos())
 
     raise TypeError(
         "Simulator env must expose _get_current_qpos() or agent.robot.get_qpos()."

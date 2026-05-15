@@ -1,6 +1,6 @@
 """LeRobot camera adapter for simulator-rendered frames."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from lerobot.cameras import Camera
@@ -23,13 +23,16 @@ class SimCamera(Camera):
 
     @property
     def is_connected(self) -> bool:
+        """Return whether the camera is bound to an active simulator env."""
         return self._connected and self._env is not None
 
     @staticmethod
     def find_cameras() -> list[dict[str, Any]]:
+        """Return no hardware cameras because simulator cameras are configured by source."""
         return []
 
     def connect(self, warmup: bool = True) -> None:
+        """Mark the camera connected after the simulator env has been bound."""
         if self._env is None:
             raise RuntimeError("SimCamera.bind_env(env) must be called before connect()")
         self._connected = True
@@ -37,41 +40,48 @@ class SimCamera(Camera):
             self.read()
 
     def read(self) -> np.ndarray:
+        """Read one RGB frame from the simulator."""
         if not self.is_connected:
             raise RuntimeError("SimCamera.bind_env(env) must be called before connect()")
         frame = self._read_frame()
         return self._validate_shape(self._to_uint8_hwc(frame))
 
     def async_read(self, timeout_ms: float = 200) -> np.ndarray:
+        """Read one frame synchronously for LeRobot's async camera API."""
         return self.read()
 
     def read_latest(self, max_age_ms: int = 500) -> np.ndarray:
+        """Return the latest simulator frame."""
         return self.read()
 
     def disconnect(self) -> None:
+        """Disconnect from the currently bound simulator env."""
         self._connected = False
         self._env = None
 
     def _read_frame(self) -> Any:
         assert self._env is not None
         env = getattr(self._env, "unwrapped", self._env)
-        if hasattr(env, "_get_obs"):
-            obs = env._get_obs()
+        get_obs = getattr(env, "_get_obs", None)
+        if callable(get_obs):
+            obs = get_obs()
             frame = self._extract_from_obs(obs)
             if frame is None:
                 raise KeyError(f"Camera source {self.config.source!r} not found in simulator obs")
             return frame
-        if hasattr(env, "render"):
-            return env.render()
+        render = getattr(env, "render", None)
+        if callable(render):
+            return render()
         raise TypeError("Simulator env must expose _get_obs() or render().")
 
     def _extract_from_obs(self, obs: object) -> Any | None:
         if not isinstance(obs, dict):
             return None
-        if self.config.source in obs:
-            return obs[self.config.source]
+        obs_dict = cast("dict[str, Any]", obs)
+        if self.config.source in obs_dict:
+            return obs_dict[self.config.source]
 
-        sensor_data = obs.get("sensor_data")
+        sensor_data = obs_dict.get("sensor_data")
         if isinstance(sensor_data, dict):
             camera_data = sensor_data.get(self.config.source)
             if isinstance(camera_data, dict):

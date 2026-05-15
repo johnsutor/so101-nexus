@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-pytest.importorskip("lerobot")
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.lerobot_adapter.normalization import TICKS_PER_RADIAN
+
+pytest.importorskip("lerobot")
 
 
 _NEW_CALIB_CTRL_RANGES_RAD = {

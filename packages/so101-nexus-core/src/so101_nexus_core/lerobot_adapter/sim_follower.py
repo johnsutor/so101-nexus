@@ -5,17 +5,14 @@ from __future__ import annotations
 import logging
 import time
 from functools import cached_property
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
-import numpy as np
-from lerobot.processor import RobotAction, RobotObservation
 from lerobot.robots.robot import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
 from so101_nexus_core.lerobot_adapter.normalization import (
-    MOTOR_NAMES,
     GripperLimitsRad,
     action_for_env,
     build_so101_motors,
@@ -30,6 +27,9 @@ from so101_nexus_core.lerobot_adapter.sim_camera import SimCamera
 from so101_nexus_core.lerobot_adapter.sim_camera_config import SimCameraConfig
 from so101_nexus_core.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
 from so101_nexus_core.teleop.leader import import_backend_for_env_id
+
+if TYPE_CHECKING:
+    from lerobot.processor import RobotAction, RobotObservation
 
 logger = logging.getLogger(__name__)
 
@@ -69,24 +69,31 @@ class SimSOFollower(Robot):
 
     @cached_property
     def observation_features(self) -> dict[str, type | tuple[int | None, int | None, int]]:
+        """Return LeRobot dataset features produced by simulator observations."""
         return {**self._motors_ft, **self._cameras_ft}
 
     @cached_property
     def action_features(self) -> dict[str, type]:
+        """Return LeRobot action features accepted by the simulator follower."""
         return self._motors_ft
 
     @property
     def is_connected(self) -> bool:
-        return self._env is not None and all(camera.is_connected for camera in self.cameras.values())
+        """Return whether the simulator env and all configured cameras are connected."""
+        return self._env is not None and all(
+            camera.is_connected for camera in self.cameras.values()
+        )
 
     @property
     def is_calibrated(self) -> bool:
+        """Return whether all expected SO101 motor calibrations are loaded."""
         return set(self.calibration) == set(self.motors) and all(
             self.calibration[name].id == self.motors[name].id for name in self.motors
         )
 
     @check_if_already_connected
     def connect(self, calibrate: bool = True) -> None:
+        """Create the simulator env and bind configured simulator cameras."""
         if not self.is_calibrated:
             if calibrate:
                 self.calibrate()
@@ -117,6 +124,7 @@ class SimSOFollower(Robot):
             raise
 
     def calibrate(self) -> None:
+        """Raise because simulator followers require an explicit calibration file."""
         raise RuntimeError(
             "SimSOFollower uses an existing LeRobot SO101 calibration file. "
             f"Create or copy one to {self.calibration_fpath} before connecting."
@@ -126,10 +134,11 @@ class SimSOFollower(Robot):
         """No-op hook for LeRobot's robot interface."""
 
     def setup_motors(self) -> None:
-        """Simulator adapter has no physical motors to configure."""
+        """Skip physical motor setup for the simulator adapter."""
 
     @check_if_not_connected
     def get_observation(self) -> RobotObservation:
+        """Read simulator qpos and camera frames in LeRobot observation format."""
         assert self._env is not None
         gripper_limits_rad = self._require_gripper_limits()
 
@@ -160,6 +169,7 @@ class SimSOFollower(Robot):
 
     @check_if_not_connected
     def send_action(self, action: RobotAction) -> RobotAction:
+        """Send a normalized LeRobot joint target to the simulator."""
         assert self._env is not None
         gripper_limits_rad = self._require_gripper_limits()
 
@@ -205,6 +215,7 @@ class SimSOFollower(Robot):
 
     @check_if_not_connected
     def disconnect(self) -> None:
+        """Close the simulator env and disconnect simulator cameras."""
         env = self._env
         for camera in self.cameras.values():
             camera.disconnect()
