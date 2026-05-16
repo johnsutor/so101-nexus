@@ -58,6 +58,49 @@ def test_default_wrist_roll_offset_is_negative_90():
     assert DEFAULT_WRIST_ROLL_OFFSET_DEG == -90.0
 
 
+def test_apply_wrist_roll_offset_deg_shifts_wrist_roll_only() -> None:
+    from so101_nexus_core.teleop.leader import apply_wrist_roll_offset_deg
+
+    action = {
+        "shoulder_pan.pos": 10.0,
+        "shoulder_lift.pos": 20.0,
+        "elbow_flex.pos": 30.0,
+        "wrist_flex.pos": 40.0,
+        "wrist_roll.pos": 50.0,
+        "gripper.pos": 60.0,
+    }
+    result = apply_wrist_roll_offset_deg(action, offset_deg=-90.0)
+
+    assert result["wrist_roll.pos"] == pytest.approx(-40.0)
+    for key in (
+        "shoulder_pan.pos",
+        "shoulder_lift.pos",
+        "elbow_flex.pos",
+        "wrist_flex.pos",
+        "gripper.pos",
+    ):
+        assert result[key] == action[key]
+    assert result is not action
+
+
+def test_apply_wrist_roll_offset_deg_zero_offset_is_noop_copy() -> None:
+    from so101_nexus_core.teleop.leader import apply_wrist_roll_offset_deg
+
+    action = {"wrist_roll.pos": 5.0, "gripper.pos": 12.0}
+    result = apply_wrist_roll_offset_deg(action, offset_deg=0.0)
+
+    assert result == action
+    assert result is not action
+
+
+def test_apply_wrist_roll_offset_deg_ignores_missing_wrist_roll() -> None:
+    from so101_nexus_core.teleop.leader import apply_wrist_roll_offset_deg
+
+    action = {"gripper.pos": 12.0}
+
+    assert apply_wrist_roll_offset_deg(action, offset_deg=-90.0) == action
+
+
 def test_robot_joint_names_both_known():
     assert "so100" in ROBOT_JOINT_NAMES
     assert "so101" in ROBOT_JOINT_NAMES

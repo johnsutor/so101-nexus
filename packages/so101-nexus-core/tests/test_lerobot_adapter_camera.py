@@ -18,9 +18,7 @@ class _FakeEnv:
     def _get_obs(self) -> dict[str, Any]:
         return {
             "wrist_camera": np.full((6, 8, 3), 127, dtype=np.uint8),
-            "sensor_data": {
-                "overhead_camera": {"rgb": np.full((1, 5, 7, 3), 64, dtype=np.uint8)}
-            },
+            "sensor_data": {"overhead_camera": {"rgb": np.full((1, 5, 7, 3), 64, dtype=np.uint8)}},
         }
 
     def render(self) -> np.ndarray:

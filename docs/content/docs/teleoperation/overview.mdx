@@ -109,13 +109,14 @@ fields are persisted:
 
 - `observation.state` always saved (disabled checkbox)
 - `action` always saved (disabled checkbox)
-- `observation.images.wrist_cam` optional, on by default
-- `observation.images.overhead_cam` optional, on by default
-- `task` optional, on by default
+- `task` always saved by LeRobot v3 metadata
+- `observation.images.wrist` optional, on by default
+- `observation.images.overhead` optional, on by default
 
 Deselecting an optional field removes it from both the declared dataset
-feature schema and every recorded frame. `observation.state` and `action`
-stay forced on because a LeRobot dataset without them is not trainable.
+feature schema and every recorded frame. `observation.state`, `action`, and
+`task` stay forced on because LeRobot datasets require them for policy
+training and task indexing.
 
 ### Camera resolution
 
@@ -250,10 +251,10 @@ uv run so101-nexus-mujoco teleop \
 ```
 
 Custom environments should accept SO-100/SO-101 six-joint actions in the
-standard joint order, support `reset(options={"init_qpos": ...})`, and
-return camera observations compatible with the selected recording fields.
-If the unwrapped environment exposes `task_description`, teleop records it
-as the optional `task` field.
+standard joint order, expose current qpos through `_get_current_qpos()` or
+`agent.robot.get_qpos()`, and return camera observations compatible with the
+selected recording fields. If the unwrapped environment exposes
+`task_description`, teleop records it as the required LeRobot `task` field.
 
 ## Session flow
 
@@ -273,29 +274,24 @@ as the optional `task` field.
 
 ## Recorded dataset format
 
-Datasets use the LeRobot v3 format. Depending on your selection, frames
-include:
+Datasets use the LeRobot v3 SO follower schema. Depending on your selection,
+frames include:
 
-- `observation.state`: joint positions (6D), always present
-- `action`: commanded joint positions or deltas, always present
-- `observation.images.wrist_cam`: wrist camera frames, optional
-- `observation.images.overhead_cam`: overhead camera frames, optional
-- `task`: language description, optional
+- `observation.state`: follower readback (6D), always present
+- `action`: commanded absolute joint positions (6D) by default, always present
+- `observation.images.wrist`: wrist camera frames, optional
+- `observation.images.overhead`: overhead camera frames, optional
+- `task`: language description, always present
 
-`observation.state` is the raw joint reading from the leader arm, not the
-simulator's internal state vector, so the dataset stays compatible with
-sim-to-real transfer and vision-based policy training.
+Body joints are stored in LeRobot degree units and the gripper is stored in
+`RANGE_0_100` percent, matching `sim_so_follower` and SO100/SO101 MolmoAct2
+normalization. `observation.state` comes from simulated follower readback, not
+the leader echo.
 
-For datasets that should match upstream LeRobot SO follower action/state
-semantics, prefer the `lerobot-record` path with
-`--robot.type=sim_so_follower`. That adapter records simulated follower
-qpos through LeRobot's robot API. This Gradio recorder remains available
-as a separate UI path and keeps its historical leader-derived
-`observation.state` behavior.
-
-TODO: decide whether to migrate the Gradio UI onto `SimSOFollower` plus
-upstream `record_loop` after the CLI adapter path is validated in regular
-use.
+On first recording, the app creates a simulator-only calibration file at
+`$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json` (or the
+LeRobot default calibration root when `HF_LEROBOT_CALIBRATION` is unset). No
+physical follower calibration is required for simulator teleop.
 
 ## Troubleshooting
 

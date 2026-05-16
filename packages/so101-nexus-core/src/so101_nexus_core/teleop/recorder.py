@@ -7,6 +7,7 @@ on a base install without the ``teleop`` extra.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import threading
 import time
@@ -17,8 +18,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 import numpy as np
 
 if TYPE_CHECKING:
-    from lerobot.processor import DataProcessorPipeline
-
     from so101_nexus_core.teleop.config_customization import ConfigFactory, TeleopConfigOverrides
     from so101_nexus_core.teleop.leader import LeaderProtocol
 
@@ -152,8 +151,12 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
     overhead_image = None
     if isinstance(obs, Mapping):
         camera_obs = cast("Mapping[str, np.ndarray]", obs)
-        wrist_image = camera_obs.get("wrist_camera")
-        overhead_image = camera_obs.get("overhead_camera")
+        wrist_image = camera_obs.get("wrist")
+        if wrist_image is None:
+            wrist_image = camera_obs.get("wrist_camera")
+        overhead_image = camera_obs.get("overhead")
+        if overhead_image is None:
+            overhead_image = camera_obs.get("overhead_camera")
         if wrist_image is None:
             wrist_image = _extract_maniskill_camera_rgb(camera_obs, "wrist_camera")
         if overhead_image is None:
@@ -207,30 +210,18 @@ def recording_thread(
     wrist_roll_offset_deg: float,
     wrist_wh: tuple[int, int],
     overhead_wh: tuple[int, int],
-    action_pipeline: DataProcessorPipeline | None = None,
+    follower_calibration_dir,
+    follower_robot_id: str,
     customization_overrides: TeleopConfigOverrides | None = None,
     env_config_profile: str | None = None,
     env_config_factory: ConfigFactory | None = None,
 ) -> None:
-    """Run a countdown, then record at *fps* until stopped or max_steps reached.
-
-    Parameters
-    ----------
-    action_pipeline
-        Optional ``DataProcessorPipeline`` consuming a ``{"action": leader_dict}``
-        transition and returning a ``np.ndarray`` of joint targets in radians.
-        When ``None``, the default pipeline (deg-to-rad + wrist-roll offset) is
-        constructed via
-        :func:`so101_nexus_core.processors.pipelines.make_default_leader_action_pipeline`.
-    """
-    import gymnasium as gym
-
-    from so101_nexus_core.processors.pipelines import make_default_leader_action_pipeline
-    from so101_nexus_core.teleop.session import _recording_env_kwargs
-
-    pipeline = action_pipeline or make_default_leader_action_pipeline(
-        joint_names=joint_names,
-        wrist_roll_offset_deg=wrist_roll_offset_deg,
+    """Run a countdown, then record by driving a ``SimSOFollower``."""
+    from so101_nexus_core.lerobot_adapter.sim_follower import SimSOFollower
+    from so101_nexus_core.teleop.leader import apply_wrist_roll_offset_deg
+    from so101_nexus_core.teleop.session import (
+        build_sim_follower_config,
+        prepare_follower_calibration,
     )
 
     for i in range(countdown, 0, -1):
@@ -238,24 +229,30 @@ def recording_thread(
         time.sleep(1.0)
     state.countdown_value = 0
 
-    env = gym.make(
-        env_id,
-        render_mode="rgb_array",
-        **_recording_env_kwargs(
-            env_id,
-            wrist_wh,
-            overhead_wh,
+    follower = None
+    state.error = None
+    try:
+        prepare_follower_calibration(
+            calibration_dir=follower_calibration_dir,
+            robot_id=follower_robot_id,
+        )
+        follower_config = build_sim_follower_config(
+            env_id=env_id,
+            robot_id=follower_robot_id,
+            wrist_wh=wrist_wh,
+            overhead_wh=overhead_wh,
+            fps=fps,
+            calibration_dir=follower_calibration_dir,
             overrides=customization_overrides,
             profile_path=env_config_profile,
             factory=env_config_factory,
-        ),
-    )
-    state.error = None
-    try:
-        leader_action = leader.get_action()
-        init_qpos = pipeline({"action": leader_action})
-        obs, _ = env.reset(options={"init_qpos": init_qpos})
+        )
+        follower = SimSOFollower(follower_config)
+        follower.connect()
+
         state.clear_episode()
+        env = follower._env
+        assert env is not None
         state.task_description = getattr(env.unwrapped, "task_description", "")
         state.is_recording = True
 
@@ -268,17 +265,13 @@ def recording_thread(
                 break
 
             leader_action = leader.get_action()
-            action = pipeline({"action": leader_action})
-            obs, _, terminated, truncated, _ = env.step(action)
+            action_dict = apply_wrist_roll_offset_deg(leader_action, wrist_roll_offset_deg)
+            sent_action = follower.send_action(action_dict)
+            obs = follower.get_observation()
 
-            # The leader arm action IS the observation.state for the dataset:
-            # it matches what real robot joint encoders would report.
-            state.episode_actions.append(action.astype(np.float32))
-            state.episode_states.append(action.astype(np.float32))
+            state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
+            state.episode_states.append(_dict_to_vector(obs, joint_names))
             _publish_camera_frames(state, obs)
-
-            if terminated or truncated:
-                break
 
             sleep_time = frame_duration - (time.monotonic() - step_start)
             if sleep_time > 0:
@@ -288,7 +281,20 @@ def recording_thread(
     except Exception as exc:
         state.error = f"{type(exc).__name__}: {exc}"
     finally:
-        env.close()
+        if follower is not None:
+            with contextlib.suppress(Exception):
+                follower.disconnect()
         state.is_recording = False
         state.should_stop = False
         state.recording_finished = True
+
+
+def _dict_to_vector(
+    motor_dict: Mapping[str, object],
+    joint_names: tuple[str, ...],
+) -> np.ndarray:
+    """Extract ``<joint>.pos`` values in canonical joint order as float32."""
+    return np.array(
+        [float(cast("float", motor_dict[f"{name}.pos"])) for name in joint_names],
+        dtype=np.float32,
+    )

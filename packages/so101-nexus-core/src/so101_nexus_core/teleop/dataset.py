@@ -1,8 +1,8 @@
 """Dataset field selection, feature schema, and per-frame builders.
 
 The selection surfaces in the Gradio UI as checkboxes. ``observation.state``
-and ``action`` are always written; they are not user-toggleable. Everything
-else can be opted out of, in which case it is excluded from both the declared
+and ``action`` are always written; they are not user-toggleable. Camera fields
+can be opted out of, in which case they are excluded from both the declared
 LeRobot feature schema and every recorded frame.
 """
 
@@ -13,8 +13,8 @@ from typing import Any
 
 import numpy as np
 
-WRIST_KEY = "observation.images.wrist_cam"
-OVERHEAD_KEY = "observation.images.overhead_cam"
+WRIST_KEY = "observation.images.wrist"
+OVERHEAD_KEY = "observation.images.overhead"
 
 
 @dataclass(frozen=True)
@@ -36,11 +36,27 @@ class FieldSelection:
         return True
 
 
+def _with_selected_cameras(
+    selection: FieldSelection,
+    follower_features: dict[str, Any],
+) -> dict[str, Any]:
+    """Return follower observation features with deselected cameras removed."""
+    features = {key: value for key, value in follower_features.items() if value is float}
+    if selection.wrist_image:
+        if "wrist" not in follower_features:
+            raise ValueError("wrist image selected but follower exposes no 'wrist' camera.")
+        features["wrist"] = follower_features["wrist"]
+    if selection.overhead_image:
+        if "overhead" not in follower_features:
+            raise ValueError("overhead image selected but follower exposes no 'overhead' camera.")
+        features["overhead"] = follower_features["overhead"]
+    return features
+
+
 def build_features(
     selection: FieldSelection,
-    joint_names: tuple[str, ...],
-    wrist_wh: tuple[int, int],
-    overhead_wh: tuple[int, int],
+    follower_features: dict[str, Any],
+    action_features: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     """Return the LeRobot feature dict for the selected fields.
 
@@ -48,40 +64,22 @@ def build_features(
     ----------
     selection
         Which fields the user chose to persist.
-    joint_names
-        Names of the robot joints, used for state/action axis labels.
-    wrist_wh
-        ``(width, height)`` of the wrist camera image, in pixels.
-    overhead_wh
-        ``(width, height)`` of the overhead camera image, in pixels.
+    follower_features
+        ``SimSOFollower.observation_features``-shaped dict.
+    action_features
+        ``SimSOFollower.action_features``-shaped dict.
     """
-    axes = list(joint_names)
-    features: dict[str, dict[str, Any]] = {
-        "observation.state": {
-            "dtype": "float32",
-            "shape": (len(axes),),
-            "names": {"axes": axes},
-        },
-        "action": {
-            "dtype": "float32",
-            "shape": (len(axes),),
-            "names": {"axes": axes},
-        },
-    }
-    if selection.wrist_image:
-        w, h = wrist_wh
-        features[WRIST_KEY] = {
-            "dtype": "video",
-            "shape": (h, w, 3),
-            "names": {"axes": ["height", "width", "channels"]},
-        }
-    if selection.overhead_image:
-        w, h = overhead_wh
-        features[OVERHEAD_KEY] = {
-            "dtype": "video",
-            "shape": (h, w, 3),
-            "names": {"axes": ["height", "width", "channels"]},
-        }
+    from lerobot.datasets.utils import hw_to_dataset_features
+
+    features: dict[str, dict[str, Any]] = {}
+    features.update(hw_to_dataset_features(action_features, "action", use_video=True))
+    features.update(
+        hw_to_dataset_features(
+            _with_selected_cameras(selection, follower_features),
+            "observation",
+            use_video=True,
+        )
+    )
     return features
 
 
@@ -99,20 +97,21 @@ def build_frame(
         "observation.state": state.astype(np.float32),
         "action": action.astype(np.float32),
     }
-    if selection.task:
-        frame["task"] = task
+    # LeRobot v3 stores task text outside the regular feature schema, but
+    # `LeRobotDataset.add_frame` requires it on every frame.
+    frame["task"] = task
     if selection.wrist_image:
         if wrist_image is None:
             raise ValueError(
-                "wrist_image selected but no wrist frame was recorded;"
-                "check that the env exposes a WristCamera observation."
+                "wrist_image selected but no wrist frame was recorded; "
+                "check that the env exposes a wrist camera."
             )
         frame[WRIST_KEY] = wrist_image
     if selection.overhead_image:
         if overhead_image is None:
             raise ValueError(
-                "overhead_image selected but no overhead frame was recorded;"
-                "check that the env exposes an OverheadCamera observation."
+                "overhead_image selected but no overhead frame was recorded; "
+                "check that the env exposes an overhead camera."
             )
         frame[OVERHEAD_KEY] = overhead_image
     return frame

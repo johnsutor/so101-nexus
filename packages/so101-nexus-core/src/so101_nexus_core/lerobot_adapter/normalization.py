@@ -166,9 +166,7 @@ def read_sim_qpos(env: object) -> np.ndarray:
     if callable(get_qpos):
         return _as_qpos_vector(get_qpos())
 
-    raise TypeError(
-        "Simulator env must expose _get_current_qpos() or agent.robot.get_qpos()."
-    )
+    raise TypeError("Simulator env must expose _get_current_qpos() or agent.robot.get_qpos().")
 
 
 def _control_bounds(env: object) -> tuple[np.ndarray, np.ndarray] | None:

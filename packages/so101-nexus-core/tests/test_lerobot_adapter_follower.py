@@ -201,9 +201,7 @@ def test_connect_preserves_env_creation_error(tmp_path: Path, failing_env_id: st
 def test_connect_builds_env_and_binds_cameras(tmp_path: Path, fake_env_id: str) -> None:
     from so101_nexus_core.lerobot_adapter import SimSOFollower
 
-    robot = SimSOFollower(
-        _make_config(tmp_path, fake_env_id, env_kwargs={"custom_option": "kept"})
-    )
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, env_kwargs={"custom_option": "kept"}))
     try:
         robot.connect()
 
@@ -216,9 +214,7 @@ def test_connect_builds_env_and_binds_cameras(tmp_path: Path, fake_env_id: str) 
         robot.disconnect()
 
 
-def test_get_observation_reads_normalized_qpos_and_camera(
-    tmp_path: Path, fake_env_id: str
-) -> None:
+def test_get_observation_reads_normalized_qpos_and_camera(tmp_path: Path, fake_env_id: str) -> None:
     from so101_nexus_core.lerobot_adapter import SimSOFollower
 
     robot = SimSOFollower(_make_config(tmp_path, fake_env_id))
@@ -235,9 +231,7 @@ def test_get_observation_reads_normalized_qpos_and_camera(
         robot.disconnect()
 
 
-def test_send_action_steps_env_with_unnormalized_sim_qpos(
-    tmp_path: Path, fake_env_id: str
-) -> None:
+def test_send_action_steps_env_with_unnormalized_sim_qpos(tmp_path: Path, fake_env_id: str) -> None:
     from so101_nexus_core.lerobot_adapter import SimSOFollower
 
     robot = SimSOFollower(_make_config(tmp_path, fake_env_id))

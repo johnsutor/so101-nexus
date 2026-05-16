@@ -46,6 +46,14 @@ class LeaderPortDiagnostic:
     recovery_hint: str = ""
 
 
+def apply_wrist_roll_offset_deg(action: dict[str, float], offset_deg: float) -> dict[str, float]:
+    """Return a copy of *action* with ``wrist_roll.pos`` shifted by *offset_deg*."""
+    result = dict(action)
+    if "wrist_roll.pos" in result:
+        result["wrist_roll.pos"] = float(result["wrist_roll.pos"]) + offset_deg
+    return result
+
+
 def _permission_recovery_hint(port: str) -> str:
     return (
         "The device exists but the current user cannot open it.\n"

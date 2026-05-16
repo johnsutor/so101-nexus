@@ -21,6 +21,7 @@ from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.teleop.app import (
     _build_field_selection,
     _build_record_step,
+    _build_setup_screen,
     _cb_approve_episode,
     _cb_discard_episode,
     _cb_poll_init,
@@ -87,6 +88,163 @@ def test_build_field_selection_only_wrist() -> None:
     assert selection.wrist_image is True
     assert selection.overhead_image is False
     assert selection.task is False
+
+
+def test_default_follower_calibration_dir_uses_env_override(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HF_LEROBOT_CALIBRATION", str(tmp_path))
+
+    assert teleop_app._default_follower_calibration_dir() == (
+        tmp_path / "robots" / "sim_so_follower"
+    )
+
+
+def test_run_init_worker_creates_canonical_lerobot_features(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    class _Leader:
+        def disconnect(self) -> None:
+            pass
+
+    class _Dataset:
+        pass
+
+    def _fake_create_dataset(repo_id, fps, robot_type, features, leader):
+        seen.update(
+            repo_id=repo_id,
+            fps=fps,
+            robot_type=robot_type,
+            features=features,
+            leader=leader,
+        )
+        return _Dataset()
+
+    monkeypatch.setattr(teleop_app, "import_backend_for_env_id", lambda _env_id: None)
+    monkeypatch.setattr(teleop_app, "_connect_leader", lambda *_args: _Leader())
+    monkeypatch.setattr(teleop_app, "_create_dataset", _fake_create_dataset)
+
+    session: dict = {}
+    init_state: dict = {}
+
+    teleop_app._run_init_worker(
+        session,
+        init_state,
+        "/dev/ttyACM0",
+        "MuJoCoReach-v1",
+        "so101",
+        "leader",
+        30,
+        (320, 240),
+        (640, 360),
+        "local/test",
+        1,
+        "joint_pos",
+        10,
+        0,
+        -90.0,
+        teleop_app.FieldSelection(),
+        None,
+    )
+
+    features = seen["features"]
+    assert set(features) >= {
+        "action",
+        "observation.state",
+        WRIST_KEY,
+        OVERHEAD_KEY,
+    }
+    assert features["action"]["names"][0] == "shoulder_pan.pos"
+    assert features[WRIST_KEY]["shape"] == (240, 320, 3)
+    assert session["dataset"].__class__ is _Dataset
+    assert init_state["done"] is True
+    assert init_state.get("error") is None
+
+
+def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fake_gradio) -> None:
+    captured: dict[str, object] = {}
+
+    class _Thread:
+        def __init__(self, *, target, args=(), kwargs=None, daemon=False):
+            captured.update(target=target, args=args, kwargs=kwargs or {}, daemon=daemon)
+
+        def start(self) -> None:
+            captured["started"] = True
+
+    monkeypatch.setattr(teleop_app.threading, "Thread", _Thread)
+    monkeypatch.setattr(teleop_app, "_default_follower_calibration_dir", lambda: tmp_path)
+
+    state = RecordingState(num_episodes=1)
+    session = {
+        "state": state,
+        "env_id": "MuJoCoReach-v1",
+        "leader": object(),
+        "joint_names": ("a", "b"),
+        "fps": 30,
+        "max_steps": 5,
+        "countdown": 0,
+        "wrist_roll_offset_deg": -90.0,
+        "wrist_wh": (320, 240),
+        "overhead_wh": (640, 360),
+    }
+
+    teleop_app._cb_start_recording(session)
+
+    assert captured["started"] is True
+    assert captured["args"] == ()
+    kwargs = captured["kwargs"]
+    assert kwargs["follower_calibration_dir"] == tmp_path
+    assert kwargs["follower_robot_id"] == "teleop_sim"
+    assert "action_pipeline" not in kwargs
+
+
+def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
+    class _FakeComponent:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.value = kwargs.get("value")
+            self.label = kwargs.get("label")
+
+    class _Context:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc_info):
+            return False
+
+    radios: list[_FakeComponent] = []
+
+    def _radio(*args, **kwargs):
+        component = _FakeComponent(*args, **kwargs)
+        radios.append(component)
+        return component
+
+    fake_gr = types.SimpleNamespace(
+        Markdown=_FakeComponent,
+        Dropdown=_FakeComponent,
+        Radio=_radio,
+        Row=_Context,
+        Number=_FakeComponent,
+        Slider=_FakeComponent,
+        Textbox=_FakeComponent,
+        CheckboxGroup=_FakeComponent,
+        Checkbox=_FakeComponent,
+        Accordion=_Context,
+        Group=_Context,
+        Button=_FakeComponent,
+    )
+    monkeypatch.setattr(
+        teleop_app,
+        "_customization_ui_state_for_env",
+        lambda _env_id: teleop_app.CustomizationUIState(),
+    )
+
+    _build_setup_screen(fake_gr, ["MuJoCoReach-v1"], "leader", -90.0)
+
+    action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
+    assert action_space_radio.value == "joint_pos"
 
 
 def test_default_env_id_prefers_matching_robot_variant() -> None:
