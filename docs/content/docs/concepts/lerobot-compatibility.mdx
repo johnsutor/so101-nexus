@@ -10,7 +10,68 @@ SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosyst
 - **Processor pipelines.** Teleop conversions and optional env-observation transforms are implemented as `lerobot.processor.DataProcessorPipeline` instances composed of steps that subclass `ActionProcessorStep`, `ObservationProcessorStep`, and friends. Every custom step is registered with `ProcessorStepRegistry`, which means pipelines are serializable via `save_pretrained` and shareable on the Hugging Face Hub.
 - **Observation conventions.** When you opt into the wrapper, observations follow LeRobot's canonical keys: `observation.state` for the proprioceptive state vector and `observation.images.<name>` for camera frames in CHW float32 form.
 - **Hardware drivers.** SO leader and follower configs come straight from `lerobot.teleoperators.so_leader` and `lerobot.robots.so_follower`. We do not wrap or re-export them.
-- **Datasets.** Recordings use `LeRobotDataset` directly.
+- **Datasets.** Recordings use `LeRobotDataset` directly. For LeRobot CLI recording, SO101-Nexus exposes a `sim_so_follower` robot adapter rather than a separate recorder loop.
+
+## Recording with `lerobot-record`
+
+Install SO101-Nexus with the `teleop` extra so `lerobot[feetech]` is available, then load the adapter explicitly with LeRobot's plugin import hook:
+
+```bash
+lerobot-record \
+  --robot.discover_packages_path=so101_nexus_core.lerobot_adapter \
+  --robot.type=sim_so_follower \
+  --robot.env_id=MuJoCoReach-v1 \
+  --robot.id=my_robot \
+  --robot.calibration_dir=~/.cache/huggingface/lerobot/calibration/robots/so_follower \
+  --robot.use_degrees=true \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM0 \
+  --teleop.id=my_leader \
+  --dataset.repo_id=user/my_sim_reach \
+  --dataset.num_episodes=10 \
+  --dataset.single_task="reach the target"
+```
+
+`--robot.discover_packages_path` is a parser hook, not a `RobotConfig` field. It imports `so101_nexus_core.lerobot_adapter` before config parsing so the LeRobot `@register_subclass` decorators for `sim_so_follower` and `sim` cameras run.
+
+The default is `--robot.use_degrees=true`, matching LeRobot 0.5 SO follower and SO leader defaults. Percent mode is also supported when both sides opt in:
+
+```bash
+--robot.use_degrees=false --teleop.use_degrees=false
+```
+
+Keep `--robot.use_degrees=true` for compatibility with `allenai/MolmoAct2-SO100_101`. That checkpoint expects `action` and `observation.state` to be six-element absolute joint-pose vectors with body joints in LeRobot degree units and the gripper in `RANGE_0_100`; `--robot.use_degrees=false` records a valid LeRobot dataset, but in a different body-joint unit space.
+
+Use a real SO follower calibration when you want the same normalized action/state semantics as a physical follower. Record that once with upstream LeRobot, then point `--robot.calibration_dir` at the directory containing the follower JSON:
+
+```bash
+lerobot-calibrate \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM1 \
+  --robot.id=my_robot
+```
+
+The physical leader has its own calibration path. If it is not calibrated yet, calibrate it separately before recording:
+
+```bash
+lerobot-calibrate \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM0 \
+  --teleop.id=my_leader
+```
+
+For simulator-only tests, create an explicit synthetic follower calibration file:
+
+```python
+from pathlib import Path
+from so101_nexus_core.lerobot_adapter.synthetic_calibration import write_synthetic_calibration
+
+write_synthetic_calibration(Path("calibration"), "my_robot")
+```
+
+Synthetic calibration files use LeRobot's normal `MotorCalibration` schema and the SO101 motor ids `1..6`, but they are not a replacement for measured physical calibration data.
+
+Current validation is MuJoCo-first. The adapter protocol also reads ManiSkill-style `agent.robot.get_qpos()`, but ManiSkill recording should be treated as pending backend qpos/action validation.
 
 ## Using LeRobot processors with SO101-Nexus envs
 

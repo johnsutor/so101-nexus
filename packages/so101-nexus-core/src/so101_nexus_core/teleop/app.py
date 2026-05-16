@@ -13,6 +13,7 @@ import importlib
 import logging
 import threading
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 from so101_nexus_core.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus_core.env_ids import Backend, env_ids_for_backend
@@ -52,6 +53,9 @@ from so101_nexus_core.teleop.session import (
     make_review_video,
     make_state_plot,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, "task"]
 _TASK_PENDING_TEXT = "_Task will appear after reset._"
@@ -121,7 +125,7 @@ def _color_config_to_names(value: object, default: list[str]) -> list[str]:
         return list(default)
     if isinstance(value, str):
         return [value]
-    return [str(item) for item in value]
+    return [str(item) for item in cast("Iterable[object]", value)]
 
 
 def _object_spec_from_scene_object(obj: SceneObject) -> str | None:
