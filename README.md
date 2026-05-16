@@ -89,6 +89,7 @@ lerobot-record \
 ```
 
 This path requires the `teleop` extra, targets LeRobot `>=0.5,<0.6`, and records the simulated follower state through LeRobot's standard robot/dataset APIs.
+Keep `--robot.use_degrees=true` when targeting SO100/101 checkpoints such as `allenai/MolmoAct2-SO100_101`; percent mode is for policies trained or fine-tuned with percent-mode body joints.
 
 ## Quick Start
 

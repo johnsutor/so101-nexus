@@ -40,6 +40,8 @@ The default is `--robot.use_degrees=true`, matching LeRobot 0.5 SO follower and 
 --robot.use_degrees=false --teleop.use_degrees=false
 ```
 
+Keep `--robot.use_degrees=true` for compatibility with `allenai/MolmoAct2-SO100_101`. That checkpoint expects `action` and `observation.state` to be six-element absolute joint-pose vectors with body joints in LeRobot degree units and the gripper in `RANGE_0_100`; `--robot.use_degrees=false` records a valid LeRobot dataset, but in a different body-joint unit space.
+
 Use a real SO follower calibration when you want the same normalized action/state semantics as a physical follower. Record that once with upstream LeRobot, then point `--robot.calibration_dir` at the directory containing the follower JSON:
 
 ```bash

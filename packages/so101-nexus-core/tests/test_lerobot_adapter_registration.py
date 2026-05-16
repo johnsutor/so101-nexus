@@ -27,3 +27,15 @@ def test_explicit_discover_packages_path_imports_adapter() -> None:
     load_plugin("so101_nexus_core.lerobot_adapter")
 
     assert RobotConfig.get_choice_class("sim_so_follower").__name__ == "SimSOFollowerConfig"
+
+
+def test_sim_follower_defaults_to_degree_body_joints(tmp_path) -> None:
+    from so101_nexus_core.lerobot_adapter import SimSOFollowerConfig
+
+    config = SimSOFollowerConfig(
+        id="sim_default_units",
+        calibration_dir=tmp_path,
+        env_id="MuJoCoReach-v1",
+    )
+
+    assert config.use_degrees is True
