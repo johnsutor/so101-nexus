@@ -1,4 +1,4 @@
-"""Tests for teleop recorder pure helpers."""
+"""Tests for teleop recorder pure helpers and follower-driven loop."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ PREVIEW_MAX_DIM = 320
 
 
 class _FakeLeader:
-    """Deterministic leader that returns a fixed joint dict in degrees."""
+    """Deterministic leader returning degree body joints and percent gripper."""
 
     def __init__(self) -> None:
         self.connected = False
@@ -42,7 +42,7 @@ class _FakeLeader:
             "elbow_flex.pos": 0.0,
             "wrist_flex.pos": 0.0,
             "wrist_roll.pos": 0.0,
-            "gripper.pos": 0.0,
+            "gripper.pos": 50.0,
         }
 
 
@@ -72,7 +72,6 @@ def test_recording_state_starts_clean() -> None:
 
 
 def test_recording_state_exposes_live_preview() -> None:
-    """`live_preview` is a single composite numpy frame for the UI to render."""
     from so101_nexus_core.teleop.recorder import PREVIEW_MAX_DIM as exposed_dim
 
     assert exposed_dim == PREVIEW_MAX_DIM
@@ -91,15 +90,27 @@ def test_tee_stream_duplicates_writes() -> None:
     assert tee.get_output() == "hello"
 
 
-def test_recording_thread_accepts_optional_action_pipeline_kwarg() -> None:
-    """Smoke test that the public function signature accepts the new kwarg."""
+def test_recording_thread_signature_drops_action_pipeline_kwarg() -> None:
     sig = inspect.signature(recording_thread)
-    assert "action_pipeline" in sig.parameters
-    assert sig.parameters["action_pipeline"].default is None
+
+    assert "action_pipeline" not in sig.parameters
+    assert "follower_calibration_dir" in sig.parameters
+    assert "follower_robot_id" in sig.parameters
+
+
+def test_publish_camera_frames_extracts_follower_camera_keys() -> None:
+    state = RecordingState()
+    wrist = np.full((8, 10, 3), 128, dtype=np.uint8)
+    overhead = np.full((6, 12, 3), 64, dtype=np.uint8)
+
+    _publish_camera_frames(state, {"wrist": wrist, "overhead": overhead})
+
+    assert state.episode_wrist_images == [wrist]
+    assert state.episode_overhead_images == [overhead]
+    assert state.live_preview is not None
 
 
 def test_publish_camera_frames_extracts_maniskill_sensor_data() -> None:
-    """ManiSkill RGB observations store camera frames under sensor_data."""
     state = RecordingState()
     obs = {
         "sensor_data": {
@@ -117,8 +128,7 @@ def test_publish_camera_frames_extracts_maniskill_sensor_data() -> None:
     assert state.live_preview is not None
 
 
-def test_recording_thread_populates_live_preview() -> None:
-    """The recording loop must publish at least one non-black wrist frame."""
+def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -> None:
     pytest.importorskip("mujoco")
     pytest.importorskip("so101_nexus_mujoco")
 
@@ -130,31 +140,48 @@ def test_recording_thread_populates_live_preview() -> None:
 
     thread = threading.Thread(
         target=recording_thread,
-        args=(
-            state,
-            "MuJoCoReach-v1",
-            leader,
-            SO101_JOINT_NAMES,
-            30,
-            5,
-            0,
-            -90.0,
-            (240, 180),
-            (320, 180),
-        ),
+        kwargs={
+            "state": state,
+            "env_id": "MuJoCoReach-v1",
+            "leader": leader,
+            "joint_names": SO101_JOINT_NAMES,
+            "fps": 30,
+            "max_steps": 5,
+            "countdown": 0,
+            "wrist_roll_offset_deg": -90.0,
+            "wrist_wh": (240, 180),
+            "overhead_wh": (320, 180),
+            "follower_calibration_dir": tmp_path,
+            "follower_robot_id": "teleop_sim_test",
+        },
         daemon=True,
     )
     thread.start()
-    thread.join(timeout=20)
+    thread.join(timeout=30)
+
     assert not thread.is_alive(), "recording thread did not finish"
-    assert state.recording_finished, "recording_finished flag was not set"
-    assert state.live_frame is not None, "live_frame was never populated"
-    assert state.live_frame.mean() > 1.0, "live_frame was all-black"
-    assert state.live_preview is not None, "live_preview was never populated"
+    assert state.recording_finished
     assert state.error is None, f"recording errored: {state.error}"
+    assert len(state.episode_actions) > 0
+    assert len(state.episode_states) == len(state.episode_actions)
+
+    action0 = state.episode_actions[0]
+    state0 = state.episode_states[0]
+    assert action0.shape == (len(SO101_JOINT_NAMES),)
+    assert state0.shape == (len(SO101_JOINT_NAMES),)
+    assert action0.dtype == np.float32
+    assert state0.dtype == np.float32
+
+    gripper_idx = SO101_JOINT_NAMES.index("gripper")
+    assert 0.0 <= action0[gripper_idx] <= 100.0
+    assert 0.0 <= state0[gripper_idx] <= 100.0
+    assert not np.array_equal(action0, state0)
+    assert state.live_frame is not None
+    assert state.live_frame.mean() > 1.0
+    assert state.live_preview is not None
 
 
-def test_recording_thread_records_error_on_leader_failure() -> None:
+def test_recording_thread_records_error_on_leader_failure(tmp_path) -> None:
     pytest.importorskip("so101_nexus_mujoco")
 
     from so101_nexus_core.config import SO101_JOINT_NAMES
@@ -163,22 +190,25 @@ def test_recording_thread_records_error_on_leader_failure() -> None:
     leader = _ExplodingLeader()
     thread = threading.Thread(
         target=recording_thread,
-        args=(
-            state,
-            "MuJoCoReach-v1",
-            leader,
-            SO101_JOINT_NAMES,
-            30,
-            5,
-            0,
-            -90.0,
-            (240, 180),
-            (320, 180),
-        ),
+        kwargs={
+            "state": state,
+            "env_id": "MuJoCoReach-v1",
+            "leader": leader,
+            "joint_names": SO101_JOINT_NAMES,
+            "fps": 30,
+            "max_steps": 5,
+            "countdown": 0,
+            "wrist_roll_offset_deg": -90.0,
+            "wrist_wh": (240, 180),
+            "overhead_wh": (320, 180),
+            "follower_calibration_dir": tmp_path,
+            "follower_robot_id": "teleop_sim_test",
+        },
         daemon=True,
     )
     thread.start()
-    thread.join(timeout=8)
+    thread.join(timeout=15)
+
     assert state.recording_finished
     assert state.error is not None
     assert "simulated leader read failure" in state.error

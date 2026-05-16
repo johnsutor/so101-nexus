@@ -11,8 +11,10 @@ import argparse
 import contextlib
 import importlib
 import logging
+import os
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from so101_nexus_core.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
@@ -57,7 +59,8 @@ from so101_nexus_core.teleop.session import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, "task"]
+_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY]
+_FOLLOWER_ROBOT_ID = "teleop_sim"
 _TASK_PENDING_TEXT = "_Task will appear after reset._"
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,14 @@ class CustomizationUIState:
 def _progress_text(completed: int, total: int) -> str:
     """Format a progress string for the episode counter."""
     return f"**Episode {completed} / {total}**"
+
+
+def _default_follower_calibration_dir() -> Path:
+    """Return the default LeRobot calibration directory for the sim follower."""
+    from lerobot.utils.constants import HF_LEROBOT_CALIBRATION, ROBOTS
+
+    root = Path(os.environ.get("HF_LEROBOT_CALIBRATION", HF_LEROBOT_CALIBRATION))
+    return root.expanduser() / ROBOTS / "sim_so_follower"
 
 
 def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
@@ -284,7 +295,11 @@ def _run_init_worker(
         import_backend_for_env_id(env_id)
         leader = _connect_leader(robot_type, leader_port, leader_id)
         _append_init_log(init_state, "Creating LeRobot dataset...")
-        features = build_features(field_selection, joint_names, wrist_wh, overhead_wh)
+        action_features = {f"{name}.pos": float for name in joint_names}
+        follower_features = dict(action_features)
+        follower_features["wrist"] = (wrist_wh[1], wrist_wh[0], 3)
+        follower_features["overhead"] = (overhead_wh[1], overhead_wh[0], 3)
+        features = build_features(field_selection, follower_features, action_features)
         dataset = _create_dataset(repo_id, fps, robot_type, features, leader)
         session.update(
             leader=leader,
@@ -589,20 +604,19 @@ def _cb_start_recording(session: dict):
     s.recording_finished = False
     threading.Thread(
         target=recording_thread,
-        args=(
-            s,
-            session["env_id"],
-            session["leader"],
-            session["joint_names"],
-            session["fps"],
-            session["max_steps"],
-            session["countdown"],
-            session["wrist_roll_offset_deg"],
-            session["wrist_wh"],
-            session["overhead_wh"],
-        ),
         kwargs={
-            "action_pipeline": session.get("action_pipeline"),
+            "state": s,
+            "env_id": session["env_id"],
+            "leader": session["leader"],
+            "joint_names": session["joint_names"],
+            "fps": session["fps"],
+            "max_steps": session["max_steps"],
+            "countdown": session["countdown"],
+            "wrist_roll_offset_deg": session["wrist_roll_offset_deg"],
+            "wrist_wh": session["wrist_wh"],
+            "overhead_wh": session["overhead_wh"],
+            "follower_calibration_dir": _default_follower_calibration_dir(),
+            "follower_robot_id": _FOLLOWER_ROBOT_ID,
             "customization_overrides": session.get("env_overrides"),
             "env_config_profile": session.get("env_config_profile"),
             "env_config_factory": session.get("env_config_factory"),
@@ -924,7 +938,7 @@ def _build_setup_screen(
         )
         action_space_input = gr.Radio(
             choices=["joint_pos", "joint_pos_delta"],
-            value="joint_pos_delta",
+            value="joint_pos",
             label="Action Space",
         )
 
@@ -944,7 +958,7 @@ def _build_setup_screen(
         choices=_OPTIONAL_FIELD_CHOICES,
         value=list(_OPTIONAL_FIELD_CHOICES),
         label="Dataset fields",
-        info="observation.state and action are always saved",
+        info="observation.state, action, and task are always saved",
     )
 
     with gr.Accordion("Advanced Settings", open=False):
@@ -1027,9 +1041,12 @@ def _build_setup_screen(
                     step=1,
                     label="Spawn Angle Half Range (deg)",
                 )
-        with gr.Group(
-            visible=customization_state.pick_and_place_visible
-        ) as pick_and_place_customization_group, gr.Row():
+        with (
+            gr.Group(
+                visible=customization_state.pick_and_place_visible
+            ) as pick_and_place_customization_group,
+            gr.Row(),
+        ):
             cube_colors_input = gr.CheckboxGroup(
                 choices=default_cube_color_choices(),
                 value=customization_state.cube_colors,

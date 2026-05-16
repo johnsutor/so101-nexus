@@ -271,3 +271,112 @@ def test_make_state_plot_returns_figure_with_one_trace_per_joint() -> None:
 
     assert len(fig.data) == 3
     assert {trace.name for trace in fig.data} == {"a", "b", "c"}
+
+
+def test_make_state_plot_labels_lerobot_units() -> None:
+    pytest.importorskip("plotly")
+
+    from so101_nexus_core.teleop.session import make_state_plot
+
+    fig = make_state_plot([np.zeros(2, dtype=np.float32)], ("a", "b"), fps=30)
+
+    assert fig.layout.yaxis.title.text == "Position (deg / RANGE_0_100)"
+
+
+def test_prepare_follower_calibration_creates_file_when_missing(tmp_path: Path) -> None:
+    from so101_nexus_core.teleop.session import prepare_follower_calibration
+
+    calibration_dir = tmp_path / "calibration" / "robots" / "sim_so_follower"
+    fpath = prepare_follower_calibration(
+        calibration_dir=calibration_dir,
+        robot_id="teleop_sim",
+    )
+
+    assert fpath.exists()
+    assert fpath.name == "teleop_sim.json"
+
+
+def test_prepare_follower_calibration_is_idempotent(tmp_path: Path) -> None:
+    from so101_nexus_core.teleop.session import prepare_follower_calibration
+
+    calibration_dir = tmp_path / "cal"
+    fpath_a = prepare_follower_calibration(
+        calibration_dir=calibration_dir,
+        robot_id="teleop_sim",
+    )
+    mtime_a = fpath_a.stat().st_mtime_ns
+    fpath_b = prepare_follower_calibration(
+        calibration_dir=calibration_dir,
+        robot_id="teleop_sim",
+    )
+
+    assert fpath_a == fpath_b
+    assert fpath_b.stat().st_mtime_ns == mtime_a
+
+
+def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from so101_nexus_core.lerobot_adapter.sim_camera_config import SimCameraConfig
+    from so101_nexus_core.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
+    from so101_nexus_core.teleop import session as teleop_session
+    from so101_nexus_core.teleop.session import build_sim_follower_config
+
+    seen: dict[str, object] = {}
+
+    def _fake_recording_env_kwargs(
+        env_id,
+        wrist_wh,
+        overhead_wh,
+        *,
+        overrides=None,
+        profile_path=None,
+        factory=None,
+    ):
+        seen.update(
+            env_id=env_id,
+            wrist_wh=wrist_wh,
+            overhead_wh=overhead_wh,
+            overrides=overrides,
+            profile_path=profile_path,
+            factory=factory,
+        )
+        return {"custom": "kept"}
+
+    monkeypatch.setattr(
+        teleop_session,
+        "_recording_env_kwargs",
+        _fake_recording_env_kwargs,
+    )
+
+    config = build_sim_follower_config(
+        env_id="MuJoCoReach-v1",
+        robot_id="teleop_sim",
+        wrist_wh=(320, 240),
+        overhead_wh=(640, 360),
+        fps=15,
+        calibration_dir=tmp_path,
+        profile_path="profile.toml",
+    )
+
+    assert isinstance(config, SimSOFollowerConfig)
+    assert config.env_id == "MuJoCoReach-v1"
+    assert config.env_kwargs == {"custom": "kept"}
+    assert config.use_degrees is True
+    assert config.id == "teleop_sim"
+    assert config.calibration_dir == tmp_path
+    assert seen["profile_path"] == "profile.toml"
+    assert set(config.cameras) == {"wrist", "overhead"}
+    wrist = config.cameras["wrist"]
+    overhead = config.cameras["overhead"]
+    assert isinstance(wrist, SimCameraConfig)
+    assert wrist.width == 320
+    assert wrist.height == 240
+    assert wrist.fps == 15
+    assert wrist.source == "wrist_camera"
+    assert isinstance(overhead, SimCameraConfig)
+    assert overhead.width == 640
+    assert overhead.height == 360
+    assert overhead.fps == 15
+    assert overhead.source == "overhead_camera"

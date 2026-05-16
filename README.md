@@ -66,7 +66,10 @@ uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
     so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
-Pass `--leader-port` to point at your serial device. See the [teleop guide](https://so101-nexus.com/docs/guides/teleop-dataset-recording) for hardware setup and the full session walkthrough.
+Pass `--leader-port` to point at your serial device. Gradio recordings use
+LeRobot SO follower units by default: body joints in degrees, gripper in
+`RANGE_0_100`, follower readback in `observation.state`, and camera videos at
+`observation.images.wrist` / `observation.images.overhead`. See the [teleop guide](https://so101-nexus.com/docs/guides/teleop-dataset-recording) for hardware setup and the full session walkthrough.
 
 ## LeRobot CLI Recording
 
@@ -88,7 +91,7 @@ lerobot-record \
   --dataset.single_task="reach the target"
 ```
 
-This path requires the `teleop` extra, targets LeRobot `>=0.5,<0.6`, and records the simulated follower state through LeRobot's standard robot/dataset APIs.
+This path requires the `teleop` extra and records the simulated follower state through LeRobot's standard robot/dataset APIs.
 Keep `--robot.use_degrees=true` when targeting SO100/101 checkpoints such as `allenai/MolmoAct2-SO100_101`; percent mode is for policies trained or fine-tuned with percent-mode body joints.
 
 ## Quick Start

@@ -147,6 +147,73 @@ def _recording_env_kwargs(
     return kwargs
 
 
+def prepare_follower_calibration(*, calibration_dir, robot_id: str):
+    """Ensure a SimSOFollower-compatible calibration file exists."""
+    from pathlib import Path
+
+    from so101_nexus_core.lerobot_adapter.synthetic_calibration import (
+        write_synthetic_calibration,
+    )
+
+    calibration_dir = Path(calibration_dir)
+    fpath = calibration_dir / f"{robot_id}.json"
+    if fpath.exists():
+        return fpath
+    return write_synthetic_calibration(calibration_dir, robot_id)
+
+
+def build_sim_follower_config(
+    *,
+    env_id: str,
+    robot_id: str,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    fps: int = 30,
+    calibration_dir=None,
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    factory: ConfigFactory | None = None,
+):
+    """Return a SimSOFollowerConfig matching the Gradio recording env choices."""
+    from pathlib import Path
+
+    from so101_nexus_core.lerobot_adapter.sim_camera_config import SimCameraConfig
+    from so101_nexus_core.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
+
+    env_kwargs = _recording_env_kwargs(
+        env_id,
+        wrist_wh,
+        overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        factory=factory,
+    )
+    wrist_w, wrist_h = wrist_wh
+    overhead_w, overhead_h = overhead_wh
+    cameras = {
+        "wrist": SimCameraConfig(
+            source="wrist_camera",
+            width=wrist_w,
+            height=wrist_h,
+            fps=fps,
+        ),
+        "overhead": SimCameraConfig(
+            source="overhead_camera",
+            width=overhead_w,
+            height=overhead_h,
+            fps=fps,
+        ),
+    }
+    return SimSOFollowerConfig(
+        id=robot_id,
+        calibration_dir=Path(calibration_dir) if calibration_dir is not None else None,
+        env_id=env_id,
+        env_kwargs=env_kwargs,
+        cameras=cameras,
+        use_degrees=True,
+    )
+
+
 def _apply_recording_config_kwargs(
     kwargs: dict,
     *,
@@ -279,7 +346,7 @@ def make_state_plot(states: list[np.ndarray], joint_names: tuple[str, ...], fps:
     fig.update_layout(
         title="Joint States Over Time",
         xaxis_title="Time (s)",
-        yaxis_title="Position (rad)",
+        yaxis_title="Position (deg / RANGE_0_100)",
         height=400,
     )
     return fig

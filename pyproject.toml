@@ -144,5 +144,6 @@ testpaths = [
     "tests",
 ]
 markers = [
+    "slow: slower integration tests",
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
 ]
