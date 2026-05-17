@@ -1,0 +1,75 @@
+---
+title: MolmoAct2
+description: Running the AllenAI MolmoAct2 SO100/SO101 checkpoint in SO101-Nexus environments.
+---
+
+`MolmoActPolicy` is a chunked-action adapter around `allenai/MolmoAct2-SO100_101`. It exposes the same `select_action(batch)` and `reset()` shape as a LeRobot policy, so it can drive the same rollout recorder that future chunked policies can use.
+
+## Installation
+
+Install the optional MolmoAct dependencies before loading the real model:
+
+```bash
+pip install "so101-nexus-core[molmoact]"
+```
+
+The adapter can still be imported without this extra. Hugging Face and transformer imports happen only when you call `MolmoActPolicy.from_pretrained(...)`.
+
+## End-to-End Usage
+
+```python
+import gymnasium as gym
+import torch
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from so101_nexus_core import SO101_JOINT_NAMES
+from so101_nexus_core.policy_adapters import MolmoActPolicy, RolloutRecorder
+from so101_nexus_core.teleop.dataset import FieldSelection, build_features
+import so101_nexus_mujoco  # noqa: F401
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array", control_mode="pd_joint_pos")
+action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
+follower_features = {**action_features, "wrist": (480, 640, 3), "overhead": (480, 640, 3)}
+features = build_features(FieldSelection(), follower_features, action_features)
+dataset = LeRobotDataset.create(
+    repo_id="local/molmoact-rollouts",
+    fps=30,
+    features=features,
+    robot_type="sim_so_follower",
+    use_videos=True,
+)
+policy = MolmoActPolicy.from_pretrained(dtype=torch.bfloat16)
+recorder = RolloutRecorder(env, policy, dataset=dataset, max_steps_per_episode=160)
+recorder.record_episodes(n=10, seed=0)
+dataset.finalize()
+env.close()
+```
+
+`RolloutRecorder` expects env observations with `state`, `overhead_camera`, and `wrist_camera` keys by default. The env state and env actions stay in radians. The recorder converts state to degrees for the policy and dataset, and converts the returned policy action back to radians for `env.step(action)`.
+
+### Image Key Alignment
+
+`MolmoActPolicy.image_keys` and `RolloutRecorder.camera_keys` are two sides of the same contract. The defaults line up: the recorder maps `("overhead_camera", "wrist_camera")` to `observation.images.overhead` and `observation.images.wrist`, and the policy reads those image keys in that order. If you customize one side, customize the other side to match or the policy will fail at inference when a requested image key is missing.
+
+## Caveats
+
+### Action Semantics
+
+The adapter treats `predict_action(...)` output as absolute joint positions in degrees, then the recorder converts those positions to radians and clips them before `env.step(action)`. It does not integrate deltas. If a real-model rollout visibly drifts away from rest or immediately saturates the clip, validate the assumption by running with `chunk_size=1` and printing `state_deg` next to `action_deg` for a few steps.
+
+### Calibration Gap
+
+The local homing pose may not match the checkpoint's training distribution. In the reference notes for this adapter, shoulder lift was around `-90 deg` locally versus about `+123 deg` in the training corpus. That is a hardware and dataset alignment issue. Rehome to a compatible setup or fine-tune on demos from your setup before expecting useful zero-shot rollouts.
+
+### GPU Memory
+
+The MolmoAct2 model card reports about 26 GB of GPU memory for float32 inference and less than 16 GB with bfloat16. Use bfloat16 on smaller cards:
+
+```python
+import torch
+
+policy = MolmoActPolicy.from_pretrained(dtype=torch.bfloat16)
+```
+
+### CUDA Graph Warmup
+
+The first few policy calls can be slow when CUDA graph capture is enabled. That is expected warmup cost, not an environment slowdown. Set `enable_cuda_graph=False` on `MolmoActPolicy` if you need simpler first-call behavior while debugging.
