@@ -28,6 +28,12 @@ teleop = [
     "opencv-python>=4.8.0",
     "Pillow",
 ]
+molmoact = [
+    "transformers>=5.8",
+    "huggingface-hub",
+    "Pillow",
+    "accelerate",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/so101_nexus_core"]

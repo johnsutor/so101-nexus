@@ -234,6 +234,7 @@ package-lock.json
 # Code
 docs/superpowers
 
-# Claude Code local config
+# Agent configs
+AGENTS.md
 CLAUDE.md
 .claude/
