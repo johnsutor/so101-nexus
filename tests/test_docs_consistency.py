@@ -61,6 +61,16 @@ def test_docs_do_not_import_public_objects_from_backend_submodules() -> None:
     )
 
 
+def test_docs_static_search_uses_orama_export() -> None:
+    """The static search UI and exported search index must use the same format."""
+    layout = _read(ROOT / "docs" / "app" / "layout.tsx")
+    route = _read(ROOT / "docs" / "app" / "api" / "search" / "route.ts")
+
+    assert 'type: "static"' in layout
+    assert "createFromSource" in route
+    assert "flexsearchFromSource" not in route
+
+
 def test_examples_readme_references_existing_example_scripts() -> None:
     """Every ``python examples/...`` command in the README must resolve."""
     text = _read(ROOT / "examples" / "README.md")
