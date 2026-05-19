@@ -19,7 +19,13 @@ def test_reset_uses_init_qpos_from_options() -> None:
     """ManiSkill reset should match MuJoCo and honor options['init_qpos']."""
     import gymnasium as gym
 
-    env = gym.make("ManiSkillPickLiftSO101-v1", **BASE_KWARGS)
+    from so101_nexus_core.config import PickConfig
+
+    env = gym.make(
+        "ManiSkillPickLiftSO101-v1",
+        config=PickConfig(reset_settle_frames=0),
+        **BASE_KWARGS,
+    )
     try:
         custom_qpos = np.array([0.1, -0.5, 0.8, 0.2, 0.0, 0.05], dtype=np.float32)
         env.reset(options={"init_qpos": custom_qpos})

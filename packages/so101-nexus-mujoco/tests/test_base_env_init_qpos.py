@@ -13,8 +13,13 @@ def test_reset_uses_init_qpos_from_options():
     import gymnasium as gym
 
     importlib.import_module("so101_nexus_mujoco")
+    from so101_nexus_core.config import PickConfig
 
-    env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        render_mode="rgb_array",
+    )
     try:
         custom_qpos = np.array([0.1, -0.5, 0.8, 0.2, 0.0, 0.05], dtype=np.float64)
         obs, _ = env.reset(options={"init_qpos": custom_qpos})
@@ -29,10 +34,14 @@ def test_reset_without_init_qpos_uses_rest_pose():
     import gymnasium as gym
 
     importlib.import_module("so101_nexus_mujoco")
-    from so101_nexus_core.config import EnvironmentConfig
+    from so101_nexus_core.config import EnvironmentConfig, PickConfig
 
     rest = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
-    env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        render_mode="rgb_array",
+    )
     try:
         obs, _ = env.reset(seed=0)
         actual_qpos = env.unwrapped._get_current_qpos()
@@ -49,7 +58,7 @@ def test_reset_with_init_pose_rest():
     from so101_nexus_core.config import PickConfig, RobotConfig
 
     robot = RobotConfig(init_pose="rest")
-    config = PickConfig(robot=robot, robot_init_qpos_noise=0.0)
+    config = PickConfig(robot=robot, robot_init_qpos_noise=0.0, reset_settle_frames=0)
     env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="rgb_array")
     try:
         env.reset(seed=42)
@@ -70,7 +79,7 @@ def test_reset_with_init_pose_extended():
     from so101_nexus_core.config import PickConfig, RobotConfig
 
     robot = RobotConfig(init_pose="extended")
-    config = PickConfig(robot=robot, robot_init_qpos_noise=0.0)
+    config = PickConfig(robot=robot, robot_init_qpos_noise=0.0, reset_settle_frames=0)
     env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="rgb_array")
     try:
         env.reset(seed=42)
@@ -88,10 +97,14 @@ def test_reset_init_pose_none_backward_compat():
     import gymnasium as gym
 
     importlib.import_module("so101_nexus_mujoco")
-    from so101_nexus_core.config import EnvironmentConfig
+    from so101_nexus_core.config import EnvironmentConfig, PickConfig
 
     rest = np.array(EnvironmentConfig().robot.rest_qpos_rad, dtype=np.float64)
-    env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        render_mode="rgb_array",
+    )
     try:
         env.reset(seed=0)
         actual_qpos = env.unwrapped._get_current_qpos()
