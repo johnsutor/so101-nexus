@@ -64,6 +64,32 @@ class _FakeScene:
         return self._mesh
 
 
+class _FakeImage:
+    def __init__(self):
+        self.saved: list[tuple[str, str | None]] = []
+
+    def save(self, path: str, format: str | None = None):
+        self.saved.append((path, format))
+        Path(path).write_text("texture", encoding="utf-8")
+
+
+class _FakeMaterial:
+    def __init__(self, image: object | None = None, base_color_texture: object | None = None):
+        self.image = image
+        self.baseColorTexture = base_color_texture
+
+
+class _FakeVisual:
+    def __init__(self, material: _FakeMaterial):
+        self.material = material
+
+
+class _FakeTexturedMesh(_FakeMesh):
+    def __init__(self, image: object | None = None, base_color_texture: object | None = None):
+        super().__init__()
+        self.visual = _FakeVisual(_FakeMaterial(image, base_color_texture))
+
+
 def _patch_module(monkeypatch: pytest.MonkeyPatch, name: str, module: object) -> None:
     monkeypatch.setitem(sys.modules, name, module)
 
@@ -94,6 +120,49 @@ def test_convert_glb_to_obj_handles_mesh(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert mesh.exports == [(str(out), "obj")]
 
 
+def test_get_ycb_texture_file_returns_cache_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+
+    assert (
+        ycb_assets.get_ycb_texture_file("058_golf_ball")
+        == tmp_path / "058_golf_ball" / "texture.png"
+    )
+
+
+def test_extract_glb_texture_saves_material_image(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    image = _FakeImage()
+    mesh = _FakeTexturedMesh(image=image)
+    fake_trimesh = types.SimpleNamespace(
+        Scene=_FakeScene,
+        load=lambda *_args, **_kwargs: mesh,
+    )
+    _patch_module(monkeypatch, "trimesh", fake_trimesh)
+
+    out = tmp_path / "texture.png"
+
+    assert ycb_assets._extract_glb_texture(tmp_path / "textured.glb", out) is True
+    assert image.saved == [(str(out), "PNG")]
+    assert out.read_text(encoding="utf-8") == "texture"
+
+
+def test_extract_glb_texture_returns_false_without_texture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    mesh = _FakeTexturedMesh()
+    fake_trimesh = types.SimpleNamespace(
+        Scene=_FakeScene,
+        load=lambda *_args, **_kwargs: mesh,
+    )
+    _patch_module(monkeypatch, "trimesh", fake_trimesh)
+
+    out = tmp_path / "texture.png"
+
+    assert ycb_assets._extract_glb_texture(tmp_path / "textured.glb", out) is False
+    assert not out.exists()
+
+
 def test_ensure_ycb_assets_cache_hit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
     model_id = "009_gelatin_box"
@@ -101,6 +170,7 @@ def test_ensure_ycb_assets_cache_hit(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     mesh_dir.mkdir(parents=True)
     (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
     (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    (mesh_dir / "texture.png").write_text("t", encoding="utf-8")
 
     def _unexpected_snapshot_download(**_kwargs):
         raise AssertionError("snapshot_download should not be called on cache hit")
@@ -113,6 +183,60 @@ def test_ensure_ycb_assets_cache_hit(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     result = ycb_assets.ensure_ycb_assets(model_id)
     assert result == mesh_dir
+
+
+def test_ensure_ycb_assets_cache_hit_extracts_missing_texture(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "009_gelatin_box"
+    mesh_dir = tmp_path / model_id
+    mesh_dir.mkdir(parents=True)
+    (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
+    (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    glb = tmp_path / "meshes" / model_id / "google_16k" / "textured.glb"
+    glb.parent.mkdir(parents=True)
+    glb.write_text("fake-glb", encoding="utf-8")
+    calls: list[tuple[Path, Path]] = []
+
+    def _extract(glb_path: Path, texture_path: Path) -> bool:
+        calls.append((glb_path, texture_path))
+        texture_path.write_text("texture", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", _extract)
+
+    result = ycb_assets.ensure_ycb_assets(model_id)
+
+    assert result == mesh_dir
+    assert calls == [(glb, mesh_dir / "texture.png")]
+
+
+def test_ensure_ycb_assets_returns_when_texture_extract_finds_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    model_id = "009_gelatin_box"
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+
+    def _snapshot_download(**_kwargs):
+        glb = tmp_path / "meshes" / model_id / "google_16k"
+        glb.mkdir(parents=True, exist_ok=True)
+        (glb / "textured.glb").write_text("fake-glb", encoding="utf-8")
+
+    _patch_module(
+        monkeypatch,
+        "huggingface_hub",
+        types.SimpleNamespace(snapshot_download=_snapshot_download),
+    )
+    monkeypatch.setattr(ycb_assets, "_convert_glb_to_obj", lambda _g, p: p.write_text("v"))
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", lambda _g, _p: False)
+    fake_trimesh = types.SimpleNamespace(Scene=_FakeScene, load=lambda *_a, **_k: _FakeMesh())
+    _patch_module(monkeypatch, "trimesh", fake_trimesh)
+
+    mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
+
+    assert mesh_dir == tmp_path / model_id
+    assert not (mesh_dir / "texture.png").exists()
 
 
 def test_ensure_ycb_assets_download_and_convex_hull(
