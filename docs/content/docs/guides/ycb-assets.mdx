@@ -56,27 +56,42 @@ Assets are stored at:
 ~/.cache/so101_nexus/ycb/{model_id}/
 ```
 
-Each model directory contains the collision and visual mesh files needed by the simulator.
+Each model directory contains the collision and visual mesh files needed by
+the simulator. When available, it also contains `texture.png`, extracted from
+the source GLB base-color texture.
 
 ## Public helpers
 
-Three helper functions provide paths to cached assets:
+Four helper functions provide paths to cached assets:
 
 | Function | Returns |
 | --- | --- |
 | `get_ycb_mesh_dir(model_id)` | Path to the model's cache directory |
 | `get_ycb_collision_mesh(model_id)` | Path to the collision mesh file |
 | `get_ycb_visual_mesh(model_id)` | Path to the visual mesh file |
+| `get_ycb_texture_file(model_id)` | Expected path to the optional texture image |
 
 ```python
-from so101_nexus_core import get_ycb_mesh_dir, get_ycb_collision_mesh, get_ycb_visual_mesh
+from so101_nexus_core import (
+    get_ycb_collision_mesh,
+    get_ycb_mesh_dir,
+    get_ycb_texture_file,
+    get_ycb_visual_mesh,
+)
 
 mesh_dir = get_ycb_mesh_dir("011_banana")
 collision = get_ycb_collision_mesh("011_banana")
 visual = get_ycb_visual_mesh("011_banana")
+texture = get_ycb_texture_file("011_banana")
 ```
 
 These functions do not trigger a download. Call `ensure_ycb_assets` first if the assets may not be cached yet.
+
+`ensure_ycb_assets` treats `collision.obj` and `visual.obj` as the required
+geometry cache. It also attempts to extract `texture.png` from
+`meshes/{model_id}/google_16k/textured.glb`. Texture extraction is best effort:
+if a model or local `trimesh` version does not expose a texture image, the
+environment still runs with the untextured visual mesh.
 
 ## Custom Hugging Face repository
 

@@ -96,6 +96,21 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 
 Available colors: `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `black`, `white`, `gray`.
 
+## Reset Settling
+
+By default, environments advance 5 no-op frames after reset before returning
+the first observation. This skips the unstable first frames after contacts and
+controllers initialize. Set `reset_settle_frames=0` when you need to inspect
+the raw reset state.
+
+```python
+import gymnasium as gym
+from so101_nexus_core import PickConfig
+
+config = PickConfig(reset_settle_frames=0)
+env = gym.make("MuJoCoPickLift-v1", config=config)
+```
+
 ## Tune Rewards
 
 Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). The four weights must sum to 1.0. Optional penalty terms are applied separately.

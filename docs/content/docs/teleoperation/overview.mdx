@@ -142,6 +142,8 @@ The **Advanced Settings** section exposes common options:
   colors are selected
 - `Spawn Min Radius`, `Spawn Max Radius`, and `Spawn Angle Half Range (deg)`:
   spawn-region controls shared by supported tasks
+- `Reset Settle Frames`: no-op frames advanced after reset before the first
+  teleop observation and recorded frame. The default is 5.
 - `Pick-and-Place Cube Colors` and `Pick-and-Place Target Colors`:
   sampled cube/target colors for pick-and-place tasks
 
@@ -149,6 +151,10 @@ Options that do not apply to the selected environment are ignored after
 customization is enabled. For example, pick-object settings apply to
 `PickConfig` environments, while pick-and-place color settings apply to
 `PickAndPlaceConfig` environments.
+
+`Reset Settle Frames` is applied to the environment config before camera
+observations are wired, so the first saved demonstration frame is captured
+after reset settling.
 
 ### Config profiles
 
@@ -168,6 +174,7 @@ ground_colors = ["gray", "white"]
 robot_colors = ["yellow"]
 spawn_min_radius = 0.15
 spawn_max_radius = 0.25
+reset_settle_frames = 5
 
 [pick]
 n_distractors = 1
