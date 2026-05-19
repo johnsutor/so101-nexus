@@ -65,6 +65,24 @@ class TestConfigConsistency:
         cfg = EnvironmentConfig()
         assert cfg.max_episode_steps == 1024
 
+    def test_default_reset_settle_frames_is_5(self):
+        cfg = EnvironmentConfig()
+        assert cfg.reset_settle_frames == 5
+
+    def test_reset_settle_frames_accepts_zero(self):
+        cfg = EnvironmentConfig(reset_settle_frames=0)
+        assert cfg.reset_settle_frames == 0
+
+    @pytest.mark.parametrize("value", [-1, -5])
+    def test_reset_settle_frames_rejects_negative_values(self, value):
+        with pytest.raises(ValueError, match="reset_settle_frames"):
+            EnvironmentConfig(reset_settle_frames=value)
+
+    @pytest.mark.parametrize("value", [1.5, "5"])
+    def test_reset_settle_frames_rejects_non_integer_values(self, value):
+        with pytest.raises(ValueError, match="reset_settle_frames"):
+            EnvironmentConfig(reset_settle_frames=value)  # type: ignore[arg-type]
+
 
 class TestPickAndPlaceInvariants:
     def test_separation_covers_cube_diameter(self):
