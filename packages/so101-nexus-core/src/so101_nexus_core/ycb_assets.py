@@ -73,8 +73,10 @@ def _iter_texture_meshes(scene_or_mesh: object, scene_type: type) -> Iterator[ob
         geometry = getattr(scene_or_mesh, "geometry", None)
         if isinstance(geometry, Mapping):
             yield from geometry.values()
-        dump = getattr(scene_or_mesh, "dump", None)
-        if callable(dump):
+        to_geometry = getattr(scene_or_mesh, "to_geometry", None)
+        if callable(to_geometry):
+            yield to_geometry()
+        elif callable(dump := getattr(scene_or_mesh, "dump", None)):
             yield dump(concatenate=True)
     else:
         yield scene_or_mesh
