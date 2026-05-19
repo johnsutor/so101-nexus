@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import numpy as np
 
+MESH_FLOOR_MARGIN = 0.002
+"""Small floor clearance for mesh object spawns, in metres."""
+
 
 def sample_separated_positions(
     rng: np.random.Generator,
@@ -87,3 +90,47 @@ def random_yaw_quat(rng: np.random.Generator) -> np.ndarray:
     """
     angle_rad = rng.uniform(0.0, 2.0 * np.pi)
     return np.array([np.cos(angle_rad / 2.0), 0.0, 0.0, np.sin(angle_rad / 2.0)])
+
+
+def mesh_geom_world_min_z(model, data, geom_id: int) -> float:
+    """Return the minimum world Z of one compiled mesh collision geom.
+
+    This helper is scoped to the current pick-scene structure, where each mesh
+    object body has one collision mesh geom. Future compound mesh bodies should
+    compute the minimum across all collision geoms attached to the body.
+    """
+    import mujoco
+
+    if int(model.geom_type[geom_id]) != int(mujoco.mjtGeom.mjGEOM_MESH):
+        raise ValueError("mesh_geom_world_min_z requires a mesh geom")
+    mesh_id = int(model.geom_dataid[geom_id])
+    vert_start = int(model.mesh_vertadr[mesh_id])
+    vert_count = int(model.mesh_vertnum[mesh_id])
+    verts = model.mesh_vert[vert_start : vert_start + vert_count]
+    xmat = data.geom_xmat[geom_id].reshape(3, 3)
+    xpos = data.geom_xpos[geom_id]
+    world = verts @ xmat.T + xpos
+    return float(world[:, 2].min())
+
+
+def align_freejoint_geom_to_floor(
+    model,
+    data,
+    *,
+    qpos_addr: int,
+    geom_id: int,
+    xy: tuple[float, float],
+    quat: np.ndarray,
+    margin: float = MESH_FLOOR_MARGIN,
+) -> float:
+    """Set a freejoint mesh pose so its compiled collision geom clears the floor."""
+    import mujoco
+
+    data.qpos[qpos_addr : qpos_addr + 3] = [xy[0], xy[1], 0.0]
+    data.qpos[qpos_addr + 3 : qpos_addr + 7] = quat
+    mujoco.mj_forward(model, data)
+    min_z = mesh_geom_world_min_z(model, data, geom_id)
+    spawn_z = -min_z + margin
+    data.qpos[qpos_addr + 2] = spawn_z
+    mujoco.mj_forward(model, data)
+    return float(spawn_z)

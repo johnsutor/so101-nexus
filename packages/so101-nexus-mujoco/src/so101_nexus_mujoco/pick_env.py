@@ -29,7 +29,11 @@ from so101_nexus_core.config import (
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
+from so101_nexus_mujoco.spawn_utils import (
+    align_freejoint_geom_to_floor,
+    random_yaw_quat,
+    sample_separated_positions,
+)
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -388,17 +392,23 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 obj_quat = yaw_quat
                 rgba = COLOR_MAP[obj.color]
                 self.model.geom_rgba[slot.geom_id] = rgba
+                addr = slot.qpos_addr
+                self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
+                self.data.qpos[addr + 3 : addr + 7] = obj_quat
             elif isinstance(obj, (YCBObject, MeshObject)):
-                spawn_z = slot.spawn_z
                 yaw_quat = random_yaw_quat(rng)
                 obj_quat = np.zeros(4)
                 mujoco.mju_mulQuat(obj_quat, yaw_quat, slot.rest_quat)
+                spawn_z = align_freejoint_geom_to_floor(
+                    self.model,
+                    self.data,
+                    qpos_addr=slot.qpos_addr,
+                    geom_id=slot.geom_id,
+                    xy=(x, y),
+                    quat=obj_quat,
+                )
             else:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
-
-            addr = slot.qpos_addr
-            self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
-            self.data.qpos[addr + 3 : addr + 7] = obj_quat
 
             if pos_idx == 0:
                 self._initial_obj_z = spawn_z

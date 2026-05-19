@@ -9,6 +9,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from so101_nexus_mujoco import spawn_utils
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
 
 
@@ -191,6 +192,76 @@ def test_determinism_with_fixed_seed():
     result_a = sample_separated_positions(rng=_make_rng(7), **kwargs)
     result_b = sample_separated_positions(rng=_make_rng(7), **kwargs)
     assert result_a == result_b
+
+
+class _FakeMeshModel:
+    def __init__(self, geom_type: int):
+        self.geom_type = np.array([geom_type], dtype=np.int32)
+        self.geom_dataid = np.array([0], dtype=np.int32)
+        self.mesh_vertadr = np.array([0], dtype=np.int32)
+        self.mesh_vertnum = np.array([3], dtype=np.int32)
+        self.mesh_vert = np.array(
+            [
+                [-0.1, 0.0, -0.02],
+                [0.1, 0.0, 0.03],
+                [0.0, 0.2, 0.01],
+            ],
+            dtype=np.float64,
+        )
+
+
+class _FakeGeomData:
+    def __init__(self):
+        self.qpos = np.zeros(7, dtype=np.float64)
+        self.geom_xpos = np.array([[0.0, 0.0, 0.5]], dtype=np.float64)
+        self.geom_xmat = np.eye(3, dtype=np.float64).reshape(1, 9)
+
+
+def test_mesh_geom_world_min_z_uses_compiled_mesh_transform():
+    import mujoco
+
+    model = _FakeMeshModel(mujoco.mjtGeom.mjGEOM_MESH)
+    data = _FakeGeomData()
+
+    min_z = spawn_utils.mesh_geom_world_min_z(model, data, 0)
+
+    assert min_z == pytest.approx(0.48)
+
+
+def test_mesh_geom_world_min_z_rejects_non_mesh_geom():
+    import mujoco
+
+    model = _FakeMeshModel(mujoco.mjtGeom.mjGEOM_BOX)
+    data = _FakeGeomData()
+
+    with pytest.raises(ValueError, match="mesh geom"):
+        spawn_utils.mesh_geom_world_min_z(model, data, 0)
+
+
+def test_align_freejoint_geom_to_floor_sets_spawn_height(monkeypatch):
+    import mujoco
+
+    model = _FakeMeshModel(mujoco.mjtGeom.mjGEOM_MESH)
+    data = _FakeGeomData()
+
+    def _fake_forward(_model, fake_data):
+        fake_data.geom_xpos[0] = fake_data.qpos[:3]
+
+    monkeypatch.setattr(mujoco, "mj_forward", _fake_forward)
+
+    spawn_z = spawn_utils.align_freejoint_geom_to_floor(
+        model,
+        data,
+        qpos_addr=0,
+        geom_id=0,
+        xy=(0.2, -0.1),
+        quat=np.array([1.0, 0.0, 0.0, 0.0]),
+        margin=0.005,
+    )
+
+    assert spawn_z == pytest.approx(0.025)
+    np.testing.assert_allclose(data.qpos[:3], [0.2, -0.1, 0.025])
+    np.testing.assert_allclose(data.qpos[3:7], [1.0, 0.0, 0.0, 0.0])
 
 
 class TestRandomYawQuat:

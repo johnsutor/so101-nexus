@@ -263,6 +263,22 @@ def test_pick_mixed_pool_with_distractors():
         env.close()
 
 
+@pytest.mark.parametrize("model_id", ["011_banana", "030_fork"])
+def test_pick_ycb_collision_geom_starts_above_floor(model_id):
+    from so101_nexus_mujoco.spawn_utils import mesh_geom_world_min_z
+
+    config = PickConfig(objects=[YCBObject(model_id=model_id)], reset_settle_frames=0)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=0)
+        inner = env.unwrapped
+        slot = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
+        min_z = mesh_geom_world_min_z(inner.model, inner.data, slot.geom_id)  # type: ignore[attr-defined]
+        assert min_z >= -1e-6
+    finally:
+        env.close()
+
+
 def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
     from so101_nexus_mujoco.pick_env import _mesh_xml_body
 
