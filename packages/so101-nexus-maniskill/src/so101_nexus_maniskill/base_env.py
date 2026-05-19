@@ -305,6 +305,28 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             self._initial_obj_z = torch.zeros(self.num_envs, device=self.device)
         self._initial_obj_z[env_idx] = z
 
+    def _inactive_env_idx(self, env_idx: torch.Tensor) -> torch.Tensor:
+        """Return vectorized env rows that are not part of the current reset."""
+        mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        mask[env_idx] = False
+        return torch.arange(self.num_envs, device=self.device)[mask]
+
+    def _settle_after_reset(self, env_idx: torch.Tensor, *, min_frames: int = 0) -> None:
+        """Advance configured no-op frames after reset while preserving inactive rows."""
+        frames = max(self.config.reset_settle_frames, min_frames)
+        if frames == 0:
+            return
+
+        inactive_idx = self._inactive_env_idx(env_idx)
+        pre_settle_state = self.get_state_dict() if len(inactive_idx) else None
+        for _ in range(frames):
+            self.scene.step()
+        if pre_settle_state is not None:
+            self.set_state_dict(pre_settle_state, inactive_idx)
+
+    def _refresh_reset_reference_state(self, env_idx: torch.Tensor) -> None:
+        """Refresh task reference state after reset settling."""
+
     def _build_obs_extra_from_components(self, info: dict) -> dict[str, torch.Tensor]:
         """Build obs_extra dict from observation components.
 
