@@ -408,6 +408,45 @@ def test_pick_and_place_reward_in_unit_range():
 
 
 # ---------------------------------------------------------------------------
+# Reset settling.
+# ---------------------------------------------------------------------------
+
+
+def test_reset_settle_zero_keeps_mujoco_time_at_reset():
+    config = ReachConfig(reset_settle_frames=0)
+    env = gym.make("MuJoCoReach-v1", config=config)
+    try:
+        env.reset()
+        assert env.unwrapped.data.time == pytest.approx(0.0)  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_reset_settle_frames_advance_mujoco_time_by_environment_frames():
+    config = ReachConfig(reset_settle_frames=2)
+    env = gym.make("MuJoCoReach-v1", config=config)
+    try:
+        env.reset()
+        inner = env.unwrapped
+        expected = 2 * inner._N_SUBSTEPS * inner.model.opt.timestep  # type: ignore[attr-defined]
+        assert inner.data.time == pytest.approx(expected)  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_pick_initial_object_z_matches_post_settle_pose():
+    config = PickConfig(reset_settle_frames=2)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=0)
+        inner = env.unwrapped
+        target_z = float(inner._get_target_pose()[2])  # type: ignore[attr-defined]
+        assert inner._initial_obj_z == pytest.approx(target_z)  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
 # Task-description shape checks.
 # ---------------------------------------------------------------------------
 

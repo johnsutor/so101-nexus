@@ -321,6 +321,10 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         return self._reach_only_reward(info)
 
+    def _refresh_reset_reference_state(self) -> None:
+        """Refresh lift baseline from the post-settle target object pose."""
+        self._initial_obj_z = float(self._get_target_pose()[2])
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
