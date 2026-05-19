@@ -81,6 +81,7 @@ class CustomizationUIState:
     spawn_min_radius: float = 0.10
     spawn_max_radius: float = 0.30
     spawn_angle_half_range_deg: float = 90.0
+    reset_settle_frames: int = 5
     cube_colors: list[str] = field(default_factory=lambda: ["red"])
     target_colors: list[str] = field(default_factory=lambda: ["blue"])
 
@@ -174,6 +175,7 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         "spawn_min_radius",
         "spawn_max_radius",
         "spawn_angle_half_range_deg",
+        "reset_settle_frames",
     }
     common_visible = bool(common_keys & set(attrs))
     pick_visible = "objects" in attrs and "n_distractors" in attrs
@@ -193,6 +195,7 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         spawn_min_radius=float(attrs.get("spawn_min_radius", 0.10)),
         spawn_max_radius=float(attrs.get("spawn_max_radius", 0.30)),
         spawn_angle_half_range_deg=float(attrs.get("spawn_angle_half_range_deg", 90.0)),
+        reset_settle_frames=int(attrs.get("reset_settle_frames", 5)),
         cube_colors=_color_config_to_names(attrs.get("cube_colors"), ["red"]),
         target_colors=_color_config_to_names(attrs.get("target_colors"), ["blue"]),
     )
@@ -350,6 +353,7 @@ def _normalized_init_config(
     spawn_min_radius: float,
     spawn_max_radius: float,
     spawn_angle_half_range_deg: float,
+    reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
 ) -> dict:
@@ -363,6 +367,7 @@ def _normalized_init_config(
     field_selection = _build_field_selection(field_selection_value)
     env_overrides = None
     if customize_env_config:
+        reset_settle_frames_i = int(round(float(reset_settle_frames)))
         env_overrides = TeleopConfigOverrides(
             object_specs=tuple(object_pool_value) or None,
             n_distractors=int(n_distractors),
@@ -377,6 +382,7 @@ def _normalized_init_config(
             spawn_min_radius=float(spawn_min_radius),
             spawn_max_radius=float(spawn_max_radius),
             spawn_angle_half_range_deg=float(spawn_angle_half_range_deg),
+            reset_settle_frames=reset_settle_frames_i,
             cube_colors=_optional_color_tuple(
                 cube_color_value,
                 field_name="cube_colors",
@@ -481,6 +487,7 @@ def _cb_start_init(
     spawn_min_radius: float,
     spawn_max_radius: float,
     spawn_angle_half_range_deg: float,
+    reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
 ):
@@ -512,6 +519,7 @@ def _cb_start_init(
         spawn_min_radius,
         spawn_max_radius,
         spawn_angle_half_range_deg,
+        reset_settle_frames,
         cube_color_value,
         target_color_value,
     )
@@ -539,6 +547,7 @@ def _cb_update_customization_for_env(env_id: str):
         gr.update(value=state.spawn_min_radius),
         gr.update(value=state.spawn_max_radius),
         gr.update(value=state.spawn_angle_half_range_deg),
+        gr.update(value=state.reset_settle_frames),
         gr.update(value=state.cube_colors),
         gr.update(value=state.target_colors),
         gr.update(visible=state.common_visible),
@@ -1041,6 +1050,13 @@ def _build_setup_screen(
                     step=1,
                     label="Spawn Angle Half Range (deg)",
                 )
+                reset_settle_frames_input = gr.Slider(
+                    minimum=0,
+                    maximum=60,
+                    value=customization_state.reset_settle_frames,
+                    step=1,
+                    label="Reset Settle Frames",
+                )
         with (
             gr.Group(
                 visible=customization_state.pick_and_place_visible
@@ -1085,6 +1101,7 @@ def _build_setup_screen(
         spawn_min_radius_input,
         spawn_max_radius_input,
         spawn_angle_half_range_input,
+        reset_settle_frames_input,
         cube_colors_input,
         target_colors_input,
         common_customization_group,
@@ -1385,6 +1402,7 @@ def main(
                     spawn_min_radius_input,
                     spawn_max_radius_input,
                     spawn_angle_half_range_input,
+                    reset_settle_frames_input,
                     cube_colors_input,
                     target_colors_input,
                     common_customization_group,
@@ -1448,6 +1466,7 @@ def main(
             spawn_min_radius_input,
             spawn_max_radius_input,
             spawn_angle_half_range_input,
+            reset_settle_frames_input,
             cube_colors_input,
             target_colors_input,
         ]
@@ -1467,6 +1486,7 @@ def main(
                 spawn_min_radius_input,
                 spawn_max_radius_input,
                 spawn_angle_half_range_input,
+                reset_settle_frames_input,
                 cube_colors_input,
                 target_colors_input,
                 common_customization_group,
