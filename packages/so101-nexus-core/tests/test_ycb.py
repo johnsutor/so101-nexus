@@ -129,9 +129,7 @@ def test_get_ycb_texture_file_returns_cache_path(monkeypatch: pytest.MonkeyPatch
     )
 
 
-def test_extract_glb_texture_saves_material_image(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+def test_extract_glb_texture_saves_material_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     image = _FakeImage()
     mesh = _FakeTexturedMesh(image=image)
     fake_trimesh = types.SimpleNamespace(

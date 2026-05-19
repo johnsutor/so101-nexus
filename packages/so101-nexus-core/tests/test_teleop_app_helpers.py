@@ -251,7 +251,9 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
 
     action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
     assert action_space_radio.value == "joint_pos"
-    reset_settle_slider = next(slider for slider in sliders if slider.label == "Reset Settle Frames")
+    reset_settle_slider = next(
+        slider for slider in sliders if slider.label == "Reset Settle Frames"
+    )
     assert reset_settle_slider.value == 5
 
 

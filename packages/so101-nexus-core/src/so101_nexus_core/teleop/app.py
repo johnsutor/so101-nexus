@@ -367,7 +367,7 @@ def _normalized_init_config(
     field_selection = _build_field_selection(field_selection_value)
     env_overrides = None
     if customize_env_config:
-        reset_settle_frames_i = int(round(float(reset_settle_frames)))
+        reset_settle_frames_i = round(float(reset_settle_frames))
         env_overrides = TeleopConfigOverrides(
             object_specs=tuple(object_pool_value) or None,
             n_distractors=int(n_distractors),

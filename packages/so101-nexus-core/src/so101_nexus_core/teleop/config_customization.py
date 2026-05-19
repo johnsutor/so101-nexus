@@ -49,9 +49,7 @@ class TeleopConfigOverrides:
         if self.n_distractors is not None and self.n_distractors < 0:
             raise ValueError(f"n_distractors must be >= 0, got {self.n_distractors}")
         if self.reset_settle_frames is not None and self.reset_settle_frames < 0:
-            raise ValueError(
-                f"reset_settle_frames must be >= 0, got {self.reset_settle_frames}"
-            )
+            raise ValueError(f"reset_settle_frames must be >= 0, got {self.reset_settle_frames}")
         if self.objects is not None and self.object_specs is not None:
             raise ValueError("Provide either objects or object_specs, not both.")
 
