@@ -26,7 +26,7 @@ from so101_nexus_core.config import (
     ReachConfig,
 )
 from so101_nexus_core.constants import CUBE_COLOR_MAP, YCB_OBJECTS
-from so101_nexus_core.objects import CubeObject, YCBObject
+from so101_nexus_core.objects import CubeObject, MeshObject, YCBObject
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -274,6 +274,54 @@ def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
     assert 'name="pick_slot_0_visual"' in xml
     assert 'mesh="pick_vis_0"' in xml
     assert 'group="2"' in xml
+
+
+def test_ycb_scene_xml_binds_cached_texture(monkeypatch, tmp_path):
+    from so101_nexus_mujoco import pick_env
+
+    collision_path = tmp_path / "collision.obj"
+    visual_path = tmp_path / "visual.obj"
+    texture_path = tmp_path / "texture.png"
+    texture_path.write_text("texture", encoding="utf-8")
+    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
+    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
+    monkeypatch.setattr(
+        pick_env,
+        "get_ycb_texture_file",
+        lambda _model_id: texture_path,
+        raising=False,
+    )
+
+    xml = pick_env._build_scene_xml(
+        [YCBObject(model_id="011_banana")],
+        ["pick_slot_0"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert f'<texture name="pick_tex_0" type="2d" file="{texture_path}"/>' in xml
+    assert '<material name="pick_mat_0" texture="pick_tex_0" texuniform="false"/>' in xml
+    assert 'name="pick_slot_0_visual"' in xml
+    assert 'material="pick_mat_0"' in xml
+
+
+def test_scene_xml_leaves_cubes_and_mesh_objects_untextured(tmp_path):
+    from so101_nexus_mujoco import pick_env
+
+    mesh = MeshObject(
+        collision_mesh_path=str(tmp_path / "collision.obj"),
+        visual_mesh_path=str(tmp_path / "visual.obj"),
+        mass=0.02,
+        name="custom",
+    )
+
+    xml = pick_env._build_scene_xml(
+        [CubeObject(color="red"), mesh],
+        ["pick_slot_0", "pick_slot_1"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert "<texture " not in xml
+    assert 'material="pick_mat_' not in xml
 
 
 @pytest.mark.parametrize("color", CUBE_COLORS)

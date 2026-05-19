@@ -19,6 +19,7 @@ from so101_nexus_core import (
     get_mujoco_ycb_rest_pose,
     get_so101_simulation_dir,
     get_ycb_collision_mesh,
+    get_ycb_texture_file,
     get_ycb_visual_mesh,
 )
 from so101_nexus_core.config import (
@@ -55,7 +56,13 @@ def _cube_xml_body(slot_name: str, obj: CubeObject) -> str:
     )
 
 
-def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
+def _mesh_xml_body(
+    slot_name: str,
+    asset_index: int,
+    mass: float,
+    material_name: str | None = None,
+) -> str:
+    material_attr = f' material="{material_name}"' if material_name else ""
     return (
         f'    <body name="{slot_name}" pos="0.15 0 0.01">\n'
         f'      <freejoint name="{slot_name}_joint"/>\n'
@@ -66,7 +73,7 @@ def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
         f'            solimp="0.95 0.99 0.001"/>\n'
         f'      <geom name="{slot_name}_visual" type="mesh" '
         f'mesh="pick_vis_{asset_index}"\n'
-        f'            group="2" contype="0" conaffinity="0" mass="0"/>\n'
+        f'            group="2" contype="0" conaffinity="0" mass="0"{material_attr}/>\n'
         f"    </body>\n"
     )
 
@@ -99,8 +106,20 @@ def _build_scene_xml(
             visual_path = str(get_ycb_visual_mesh(obj.model_id))
             asset_entries += f'    <mesh name="pick_coll_{i}" file="{collision_path}"/>\n'
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
+            material_name = None
+            texture_path = get_ycb_texture_file(obj.model_id)
+            if texture_path.exists():
+                texture_name = f"pick_tex_{i}"
+                material_name = f"pick_mat_{i}"
+                asset_entries += (
+                    f'    <texture name="{texture_name}" type="2d" file="{texture_path}"/>\n'
+                )
+                asset_entries += (
+                    f'    <material name="{material_name}" texture="{texture_name}" '
+                    'texuniform="false"/>\n'
+                )
             mass = obj.mass_override if obj.mass_override is not None else 0.01
-            body_entries += _mesh_xml_body(slot, i, mass)
+            body_entries += _mesh_xml_body(slot, i, mass, material_name=material_name)
         elif isinstance(obj, MeshObject):
             asset_entries += (
                 f'    <mesh name="pick_coll_{i}" file="{obj.collision_mesh_path}"'
