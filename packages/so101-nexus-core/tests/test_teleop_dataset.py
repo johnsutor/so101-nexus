@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
+import importlib
+import sys
+import types
+
 import numpy as np
 import pytest
 
@@ -147,3 +152,81 @@ def test_build_frame_raises_when_selected_image_missing() -> None:
             wrist_image=None,
             overhead_image=None,
         )
+
+
+def _reload_dataset_module():
+    """Re-import teleop.dataset so the import shim runs against current stubs."""
+    sys.modules.pop("so101_nexus_core.teleop.dataset", None)
+    return importlib.import_module("so101_nexus_core.teleop.dataset")
+
+
+def _install_stub(monkeypatch, module_path: str, attr: str, value) -> None:
+    parent_path, _, leaf = module_path.rpartition(".")
+    stub = types.ModuleType(module_path)
+    setattr(stub, attr, value)
+    monkeypatch.setitem(sys.modules, module_path, stub)
+
+    parent = sys.modules.get(parent_path)
+    if parent is not None:
+        monkeypatch.setattr(parent, leaf, stub, raising=False)
+
+
+def test_dataset_module_import_does_not_require_lerobot(monkeypatch) -> None:
+    """MuJoCo-only installs import teleop.app without installing LeRobot."""
+    with monkeypatch.context() as mp:
+        for name in list(sys.modules):
+            if name == "lerobot" or name.startswith("lerobot."):
+                mp.delitem(sys.modules, name, raising=False)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "lerobot" or name.startswith("lerobot."):
+                raise ModuleNotFoundError("simulated missing lerobot")
+            return real_import(name, globals, locals, fromlist, level)
+
+        mp.setattr(builtins, "__import__", fake_import)
+
+        module = _reload_dataset_module()
+
+        assert module.FieldSelection().state is True
+    _reload_dataset_module()
+
+
+def test_dataset_prefers_lerobot_feature_utils(monkeypatch) -> None:
+    """When LeRobot exposes feature_utils.hw_to_dataset_features, use it."""
+    with monkeypatch.context() as mp:
+        sentinel = lambda *a, **kw: {"sentinel": "feature_utils"}  # noqa: E731
+        _install_stub(
+            mp,
+            "lerobot.datasets.feature_utils",
+            "hw_to_dataset_features",
+            sentinel,
+        )
+
+        module = _reload_dataset_module()
+
+        assert module._hw_to_dataset_features() is sentinel
+    _reload_dataset_module()
+
+
+def test_dataset_falls_back_to_lerobot_datasets_utils(monkeypatch) -> None:
+    """When feature_utils is absent, fall back to the LeRobot 0.5.0 path."""
+    with monkeypatch.context() as mp:
+        sentinel = lambda *a, **kw: {"sentinel": "datasets.utils"}  # noqa: E731
+        mp.delitem(sys.modules, "lerobot.datasets.feature_utils", raising=False)
+        _install_stub(mp, "lerobot.datasets.utils", "hw_to_dataset_features", sentinel)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "lerobot.datasets.feature_utils":
+                raise ImportError("simulated missing feature_utils")
+            return real_import(name, globals, locals, fromlist, level)
+
+        mp.setattr(builtins, "__import__", fake_import)
+
+        module = _reload_dataset_module()
+
+        assert module._hw_to_dataset_features() is sentinel
+    _reload_dataset_module()

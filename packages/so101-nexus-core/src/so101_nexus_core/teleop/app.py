@@ -82,6 +82,7 @@ class CustomizationUIState:
     spawn_max_radius: float = 0.30
     spawn_angle_half_range_deg: float = 90.0
     reset_settle_frames: int = 5
+    success_hold_seconds: float = 0.5
     cube_colors: list[str] = field(default_factory=lambda: ["red"])
     target_colors: list[str] = field(default_factory=lambda: ["blue"])
 
@@ -89,6 +90,20 @@ class CustomizationUIState:
 def _progress_text(completed: int, total: int) -> str:
     """Format a progress string for the episode counter."""
     return f"**Episode {completed} / {total}**"
+
+
+def _format_hub_links(repo_id: str) -> str:
+    """Return Markdown links for a pushed HuggingFace dataset."""
+    from urllib.parse import quote
+
+    dataset_url = f"https://huggingface.co/datasets/{quote(repo_id, safe='/')}"
+    viewer_path = quote(f"/{repo_id}/episode_0", safe="")
+    viewer_url = f"https://huggingface.co/spaces/lerobot/visualize_dataset?path={viewer_path}"
+    return (
+        "Pushed to HuggingFace Hub.\n\n"
+        f"- [View the dataset page]({dataset_url})\n"
+        f"- [Open in the dataset viewer]({viewer_url})"
+    )
 
 
 def _default_follower_calibration_dir() -> Path:
@@ -196,6 +211,7 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         spawn_max_radius=float(attrs.get("spawn_max_radius", 0.30)),
         spawn_angle_half_range_deg=float(attrs.get("spawn_angle_half_range_deg", 90.0)),
         reset_settle_frames=int(attrs.get("reset_settle_frames", 5)),
+        success_hold_seconds=float(attrs.get("success_hold_seconds", 0.5)),
         cube_colors=_color_config_to_names(attrs.get("cube_colors"), ["red"]),
         target_colors=_color_config_to_names(attrs.get("target_colors"), ["blue"]),
     )
@@ -290,6 +306,7 @@ def _run_init_worker(
     wrist_roll_offset_deg: float,
     field_selection: FieldSelection,
     env_overrides: TeleopConfigOverrides | None,
+    success_hold_seconds: float = 0.5,
 ) -> None:
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
@@ -320,6 +337,7 @@ def _run_init_worker(
             wrist_roll_offset_deg=wrist_roll_offset_deg,
             field_selection=field_selection,
             env_overrides=env_overrides,
+            success_hold_seconds=success_hold_seconds,
         )
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
@@ -356,6 +374,8 @@ def _normalized_init_config(
     reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
+    *,
+    success_hold_seconds: float = 0.5,
 ) -> dict:
     """Validate UI inputs and return a normalized init config dict."""
     fps_i = int(fps)
@@ -410,6 +430,7 @@ def _normalized_init_config(
         "wrist_roll_offset_deg": float(wrist_roll_offset_deg),
         "field_selection": field_selection,
         "env_overrides": env_overrides,
+        "success_hold_seconds": float(success_hold_seconds),
     }
 
 
@@ -448,6 +469,7 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
             config["wrist_roll_offset_deg"],
             config["field_selection"],
             config["env_overrides"],
+            config["success_hold_seconds"],
         ),
         daemon=True,
     ).start()
@@ -490,6 +512,7 @@ def _cb_start_init(
     reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
+    success_hold_seconds: float = 0.5,
 ):
     """Validate inputs and launch the init worker thread."""
     import gradio as gr
@@ -522,6 +545,7 @@ def _cb_start_init(
         reset_settle_frames,
         cube_color_value,
         target_color_value,
+        success_hold_seconds=success_hold_seconds,
     )
     if config["max_steps"] < 1:
         raise gr.Error("Max Steps must be at least 1.")
@@ -550,10 +574,33 @@ def _cb_update_customization_for_env(env_id: str):
         gr.update(value=state.reset_settle_frames),
         gr.update(value=state.cube_colors),
         gr.update(value=state.target_colors),
+        gr.update(value=state.success_hold_seconds),
         gr.update(visible=state.common_visible),
         gr.update(visible=state.pick_visible),
         gr.update(visible=state.pick_and_place_visible),
     )
+
+
+def _cb_validate_repo_id(repo_id: str):
+    """Return a warning update for the repo ID input."""
+    import gradio as gr
+
+    from so101_nexus_core.teleop.session import RepoIdStatus, validate_hub_repo_id
+
+    status = validate_hub_repo_id(repo_id)
+    if status in (RepoIdStatus.OK, RepoIdStatus.LOCAL_ONLY):
+        return gr.update(visible=False, value="")
+    if status is RepoIdStatus.MISSING_NAMESPACE:
+        msg = (
+            "Use `username/dataset` format if you plan to push to the Hub. "
+            "Leave blank for local-only recording."
+        )
+    else:
+        msg = (
+            "Invalid repo ID: must be alphanumeric plus `-`, `_`, or `.`, "
+            "with no spaces and a maximum length of 96 characters."
+        )
+    return gr.update(visible=True, value=f"_{msg}_")
 
 
 def _cb_poll_init(session: dict, init_state: dict):
@@ -629,6 +676,7 @@ def _cb_start_recording(session: dict):
             "customization_overrides": session.get("env_overrides"),
             "env_config_profile": session.get("env_config_profile"),
             "env_config_factory": session.get("env_config_factory"),
+            "success_hold_seconds": session.get("success_hold_seconds", 0.5),
         },
         daemon=True,
     ).start()
@@ -674,6 +722,8 @@ def _cb_poll_recording(session: dict):
         n = len(s.episode_actions)
         ep = s.episodes_completed + 1
         status = f"Recording episode {ep}/{s.num_episodes}: {n} frames ({n / fps:.1f}s)"
+        if s.terminated_at_frame is not None:
+            status = f"Success. {status} (finishing...)"
         if preview is None:
             return (
                 gr.update(value=f"{status}\n\nWaiting for camera frame..."),
@@ -885,6 +935,20 @@ def _cb_push_to_hub(session: dict):
     """
     import gradio as gr
 
+    from so101_nexus_core.teleop.session import RepoIdStatus, validate_hub_repo_id
+
+    repo_id = str(getattr(session["dataset"], "repo_id", "")).strip()
+    if repo_id.startswith("local/"):
+        raise gr.Error(
+            "Cannot push a local-only dataset repo ID. "
+            "Start a new recording with a `username/dataset` Repo ID to push to the Hub."
+        )
+    status = validate_hub_repo_id(repo_id)
+    if status is not RepoIdStatus.OK:
+        raise gr.Error(
+            f"Cannot push: repo ID must be `username/dataset`. Current value: {repo_id!r}."
+        )
+
     try:
         session["dataset"].finalize()
         session["dataset"].push_to_hub()
@@ -895,7 +959,7 @@ def _cb_push_to_hub(session: dict):
             "Make sure you are logged in (`huggingface-cli login`) and have "
             "write access to the target repository."
         ) from exc
-    return "Dataset pushed to HuggingFace Hub!"
+    return _format_hub_links(repo_id)
 
 
 def _cb_prepare_push_to_hub():
@@ -963,6 +1027,7 @@ def _build_setup_screen(
         placeholder="username/dataset-name",
         info="Leave blank for local-only recording",
     )
+    repo_id_warning = gr.Markdown("", visible=False)
     field_selection_input = gr.CheckboxGroup(
         choices=_OPTIONAL_FIELD_CHOICES,
         value=list(_OPTIONAL_FIELD_CHOICES),
@@ -994,6 +1059,17 @@ def _build_setup_screen(
                 minimum=64, maximum=1024, value=480, step=32, label="Overhead Camera Height"
             )
         max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
+        success_hold_seconds_input = gr.Slider(
+            minimum=0.0,
+            maximum=2.0,
+            value=customization_state.success_hold_seconds,
+            step=0.1,
+            label="Success Hold (s)",
+            info=(
+                "After the env reports success, keep recording this many seconds "
+                "before auto-stopping. Set 0 to stop immediately."
+            ),
+        )
         customize_env_input = gr.Checkbox(
             value=customization_state.customize_value,
             label="Apply Environment Customization",
@@ -1104,6 +1180,8 @@ def _build_setup_screen(
         reset_settle_frames_input,
         cube_colors_input,
         target_colors_input,
+        success_hold_seconds_input,
+        repo_id_warning,
         common_customization_group,
         pick_customization_group,
         pick_and_place_customization_group,
@@ -1171,6 +1249,8 @@ def _wire_events(
     init_btn,
     init_inputs,
     env_id_input,
+    repo_id_input,
+    repo_id_warning,
     customization_outputs,
     init_log,
     retry_btn,
@@ -1222,6 +1302,11 @@ def _wire_events(
         fn=_cb_update_customization_for_env,
         inputs=[env_id_input],
         outputs=customization_outputs,
+    )
+    repo_id_input.change(
+        fn=_cb_validate_repo_id,
+        inputs=[repo_id_input],
+        outputs=[repo_id_warning],
     )
     init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
     init_timer.tick(
@@ -1405,6 +1490,8 @@ def main(
                     reset_settle_frames_input,
                     cube_colors_input,
                     target_colors_input,
+                    success_hold_seconds_input,
+                    repo_id_warning,
                     common_customization_group,
                     pick_customization_group,
                     pick_and_place_customization_group,
@@ -1469,6 +1556,7 @@ def main(
             reset_settle_frames_input,
             cube_colors_input,
             target_colors_input,
+            success_hold_seconds_input,
         ]
 
         _wire_events(
@@ -1477,6 +1565,8 @@ def main(
             init_btn=init_btn,
             init_inputs=init_inputs,
             env_id_input=env_id_input,
+            repo_id_input=repo_id_input,
+            repo_id_warning=repo_id_warning,
             customization_outputs=[
                 customize_env_input,
                 object_pool_input,
@@ -1489,6 +1579,7 @@ def main(
                 reset_settle_frames_input,
                 cube_colors_input,
                 target_colors_input,
+                success_hold_seconds_input,
                 common_customization_group,
                 pick_customization_group,
                 pick_and_place_customization_group,

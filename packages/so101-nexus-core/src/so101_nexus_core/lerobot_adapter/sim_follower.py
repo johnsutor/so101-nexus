@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import gymnasium as gym
+import numpy as np
 from lerobot.robots.robot import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
@@ -16,6 +18,7 @@ from so101_nexus_core.lerobot_adapter.normalization import (
     GripperLimitsRad,
     action_for_env,
     build_so101_motors,
+    leader_action_to_sim_qpos,
     motor_ticks_to_sim_rad,
     normalize_ticks,
     read_gripper_limits_rad,
@@ -32,6 +35,26 @@ if TYPE_CHECKING:
     from lerobot.processor import RobotAction, RobotObservation
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StepInfo:
+    """Last termination metadata returned by a simulator ``env.step`` call."""
+
+    terminated: bool
+    truncated: bool
+    info: dict[str, Any] = field(default_factory=dict)
+
+
+def _coerce_termination_flag(value: object) -> bool:
+    """Coerce scalar or batched termination flags to a Python bool."""
+    if hasattr(value, "detach") and callable(value.detach):
+        tensor_like = cast("Any", value)
+        value = tensor_like.detach().cpu().numpy()
+    arr = np.asarray(value)
+    if arr.shape == ():
+        return bool(arr.item())
+    return bool(arr.any())
 
 
 class SimSOFollower(Robot):
@@ -55,6 +78,8 @@ class SimSOFollower(Robot):
 
         self._env: gym.Env | None = None
         self._gripper_limits_rad: GripperLimitsRad | None = None
+        self._last_step_info: StepInfo | None = None
+        self._pending_leader_init_action: dict[str, Any] | None = None
 
     @property
     def _motors_ft(self) -> dict[str, type]:
@@ -110,6 +135,18 @@ class SimSOFollower(Robot):
             self._env = gym.make(self.config.env_id, **make_kwargs)
             self._env.reset()
             self._gripper_limits_rad = read_gripper_limits_rad(self._env)
+            if self._pending_leader_init_action is not None:
+                # The first reset exposes gripper limits; the second reset
+                # lets the env settle with the arm held at the leader pose.
+                init_qpos = leader_action_to_sim_qpos(
+                    self._pending_leader_init_action,
+                    motors=self.motors,
+                    calibration=self.calibration,
+                    gripper_limits_rad=self._gripper_limits_rad,
+                )
+                self._env.reset(options={"init_qpos": init_qpos})
+                self._pending_leader_init_action = None
+            self._last_step_info = None
 
             for camera in self.cameras.values():
                 camera.bind_env(self._env)
@@ -133,6 +170,10 @@ class SimSOFollower(Robot):
 
     def setup_motors(self) -> None:
         """Skip physical motor setup for the simulator adapter."""
+
+    def set_initial_leader_action(self, action: dict[str, Any] | None) -> None:
+        """Set a leader action to seed ``env.reset(options={'init_qpos': ...})``."""
+        self._pending_leader_init_action = None if action is None else dict(action)
 
     @check_if_not_connected
     def get_observation(self) -> RobotObservation:
@@ -164,6 +205,10 @@ class SimSOFollower(Robot):
             )
 
         return obs_dict
+
+    def last_step_info(self) -> StepInfo | None:
+        """Return metadata captured by the most recent ``send_action`` call."""
+        return self._last_step_info
 
     @check_if_not_connected
     def send_action(self, action: RobotAction) -> RobotAction:
@@ -197,7 +242,12 @@ class SimSOFollower(Robot):
             gripper_limits_rad=gripper_limits_rad,
         )
         sent_qpos = action_for_env(self._env, target_qpos)
-        self._env.step(sent_qpos)
+        _obs, _reward, terminated, truncated, info = self._env.step(sent_qpos)
+        self._last_step_info = StepInfo(
+            terminated=_coerce_termination_flag(terminated),
+            truncated=_coerce_termination_flag(truncated),
+            info=dict(info) if isinstance(info, dict) else {},
+        )
 
         sent_ticks = sim_rad_to_motor_ticks(
             sent_qpos,
@@ -218,6 +268,8 @@ class SimSOFollower(Robot):
             camera.disconnect()
         self._env = None
         self._gripper_limits_rad = None
+        self._last_step_info = None
+        self._pending_leader_init_action = None
         if env is not None:
             env.close()
         logger.info("%s disconnected.", self)

@@ -18,6 +18,7 @@ from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import OverheadCamera, WristCamera
 from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus_core.teleop.session import (
+    RepoIdStatus,
     _build_recording_config,
     _default_repo_id,
     _recording_env_kwargs,
@@ -25,6 +26,7 @@ from so101_nexus_core.teleop.session import (
     _replace_wrist_camera,
     _resolve_env_config,
     _wire_camera_observations,
+    validate_hub_repo_id,
 )
 
 # ---------------------------------------------------------------------------
@@ -55,6 +57,43 @@ def test_default_repo_id_sanitizes_slashes_and_spaces() -> None:
     slug_match = re.match(r"local/teleop-(.+)-\d{8}_\d{6}$", repo_id)
     assert slug_match is not None, repo_id
     assert slug_match.group(1) == "foo-bar_baz"
+
+
+# ---------------------------------------------------------------------------
+# validate_hub_repo_id
+# ---------------------------------------------------------------------------
+
+
+def test_validate_hub_repo_id_blank_is_local_only() -> None:
+    assert validate_hub_repo_id("") is RepoIdStatus.LOCAL_ONLY
+    assert validate_hub_repo_id("   ") is RepoIdStatus.LOCAL_ONLY
+
+
+def test_validate_hub_repo_id_namespaced_is_ok() -> None:
+    assert validate_hub_repo_id("alice/my-dataset") is RepoIdStatus.OK
+    assert validate_hub_repo_id("an-org/dataset.v1") is RepoIdStatus.OK
+
+
+def test_validate_hub_repo_id_missing_namespace() -> None:
+    assert validate_hub_repo_id("just-a-name") is RepoIdStatus.MISSING_NAMESPACE
+
+
+def test_validate_hub_repo_id_empty_namespace_or_dataset() -> None:
+    assert validate_hub_repo_id("/dataset") is RepoIdStatus.MISSING_NAMESPACE
+    assert validate_hub_repo_id("alice/") is RepoIdStatus.MISSING_NAMESPACE
+
+
+def test_validate_hub_repo_id_double_slash_is_missing_namespace() -> None:
+    assert validate_hub_repo_id("alice/bob/dataset") is RepoIdStatus.MISSING_NAMESPACE
+
+
+def test_validate_hub_repo_id_invalid_chars() -> None:
+    assert validate_hub_repo_id("alice/my dataset") is RepoIdStatus.INVALID_CHARS
+    assert validate_hub_repo_id("alice/.hidden") is RepoIdStatus.INVALID_CHARS
+
+
+def test_validate_hub_repo_id_local_default_passes() -> None:
+    assert validate_hub_repo_id("local/teleop-Reach-v0-20260518_120000") is RepoIdStatus.OK
 
 
 # ---------------------------------------------------------------------------

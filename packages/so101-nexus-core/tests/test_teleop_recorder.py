@@ -6,10 +6,12 @@ import inspect
 import io
 import os
 import threading
+import types
 
 import numpy as np
 import pytest
 
+from so101_nexus_core.config import SO101_JOINT_NAMES
 from so101_nexus_core.teleop.recorder import (
     RecordingState,
     TeeStream,
@@ -49,6 +51,86 @@ class _FakeLeader:
 class _ExplodingLeader(_FakeLeader):
     def get_action(self) -> dict[str, float]:
         raise RuntimeError("simulated leader read failure")
+
+
+class _FakeRecordingFollower:
+    terminated_after_step = 10**9
+    instances: list[_FakeRecordingFollower] = []
+
+    def __init__(self, _config) -> None:
+        self.step_calls = 0
+        self.initial_leader_action: dict[str, float] | None = None
+        self._last_step_info = None
+        self._env = types.SimpleNamespace(
+            unwrapped=types.SimpleNamespace(task_description="Fake recording task")
+        )
+        type(self).instances.append(self)
+
+    def set_initial_leader_action(self, action: dict[str, float]) -> None:
+        self.initial_leader_action = dict(action)
+
+    def connect(self) -> None:
+        pass
+
+    def disconnect(self) -> None:
+        pass
+
+    def send_action(self, action: dict[str, float]) -> dict[str, float]:
+        self.step_calls += 1
+        terminated = self.step_calls >= type(self).terminated_after_step
+        self._last_step_info = types.SimpleNamespace(
+            terminated=terminated,
+            truncated=False,
+            info={"success": terminated},
+        )
+        return dict(action)
+
+    def get_observation(self) -> dict[str, object]:
+        obs = {f"{name}.pos": float(self.step_calls) for name in SO101_JOINT_NAMES}
+        obs["wrist"] = np.zeros((4, 4, 3), dtype=np.uint8)
+        return obs
+
+    def last_step_info(self):
+        return self._last_step_info
+
+
+def _run_fake_recording(
+    monkeypatch,
+    *,
+    terminated_after_step: int = 10**9,
+    max_steps: int = 10,
+    fps: int = 30,
+    success_hold_seconds: float = 0.5,
+    leader=None,
+) -> tuple[RecordingState, _FakeRecordingFollower]:
+    import so101_nexus_core.lerobot_adapter.sim_follower as sim_follower_module
+    import so101_nexus_core.teleop.recorder as recorder_module
+    import so101_nexus_core.teleop.session as session_module
+
+    _FakeRecordingFollower.instances = []
+    _FakeRecordingFollower.terminated_after_step = terminated_after_step
+    monkeypatch.setattr(sim_follower_module, "SimSOFollower", _FakeRecordingFollower)
+    monkeypatch.setattr(session_module, "prepare_follower_calibration", lambda **_kwargs: None)
+    monkeypatch.setattr(session_module, "build_sim_follower_config", lambda **_kwargs: object())
+    monkeypatch.setattr(recorder_module.time, "sleep", lambda _seconds: None)
+
+    state = RecordingState(num_episodes=1)
+    recording_thread(
+        state=state,
+        env_id="FakeEnv-v0",
+        leader=leader or _FakeLeader(),
+        joint_names=SO101_JOINT_NAMES,
+        fps=fps,
+        max_steps=max_steps,
+        countdown=0,
+        wrist_roll_offset_deg=-90.0,
+        wrist_wh=(4, 4),
+        overhead_wh=(4, 4),
+        follower_calibration_dir="unused",
+        follower_robot_id="teleop_sim_test",
+        success_hold_seconds=success_hold_seconds,
+    )
+    return state, _FakeRecordingFollower.instances[-1]
 
 
 def test_compute_delta_actions_zero_prefix() -> None:
@@ -96,6 +178,7 @@ def test_recording_thread_signature_drops_action_pipeline_kwarg() -> None:
     assert "action_pipeline" not in sig.parameters
     assert "follower_calibration_dir" in sig.parameters
     assert "follower_robot_id" in sig.parameters
+    assert "success_hold_seconds" in sig.parameters
 
 
 def test_publish_camera_frames_extracts_follower_camera_keys() -> None:
@@ -126,6 +209,43 @@ def test_publish_camera_frames_extracts_maniskill_sensor_data() -> None:
     assert len(state.episode_overhead_images) == 1
     assert state.episode_overhead_images[0].shape == (6, 12, 3)
     assert state.live_preview is not None
+
+
+def test_recording_thread_stops_after_terminated_plus_hold(monkeypatch) -> None:
+    state, _follower = _run_fake_recording(
+        monkeypatch,
+        terminated_after_step=5,
+        max_steps=100,
+        fps=10,
+        success_hold_seconds=0.5,
+    )
+
+    assert state.error is None
+    assert state.terminated_at_frame == 5
+    assert len(state.episode_actions) == 10
+
+
+def test_recording_thread_stops_immediately_with_zero_hold(monkeypatch) -> None:
+    state, _follower = _run_fake_recording(
+        monkeypatch,
+        terminated_after_step=3,
+        max_steps=100,
+        fps=10,
+        success_hold_seconds=0.0,
+    )
+
+    assert state.error is None
+    assert state.terminated_at_frame == 3
+    assert len(state.episode_actions) == 3
+
+
+def test_recording_thread_seeds_follower_with_leader_pose(monkeypatch) -> None:
+    state, follower = _run_fake_recording(monkeypatch, max_steps=2)
+
+    assert state.error is None
+    assert follower.initial_leader_action is not None
+    assert all(key.endswith(".pos") for key in follower.initial_leader_action)
+    assert follower.initial_leader_action["wrist_roll.pos"] == -90.0
 
 
 def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -> None:
@@ -175,7 +295,7 @@ def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -
     gripper_idx = SO101_JOINT_NAMES.index("gripper")
     assert 0.0 <= action0[gripper_idx] <= 100.0
     assert 0.0 <= state0[gripper_idx] <= 100.0
-    assert not np.array_equal(action0, state0)
+    np.testing.assert_allclose(state0, action0, atol=0.1)
     assert state.live_frame is not None
     assert state.live_frame.mean() > 1.0
     assert state.live_preview is not None

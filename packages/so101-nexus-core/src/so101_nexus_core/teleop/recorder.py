@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 
 
 PREVIEW_MAX_DIM = 320
+logger = logging.getLogger(__name__)
 
 
 class _WritableTextStream(Protocol):
@@ -58,6 +60,14 @@ class TeeStream(io.TextIOBase):
             return self._buffer.getvalue()
 
 
+class _InitialLeaderFollower(Protocol):
+    def set_initial_leader_action(self, action: dict[str, Any]) -> None: ...
+
+
+class _StepInfoLike(Protocol):
+    terminated: bool
+
+
 @dataclass
 class RecordingState:
     """Mutable state shared between the recording thread and the Gradio UI."""
@@ -77,6 +87,7 @@ class RecordingState:
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
     live_preview: np.ndarray | None = None
+    terminated_at_frame: int | None = None
 
     episodes_completed: int = 0
     num_episodes: int = 0
@@ -92,6 +103,7 @@ class RecordingState:
         self.live_frame = None
         self.live_overhead_frame = None
         self.live_preview = None
+        self.terminated_at_frame = None
         self.recording_finished = False
         self.error = None
 
@@ -199,6 +211,42 @@ def _extract_maniskill_camera_rgb(
     return rgb
 
 
+def _seed_follower_from_leader(
+    follower: _InitialLeaderFollower,
+    leader: LeaderProtocol,
+    wrist_roll_offset_deg: float,
+) -> None:
+    """Seed follower reset from the current leader pose when available."""
+    from so101_nexus_core.teleop.leader import apply_wrist_roll_offset_deg
+
+    try:
+        initial_leader_action = leader.get_action()
+    except Exception as exc:
+        logger.warning("Failed to read initial leader pose: %s", exc)
+        return
+    follower.set_initial_leader_action(
+        apply_wrist_roll_offset_deg(initial_leader_action, wrist_roll_offset_deg)
+    )
+
+
+def _should_stop_after_termination(
+    state: RecordingState,
+    step_info: _StepInfoLike | None,
+    *,
+    fps: int,
+    success_hold_seconds: float,
+) -> bool:
+    """Update termination state and return whether the hold window elapsed."""
+    if step_info is None or not step_info.terminated:
+        return False
+    if state.terminated_at_frame is None:
+        state.terminated_at_frame = len(state.episode_actions)
+
+    hold_frames = max(0, round(success_hold_seconds * fps))
+    frames_since_success = len(state.episode_actions) - state.terminated_at_frame
+    return frames_since_success >= hold_frames
+
+
 def recording_thread(
     state: RecordingState,
     env_id: str,
@@ -215,6 +263,7 @@ def recording_thread(
     customization_overrides: TeleopConfigOverrides | None = None,
     env_config_profile: str | None = None,
     env_config_factory: ConfigFactory | None = None,
+    success_hold_seconds: float = 0.5,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
     from so101_nexus_core.lerobot_adapter.sim_follower import SimSOFollower
@@ -248,6 +297,7 @@ def recording_thread(
             factory=env_config_factory,
         )
         follower = SimSOFollower(follower_config)
+        _seed_follower_from_leader(follower, leader, wrist_roll_offset_deg)
         follower.connect()
 
         state.clear_episode()
@@ -272,6 +322,14 @@ def recording_thread(
             state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
             state.episode_states.append(_dict_to_vector(obs, joint_names))
             _publish_camera_frames(state, obs)
+
+            if _should_stop_after_termination(
+                state,
+                follower.last_step_info(),
+                fps=fps,
+                success_hold_seconds=success_hold_seconds,
+            ):
+                break
 
             sleep_time = frame_duration - (time.monotonic() - step_start)
             if sleep_time > 0:

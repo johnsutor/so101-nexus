@@ -138,6 +138,31 @@ def motor_ticks_to_sim_rad(
     return qpos
 
 
+def leader_action_to_sim_qpos(
+    action: Mapping[str, float],
+    *,
+    motors: Mapping[str, Motor],
+    calibration: dict[str, MotorCalibration],
+    gripper_limits_rad: GripperLimitsRad,
+) -> np.ndarray:
+    """Convert a leader action dict to simulator joint radians."""
+    values = {
+        key.removesuffix(".pos"): float(value)
+        for key, value in action.items()
+        if key.endswith(".pos")
+    }
+    unknown = set(values) - set(motors)
+    if unknown:
+        raise KeyError(f"Unknown SO101 motor action keys: {sorted(unknown)}")
+
+    ticks = unnormalize_values(values, motors=motors, calibration=calibration)
+    return motor_ticks_to_sim_rad(
+        ticks,
+        calibration=calibration,
+        gripper_limits_rad=gripper_limits_rad,
+    )
+
+
 def _unwrap_env(env: object) -> object:
     return getattr(env, "unwrapped", env)
 

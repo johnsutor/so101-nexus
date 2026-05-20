@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 import numpy as np
 import pytest
@@ -25,6 +26,33 @@ def test_reset_uses_init_qpos_from_options():
         obs, _ = env.reset(options={"init_qpos": custom_qpos})
         actual_qpos = env.unwrapped._get_current_qpos()
         np.testing.assert_allclose(actual_qpos, custom_qpos, atol=1e-6)
+    finally:
+        env.close()
+
+
+def test_reset_with_out_of_range_init_qpos_clamps_and_warns_once(caplog):
+    """Out-of-range init_qpos is clipped to actuator control bounds."""
+    import gymnasium as gym
+
+    importlib.import_module("so101_nexus_mujoco")
+    from so101_nexus_core.config import PickConfig
+
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        render_mode="rgb_array",
+    )
+    try:
+        inner = env.unwrapped
+        huge = np.full(6, 1e9, dtype=np.float64)
+
+        with caplog.at_level(logging.WARNING, logger="so101_nexus_mujoco.base_env"):
+            env.reset(options={"init_qpos": huge})
+            env.reset(options={"init_qpos": huge})
+
+        np.testing.assert_allclose(inner._get_current_qpos(), inner._ctrl_high, atol=1e-6)
+        warning_count = sum("init_qpos" in rec.message for rec in caplog.records)
+        assert warning_count == 1
     finally:
         env.close()
 
