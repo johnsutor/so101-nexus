@@ -87,6 +87,14 @@ def test_format_hub_links_url_encodes_namespace() -> None:
     assert "path=%2FAlice.Org%2Fdataset-v2%2Fepisode_0" in text
 
 
+def test_format_hub_links_url_encodes_dataset_page_path() -> None:
+    from so101_nexus_core.teleop.app import _format_hub_links
+
+    text = _format_hub_links("alice/data set")
+
+    assert "https://huggingface.co/datasets/alice/data%20set" in text
+
+
 def test_cb_validate_repo_id_status_branches(fake_gradio) -> None:
     from so101_nexus_core.teleop.app import _cb_validate_repo_id
 
@@ -298,6 +306,21 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
     assert reset_settle_slider.value == 5
     success_hold_slider = next(slider for slider in sliders if slider.label == "Success Hold (s)")
     assert success_hold_slider.value == 0.5
+
+
+def test_update_customization_for_env_updates_success_hold_seconds(
+    monkeypatch, fake_gradio
+) -> None:
+    monkeypatch.setattr(
+        teleop_app,
+        "_customization_ui_state_for_env",
+        lambda _env_id: teleop_app.CustomizationUIState(success_hold_seconds=1.2),
+    )
+
+    outputs = teleop_app._cb_update_customization_for_env("MuJoCoReach-v1")
+
+    assert len(outputs) == 15
+    assert outputs[11]["value"] == 1.2
 
 
 def test_default_env_id_prefers_matching_robot_variant() -> None:
@@ -1053,6 +1076,23 @@ def test_cb_push_to_hub_blocks_invalid_repo_id(fake_gradio) -> None:
             raise AssertionError("push_to_hub must not be called for invalid repo_id")
 
     with pytest.raises(RuntimeError, match="username/dataset"):
+        _cb_push_to_hub({"dataset": _Dataset()})
+
+
+def test_cb_push_to_hub_blocks_local_repo_id(fake_gradio) -> None:
+    """A local-only default repo_id raises before mutating the dataset."""
+    from so101_nexus_core.teleop.app import _cb_push_to_hub
+
+    class _Dataset:
+        repo_id = "local/teleop-Reach-v0-20260518_120000"
+
+        def finalize(self) -> None:
+            raise AssertionError("finalize must not be called for local repo_id")
+
+        def push_to_hub(self) -> None:
+            raise AssertionError("push_to_hub must not be called for local repo_id")
+
+    with pytest.raises(RuntimeError, match="local-only"):
         _cb_push_to_hub({"dataset": _Dataset()})
 
 

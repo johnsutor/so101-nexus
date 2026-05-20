@@ -295,7 +295,7 @@ def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -
     gripper_idx = SO101_JOINT_NAMES.index("gripper")
     assert 0.0 <= action0[gripper_idx] <= 100.0
     assert 0.0 <= state0[gripper_idx] <= 100.0
-    np.testing.assert_allclose(state0, action0, atol=0.25)
+    np.testing.assert_allclose(state0, action0, atol=0.1)
     assert state.live_frame is not None
     assert state.live_frame.mean() > 1.0
     assert state.live_preview is not None

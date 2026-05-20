@@ -96,7 +96,7 @@ def _format_hub_links(repo_id: str) -> str:
     """Return Markdown links for a pushed HuggingFace dataset."""
     from urllib.parse import quote
 
-    dataset_url = f"https://huggingface.co/datasets/{repo_id}"
+    dataset_url = f"https://huggingface.co/datasets/{quote(repo_id, safe='/')}"
     viewer_path = quote(f"/{repo_id}/episode_0", safe="")
     viewer_url = f"https://huggingface.co/spaces/lerobot/visualize_dataset?path={viewer_path}"
     return (
@@ -574,6 +574,7 @@ def _cb_update_customization_for_env(env_id: str):
         gr.update(value=state.reset_settle_frames),
         gr.update(value=state.cube_colors),
         gr.update(value=state.target_colors),
+        gr.update(value=state.success_hold_seconds),
         gr.update(visible=state.common_visible),
         gr.update(visible=state.pick_visible),
         gr.update(visible=state.pick_and_place_visible),
@@ -936,7 +937,12 @@ def _cb_push_to_hub(session: dict):
 
     from so101_nexus_core.teleop.session import RepoIdStatus, validate_hub_repo_id
 
-    repo_id = getattr(session["dataset"], "repo_id", "")
+    repo_id = str(getattr(session["dataset"], "repo_id", "")).strip()
+    if repo_id.startswith("local/"):
+        raise gr.Error(
+            "Cannot push a local-only dataset repo ID. "
+            "Start a new recording with a `username/dataset` Repo ID to push to the Hub."
+        )
     status = validate_hub_repo_id(repo_id)
     if status is not RepoIdStatus.OK:
         raise gr.Error(
@@ -1573,6 +1579,7 @@ def main(
                 reset_settle_frames_input,
                 cube_colors_input,
                 target_colors_input,
+                success_hold_seconds_input,
                 common_customization_group,
                 pick_customization_group,
                 pick_and_place_customization_group,
