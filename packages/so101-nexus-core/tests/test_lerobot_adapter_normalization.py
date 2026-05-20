@@ -135,6 +135,36 @@ def test_gripper_conversion_uses_caller_provided_limits() -> None:
     assert roundtrip[-1] == pytest.approx(lower_upper[1])
 
 
+def test_leader_action_to_sim_qpos_round_trip() -> None:
+    from so101_nexus_core.lerobot_adapter.normalization import (
+        build_so101_motors,
+        leader_action_to_sim_qpos,
+        normalize_ticks,
+        sim_rad_to_motor_ticks,
+    )
+
+    motors = build_so101_motors(use_degrees=True)
+    calibration = _calibration()
+    gripper_limits_rad = (-0.2, 1.2)
+    original_qpos = np.array([0.1, -0.2, 0.3, 0.0, -0.4, 0.6], dtype=np.float64)
+    ticks = sim_rad_to_motor_ticks(
+        original_qpos,
+        calibration=calibration,
+        gripper_limits_rad=gripper_limits_rad,
+    )
+    normalized = normalize_ticks(ticks, motors=motors, calibration=calibration)
+    action = {f"{name}.pos": value for name, value in normalized.items()}
+
+    recovered = leader_action_to_sim_qpos(
+        action,
+        motors=motors,
+        calibration=calibration,
+        gripper_limits_rad=gripper_limits_rad,
+    )
+
+    np.testing.assert_allclose(recovered, original_qpos, atol=1e-2)
+
+
 def test_body_conversion_rejects_equal_calibration_ranges() -> None:
     from so101_nexus_core.lerobot_adapter.normalization import (
         motor_ticks_to_sim_rad,

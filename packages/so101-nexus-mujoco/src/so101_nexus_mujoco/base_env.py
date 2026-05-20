@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import gymnasium
@@ -29,6 +30,8 @@ from so101_nexus_core.observations import (
     _CameraObservation,
 )
 from so101_nexus_core.rewards import orientation_progress, reach_progress
+
+logger = logging.getLogger(__name__)
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
@@ -75,6 +78,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.render_mode = render_mode
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self._privileged_state: np.ndarray | None = None
+        self._init_qpos_clamp_warned = False
 
     def _finish_model_setup(self) -> None:
         self._joint_ids = np.array(
@@ -217,7 +221,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         Parameters
         ----------
         init_qpos : np.ndarray or None
-            If provided, joints are set to this exact configuration (no noise).
+            If provided, joints are set to this configuration clipped to
+            actuator control bounds (no noise).
             If None, joints are reset based on ``config.robot.init_pose`` if set,
             otherwise the default rest pose with Gaussian noise.
 
@@ -227,7 +232,16 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             The target joint positions actually applied (before per-joint noise).
         """
         if init_qpos is not None:
-            target = init_qpos
+            target = np.asarray(init_qpos, dtype=np.float64).copy()
+            clipped = np.clip(target, self._ctrl_low, self._ctrl_high)
+            if not np.array_equal(target, clipped):
+                if not self._init_qpos_clamp_warned:
+                    logger.warning(
+                        "init_qpos clipped to control bounds for at least one joint; "
+                        "further init_qpos clamps on this env will be silent."
+                    )
+                    self._init_qpos_clamp_warned = True
+                target = clipped
             noise_scale = 0.0
         else:
             pose = self.config.robot.resolve_pose()

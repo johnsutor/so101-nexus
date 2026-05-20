@@ -66,6 +66,45 @@ def test_progress_text_formats_zero_completed() -> None:
     assert _progress_text(0, 10) == "**Episode 0 / 10**"
 
 
+def test_format_hub_links_basic() -> None:
+    from so101_nexus_core.teleop.app import _format_hub_links
+
+    text = _format_hub_links("alice/my-dataset")
+
+    assert "https://huggingface.co/datasets/alice/my-dataset" in text
+    assert (
+        "https://huggingface.co/spaces/lerobot/visualize_dataset"
+        "?path=%2Falice%2Fmy-dataset%2Fepisode_0"
+    ) in text
+
+
+def test_format_hub_links_url_encodes_namespace() -> None:
+    from so101_nexus_core.teleop.app import _format_hub_links
+
+    text = _format_hub_links("Alice.Org/dataset-v2")
+
+    assert "datasets/Alice.Org/dataset-v2" in text
+    assert "path=%2FAlice.Org%2Fdataset-v2%2Fepisode_0" in text
+
+
+def test_cb_validate_repo_id_status_branches(fake_gradio) -> None:
+    from so101_nexus_core.teleop.app import _cb_validate_repo_id
+
+    blank = _cb_validate_repo_id("")
+    assert blank["visible"] is False
+
+    ok = _cb_validate_repo_id("alice/dataset")
+    assert ok["visible"] is False
+
+    missing = _cb_validate_repo_id("just-a-name")
+    assert missing["visible"] is True
+    assert "username/dataset" in missing["value"]
+
+    invalid = _cb_validate_repo_id("alice/has space")
+    assert invalid["visible"] is True
+    assert "alphanumeric" in invalid["value"]
+
+
 def test_build_field_selection_all_keys() -> None:
     selection = _build_field_selection([WRIST_KEY, OVERHEAD_KEY, "task"])
 
@@ -184,6 +223,7 @@ def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fa
         "wrist_roll_offset_deg": -90.0,
         "wrist_wh": (320, 240),
         "overhead_wh": (640, 360),
+        "success_hold_seconds": 0.7,
     }
 
     teleop_app._cb_start_recording(session)
@@ -193,6 +233,7 @@ def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fa
     kwargs = captured["kwargs"]
     assert kwargs["follower_calibration_dir"] == tmp_path
     assert kwargs["follower_robot_id"] == "teleop_sim"
+    assert kwargs["success_hold_seconds"] == 0.7
     assert "action_pipeline" not in kwargs
 
 
@@ -255,6 +296,8 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
         slider for slider in sliders if slider.label == "Reset Settle Frames"
     )
     assert reset_settle_slider.value == 5
+    success_hold_slider = next(slider for slider in sliders if slider.label == "Success Hold (s)")
+    assert success_hold_slider.value == 0.5
 
 
 def test_default_env_id_prefers_matching_robot_variant() -> None:
@@ -396,6 +439,41 @@ def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> No
     )
 
     assert config["env_overrides"] is None
+
+
+def test_normalized_init_config_includes_success_hold_seconds() -> None:
+    config = _normalized_init_config(
+        "leader",
+        "MuJoCoPickLift-v1",
+        "so101",
+        "",
+        30,
+        320,
+        240,
+        640,
+        480,
+        "",
+        1,
+        "joint_pos",
+        100,
+        0,
+        -90,
+        [],
+        False,
+        ["cube:red"],
+        0,
+        ["gray"],
+        ["yellow"],
+        0.10,
+        0.30,
+        90,
+        5,
+        ["red"],
+        ["blue"],
+        success_hold_seconds=0.8,
+    )
+
+    assert config["success_hold_seconds"] == 0.8
 
 
 def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> None:
@@ -743,6 +821,21 @@ def test_poll_recording_shows_current_task_during_recording(fake_gradio) -> None
     assert outputs[5]["value"] == "**Task:** Pick up the red cube."
 
 
+def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:
+    state = RecordingState(is_recording=True, num_episodes=1, terminated_at_frame=3)
+    state.episode_actions.extend([np.zeros(6, dtype=np.float32) for _ in range(4)])
+    state.live_preview = np.zeros((4, 4, 3), dtype=np.uint8)
+    session = {
+        "state": state,
+        "fps": 30,
+    }
+
+    outputs = _cb_poll_recording(session)
+
+    assert outputs[0]["value"].startswith("Success.")
+    assert "finishing" in outputs[0]["value"]
+
+
 def test_poll_recording_waits_for_real_preview_before_showing_image(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=1)
     session = {
@@ -932,6 +1025,8 @@ def test_cb_push_to_hub_finalizes_before_uploading(fake_gradio) -> None:
     calls: list[str] = []
 
     class _RecordingDataset:
+        repo_id = "alice/dataset"
+
         def finalize(self) -> None:
             calls.append("finalize")
 
@@ -942,6 +1037,23 @@ def test_cb_push_to_hub_finalizes_before_uploading(fake_gradio) -> None:
 
     assert calls == ["finalize", "push_to_hub"], f"expected finalize -> push_to_hub, got {calls}"
     assert "pushed" in result.lower()
+
+
+def test_cb_push_to_hub_blocks_invalid_repo_id(fake_gradio) -> None:
+    """A non-Hub-ready repo_id raises before mutating the dataset."""
+    from so101_nexus_core.teleop.app import _cb_push_to_hub
+
+    class _Dataset:
+        repo_id = "just-a-name"
+
+        def finalize(self) -> None:
+            raise AssertionError("finalize must not be called for invalid repo_id")
+
+        def push_to_hub(self) -> None:
+            raise AssertionError("push_to_hub must not be called for invalid repo_id")
+
+    with pytest.raises(RuntimeError, match="username/dataset"):
+        _cb_push_to_hub({"dataset": _Dataset()})
 
 
 def test_cb_push_to_hub_skips_upload_when_finalize_raises(monkeypatch) -> None:
@@ -958,6 +1070,8 @@ def test_cb_push_to_hub_skips_upload_when_finalize_raises(monkeypatch) -> None:
     calls: list[str] = []
 
     class _BadFinalizeDataset:
+        repo_id = "alice/dataset"
+
         def finalize(self) -> None:
             calls.append("finalize")
             raise RuntimeError("writer already closed")
@@ -981,6 +1095,8 @@ def test_finalize_and_close_after_push_is_idempotent(fake_gradio) -> None:
     disconnect_calls = {"n": 0}
 
     class _Dataset:
+        repo_id = "alice/dataset"
+
         def finalize(self) -> None:
             finalize_calls["n"] += 1
 

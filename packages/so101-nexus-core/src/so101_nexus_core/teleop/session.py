@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime
 import importlib
 import tempfile
+from enum import Enum
 
 import numpy as np
 
@@ -24,6 +25,39 @@ from so101_nexus_core.teleop.config_customization import (
     apply_config_overrides,
     load_profile_overrides,
 )
+
+
+class RepoIdStatus(str, Enum):  # noqa: UP042 - StrEnum requires Python 3.11.
+    """Outcome of validating a HuggingFace dataset repo ID for teleop push."""
+
+    OK = "ok"
+    LOCAL_ONLY = "local_only"
+    MISSING_NAMESPACE = "missing_namespace"
+    INVALID_CHARS = "invalid_chars"
+
+
+def validate_hub_repo_id(value: str) -> RepoIdStatus:
+    """Classify a user-entered repo ID for Hub push readiness.
+
+    Empty strings are local-only. Hub pushes require exactly one slash with
+    non-empty namespace and dataset parts. Character validation is delegated
+    to ``huggingface_hub`` so the accepted alphabet matches the Hub.
+    """
+    stripped = value.strip()
+    if not stripped:
+        return RepoIdStatus.LOCAL_ONLY
+
+    parts = stripped.split("/")
+    if len(parts) != 2 or not all(parts):
+        return RepoIdStatus.MISSING_NAMESPACE
+
+    from huggingface_hub.utils import HFValidationError, validate_repo_id
+
+    try:
+        validate_repo_id(stripped)
+    except HFValidationError:
+        return RepoIdStatus.INVALID_CHARS
+    return RepoIdStatus.OK
 
 
 def _default_repo_id(env_id: str) -> str:

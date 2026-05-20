@@ -9,9 +9,15 @@ LeRobot feature schema and every recorded frame.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Any
 
 import numpy as np
+
+try:
+    hw_to_dataset_features = import_module("lerobot.datasets.feature_utils").hw_to_dataset_features
+except (ImportError, AttributeError):  # LeRobot 0.5.0 compatibility
+    hw_to_dataset_features = import_module("lerobot.datasets.utils").hw_to_dataset_features
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
@@ -69,8 +75,6 @@ def build_features(
     action_features
         ``SimSOFollower.action_features``-shaped dict.
     """
-    from lerobot.datasets.utils import hw_to_dataset_features
-
     features: dict[str, dict[str, Any]] = {}
     features.update(hw_to_dataset_features(action_features, "action", use_video=True))
     features.update(
