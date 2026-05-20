@@ -247,7 +247,6 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             target_xyz[:, 2] = self._obj_spawn_z_val
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
-            self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
             # Distractor poses
             for d_idx, distractor in enumerate(self.distractors):

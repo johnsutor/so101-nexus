@@ -263,7 +263,7 @@ def test_pick_mixed_pool_with_distractors():
         env.close()
 
 
-@pytest.mark.parametrize("model_id", ["011_banana", "030_fork"])
+@pytest.mark.parametrize("model_id", ["011_banana", "030_fork", "031_spoon", "032_knife"])
 def test_pick_ycb_collision_geom_starts_above_floor(model_id):
     from so101_nexus_mujoco.spawn_utils import mesh_geom_world_min_z
 
@@ -318,6 +318,47 @@ def test_ycb_scene_xml_binds_cached_texture(monkeypatch, tmp_path):
     assert '<material name="pick_mat_0" texture="pick_tex_0" texuniform="false"/>' in xml
     assert 'name="pick_slot_0_visual"' in xml
     assert 'material="pick_mat_0"' in xml
+
+
+def test_ycb_scene_xml_uses_posix_paths_for_cached_assets(monkeypatch):
+    from so101_nexus_mujoco import pick_env
+
+    class _FakePath:
+        def __init__(self, posix_path: str, native_path: str):
+            self._posix_path = posix_path
+            self._native_path = native_path
+
+        def __str__(self) -> str:
+            return self._native_path
+
+        def as_posix(self) -> str:
+            return self._posix_path
+
+        def exists(self) -> bool:
+            return True
+
+    collision_path = _FakePath("C:/cache/ycb/collision.obj", r"C:\cache\ycb\collision.obj")
+    visual_path = _FakePath("C:/cache/ycb/visual.obj", r"C:\cache\ycb\visual.obj")
+    texture_path = _FakePath("C:/cache/ycb/texture.png", r"C:\cache\ycb\texture.png")
+    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
+    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
+    monkeypatch.setattr(
+        pick_env,
+        "get_ycb_texture_file",
+        lambda _model_id: texture_path,
+        raising=False,
+    )
+
+    xml = pick_env._build_scene_xml(
+        [YCBObject(model_id="011_banana")],
+        ["pick_slot_0"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert 'file="C:/cache/ycb/collision.obj"' in xml
+    assert 'file="C:/cache/ycb/visual.obj"' in xml
+    assert 'file="C:/cache/ycb/texture.png"' in xml
+    assert r"C:\cache\ycb" not in xml
 
 
 def test_scene_xml_leaves_cubes_and_mesh_objects_untextured(tmp_path):

@@ -106,8 +106,8 @@ def _build_scene_xml(
 
     for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
         if isinstance(obj, YCBObject):
-            collision_path = str(get_ycb_collision_mesh(obj.model_id))
-            visual_path = str(get_ycb_visual_mesh(obj.model_id))
+            collision_path = get_ycb_collision_mesh(obj.model_id).as_posix()
+            visual_path = get_ycb_visual_mesh(obj.model_id).as_posix()
             asset_entries += f'    <mesh name="pick_coll_{i}" file="{collision_path}"/>\n'
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
             material_name = None
@@ -116,7 +116,8 @@ def _build_scene_xml(
                 texture_name = f"pick_tex_{i}"
                 material_name = f"pick_mat_{i}"
                 asset_entries += (
-                    f'    <texture name="{texture_name}" type="2d" file="{texture_path}"/>\n'
+                    f'    <texture name="{texture_name}" type="2d" '
+                    f'file="{texture_path.as_posix()}"/>\n'
                 )
                 asset_entries += (
                     f'    <material name="{material_name}" texture="{texture_name}" '
@@ -399,7 +400,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 yaw_quat = random_yaw_quat(rng)
                 obj_quat = np.zeros(4)
                 mujoco.mju_mulQuat(obj_quat, yaw_quat, slot.rest_quat)
-                spawn_z = align_freejoint_geom_to_floor(
+                align_freejoint_geom_to_floor(
                     self.model,
                     self.data,
                     qpos_addr=slot.qpos_addr,
@@ -409,9 +410,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 )
             else:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
-
-            if pos_idx == 0:
-                self._initial_obj_z = spawn_z
 
         # Move all inactive slots far off-world so they are invisible and
         # do not participate in collision.

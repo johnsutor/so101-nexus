@@ -322,6 +322,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         for _ in range(frames):
             self.scene.step()
         if pre_settle_state is not None:
+            # Snapshot covers all envs; env_idx selects only inactive rows to restore.
             self.set_state_dict(pre_settle_state, inactive_idx)
 
     def _refresh_reset_reference_state(self, env_idx: torch.Tensor) -> None:

@@ -426,6 +426,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _settle_after_reset(self) -> None:
         """Advance configured no-op frames after reset before returning observations."""
+        # data.ctrl was set during robot reset and must remain held while settling.
         for _ in range(self.config.reset_settle_frames):
             for _ in range(self._N_SUBSTEPS):
                 mujoco.mj_step(self.model, self.data)
