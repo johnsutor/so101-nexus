@@ -14,11 +14,6 @@ from typing import Any
 
 import numpy as np
 
-try:
-    hw_to_dataset_features = import_module("lerobot.datasets.feature_utils").hw_to_dataset_features
-except (ImportError, AttributeError):  # LeRobot 0.5.0 compatibility
-    hw_to_dataset_features = import_module("lerobot.datasets.utils").hw_to_dataset_features
-
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
 
@@ -59,6 +54,14 @@ def _with_selected_cameras(
     return features
 
 
+def _hw_to_dataset_features():
+    """Return LeRobot's feature-schema converter across supported 0.5.x layouts."""
+    try:
+        return import_module("lerobot.datasets.feature_utils").hw_to_dataset_features
+    except (ImportError, AttributeError):  # LeRobot 0.5.0 compatibility
+        return import_module("lerobot.datasets.utils").hw_to_dataset_features
+
+
 def build_features(
     selection: FieldSelection,
     follower_features: dict[str, Any],
@@ -75,6 +78,7 @@ def build_features(
     action_features
         ``SimSOFollower.action_features``-shaped dict.
     """
+    hw_to_dataset_features = _hw_to_dataset_features()
     features: dict[str, dict[str, Any]] = {}
     features.update(hw_to_dataset_features(action_features, "action", use_video=True))
     features.update(

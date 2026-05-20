@@ -171,6 +171,28 @@ def _install_stub(monkeypatch, module_path: str, attr: str, value) -> None:
         monkeypatch.setattr(parent, leaf, stub, raising=False)
 
 
+def test_dataset_module_import_does_not_require_lerobot(monkeypatch) -> None:
+    """MuJoCo-only installs import teleop.app without installing LeRobot."""
+    with monkeypatch.context() as mp:
+        for name in list(sys.modules):
+            if name == "lerobot" or name.startswith("lerobot."):
+                mp.delitem(sys.modules, name, raising=False)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "lerobot" or name.startswith("lerobot."):
+                raise ModuleNotFoundError("simulated missing lerobot")
+            return real_import(name, globals, locals, fromlist, level)
+
+        mp.setattr(builtins, "__import__", fake_import)
+
+        module = _reload_dataset_module()
+
+        assert module.FieldSelection().state is True
+    _reload_dataset_module()
+
+
 def test_dataset_prefers_lerobot_feature_utils(monkeypatch) -> None:
     """When LeRobot exposes feature_utils.hw_to_dataset_features, use it."""
     with monkeypatch.context() as mp:
@@ -184,7 +206,7 @@ def test_dataset_prefers_lerobot_feature_utils(monkeypatch) -> None:
 
         module = _reload_dataset_module()
 
-        assert module.hw_to_dataset_features is sentinel
+        assert module._hw_to_dataset_features() is sentinel
     _reload_dataset_module()
 
 
@@ -206,5 +228,5 @@ def test_dataset_falls_back_to_lerobot_datasets_utils(monkeypatch) -> None:
 
         module = _reload_dataset_module()
 
-        assert module.hw_to_dataset_features is sentinel
+        assert module._hw_to_dataset_features() is sentinel
     _reload_dataset_module()
