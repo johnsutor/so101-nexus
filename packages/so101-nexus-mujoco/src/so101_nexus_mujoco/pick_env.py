@@ -19,6 +19,7 @@ from so101_nexus_core import (
     get_mujoco_ycb_rest_pose,
     get_so101_simulation_dir,
     get_ycb_collision_mesh,
+    get_ycb_texture_file,
     get_ycb_visual_mesh,
 )
 from so101_nexus_core.config import (
@@ -28,7 +29,11 @@ from so101_nexus_core.config import (
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus_mujoco.spawn_utils import random_yaw_quat, sample_separated_positions
+from so101_nexus_mujoco.spawn_utils import (
+    align_freejoint_geom_to_floor,
+    random_yaw_quat,
+    sample_separated_positions,
+)
 
 _SO101_DIR = get_so101_simulation_dir()
 _SO101_XML = _SO101_DIR / "so101_new_calib.xml"
@@ -55,7 +60,13 @@ def _cube_xml_body(slot_name: str, obj: CubeObject) -> str:
     )
 
 
-def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
+def _mesh_xml_body(
+    slot_name: str,
+    asset_index: int,
+    mass: float,
+    material_name: str | None = None,
+) -> str:
+    material_attr = f' material="{material_name}"' if material_name else ""
     return (
         f'    <body name="{slot_name}" pos="0.15 0 0.01">\n'
         f'      <freejoint name="{slot_name}_joint"/>\n'
@@ -66,7 +77,7 @@ def _mesh_xml_body(slot_name: str, asset_index: int, mass: float) -> str:
         f'            solimp="0.95 0.99 0.001"/>\n'
         f'      <geom name="{slot_name}_visual" type="mesh" '
         f'mesh="pick_vis_{asset_index}"\n'
-        f'            group="2" contype="0" conaffinity="0" mass="0"/>\n'
+        f'            group="2" contype="0" conaffinity="0" mass="0"{material_attr}/>\n'
         f"    </body>\n"
     )
 
@@ -95,12 +106,25 @@ def _build_scene_xml(
 
     for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
         if isinstance(obj, YCBObject):
-            collision_path = str(get_ycb_collision_mesh(obj.model_id))
-            visual_path = str(get_ycb_visual_mesh(obj.model_id))
+            collision_path = get_ycb_collision_mesh(obj.model_id).as_posix()
+            visual_path = get_ycb_visual_mesh(obj.model_id).as_posix()
             asset_entries += f'    <mesh name="pick_coll_{i}" file="{collision_path}"/>\n'
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
+            material_name = None
+            texture_path = get_ycb_texture_file(obj.model_id)
+            if texture_path.exists():
+                texture_name = f"pick_tex_{i}"
+                material_name = f"pick_mat_{i}"
+                asset_entries += (
+                    f'    <texture name="{texture_name}" type="2d" '
+                    f'file="{texture_path.as_posix()}"/>\n'
+                )
+                asset_entries += (
+                    f'    <material name="{material_name}" texture="{texture_name}" '
+                    'texuniform="false"/>\n'
+                )
             mass = obj.mass_override if obj.mass_override is not None else 0.01
-            body_entries += _mesh_xml_body(slot, i, mass)
+            body_entries += _mesh_xml_body(slot, i, mass, material_name=material_name)
         elif isinstance(obj, MeshObject):
             asset_entries += (
                 f'    <mesh name="pick_coll_{i}" file="{obj.collision_mesh_path}"'
@@ -321,6 +345,10 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         return self._reach_only_reward(info)
 
+    def _refresh_reset_reference_state(self) -> None:
+        """Refresh lift baseline from the post-settle target object pose."""
+        self._initial_obj_z = float(self._get_target_pose()[2])
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
@@ -365,20 +393,23 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
                 obj_quat = yaw_quat
                 rgba = COLOR_MAP[obj.color]
                 self.model.geom_rgba[slot.geom_id] = rgba
+                addr = slot.qpos_addr
+                self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
+                self.data.qpos[addr + 3 : addr + 7] = obj_quat
             elif isinstance(obj, (YCBObject, MeshObject)):
-                spawn_z = slot.spawn_z
                 yaw_quat = random_yaw_quat(rng)
                 obj_quat = np.zeros(4)
                 mujoco.mju_mulQuat(obj_quat, yaw_quat, slot.rest_quat)
+                align_freejoint_geom_to_floor(
+                    self.model,
+                    self.data,
+                    qpos_addr=slot.qpos_addr,
+                    geom_id=slot.geom_id,
+                    xy=(x, y),
+                    quat=obj_quat,
+                )
             else:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
-
-            addr = slot.qpos_addr
-            self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
-            self.data.qpos[addr + 3 : addr + 7] = obj_quat
-
-            if pos_idx == 0:
-                self._initial_obj_z = spawn_z
 
         # Move all inactive slots far off-world so they are invisible and
         # do not participate in collision.

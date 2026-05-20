@@ -130,6 +130,9 @@ from so101_nexus_core.ycb_assets import (  # noqa: E402
     get_ycb_mesh_dir as get_ycb_mesh_dir,
 )
 from so101_nexus_core.ycb_assets import (  # noqa: E402
+    get_ycb_texture_file as get_ycb_texture_file,
+)
+from so101_nexus_core.ycb_assets import (  # noqa: E402
     get_ycb_visual_mesh as get_ycb_visual_mesh,
 )
 from so101_nexus_core.ycb_geometry import (  # noqa: E402

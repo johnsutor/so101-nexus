@@ -102,6 +102,12 @@ def test_apply_config_overrides_updates_pick_and_place_colors() -> None:
     assert cfg.target_colors == ["blue"]
 
 
+def test_apply_config_overrides_updates_reset_settle_frames() -> None:
+    cfg = apply_config_overrides(PickConfig(), TeleopConfigOverrides(reset_settle_frames=2))
+
+    assert cfg.reset_settle_frames == 2
+
+
 def test_apply_config_overrides_ignores_pick_specific_options_for_reach() -> None:
     base = ReachConfig()
 
@@ -139,6 +145,15 @@ def test_load_profile_json_merges_common_task_and_env_sections(tmp_path) -> None
     assert overrides.objects[1].model_id == "011_banana"
     assert overrides.n_distractors == 1
     assert overrides.spawn_max_radius == 0.22
+
+
+def test_load_profile_common_accepts_reset_settle_frames(tmp_path) -> None:
+    path = tmp_path / "profile.json"
+    path.write_text('{"common":{"reset_settle_frames":3}}', encoding="utf-8")
+
+    overrides = load_profile_overrides(path, "MuJoCoPickLift-v1", PickConfig())
+
+    assert overrides.reset_settle_frames == 3
 
 
 def test_load_profile_precedence_is_env_over_task_over_common(tmp_path) -> None:
@@ -243,6 +258,11 @@ def test_overrides_from_mapping_accepts_object_specs() -> None:
 def test_overrides_from_mapping_rejects_non_finite_float() -> None:
     with pytest.raises(ValueError, match="finite"):
         overrides_from_mapping({"spawn_max_radius": "nan"})
+
+
+def test_overrides_from_mapping_rejects_non_integer_reset_settle_frames() -> None:
+    with pytest.raises(ValueError, match="reset_settle_frames"):
+        overrides_from_mapping({"reset_settle_frames": 1.5})
 
 
 def test_load_config_factory_wraps_missing_modules() -> None:

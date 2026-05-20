@@ -40,6 +40,7 @@ class TeleopConfigOverrides:
     spawn_min_radius: float | None = None
     spawn_max_radius: float | None = None
     spawn_angle_half_range_deg: float | None = None
+    reset_settle_frames: int | None = None
     cube_colors: tuple[ColorName, ...] | None = None
     target_colors: tuple[ColorName, ...] | None = None
 
@@ -47,6 +48,8 @@ class TeleopConfigOverrides:
         """Validate override combinations that dataclass types cannot express."""
         if self.n_distractors is not None and self.n_distractors < 0:
             raise ValueError(f"n_distractors must be >= 0, got {self.n_distractors}")
+        if self.reset_settle_frames is not None and self.reset_settle_frames < 0:
+            raise ValueError(f"reset_settle_frames must be >= 0, got {self.reset_settle_frames}")
         if self.objects is not None and self.object_specs is not None:
             raise ValueError("Provide either objects or object_specs, not both.")
 
@@ -140,7 +143,12 @@ def apply_config_overrides[ConfigT](
         if value is not None and name in attrs:
             attrs[name] = value
 
-    for name in ("spawn_min_radius", "spawn_max_radius", "spawn_angle_half_range_deg"):
+    for name in (
+        "spawn_min_radius",
+        "spawn_max_radius",
+        "spawn_angle_half_range_deg",
+        "reset_settle_frames",
+    ):
         value = getattr(overrides, name)
         if value is not None and name in attrs:
             attrs[name] = value
@@ -206,6 +214,10 @@ def overrides_from_mapping(raw: Mapping[str, Any]) -> TeleopConfigOverrides:
     for key in ("spawn_min_radius", "spawn_max_radius", "spawn_angle_half_range_deg"):
         if key in raw:
             kwargs[key] = _as_float(raw[key], key)
+    if "reset_settle_frames" in raw:
+        kwargs["reset_settle_frames"] = _as_nonnegative_int(
+            raw["reset_settle_frames"], "reset_settle_frames"
+        )
     return TeleopConfigOverrides(**kwargs)
 
 

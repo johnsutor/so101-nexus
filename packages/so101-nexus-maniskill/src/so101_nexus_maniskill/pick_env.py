@@ -247,7 +247,6 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             target_xyz[:, 2] = self._obj_spawn_z_val
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
-            self._store_initial_obj_z(env_idx, target_xyz[:, 2])
 
             # Distractor poses
             for d_idx, distractor in enumerate(self.distractors):
@@ -258,6 +257,13 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
                 d_xyz[:, 2] = self._distractor_spawn_zs[d_idx]
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)
                 distractor.set_pose(Pose.create_from_pq(p=d_xyz, q=d_qs))
+
+            self._settle_after_reset(env_idx)
+            self._refresh_reset_reference_state(env_idx)
+
+    def _refresh_reset_reference_state(self, env_idx: torch.Tensor) -> None:
+        """Refresh lift baseline from the post-settle target object pose."""
+        self._store_initial_obj_z(env_idx, self.obj.pose.p[env_idx, 2])
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Return per-env metrics: is_grasped, lift_height, tcp_to_obj_dist."""

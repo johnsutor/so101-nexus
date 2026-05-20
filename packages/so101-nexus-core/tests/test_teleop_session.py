@@ -158,11 +158,13 @@ def test_build_recording_config_applies_overrides_before_camera_wiring() -> None
         overrides=TeleopConfigOverrides(
             object_specs=("cube:green", "ycb:011_banana"),
             n_distractors=1,
+            reset_settle_frames=4,
         ),
         env_id="MuJoCoPickLift-v1",
     )
 
     assert cfg.n_distractors == 1
+    assert cfg.reset_settle_frames == 4
     assert isinstance(cfg.objects[0], CubeObject)
     assert cfg.objects[0].color == "green"
     assert isinstance(cfg.objects[1], YCBObject)

@@ -385,6 +385,7 @@ class EnvironmentConfig:
         robot: Robot configuration.
         ground_colors: Ground plane color(s).
         max_episode_steps: Maximum steps per episode.
+        reset_settle_frames: No-op environment frames advanced after reset before observation.
         goal_thresh: Distance threshold for goal achievement.
         spawn_half_size: Half-size of spawn region.
         spawn_center: Center of spawn region (x, y).
@@ -404,6 +405,7 @@ class EnvironmentConfig:
         robot: RobotConfig | None = None,
         ground_colors: ColorConfig = "gray",
         max_episode_steps: int = 1024,
+        reset_settle_frames: int = 5,
         goal_thresh: float = 0.025,
         spawn_half_size: float = 0.05,
         spawn_center: tuple[float, float] = (0.15, 0.0),
@@ -420,6 +422,7 @@ class EnvironmentConfig:
         self.robot = robot if robot is not None else RobotConfig()
         self.ground_colors = ground_colors
         self.max_episode_steps = max_episode_steps
+        self.reset_settle_frames = reset_settle_frames
         self.goal_thresh = goal_thresh
         self.spawn_half_size = spawn_half_size
         self.spawn_center = spawn_center
@@ -445,6 +448,13 @@ class EnvironmentConfig:
                 )
         _validate_color_config(self.ground_colors, "ground_colors")
         _validate_color_config(self.robot_colors, "robot_colors")
+        if not isinstance(self.reset_settle_frames, int):
+            raise ValueError(
+                "reset_settle_frames must be an integer, got "
+                f"{type(self.reset_settle_frames).__name__}"
+            )
+        if self.reset_settle_frames < 0:
+            raise ValueError(f"reset_settle_frames must be >= 0, got {self.reset_settle_frames}")
         if self.spawn_min_radius < 0:
             raise ValueError(f"spawn_min_radius must be >= 0, got {self.spawn_min_radius}")
         if self.spawn_max_radius <= self.spawn_min_radius:

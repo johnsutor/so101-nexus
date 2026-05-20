@@ -99,6 +99,8 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
             pos = torch.stack([x, y, z], dim=1)
             q = torch.tensor([[1, 0, 0, 0]], device=self.device, dtype=torch.float32).expand(b, -1)
             self.target_obj_actor.set_pose(Pose.create_from_pq(p=pos, q=q))
+            self._settle_after_reset(env_idx)
+            self._refresh_reset_reference_state(env_idx)
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Return per-env metrics: orientation_error, success."""

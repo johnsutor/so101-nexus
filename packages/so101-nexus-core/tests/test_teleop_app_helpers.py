@@ -215,10 +215,16 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
             return False
 
     radios: list[_FakeComponent] = []
+    sliders: list[_FakeComponent] = []
 
     def _radio(*args, **kwargs):
         component = _FakeComponent(*args, **kwargs)
         radios.append(component)
+        return component
+
+    def _slider(*args, **kwargs):
+        component = _FakeComponent(*args, **kwargs)
+        sliders.append(component)
         return component
 
     fake_gr = types.SimpleNamespace(
@@ -227,7 +233,7 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
         Radio=_radio,
         Row=_Context,
         Number=_FakeComponent,
-        Slider=_FakeComponent,
+        Slider=_slider,
         Textbox=_FakeComponent,
         CheckboxGroup=_FakeComponent,
         Checkbox=_FakeComponent,
@@ -245,6 +251,10 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
 
     action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
     assert action_space_radio.value == "joint_pos"
+    reset_settle_slider = next(
+        slider for slider in sliders if slider.label == "Reset Settle Frames"
+    )
+    assert reset_settle_slider.value == 5
 
 
 def test_default_env_id_prefers_matching_robot_variant() -> None:
@@ -302,6 +312,7 @@ def test_normalized_init_config_includes_env_overrides() -> None:
         0.15,
         0.25,
         60,
+        5,
         ["red", "green"],
         ["blue"],
     )
@@ -314,8 +325,43 @@ def test_normalized_init_config_includes_env_overrides() -> None:
     assert overrides.spawn_min_radius == 0.15
     assert overrides.spawn_max_radius == 0.25
     assert overrides.spawn_angle_half_range_deg == 60
+    assert overrides.reset_settle_frames == 5
     assert overrides.cube_colors == ("red", "green")
     assert overrides.target_colors == ("blue",)
+
+
+def test_normalized_init_config_rounds_reset_settle_frames_from_ui_float() -> None:
+    config = _normalized_init_config(
+        "leader",
+        "MuJoCoPickLift-v1",
+        "so101",
+        "",
+        30,
+        320,
+        240,
+        640,
+        480,
+        "",
+        1,
+        "joint_pos",
+        100,
+        0,
+        -90,
+        [],
+        True,
+        ["cube:red"],
+        0,
+        ["gray"],
+        ["yellow"],
+        0.10,
+        0.30,
+        90,
+        2.999,
+        ["red"],
+        ["blue"],
+    )
+
+    assert config["env_overrides"].reset_settle_frames == 3
 
 
 def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> None:
@@ -344,6 +390,7 @@ def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> No
         0.10,
         0.30,
         90,
+        5,
         ["red"],
         ["blue"],
     )
@@ -361,6 +408,7 @@ def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> N
             spawn_min_radius=0.12,
             spawn_max_radius=0.28,
             spawn_angle_half_range_deg=45,
+            reset_settle_frames=7,
         )
     )
 
@@ -376,6 +424,7 @@ def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> N
     assert state.spawn_min_radius == 0.12
     assert state.spawn_max_radius == 0.28
     assert state.spawn_angle_half_range_deg == 45
+    assert state.reset_settle_frames == 7
 
 
 def test_customization_ui_state_for_pick_and_place_hides_pick_controls() -> None:
@@ -450,6 +499,7 @@ def test_normalized_init_config_rejects_invalid_ui_color() -> None:
             0.10,
             0.30,
             90,
+            5,
             ["red"],
             ["blue"],
         )
@@ -482,6 +532,7 @@ def test_normalized_init_config_rejects_gray_pick_and_place_ui_color() -> None:
             0.10,
             0.30,
             90,
+            5,
             ["gray"],
             ["blue"],
         )

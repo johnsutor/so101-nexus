@@ -88,6 +88,8 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
             q = torch.tensor([[1, 0, 0, 0]], device=self.device, dtype=torch.float32).expand(b, -1)
             self.target_site.set_pose(Pose.create_from_pq(p=pos, q=q))
             self._target_pos = pos
+            self._settle_after_reset(env_idx)
+            self._refresh_reset_reference_state(env_idx)
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Return per-env metrics: tcp_to_target_dist, success."""

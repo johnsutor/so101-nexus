@@ -146,6 +146,12 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
             self._store_initial_obj_z(env_idx, xyz[:, 2])
+            self._settle_after_reset(env_idx)
+            self._refresh_reset_reference_state(env_idx)
+
+    def _refresh_reset_reference_state(self, env_idx: torch.Tensor) -> None:
+        """Refresh lift baseline from the post-settle cube pose."""
+        self._store_initial_obj_z(env_idx, self.obj.pose.p[env_idx, 2])
 
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Compute per-environment success and intermediate metrics."""

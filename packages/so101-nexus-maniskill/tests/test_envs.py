@@ -70,6 +70,13 @@ YCB_MODEL_IDS = list(YCB_OBJECTS.keys())
 MOVE_DIRECTIONS = ["up", "down", "left", "right", "forward", "backward"]
 
 N_STEPS = 3
+RESET_SETTLE_ENV_MATRIX = [
+    ("ManiSkillReachSO101-v1", ReachConfig),
+    ("ManiSkillLookAtSO101-v1", LookAtConfig),
+    ("ManiSkillMoveSO101-v1", MoveConfig),
+    ("ManiSkillPickLiftSO101-v1", PickConfig),
+    ("ManiSkillPickAndPlaceSO101-v1", PickAndPlaceConfig),
+]
 
 
 def _has_ycb_assets() -> bool:
@@ -85,6 +92,13 @@ def _run_episode(env, n_steps: int = N_STEPS):
         obs, reward, terminated, truncated, info = env.step(action)
         assert reward is not None
     return obs, info
+
+
+def _make_vector_env_or_skip(env_id: str, **kwargs):
+    try:
+        return gym.make(env_id, **kwargs)
+    except Exception as exc:
+        pytest.skip(f"ManiSkill vectorized runtime unavailable: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +263,114 @@ def test_reward_bounds(env_id):
             assert (reward <= 1).all(), f"Reward above 1 for {env_id}"
             if terminated.any() if isinstance(terminated, torch.Tensor) else terminated:
                 env.reset()
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# Reset settling.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env_id,config_cls", RESET_SETTLE_ENV_MATRIX)
+@pytest.mark.parametrize("reset_settle_frames", [0, 2])
+def test_reset_settle_configs_return_observation_in_space(
+    env_id: str,
+    config_cls: type,
+    reset_settle_frames: int,
+):
+    config = config_cls(reset_settle_frames=reset_settle_frames)
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        obs, _ = env.reset()
+        assert env.observation_space.contains(obs)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id,config_cls", RESET_SETTLE_ENV_MATRIX)
+def test_reset_settle_frames_step_scene_during_reset(monkeypatch, env_id: str, config_cls: type):
+    config = config_cls(reset_settle_frames=2)
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        inner = env.unwrapped
+        step_count = 0
+        original_step = inner.scene.step
+
+        def counted_step(*args, **kwargs):
+            nonlocal step_count
+            step_count += 1
+            return original_step(*args, **kwargs)
+
+        monkeypatch.setattr(inner.scene, "step", counted_step)
+        env.reset()
+
+        assert step_count == 2
+    finally:
+        env.close()
+
+
+def test_move_reset_settle_zero_preserves_one_kinematics_step(monkeypatch):
+    config = MoveConfig(direction="right", reset_settle_frames=0)
+    env = gym.make("ManiSkillMoveSO101-v1", config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        inner = env.unwrapped
+        step_count = 0
+        original_step = inner.scene.step
+
+        def counted_step(*args, **kwargs):
+            nonlocal step_count
+            step_count += 1
+            return original_step(*args, **kwargs)
+
+        monkeypatch.setattr(inner.scene, "step", counted_step)
+        env.reset()
+
+        tcp_to_target = inner.target_site.pose.p - inner.agent.tcp_pose.p
+        dist = torch.linalg.norm(tcp_to_target, dim=1)
+        assert step_count == 1
+        assert dist[0].item() == pytest.approx(config.target_distance, rel=0.05)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(
+    "env_id,config",
+    [
+        ("ManiSkillPickLiftSO101-v1", PickConfig(reset_settle_frames=2)),
+        ("ManiSkillPickAndPlaceSO101-v1", PickAndPlaceConfig(reset_settle_frames=2)),
+    ],
+)
+def test_initial_object_z_matches_post_settle_actor_pose(env_id: str, config):
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset(seed=0)
+        inner = env.unwrapped
+        assert inner._initial_obj_z[0].item() == pytest.approx(inner.obj.pose.p[0, 2].item())
+    finally:
+        env.close()
+
+
+def test_partial_reset_settle_preserves_inactive_env_state():
+    env = _make_vector_env_or_skip(
+        "ManiSkillReachSO101-v1",
+        config=ReachConfig(reset_settle_frames=2),
+        obs_mode="state",
+        num_envs=2,
+        render_mode=None,
+    )
+    try:
+        env.reset()
+        inner = env.unwrapped
+        state_before = inner.get_state().clone()
+        env_idx = torch.tensor([0], device=inner.device)
+
+        env.reset(options={"env_idx": env_idx})
+
+        state_after = inner.get_state()
+        torch.testing.assert_close(state_after[1], state_before[1])
     finally:
         env.close()
 

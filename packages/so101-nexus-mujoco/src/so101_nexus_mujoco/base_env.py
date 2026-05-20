@@ -417,10 +417,22 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         self._prev_target = applied_qpos.copy()
         mujoco.mj_forward(self.model, self.data)
+        self._settle_after_reset()
+        self._refresh_reset_reference_state()
 
         obs = self._get_obs()
         info = self._get_info()
         return obs, info
+
+    def _settle_after_reset(self) -> None:
+        """Advance configured no-op frames after reset before returning observations."""
+        # data.ctrl was set during robot reset and must remain held while settling.
+        for _ in range(self.config.reset_settle_frames):
+            for _ in range(self._N_SUBSTEPS):
+                mujoco.mj_step(self.model, self.data)
+
+    def _refresh_reset_reference_state(self) -> None:
+        """Refresh task reference state after reset settling."""
 
     def step(
         self, action: np.ndarray

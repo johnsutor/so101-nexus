@@ -214,6 +214,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             energy_norm=info.get("energy_norm", 0.0),
         )
 
+    def _refresh_reset_reference_state(self) -> None:
+        """Refresh lift baseline from the post-settle cube pose."""
+        self._initial_obj_z = float(self._get_cube_pose()[2])
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius

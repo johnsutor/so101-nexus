@@ -184,6 +184,7 @@ config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 | `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
 | `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |
 | `max_episode_steps` | `int` | `1024` | Maximum steps before truncation |
+| `reset_settle_frames` | `int` | `5` | No-op environment frames advanced after reset before returning the first observation |
 | `goal_thresh` | `float` | `0.025` | Distance threshold for goal completion (meters) |
 | `spawn_half_size` | `float` | `0.05` | Half-size of object spawn region |
 | `spawn_center` | `tuple[float, float]` | `(0.15, 0.0)` | Center of the spawn region (x, y) |
@@ -198,6 +199,7 @@ config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 ### Validation
 
 - `obs_mode` must be `"state"` or `"visual"`
+- `reset_settle_frames` must be a nonnegative integer
 - When `obs_mode="visual"`, `observations` must contain at least one camera component (`WristCamera` or `OverheadCamera`)
 - Duplicate camera component types are not allowed
 

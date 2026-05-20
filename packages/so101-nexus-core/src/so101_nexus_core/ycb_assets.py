@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -19,6 +20,10 @@ class _ExportableMesh(Protocol):
     def convex_hull(self) -> _ExportableMesh: ...
 
 
+class _TextureImage(Protocol):
+    def save(self, fp: str, format: str | None = None) -> object: ...
+
+
 def _validate_model_id(model_id: str) -> None:
     if model_id not in YCB_OBJECTS:
         raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
@@ -28,6 +33,12 @@ def get_ycb_mesh_dir(model_id: str) -> Path:
     """Return the local cache directory for a YCB model's mesh files."""
     _validate_model_id(model_id)
     return _CACHE_DIR / model_id
+
+
+def get_ycb_texture_file(model_id: str) -> Path:
+    """Return the expected local cache path for a YCB model's texture image."""
+    _validate_model_id(model_id)
+    return _CACHE_DIR / model_id / "texture.png"
 
 
 def _load_exportable_mesh(glb_path: Path) -> _ExportableMesh:
@@ -46,6 +57,50 @@ def _convert_glb_to_obj(glb_path: Path, obj_path: Path) -> None:
     mesh.export(str(obj_path), file_type="obj")
 
 
+def _texture_image_from_material(material: object) -> _TextureImage | None:
+    for attr in ("image", "baseColorTexture"):
+        value = getattr(material, attr, None)
+        if value is None:
+            continue
+        image = getattr(value, "image", value)
+        if image is not None:
+            return cast("_TextureImage", image)
+    return None
+
+
+def _iter_texture_meshes(scene_or_mesh: object, scene_type: type) -> Iterator[object]:
+    if isinstance(scene_or_mesh, scene_type):
+        geometry = getattr(scene_or_mesh, "geometry", None)
+        if isinstance(geometry, Mapping):
+            yield from geometry.values()
+        to_geometry = getattr(scene_or_mesh, "to_geometry", None)
+        if callable(to_geometry):
+            yield to_geometry()
+        elif callable(dump := getattr(scene_or_mesh, "dump", None)):
+            yield dump(concatenate=True)
+    else:
+        yield scene_or_mesh
+
+
+def _extract_glb_texture(glb_path: Path, texture_path: Path) -> bool:
+    """Extract the first available GLB material texture into ``texture_path``."""
+    import trimesh
+
+    scene_or_mesh = trimesh.load(str(glb_path))
+    for mesh in _iter_texture_meshes(scene_or_mesh, trimesh.Scene):
+        visual = getattr(mesh, "visual", None)
+        material = getattr(visual, "material", None)
+        if material is None:
+            continue
+        image = _texture_image_from_material(material)
+        if image is None:
+            continue
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(str(texture_path), format="PNG")
+        return True
+    return False
+
+
 def ensure_ycb_assets(model_id: str) -> Path:
     """Download YCB mesh assets from HuggingFace if not already cached.
 
@@ -60,8 +115,22 @@ def ensure_ycb_assets(model_id: str) -> Path:
 
     collision_path = mesh_dir / "collision.obj"
     visual_path = mesh_dir / "visual.obj"
+    texture_path = mesh_dir / "texture.png"
+    glb_path = _CACHE_DIR / "meshes" / model_id / "google_16k" / "textured.glb"
 
     if collision_path.exists() and visual_path.exists():
+        if not texture_path.exists():
+            if not glb_path.exists():
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(
+                    repo_id=_HF_REPO_ID,
+                    repo_type="dataset",
+                    allow_patterns=[f"meshes/{model_id}/*"],
+                    local_dir=str(_CACHE_DIR),
+                )
+            if glb_path.exists():
+                _extract_glb_texture(glb_path, texture_path)
         return mesh_dir
 
     from huggingface_hub import snapshot_download
@@ -73,14 +142,13 @@ def ensure_ycb_assets(model_id: str) -> Path:
         local_dir=str(_CACHE_DIR),
     )
 
-    glb_path = _CACHE_DIR / "meshes" / model_id / "google_16k" / "textured.glb"
-
     mesh_dir.mkdir(parents=True, exist_ok=True)
     _convert_glb_to_obj(glb_path, visual_path)
 
     mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")
+    _extract_glb_texture(glb_path, texture_path)
 
     return mesh_dir
 

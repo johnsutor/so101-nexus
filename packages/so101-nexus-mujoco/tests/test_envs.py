@@ -26,7 +26,7 @@ from so101_nexus_core.config import (
     ReachConfig,
 )
 from so101_nexus_core.constants import CUBE_COLOR_MAP, YCB_OBJECTS
-from so101_nexus_core.objects import CubeObject, YCBObject
+from so101_nexus_core.objects import CubeObject, MeshObject, YCBObject
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -263,6 +263,22 @@ def test_pick_mixed_pool_with_distractors():
         env.close()
 
 
+@pytest.mark.parametrize("model_id", ["011_banana", "030_fork", "031_spoon", "032_knife"])
+def test_pick_ycb_collision_geom_starts_above_floor(model_id):
+    from so101_nexus_mujoco.spawn_utils import mesh_geom_world_min_z
+
+    config = PickConfig(objects=[YCBObject(model_id=model_id)], reset_settle_frames=0)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=0)
+        inner = env.unwrapped
+        slot = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
+        min_z = mesh_geom_world_min_z(inner.model, inner.data, slot.geom_id)  # type: ignore[attr-defined]
+        assert min_z >= -1e-6
+    finally:
+        env.close()
+
+
 def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
     from so101_nexus_mujoco.pick_env import _mesh_xml_body
 
@@ -274,6 +290,95 @@ def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
     assert 'name="pick_slot_0_visual"' in xml
     assert 'mesh="pick_vis_0"' in xml
     assert 'group="2"' in xml
+
+
+def test_ycb_scene_xml_binds_cached_texture(monkeypatch, tmp_path):
+    from so101_nexus_mujoco import pick_env
+
+    collision_path = tmp_path / "collision.obj"
+    visual_path = tmp_path / "visual.obj"
+    texture_path = tmp_path / "texture.png"
+    texture_path.write_text("texture", encoding="utf-8")
+    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
+    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
+    monkeypatch.setattr(
+        pick_env,
+        "get_ycb_texture_file",
+        lambda _model_id: texture_path,
+        raising=False,
+    )
+
+    xml = pick_env._build_scene_xml(
+        [YCBObject(model_id="011_banana")],
+        ["pick_slot_0"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert f'<texture name="pick_tex_0" type="2d" file="{texture_path}"/>' in xml
+    assert '<material name="pick_mat_0" texture="pick_tex_0" texuniform="false"/>' in xml
+    assert 'name="pick_slot_0_visual"' in xml
+    assert 'material="pick_mat_0"' in xml
+
+
+def test_ycb_scene_xml_uses_posix_paths_for_cached_assets(monkeypatch):
+    from so101_nexus_mujoco import pick_env
+
+    class _FakePath:
+        def __init__(self, posix_path: str, native_path: str):
+            self._posix_path = posix_path
+            self._native_path = native_path
+
+        def __str__(self) -> str:
+            return self._native_path
+
+        def as_posix(self) -> str:
+            return self._posix_path
+
+        def exists(self) -> bool:
+            return True
+
+    collision_path = _FakePath("C:/cache/ycb/collision.obj", r"C:\cache\ycb\collision.obj")
+    visual_path = _FakePath("C:/cache/ycb/visual.obj", r"C:\cache\ycb\visual.obj")
+    texture_path = _FakePath("C:/cache/ycb/texture.png", r"C:\cache\ycb\texture.png")
+    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
+    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
+    monkeypatch.setattr(
+        pick_env,
+        "get_ycb_texture_file",
+        lambda _model_id: texture_path,
+        raising=False,
+    )
+
+    xml = pick_env._build_scene_xml(
+        [YCBObject(model_id="011_banana")],
+        ["pick_slot_0"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert 'file="C:/cache/ycb/collision.obj"' in xml
+    assert 'file="C:/cache/ycb/visual.obj"' in xml
+    assert 'file="C:/cache/ycb/texture.png"' in xml
+    assert r"C:\cache\ycb" not in xml
+
+
+def test_scene_xml_leaves_cubes_and_mesh_objects_untextured(tmp_path):
+    from so101_nexus_mujoco import pick_env
+
+    mesh = MeshObject(
+        collision_mesh_path=str(tmp_path / "collision.obj"),
+        visual_mesh_path=str(tmp_path / "visual.obj"),
+        mass=0.02,
+        name="custom",
+    )
+
+    xml = pick_env._build_scene_xml(
+        [CubeObject(color="red"), mesh],
+        ["pick_slot_0", "pick_slot_1"],
+        [0.1, 0.2, 0.3, 1.0],
+    )
+
+    assert "<texture " not in xml
+    assert 'material="pick_mat_' not in xml
 
 
 @pytest.mark.parametrize("color", CUBE_COLORS)
@@ -403,6 +508,45 @@ def test_pick_and_place_reward_in_unit_range():
         env.reset()
         _, reward, _, _, _ = env.step(env.action_space.sample())
         assert 0.0 <= float(reward) <= 1.0
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# Reset settling.
+# ---------------------------------------------------------------------------
+
+
+def test_reset_settle_zero_keeps_mujoco_time_at_reset():
+    config = ReachConfig(reset_settle_frames=0)
+    env = gym.make("MuJoCoReach-v1", config=config)
+    try:
+        env.reset()
+        assert env.unwrapped.data.time == pytest.approx(0.0)  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_reset_settle_frames_advance_mujoco_time_by_environment_frames():
+    config = ReachConfig(reset_settle_frames=2)
+    env = gym.make("MuJoCoReach-v1", config=config)
+    try:
+        env.reset()
+        inner = env.unwrapped
+        expected = 2 * inner._N_SUBSTEPS * inner.model.opt.timestep  # type: ignore[attr-defined]
+        assert inner.data.time == pytest.approx(expected)  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_pick_initial_object_z_matches_post_settle_pose():
+    config = PickConfig(reset_settle_frames=2)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=0)
+        inner = env.unwrapped
+        target_z = float(inner._get_target_pose()[2])  # type: ignore[attr-defined]
+        assert inner._initial_obj_z == pytest.approx(target_z)  # type: ignore[attr-defined]
     finally:
         env.close()
 
