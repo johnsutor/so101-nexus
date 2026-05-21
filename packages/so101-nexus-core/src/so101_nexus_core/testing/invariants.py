@@ -58,11 +58,16 @@ def assert_reward_is_finite(
     """Assert one sampled action produces a finite scalar reward."""
     env = _make_env(env_id, base_kwargs)
     try:
-        env.reset(seed=seed)
-        _, reward, _, _, _ = env.step(env.action_space.sample())
-        assert np.isfinite(float(reward))
+        assert_env_reward_is_finite(env, seed)
     finally:
         env.close()
+
+
+def assert_env_reward_is_finite(env: Any, seed: int) -> None:
+    """Assert one sampled action in an existing environment produces a finite reward."""
+    env.reset(seed=seed)
+    _, reward, _, _, _ = env.step(env.action_space.sample())
+    assert np.isfinite(float(reward))
 
 
 def assert_seeded_reset_is_deterministic(
@@ -74,11 +79,16 @@ def assert_seeded_reset_is_deterministic(
     """Assert two resets with the same seed return identical observations."""
     env = _make_env(env_id, base_kwargs)
     try:
-        obs1, _ = env.reset(seed=seed)
-        obs2, _ = env.reset(seed=seed)
-        _assert_observations_equal(obs1, obs2)
+        assert_env_seeded_reset_is_deterministic(env, seed)
     finally:
         env.close()
+
+
+def assert_env_seeded_reset_is_deterministic(env: Any, seed: int) -> None:
+    """Assert two same-seed resets in an existing environment return identical observations."""
+    obs1, _ = env.reset(seed=seed)
+    obs2, _ = env.reset(seed=seed)
+    _assert_observations_equal(obs1, obs2)
 
 
 def assert_random_actions_never_crash(

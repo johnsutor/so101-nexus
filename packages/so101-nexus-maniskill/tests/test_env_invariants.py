@@ -8,8 +8,8 @@ from hypothesis import strategies as st
 
 import so101_nexus_maniskill  # noqa: F401
 from so101_nexus_core.testing.invariants import (
-    assert_reward_is_finite,
-    assert_seeded_reset_is_deterministic,
+    assert_env_reward_is_finite,
+    assert_env_seeded_reset_is_deterministic,
 )
 
 BASE_KWARGS = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
@@ -28,23 +28,35 @@ ENV_IDS = [
 ]
 
 
-@pytest.mark.parametrize("env_id", ENV_IDS)
+@pytest.fixture
+def maniskill_env(request):
+    """Create one ManiSkill env per parametrized invariant case."""
+    import gymnasium as gym
+
+    env = gym.make(request.param, **BASE_KWARGS)
+    try:
+        yield env
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("maniskill_env", ENV_IDS, indirect=True, ids=ENV_IDS)
 @given(seed=st.integers(min_value=0, max_value=2**31 - 1))
 @settings(
     max_examples=10,
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
-def test_reward_is_finite(env_id, seed):
-    assert_reward_is_finite(env_id, seed, base_kwargs=BASE_KWARGS)
+def test_reward_is_finite(maniskill_env, seed):
+    assert_env_reward_is_finite(maniskill_env, seed)
 
 
-@pytest.mark.parametrize("env_id", ENV_IDS)
+@pytest.mark.parametrize("maniskill_env", ENV_IDS, indirect=True, ids=ENV_IDS)
 @given(seed=st.integers(min_value=0, max_value=2**31 - 1))
 @settings(
     max_examples=10,
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
-def test_seeded_reset_is_deterministic(env_id, seed):
-    assert_seeded_reset_is_deterministic(env_id, seed, base_kwargs=BASE_KWARGS)
+def test_seeded_reset_is_deterministic(maniskill_env, seed):
+    assert_env_seeded_reset_is_deterministic(maniskill_env, seed)
