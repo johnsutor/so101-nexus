@@ -218,44 +218,19 @@ def test_pick_and_place_target_colors(env_id, target_color):
 
 
 @pytest.mark.parametrize("env_id", ENV_IDS)
-def test_action_space_shape(env_id):
-    """All environments have a 6-DOF action space."""
+def test_default_state_rollout_smoke(env_id):
+    """Default state-mode envs expose spaces, reset repeatedly, and keep bounded rewards."""
     env = gym.make(env_id, **BASE_KWARGS)
     try:
         assert env.action_space.shape == (6,)
-    finally:
-        env.close()
-
-
-@pytest.mark.parametrize("env_id", ENV_IDS)
-def test_observation_in_space(env_id):
-    """Observations returned by reset lie in the observation space."""
-    env = gym.make(env_id, **BASE_KWARGS)
-    try:
         obs, _ = env.reset()
         assert env.observation_space.contains(obs)
-    finally:
-        env.close()
 
-
-@pytest.mark.parametrize("env_id", ENV_IDS)
-def test_multiple_resets(env_id):
-    """Each environment can be reset multiple times without errors."""
-    env = gym.make(env_id, **BASE_KWARGS)
-    try:
         for _ in range(5):
             obs, _ = env.reset()
             assert obs is not None
             env.step(env.action_space.sample())
-    finally:
-        env.close()
 
-
-@pytest.mark.parametrize("env_id", ENV_IDS)
-def test_reward_bounds(env_id):
-    """Reward stays in [0, 1] over multiple random steps."""
-    env = gym.make(env_id, **BASE_KWARGS)
-    try:
         env.reset()
         for _ in range(10):
             _, reward, terminated, _, _ = env.step(env.action_space.sample())
