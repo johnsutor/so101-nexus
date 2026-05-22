@@ -135,10 +135,11 @@ def ensure_ycb_assets(model_id: str) -> Path:
     visual_path = mesh_dir / "visual.obj"
     texture_path = mesh_dir / "texture.png"
     glb_path = _CACHE_DIR / "meshes" / model_id / "google_16k" / "textured.glb"
+    orig_path = glb_path.with_suffix(".glb.orig")
 
     if collision_path.exists() and visual_path.exists():
         if not texture_path.exists():
-            if not glb_path.exists():
+            if not glb_path.exists() or not orig_path.exists():
                 from huggingface_hub import snapshot_download
 
                 snapshot_download(
@@ -147,8 +148,9 @@ def ensure_ycb_assets(model_id: str) -> Path:
                     allow_patterns=[f"meshes/{model_id}/*"],
                     local_dir=str(_CACHE_DIR),
                 )
-            if glb_path.exists():
-                _extract_glb_texture(_texture_glb_path(model_id), texture_path)
+            preferred_glb = _texture_glb_path(model_id)
+            if preferred_glb.exists():
+                _extract_glb_texture(preferred_glb, texture_path)
         return mesh_dir
 
     from huggingface_hub import snapshot_download

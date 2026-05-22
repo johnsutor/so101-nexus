@@ -195,6 +195,8 @@ def test_ensure_ycb_assets_cache_hit_extracts_missing_texture(
     glb = tmp_path / "meshes" / model_id / "google_16k" / "textured.glb"
     glb.parent.mkdir(parents=True)
     glb.write_text("fake-glb", encoding="utf-8")
+    glb_orig = glb.with_suffix(".glb.orig")
+    glb_orig.write_text("fake-glb-orig", encoding="utf-8")
     calls: list[tuple[Path, Path]] = []
 
     def _extract(glb_path: Path, texture_path: Path) -> bool:
@@ -207,7 +209,7 @@ def test_ensure_ycb_assets_cache_hit_extracts_missing_texture(
     result = ycb_assets.ensure_ycb_assets(model_id)
 
     assert result == mesh_dir
-    assert calls == [(glb, mesh_dir / "texture.png")]
+    assert calls == [(glb_orig, mesh_dir / "texture.png")]
 
 
 def test_ensure_ycb_assets_returns_when_texture_extract_finds_nothing(
@@ -358,3 +360,50 @@ def test_texture_glb_path_falls_back_to_glb(monkeypatch: pytest.MonkeyPatch, tmp
     glb.write_text("stripped", encoding="utf-8")
 
     assert ycb_assets._texture_glb_path(model_id) == glb
+
+
+def test_ensure_ycb_assets_downloads_orig_when_partial_cache_lacks_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Partial caches with only textured.glb must pull .orig before extraction."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+
+    mesh_dir = tmp_path / model_id
+    mesh_dir.mkdir(parents=True)
+    (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
+    (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    glb_dir = tmp_path / "meshes" / model_id / "google_16k"
+    glb_dir.mkdir(parents=True)
+    (glb_dir / "textured.glb").write_text("stripped", encoding="utf-8")
+
+    download_called = {"count": 0}
+
+    def _snapshot_download(**_kwargs):
+        download_called["count"] += 1
+        (glb_dir / "textured.glb.orig").write_text("orig", encoding="utf-8")
+
+    _patch_module(
+        monkeypatch,
+        "huggingface_hub",
+        types.SimpleNamespace(snapshot_download=_snapshot_download),
+    )
+
+    extract_calls: list[Path] = []
+
+    def _extract(glb_path: Path, texture_path: Path) -> bool:
+        extract_calls.append(glb_path)
+        texture_path.write_text("png-bytes", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", _extract)
+
+    result = ycb_assets.ensure_ycb_assets(model_id)
+    assert result == mesh_dir
+    assert download_called["count"] == 1, (
+        "Expected snapshot_download to be triggered to pull textured.glb.orig"
+    )
+    assert extract_calls == [glb_dir / "textured.glb.orig"], (
+        f"Texture must be extracted from .orig after the download, got {extract_calls}"
+    )
+    assert (mesh_dir / "texture.png").exists()
