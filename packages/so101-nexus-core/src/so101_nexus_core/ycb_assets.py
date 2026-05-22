@@ -106,6 +106,19 @@ def _extract_glb_texture(glb_path: Path, texture_path: Path) -> bool:
     return False
 
 
+def _texture_glb_path(model_id: str) -> Path:
+    """Return the preferred GLB path for YCB texture extraction.
+
+    The ai-habitat/ycb dataset ships ``textured.glb`` (optimized, embedded
+    texture stripped) alongside ``textured.glb.orig`` (original, with the
+    embedded texture). Prefer the ``.orig`` form when available so
+    :func:`_extract_glb_texture` can recover the texture.
+    """
+    base = _CACHE_DIR / "meshes" / model_id / "google_16k"
+    orig = base / "textured.glb.orig"
+    return orig if orig.exists() else base / "textured.glb"
+
+
 def ensure_ycb_assets(model_id: str) -> Path:
     """Download YCB mesh assets from HuggingFace if not already cached.
 
@@ -135,7 +148,7 @@ def ensure_ycb_assets(model_id: str) -> Path:
                     local_dir=str(_CACHE_DIR),
                 )
             if glb_path.exists():
-                _extract_glb_texture(glb_path, texture_path)
+                _extract_glb_texture(_texture_glb_path(model_id), texture_path)
         return mesh_dir
 
     from huggingface_hub import snapshot_download
@@ -153,7 +166,7 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")
-    _extract_glb_texture(glb_path, texture_path)
+    _extract_glb_texture(_texture_glb_path(model_id), texture_path)
 
     return mesh_dir
 

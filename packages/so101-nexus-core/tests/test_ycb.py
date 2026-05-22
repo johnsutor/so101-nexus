@@ -332,3 +332,29 @@ def test_extract_glb_texture_accepts_orig_extension(
         "trimesh.load must be called with file_type='glb' so .orig is accepted; "
         f"got kwargs={kwargs}"
     )
+
+
+def test_texture_glb_path_prefers_orig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """When both textured.glb.orig and textured.glb exist, the .orig wins."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+    base = tmp_path / "meshes" / model_id / "google_16k"
+    base.mkdir(parents=True)
+    glb = base / "textured.glb"
+    orig = base / "textured.glb.orig"
+    glb.write_text("stripped", encoding="utf-8")
+    orig.write_text("orig-with-texture", encoding="utf-8")
+
+    assert ycb_assets._texture_glb_path(model_id) == orig
+
+
+def test_texture_glb_path_falls_back_to_glb(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """When only textured.glb exists, _texture_glb_path returns it."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+    base = tmp_path / "meshes" / model_id / "google_16k"
+    base.mkdir(parents=True)
+    glb = base / "textured.glb"
+    glb.write_text("stripped", encoding="utf-8")
+
+    assert ycb_assets._texture_glb_path(model_id) == glb
