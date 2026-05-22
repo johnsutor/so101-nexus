@@ -358,6 +358,13 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         n_pool = len(self._slots)
         n_slots = self._n_slots  # number of active slots (target + distractors)
 
+        # Restore collisions on every slot at the start of each reset. Slots
+        # that remain unchosen below are re-zeroed; slots that become active
+        # need contype/conaffinity = 1 so they collide with the floor and gripper.
+        for slot in self._slots:
+            self.model.geom_contype[slot.geom_id] = 1
+            self.model.geom_conaffinity[slot.geom_id] = 1
+
         # Sample n_slots distinct slot indices from the pool without replacement.
         chosen_indices = list(rng.choice(n_pool, size=n_slots, replace=False))
         target_pool_idx = int(chosen_indices[0])
@@ -416,6 +423,11 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         unchosen = set(range(n_pool)) - {int(i) for i in chosen_indices}
         for pool_idx in unchosen:
             slot = self._slots[pool_idx]
+            # Zero contact bits so the constraint solver ignores this body
+            # entirely. Without this, multiple hidden bodies stacked at the
+            # same point explode upward during _settle_after_reset.
+            self.model.geom_contype[slot.geom_id] = 0
+            self.model.geom_conaffinity[slot.geom_id] = 0
             addr = slot.qpos_addr
             self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
