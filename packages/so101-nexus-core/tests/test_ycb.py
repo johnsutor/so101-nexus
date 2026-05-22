@@ -407,3 +407,39 @@ def test_ensure_ycb_assets_downloads_orig_when_partial_cache_lacks_it(
         f"Texture must be extracted from .orig after the download, got {extract_calls}"
     )
     assert (mesh_dir / "texture.png").exists()
+
+
+def test_ensure_ycb_assets_logs_warning_when_extraction_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    """Failed texture extraction must warn with the model and path tried."""
+    import logging
+
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+
+    mesh_dir = tmp_path / model_id
+    mesh_dir.mkdir(parents=True)
+    (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
+    (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    glb_dir = tmp_path / "meshes" / model_id / "google_16k"
+    glb_dir.mkdir(parents=True)
+    (glb_dir / "textured.glb").write_text("stripped", encoding="utf-8")
+    (glb_dir / "textured.glb.orig").write_text("orig", encoding="utf-8")
+
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", lambda _g, _t: False)
+
+    with caplog.at_level(logging.WARNING, logger="so101_nexus_core.ycb_assets"):
+        result = ycb_assets.ensure_ycb_assets(model_id)
+
+    assert result == mesh_dir
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_records) == 1, (
+        f"Expected exactly one WARNING; got {len(warning_records)}: "
+        f"{[r.getMessage() for r in warning_records]}"
+    )
+    msg = warning_records[0].getMessage()
+    assert model_id in msg, f"WARNING must name the model id, got: {msg!r}"
+    assert "textured.glb.orig" in msg, (
+        f"WARNING must name the GLB path tried, got: {msg!r}"
+    )

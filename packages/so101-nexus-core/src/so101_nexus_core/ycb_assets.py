@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
 from so101_nexus_core.constants import YCB_OBJECTS
+
+logger = logging.getLogger(__name__)
 
 _HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
 _CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"
@@ -150,7 +153,14 @@ def ensure_ycb_assets(model_id: str) -> Path:
                 )
             preferred_glb = _texture_glb_path(model_id)
             if preferred_glb.exists():
-                _extract_glb_texture(preferred_glb, texture_path)
+                extracted = _extract_glb_texture(preferred_glb, texture_path)
+                if not extracted:
+                    logger.warning(
+                        "Failed to extract texture for YCB %r from %s; "
+                        "object will render in MuJoCo's default gray.",
+                        model_id,
+                        preferred_glb,
+                    )
         return mesh_dir
 
     from huggingface_hub import snapshot_download
@@ -168,7 +178,15 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")
-    _extract_glb_texture(_texture_glb_path(model_id), texture_path)
+    preferred_glb = _texture_glb_path(model_id)
+    extracted = _extract_glb_texture(preferred_glb, texture_path)
+    if not extracted:
+        logger.warning(
+            "Failed to extract texture for YCB %r from %s; "
+            "object will render in MuJoCo's default gray.",
+            model_id,
+            preferred_glb,
+        )
 
     return mesh_dir
 
