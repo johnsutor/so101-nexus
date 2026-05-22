@@ -305,3 +305,30 @@ def test_collision_and_visual_mesh_paths(monkeypatch: pytest.MonkeyPatch, tmp_pa
     model_id = "058_golf_ball"
     assert ycb_assets.get_ycb_collision_mesh(model_id) == tmp_path / model_id / "collision.obj"
     assert ycb_assets.get_ycb_visual_mesh(model_id) == tmp_path / model_id / "visual.obj"
+
+
+def test_extract_glb_texture_accepts_orig_extension(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """trimesh.load must receive file_type='glb' so .glb.orig paths load."""
+    image = _FakeImage()
+    mesh = _FakeTexturedMesh(image=image)
+    load_calls: list[tuple[str, dict]] = []
+
+    def _load(path: str, **kwargs):
+        load_calls.append((path, dict(kwargs)))
+        return mesh
+
+    fake_trimesh = types.SimpleNamespace(Scene=_FakeScene, load=_load)
+    _patch_module(monkeypatch, "trimesh", fake_trimesh)
+
+    out = tmp_path / "texture.png"
+    orig_path = tmp_path / "textured.glb.orig"
+
+    assert ycb_assets._extract_glb_texture(orig_path, out) is True
+    assert load_calls, "trimesh.load was not invoked"
+    _path, kwargs = load_calls[0]
+    assert kwargs.get("file_type") == "glb", (
+        "trimesh.load must be called with file_type='glb' so .orig is accepted; "
+        f"got kwargs={kwargs}"
+    )

@@ -83,10 +83,15 @@ def _iter_texture_meshes(scene_or_mesh: object, scene_type: type) -> Iterator[ob
 
 
 def _extract_glb_texture(glb_path: Path, texture_path: Path) -> bool:
-    """Extract the first available GLB material texture into ``texture_path``."""
+    """Extract the first available GLB material texture into ``texture_path``.
+
+    ``glb_path`` may use the ``.glb.orig`` suffix used by the ai-habitat/ycb
+    dataset; ``file_type="glb"`` skips trimesh's extension-based type
+    inference, which raises ``NotImplementedError`` for unknown suffixes.
+    """
     import trimesh
 
-    scene_or_mesh = trimesh.load(str(glb_path))
+    scene_or_mesh = trimesh.load(str(glb_path), file_type="glb")
     for mesh in _iter_texture_meshes(scene_or_mesh, trimesh.Scene):
         visual = getattr(mesh, "visual", None)
         material = getattr(visual, "material", None)
