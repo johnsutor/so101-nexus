@@ -440,6 +440,4 @@ def test_ensure_ycb_assets_logs_warning_when_extraction_fails(
     )
     msg = warning_records[0].getMessage()
     assert model_id in msg, f"WARNING must name the model id, got: {msg!r}"
-    assert "textured.glb.orig" in msg, (
-        f"WARNING must name the GLB path tried, got: {msg!r}"
-    )
+    assert "textured.glb.orig" in msg, f"WARNING must name the GLB path tried, got: {msg!r}"

@@ -945,8 +945,6 @@ def test_pick_hidden_ycb_slots_are_inert_below_floor():
                         f"hidden YCB slot {i} geom {gi} has conaffinity != 0"
                     )
                 assert z < 0.0, f"hidden YCB slot {i} drifted above the floor: z={z}"
-                assert z < -5.0, (
-                    f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
-                )
+                assert z < -5.0, f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
     finally:
         env.close()
