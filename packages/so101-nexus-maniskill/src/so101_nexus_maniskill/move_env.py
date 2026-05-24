@@ -56,6 +56,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
 
     @property
     def task_description(self) -> str:
+        """Return a description of the current move task."""
         return self.config.task_description
 
     def _load_scene(self, options: dict) -> None:

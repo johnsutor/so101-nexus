@@ -94,6 +94,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
 
     @property
     def task_description(self) -> str:
+        """Return a description of the current move task."""
         return self.config.task_description
 
     def _task_reset(self) -> None:

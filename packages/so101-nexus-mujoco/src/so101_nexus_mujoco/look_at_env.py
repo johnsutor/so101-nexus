@@ -114,6 +114,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
 
     @property
     def task_description(self) -> str:
+        """Return the current episode task description."""
         return self.config.task_description
 
     def _task_reset(self) -> None:
