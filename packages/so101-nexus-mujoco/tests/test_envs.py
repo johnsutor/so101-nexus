@@ -393,6 +393,16 @@ def test_look_at_cube_color(color):
         env.close()
 
 
+def test_look_at_task_description_delegates_to_config():
+    config = LookAtConfig(objects=[CubeObject(color="red")])  # type: ignore[arg-type]
+    env = gym.make("MuJoCoLookAt-v1", config=config)
+    try:
+        assert env.unwrapped.task_description == config.task_description  # type: ignore[attr-defined]
+        assert "_task_description" not in env.unwrapped.__dict__
+    finally:
+        env.close()
+
+
 @pytest.mark.parametrize("direction", MOVE_DIRECTIONS)
 def test_move_direction(direction):
     config = MoveConfig(direction=direction)  # type: ignore[arg-type]

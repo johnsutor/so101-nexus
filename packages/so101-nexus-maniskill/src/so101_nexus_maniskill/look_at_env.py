@@ -133,7 +133,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Cosine similarity reward for orientation toward target."""
-        # mirrors orientation_progress() in so101_nexus_core.rewards
+        # tensor equivalent of orientation_progress(cos(orientation_error))
         orient = (torch.cos(info["orientation_error"]) + 1) / 2
         bonus = self.config.reward.completion_bonus
         # mirrors simple_reward() in so101_nexus_core.rewards
