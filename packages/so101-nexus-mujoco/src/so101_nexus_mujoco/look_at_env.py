@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import tempfile
 from typing import TYPE_CHECKING, ClassVar
 
@@ -175,11 +176,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        tcp_forward = self._get_tcp_forward()
-        target_pos = self._get_target_pos()
-        tcp_pos = self._get_tcp_pose()[:3]
-        to_target = target_pos - tcp_pos
-        orient = self._orientation_toward_reward(tcp_forward, to_target)
+        # mirrors orientation_progress() in so101_nexus_core.rewards
+        orient = (math.cos(float(info["orientation_error"])) + 1.0) / 2.0
         return simple_reward(
             progress=orient,
             completion_bonus=self.config.reward.completion_bonus,

@@ -674,6 +674,28 @@ def test_pick_and_place_no_mocap_goal_body():
 # ---------------------------------------------------------------------------
 
 
+def test_lookat_reward_uses_orientation_error_info(monkeypatch):
+    """Reward must use info from _get_info(), not recompute orientation vectors."""
+    env = gym.make("MuJoCoLookAt-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset()
+
+        def fail_if_recomputed(*args, **kwargs):
+            raise AssertionError("reward recomputed orientation vectors")
+
+        monkeypatch.setattr(inner, "_get_tcp_forward", fail_if_recomputed)
+        monkeypatch.setattr(inner, "_get_target_pos", fail_if_recomputed)
+        monkeypatch.setattr(inner, "_get_tcp_pose", fail_if_recomputed)
+
+        reward = inner._compute_reward({"orientation_error": 0.0, "success": False})
+
+        expected = 1.0 - inner.config.reward.completion_bonus
+        assert reward == pytest.approx(expected)
+    finally:
+        env.close()
+
+
 def test_lookat_tcp_forward_matches_gripper_direction():
     """Regression guard: TCP forward must equal -Z of gripper's parent body.
 
