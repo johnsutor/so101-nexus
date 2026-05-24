@@ -110,14 +110,11 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
         )
 
-        self._task_description: str = f"Look at the {self._target_obj!r}."
-
         self._finish_model_setup()
 
     @property
     def task_description(self) -> str:
-        """Return the current episode task description."""
-        return self._task_description
+        return self.config.task_description
 
     def _task_reset(self) -> None:
         # Place the object randomly in the workspace in front of the robot.

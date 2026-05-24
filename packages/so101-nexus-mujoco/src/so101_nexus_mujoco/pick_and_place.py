@@ -106,9 +106,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self.target_color_name = target_name
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
-        self.task_description = (
-            f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
-        )
+        self.task_description = self.config.task_description
 
         xml_string = _build_scene_xml(
             config.cube_half_size,
