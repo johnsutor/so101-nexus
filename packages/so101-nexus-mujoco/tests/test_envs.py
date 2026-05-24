@@ -835,3 +835,116 @@ def test_render_independent_of_overhead_obs():
         assert frame.dtype == np.uint8
     finally:
         env.close()
+
+
+def test_pick_hidden_cube_slots_are_inert_below_floor():
+    """Hidden pool slots must have zero contact bits and stay below the floor.
+
+    Reproduces the pre-fix bug where a stack of hidden bodies at (0, 0, -10)
+    with collision enabled was deterministically exploded above the floor by
+    the constraint solver during _settle_after_reset.
+    """
+    objects: list[CubeObject] = [
+        CubeObject(color=c) for c in ("red", "blue", "green", "yellow", "purple")
+    ]
+    config = PickConfig(objects=objects, n_distractors=0)  # type: ignore[arg-type]
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=42)
+        inner = env.unwrapped
+        target_idx = inner._target_slot_idx  # type: ignore[attr-defined]
+        for i, slot in enumerate(inner._slots):  # type: ignore[attr-defined]
+            geom_id = slot.geom_id
+            qpos_addr = slot.qpos_addr
+            z = float(inner.data.qpos[qpos_addr + 2])  # type: ignore[attr-defined]
+            if i == target_idx:
+                assert inner.model.geom_contype[geom_id] == 1  # type: ignore[attr-defined]
+                assert inner.model.geom_conaffinity[geom_id] == 1  # type: ignore[attr-defined]
+                assert z > 0.0, f"target slot {i} should be above the floor, got z={z}"
+            else:
+                assert inner.model.geom_contype[geom_id] == 0  # type: ignore[attr-defined]
+                assert inner.model.geom_conaffinity[geom_id] == 0  # type: ignore[attr-defined]
+                # Pre-fix this z was ~+14.6; with collisions disabled it must
+                # stay below the floor. Small gravitational drift over the
+                # default reset_settle_frames is tolerated.
+                assert z < 0.0, f"hidden slot {i} drifted above the floor: z={z}"
+                assert z < -5.0, (
+                    f"hidden slot {i} suspiciously close to the floor: z={z}; "
+                    "the hide mechanism may have regressed"
+                )
+    finally:
+        env.close()
+
+
+def test_pick_hidden_slot_collisions_restore_when_slot_becomes_target():
+    """A slot that was hidden last episode must be collidable when it becomes target."""
+    objects: list[CubeObject] = [
+        CubeObject(color=c) for c in ("red", "blue", "green", "yellow", "purple")
+    ]
+    config = PickConfig(objects=objects, n_distractors=0)  # type: ignore[arg-type]
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=42)
+        inner = env.unwrapped
+        target_a = inner._target_slot_idx  # type: ignore[attr-defined]
+
+        attempts = 0
+        while inner._target_slot_idx == target_a and attempts < 16:  # type: ignore[attr-defined]
+            env.reset(seed=attempts + 100)
+            attempts += 1
+        target_b = inner._target_slot_idx  # type: ignore[attr-defined]
+        assert target_b != target_a, (
+            "test setup failed: could not find a reseat that changed the target"
+        )
+
+        new_geom = inner._slots[target_b].geom_id  # type: ignore[attr-defined]
+        old_geom = inner._slots[target_a].geom_id  # type: ignore[attr-defined]
+        assert inner.model.geom_contype[new_geom] == 1  # type: ignore[attr-defined]
+        assert inner.model.geom_conaffinity[new_geom] == 1  # type: ignore[attr-defined]
+        assert inner.model.geom_contype[old_geom] == 0  # type: ignore[attr-defined]
+        assert inner.model.geom_conaffinity[old_geom] == 0  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_pick_hidden_ycb_slots_are_inert_below_floor():
+    """Same fix must hold for YCB pools with collision and visual geoms."""
+    objects = [
+        YCBObject(model_id="011_banana"),
+        YCBObject(model_id="030_fork"),
+        YCBObject(model_id="058_golf_ball"),
+    ]
+    config = PickConfig(objects=objects, n_distractors=0)
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=42)
+        inner = env.unwrapped
+        target_idx = inner._target_slot_idx  # type: ignore[attr-defined]
+        for i, slot in enumerate(inner._slots):  # type: ignore[attr-defined]
+            geom_id = slot.geom_id
+            z = float(inner.data.qpos[slot.qpos_addr + 2])  # type: ignore[attr-defined]
+            body_id = int(inner.model.geom_bodyid[geom_id])  # type: ignore[attr-defined]
+            attached_geoms = [
+                gi
+                for gi in range(inner.model.ngeom)  # type: ignore[attr-defined]
+                if int(inner.model.geom_bodyid[gi]) == body_id  # type: ignore[attr-defined]
+            ]
+            assert len(attached_geoms) >= 2, (
+                f"slot {i} unexpectedly has only {len(attached_geoms)} geom(s); "
+                "test assumption (mesh body has >=2 geoms) is wrong"
+            )
+            if i == target_idx:
+                assert inner.model.geom_contype[geom_id] == 1  # type: ignore[attr-defined]
+                assert inner.model.geom_conaffinity[geom_id] == 1  # type: ignore[attr-defined]
+            else:
+                for gi in attached_geoms:
+                    assert inner.model.geom_contype[gi] == 0, (  # type: ignore[attr-defined]
+                        f"hidden YCB slot {i} geom {gi} has contype != 0"
+                    )
+                    assert inner.model.geom_conaffinity[gi] == 0, (  # type: ignore[attr-defined]
+                        f"hidden YCB slot {i} geom {gi} has conaffinity != 0"
+                    )
+                assert z < 0.0, f"hidden YCB slot {i} drifted above the floor: z={z}"
+                assert z < -5.0, f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
+    finally:
+        env.close()

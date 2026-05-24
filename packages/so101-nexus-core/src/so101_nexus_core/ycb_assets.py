@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
 from so101_nexus_core.constants import YCB_OBJECTS
+
+logger = logging.getLogger(__name__)
 
 _HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
 _CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"
@@ -83,10 +86,15 @@ def _iter_texture_meshes(scene_or_mesh: object, scene_type: type) -> Iterator[ob
 
 
 def _extract_glb_texture(glb_path: Path, texture_path: Path) -> bool:
-    """Extract the first available GLB material texture into ``texture_path``."""
+    """Extract the first available GLB material texture into ``texture_path``.
+
+    ``glb_path`` may use the ``.glb.orig`` suffix used by the ai-habitat/ycb
+    dataset; ``file_type="glb"`` skips trimesh's extension-based type
+    inference, which raises ``NotImplementedError`` for unknown suffixes.
+    """
     import trimesh
 
-    scene_or_mesh = trimesh.load(str(glb_path))
+    scene_or_mesh = trimesh.load(str(glb_path), file_type="glb")
     for mesh in _iter_texture_meshes(scene_or_mesh, trimesh.Scene):
         visual = getattr(mesh, "visual", None)
         material = getattr(visual, "material", None)
@@ -99,6 +107,19 @@ def _extract_glb_texture(glb_path: Path, texture_path: Path) -> bool:
         image.save(str(texture_path), format="PNG")
         return True
     return False
+
+
+def _texture_glb_path(model_id: str) -> Path:
+    """Return the preferred GLB path for YCB texture extraction.
+
+    The ai-habitat/ycb dataset ships ``textured.glb`` (optimized, embedded
+    texture stripped) alongside ``textured.glb.orig`` (original, with the
+    embedded texture). Prefer the ``.orig`` form when available so
+    :func:`_extract_glb_texture` can recover the texture.
+    """
+    base = _CACHE_DIR / "meshes" / model_id / "google_16k"
+    orig = base / "textured.glb.orig"
+    return orig if orig.exists() else base / "textured.glb"
 
 
 def ensure_ycb_assets(model_id: str) -> Path:
@@ -117,10 +138,11 @@ def ensure_ycb_assets(model_id: str) -> Path:
     visual_path = mesh_dir / "visual.obj"
     texture_path = mesh_dir / "texture.png"
     glb_path = _CACHE_DIR / "meshes" / model_id / "google_16k" / "textured.glb"
+    orig_path = glb_path.with_suffix(".glb.orig")
 
     if collision_path.exists() and visual_path.exists():
         if not texture_path.exists():
-            if not glb_path.exists():
+            if not glb_path.exists() or not orig_path.exists():
                 from huggingface_hub import snapshot_download
 
                 snapshot_download(
@@ -129,8 +151,16 @@ def ensure_ycb_assets(model_id: str) -> Path:
                     allow_patterns=[f"meshes/{model_id}/*"],
                     local_dir=str(_CACHE_DIR),
                 )
-            if glb_path.exists():
-                _extract_glb_texture(glb_path, texture_path)
+            preferred_glb = _texture_glb_path(model_id)
+            if preferred_glb.exists():
+                extracted = _extract_glb_texture(preferred_glb, texture_path)
+                if not extracted:
+                    logger.warning(
+                        "Failed to extract texture for YCB %r from %s; "
+                        "object will render in MuJoCo's default gray.",
+                        model_id,
+                        preferred_glb,
+                    )
         return mesh_dir
 
     from huggingface_hub import snapshot_download
@@ -148,7 +178,15 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh = _load_exportable_mesh(glb_path)
     hull = mesh.convex_hull
     hull.export(str(collision_path), file_type="obj")
-    _extract_glb_texture(glb_path, texture_path)
+    preferred_glb = _texture_glb_path(model_id)
+    extracted = _extract_glb_texture(preferred_glb, texture_path)
+    if not extracted:
+        logger.warning(
+            "Failed to extract texture for YCB %r from %s; "
+            "object will render in MuJoCo's default gray.",
+            model_id,
+            preferred_glb,
+        )
 
     return mesh_dir
 

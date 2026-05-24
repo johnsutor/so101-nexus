@@ -195,6 +195,8 @@ def test_ensure_ycb_assets_cache_hit_extracts_missing_texture(
     glb = tmp_path / "meshes" / model_id / "google_16k" / "textured.glb"
     glb.parent.mkdir(parents=True)
     glb.write_text("fake-glb", encoding="utf-8")
+    glb_orig = glb.with_suffix(".glb.orig")
+    glb_orig.write_text("fake-glb-orig", encoding="utf-8")
     calls: list[tuple[Path, Path]] = []
 
     def _extract(glb_path: Path, texture_path: Path) -> bool:
@@ -207,7 +209,7 @@ def test_ensure_ycb_assets_cache_hit_extracts_missing_texture(
     result = ycb_assets.ensure_ycb_assets(model_id)
 
     assert result == mesh_dir
-    assert calls == [(glb, mesh_dir / "texture.png")]
+    assert calls == [(glb_orig, mesh_dir / "texture.png")]
 
 
 def test_ensure_ycb_assets_returns_when_texture_extract_finds_nothing(
@@ -305,3 +307,137 @@ def test_collision_and_visual_mesh_paths(monkeypatch: pytest.MonkeyPatch, tmp_pa
     model_id = "058_golf_ball"
     assert ycb_assets.get_ycb_collision_mesh(model_id) == tmp_path / model_id / "collision.obj"
     assert ycb_assets.get_ycb_visual_mesh(model_id) == tmp_path / model_id / "visual.obj"
+
+
+def test_extract_glb_texture_accepts_orig_extension(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """trimesh.load must receive file_type='glb' so .glb.orig paths load."""
+    image = _FakeImage()
+    mesh = _FakeTexturedMesh(image=image)
+    load_calls: list[tuple[str, dict]] = []
+
+    def _load(path: str, **kwargs):
+        load_calls.append((path, dict(kwargs)))
+        return mesh
+
+    fake_trimesh = types.SimpleNamespace(Scene=_FakeScene, load=_load)
+    _patch_module(monkeypatch, "trimesh", fake_trimesh)
+
+    out = tmp_path / "texture.png"
+    orig_path = tmp_path / "textured.glb.orig"
+
+    assert ycb_assets._extract_glb_texture(orig_path, out) is True
+    assert load_calls, "trimesh.load was not invoked"
+    _path, kwargs = load_calls[0]
+    assert kwargs.get("file_type") == "glb", (
+        "trimesh.load must be called with file_type='glb' so .orig is accepted; "
+        f"got kwargs={kwargs}"
+    )
+
+
+def test_texture_glb_path_prefers_orig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """When both textured.glb.orig and textured.glb exist, the .orig wins."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+    base = tmp_path / "meshes" / model_id / "google_16k"
+    base.mkdir(parents=True)
+    glb = base / "textured.glb"
+    orig = base / "textured.glb.orig"
+    glb.write_text("stripped", encoding="utf-8")
+    orig.write_text("orig-with-texture", encoding="utf-8")
+
+    assert ycb_assets._texture_glb_path(model_id) == orig
+
+
+def test_texture_glb_path_falls_back_to_glb(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """When only textured.glb exists, _texture_glb_path returns it."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+    base = tmp_path / "meshes" / model_id / "google_16k"
+    base.mkdir(parents=True)
+    glb = base / "textured.glb"
+    glb.write_text("stripped", encoding="utf-8")
+
+    assert ycb_assets._texture_glb_path(model_id) == glb
+
+
+def test_ensure_ycb_assets_downloads_orig_when_partial_cache_lacks_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Partial caches with only textured.glb must pull .orig before extraction."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+
+    mesh_dir = tmp_path / model_id
+    mesh_dir.mkdir(parents=True)
+    (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
+    (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    glb_dir = tmp_path / "meshes" / model_id / "google_16k"
+    glb_dir.mkdir(parents=True)
+    (glb_dir / "textured.glb").write_text("stripped", encoding="utf-8")
+
+    download_called = {"count": 0}
+
+    def _snapshot_download(**_kwargs):
+        download_called["count"] += 1
+        (glb_dir / "textured.glb.orig").write_text("orig", encoding="utf-8")
+
+    _patch_module(
+        monkeypatch,
+        "huggingface_hub",
+        types.SimpleNamespace(snapshot_download=_snapshot_download),
+    )
+
+    extract_calls: list[Path] = []
+
+    def _extract(glb_path: Path, texture_path: Path) -> bool:
+        extract_calls.append(glb_path)
+        texture_path.write_text("png-bytes", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", _extract)
+
+    result = ycb_assets.ensure_ycb_assets(model_id)
+    assert result == mesh_dir
+    assert download_called["count"] == 1, (
+        "Expected snapshot_download to be triggered to pull textured.glb.orig"
+    )
+    assert extract_calls == [glb_dir / "textured.glb.orig"], (
+        f"Texture must be extracted from .orig after the download, got {extract_calls}"
+    )
+    assert (mesh_dir / "texture.png").exists()
+
+
+def test_ensure_ycb_assets_logs_warning_when_extraction_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    """Failed texture extraction must warn with the model and path tried."""
+    import logging
+
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "011_banana"
+
+    mesh_dir = tmp_path / model_id
+    mesh_dir.mkdir(parents=True)
+    (mesh_dir / "collision.obj").write_text("c", encoding="utf-8")
+    (mesh_dir / "visual.obj").write_text("v", encoding="utf-8")
+    glb_dir = tmp_path / "meshes" / model_id / "google_16k"
+    glb_dir.mkdir(parents=True)
+    (glb_dir / "textured.glb").write_text("stripped", encoding="utf-8")
+    (glb_dir / "textured.glb.orig").write_text("orig", encoding="utf-8")
+
+    monkeypatch.setattr(ycb_assets, "_extract_glb_texture", lambda _g, _t: False)
+
+    with caplog.at_level(logging.WARNING, logger="so101_nexus_core.ycb_assets"):
+        result = ycb_assets.ensure_ycb_assets(model_id)
+
+    assert result == mesh_dir
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warning_records) == 1, (
+        f"Expected exactly one WARNING; got {len(warning_records)}: "
+        f"{[r.getMessage() for r in warning_records]}"
+    )
+    msg = warning_records[0].getMessage()
+    assert model_id in msg, f"WARNING must name the model id, got: {msg!r}"
+    assert "textured.glb.orig" in msg, f"WARNING must name the GLB path tried, got: {msg!r}"
