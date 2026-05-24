@@ -19,7 +19,7 @@ from mani_skill.utils.building import actors
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 
-from so101_nexus_core.config import PickConfig
+from so101_nexus_core.config import PickConfig, describe_pick_target
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
@@ -198,7 +198,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         )
         self._target_obj = target
         self._distractors_spec = distractors
-        self._task_description = f"Pick up the {target!r}."
+        self._task_description = describe_pick_target(target)
         self._obj_spawn_z_val = _obj_spawn_z(target)
         self._distractor_spawn_zs = [_obj_spawn_z(d) for d in distractors]
 

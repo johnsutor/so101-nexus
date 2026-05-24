@@ -60,8 +60,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
 
     @property
     def task_description(self) -> str:
-        """Return the current episode task description."""
-        return f"Look at the {self._target_obj!r}."
+        return self.config.task_description
 
     def _load_scene(self, options: dict) -> None:
         self._build_ground()
