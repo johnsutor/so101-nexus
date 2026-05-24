@@ -496,6 +496,15 @@ def _normalize_objects(
     return normalized
 
 
+def describe_pick_target(target: object) -> str:
+    """Return the canonical task description for a pick target.
+
+    Both MuJoCo and ManiSkill backends call this instead of inlining the
+    f-string, so the template lives in exactly one place.
+    """
+    return f"Pick up the {target!r}."
+
+
 class PickConfig(EnvironmentConfig):
     """Config for the unified pick environment.
 
@@ -620,6 +629,15 @@ class PickAndPlaceConfig(EnvironmentConfig):
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
         )
 
+    @property
+    def task_description(self) -> str:
+        """Canonical task description derived from configured colors."""
+        cube_name = self.cube_colors if isinstance(self.cube_colors, str) else self.cube_colors[0]
+        target_name = (
+            self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
+        )
+        return f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
+
 
 class ReachConfig(EnvironmentConfig):
     """Config for the reach-to-target primitive task.
@@ -682,6 +700,11 @@ class LookAtConfig(EnvironmentConfig):
         """Orientation success threshold converted to radians (internal use only)."""
         return float(np.radians(self.orientation_success_threshold_deg))
 
+    @property
+    def task_description(self) -> str:
+        """Canonical task description derived from the configured target object."""
+        return f"Look at the {self.objects[0]!r}."
+
 
 class MoveConfig(EnvironmentConfig):
     """Config for the directional move primitive task.
@@ -711,6 +734,11 @@ class MoveConfig(EnvironmentConfig):
         self.success_threshold = success_threshold
         if self.observations is None:
             self.observations = [JointPositions()]
+
+    @property
+    def task_description(self) -> str:
+        """Canonical task description derived from direction and distance."""
+        return f"Move the end-effector {self.direction} by {self.target_distance:.2f} m."
 
 
 # sqrt(2)/2 — used for 90-degree rotation quaternions in camera presets.

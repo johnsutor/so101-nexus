@@ -65,6 +65,9 @@ from so101_nexus_core.config import (
 from so101_nexus_core.config import (
     YcbModelId as YcbModelId,
 )
+from so101_nexus_core.config import (
+    describe_pick_target as describe_pick_target,
+)
 from so101_nexus_core.constants import (
     COLOR_MAP as COLOR_MAP,
 )
