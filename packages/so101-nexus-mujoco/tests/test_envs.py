@@ -393,6 +393,16 @@ def test_look_at_cube_color(color):
         env.close()
 
 
+def test_look_at_task_description_delegates_to_config():
+    config = LookAtConfig(objects=[CubeObject(color="red")])  # type: ignore[arg-type]
+    env = gym.make("MuJoCoLookAt-v1", config=config)
+    try:
+        assert env.unwrapped.task_description == config.task_description  # type: ignore[attr-defined]
+        assert "_task_description" not in env.unwrapped.__dict__
+    finally:
+        env.close()
+
+
 @pytest.mark.parametrize("direction", MOVE_DIRECTIONS)
 def test_move_direction(direction):
     config = MoveConfig(direction=direction)  # type: ignore[arg-type]
@@ -672,6 +682,28 @@ def test_pick_and_place_no_mocap_goal_body():
 # ---------------------------------------------------------------------------
 # LookAt regression: TCP forward must match gripper direction.
 # ---------------------------------------------------------------------------
+
+
+def test_lookat_reward_uses_orientation_error_info(monkeypatch):
+    """Reward must use info from _get_info(), not recompute orientation vectors."""
+    env = gym.make("MuJoCoLookAt-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset()
+
+        def fail_if_recomputed(*args, **kwargs):
+            raise AssertionError("reward recomputed orientation vectors")
+
+        monkeypatch.setattr(inner, "_get_tcp_forward", fail_if_recomputed)
+        monkeypatch.setattr(inner, "_get_target_pos", fail_if_recomputed)
+        monkeypatch.setattr(inner, "_get_tcp_pose", fail_if_recomputed)
+
+        reward = inner._compute_reward({"orientation_error": 0.0, "success": False})
+
+        expected = 1.0 - inner.config.reward.completion_bonus
+        assert reward == pytest.approx(expected)
+    finally:
+        env.close()
 
 
 def test_lookat_tcp_forward_matches_gripper_direction():

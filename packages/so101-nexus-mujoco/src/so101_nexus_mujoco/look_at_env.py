@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import tempfile
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,7 +12,7 @@ import numpy as np
 from so101_nexus_core import get_so101_simulation_dir
 from so101_nexus_core.config import ControlMode, LookAtConfig
 from so101_nexus_core.constants import COLOR_MAP, sample_color
-from so101_nexus_core.rewards import simple_reward
+from so101_nexus_core.rewards import orientation_progress, simple_reward
 from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
 if TYPE_CHECKING:
@@ -109,14 +110,12 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
         )
 
-        self._task_description: str = f"Look at the {self._target_obj!r}."
-
         self._finish_model_setup()
 
     @property
     def task_description(self) -> str:
         """Return the current episode task description."""
-        return self._task_description
+        return self.config.task_description
 
     def _task_reset(self) -> None:
         # Place the object randomly in the workspace in front of the robot.
@@ -175,11 +174,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _compute_reward(self, info: dict) -> float:
-        tcp_forward = self._get_tcp_forward()
-        target_pos = self._get_target_pos()
-        tcp_pos = self._get_tcp_pose()[:3]
-        to_target = target_pos - tcp_pos
-        orient = self._orientation_toward_reward(tcp_forward, to_target)
+        orient = orientation_progress(math.cos(float(info["orientation_error"])))
         return simple_reward(
             progress=orient,
             completion_bonus=self.config.reward.completion_bonus,

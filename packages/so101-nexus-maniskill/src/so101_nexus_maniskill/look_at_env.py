@@ -61,7 +61,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
     @property
     def task_description(self) -> str:
         """Return the current episode task description."""
-        return f"Look at the {self._target_obj!r}."
+        return self.config.task_description
 
     def _load_scene(self, options: dict) -> None:
         self._build_ground()
@@ -133,14 +133,10 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Cosine similarity reward for orientation toward target."""
-        tcp_pose = self.agent.tcp_pose
-        rot_mat = tcp_pose.to_transformation_matrix()[..., :3, :3]
-        tcp_forward = rot_mat[..., :, 2]
-        to_target = self.target_obj_actor.pose.p - tcp_pose.p
-        to_target_norm = to_target / (torch.linalg.norm(to_target, dim=1, keepdim=True) + 1e-8)
-        cos_sim = (tcp_forward * to_target_norm).sum(dim=1).clamp(-1, 1)
-        orient = (cos_sim + 1) / 2  # map [-1, 1] to [0, 1]
+        # tensor equivalent of orientation_progress(cos(orientation_error))
+        orient = (torch.cos(info["orientation_error"]) + 1) / 2
         bonus = self.config.reward.completion_bonus
+        # mirrors simple_reward() in so101_nexus_core.rewards
         return (1.0 - bonus) * orient + bonus * info["success"]
 
 

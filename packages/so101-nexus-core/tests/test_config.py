@@ -7,6 +7,8 @@ from so101_nexus_core.config import (
     REST_POSE,
     SO101_JOINT_NAMES,
     EnvironmentConfig,
+    LookAtConfig,
+    MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
     Pose,
@@ -263,6 +265,45 @@ class TestObjectNormalization:
         assert result is not objects
         with pytest.raises(ValueError, match="objects must not be empty"):
             _normalize_objects([], CubeObject())
+
+
+class TestTaskDescriptions:
+    def test_move_config_task_description(self):
+        cfg = MoveConfig(direction="up", target_distance=0.10)
+        assert cfg.task_description == "Move the end-effector up by 0.10 m."
+
+    def test_move_config_task_description_other_direction(self):
+        cfg = MoveConfig(direction="forward", target_distance=0.05)
+        assert cfg.task_description == "Move the end-effector forward by 0.05 m."
+
+    def test_look_at_config_task_description(self):
+        from so101_nexus_core.objects import CubeObject
+
+        obj = CubeObject(color="red")
+        cfg = LookAtConfig(objects=[obj])
+        assert cfg.task_description == f"Look at the {obj!r}."
+
+    def test_pick_and_place_config_task_description_str_colors(self):
+        cfg = PickAndPlaceConfig(cube_colors="red", target_colors="blue")
+        assert cfg.task_description == "Pick up the small red cube and place it on the blue circle"
+
+    def test_pick_and_place_config_task_description_list_colors(self):
+        cfg = PickAndPlaceConfig(cube_colors=["red", "green"], target_colors=["blue"])
+        assert cfg.task_description == "Pick up the small red cube and place it on the blue circle"
+
+    def test_describe_pick_target_cube(self):
+        from so101_nexus_core.config import describe_pick_target
+        from so101_nexus_core.objects import CubeObject
+
+        obj = CubeObject(color="green")
+        assert describe_pick_target(obj) == f"Pick up the {obj!r}."
+
+    def test_describe_pick_target_ycb(self):
+        from so101_nexus_core.config import describe_pick_target
+        from so101_nexus_core.objects import YCBObject
+
+        obj = YCBObject(model_id="009_gelatin_box")
+        assert describe_pick_target(obj) == f"Pick up the {obj!r}."
 
 
 def test_robot_config_grasp_force_threshold_default():

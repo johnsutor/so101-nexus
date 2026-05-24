@@ -25,6 +25,7 @@ from so101_nexus_core import (
 from so101_nexus_core.config import (
     ControlMode,
     PickConfig,
+    describe_pick_target,
 )
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
@@ -432,7 +433,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
-        self._task_description = f"Pick up the {target_obj!r}."
+        self._task_description = describe_pick_target(target_obj)
 
 
 class PickLiftEnv(PickEnv):

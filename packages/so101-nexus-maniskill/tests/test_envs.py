@@ -36,6 +36,7 @@ from so101_nexus_core.observations import (
     WristCamera,
 )
 from so101_nexus_core.testing import run_env_contract
+from so101_nexus_maniskill.look_at_env import LookAtEnv
 from so101_nexus_maniskill.pick_and_place import (
     PickAndPlaceSO100Env,
     PickAndPlaceSO101Env,
@@ -375,6 +376,27 @@ def test_lookat_evaluate_keys(env_id):
         assert {"orientation_error", "success"} <= set(info.keys())
     finally:
         env.close()
+
+
+def test_lookat_dense_reward_uses_orientation_error_info():
+    """Reward must use evaluate() info, not recompute orientation vectors."""
+    env = object.__new__(LookAtEnv)
+    env.config = LookAtConfig()
+    bonus = env.config.reward.completion_bonus
+    info = {
+        "orientation_error": torch.tensor([0.0, torch.pi], dtype=torch.float32),
+        "success": torch.tensor([False, True]),
+    }
+
+    reward = LookAtEnv.compute_dense_reward(
+        env,
+        obs={},
+        action=torch.empty((2, 0), dtype=torch.float32),
+        info=info,
+    )
+
+    expected = torch.tensor([1.0 - bonus, bonus], dtype=torch.float32)
+    torch.testing.assert_close(reward, expected)
 
 
 @pytest.mark.parametrize("env_id", MOVE_ENV_IDS)

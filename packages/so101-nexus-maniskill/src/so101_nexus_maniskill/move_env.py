@@ -57,9 +57,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
     @property
     def task_description(self) -> str:
         """Return a description of the current move task."""
-        return (
-            f"Move the end-effector {self.config.direction} by {self.config.target_distance:.2f} m."
-        )
+        return self.config.task_description
 
     def _load_scene(self, options: dict) -> None:
         self._build_ground()
@@ -123,6 +121,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
         """Tanh-shaped reach reward with completion bonus."""
         reach = self._reach_progress(info["tcp_to_target_dist"])
         bonus = self.config.reward.completion_bonus
+        # mirrors simple_reward() in so101_nexus_core.rewards
         return (1.0 - bonus) * reach + bonus * info["success"]
 
 
