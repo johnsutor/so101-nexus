@@ -4022,7 +4022,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus-core"
-version = "0.3.11"
+version = "0.3.12"
 source = { editable = "packages/so101-nexus-core" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -4106,7 +4106,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-maniskill"
-version = "0.3.11"
+version = "0.3.12"
 source = { editable = "packages/so101-nexus-maniskill" }
 dependencies = [
     { name = "mani-skill" },
@@ -4154,7 +4154,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-mujoco"
-version = "0.3.11"
+version = "0.3.12"
 source = { editable = "packages/so101-nexus-mujoco" }
 dependencies = [
     { name = "gymnasium" },
@@ -4202,7 +4202,7 @@ test = [
 
 [[package]]
 name = "so101-nexus-workspace"
-version = "0.3.11"
+version = "0.3.12"
 source = { virtual = "." }
 dependencies = [
     { name = "tensorboard" },

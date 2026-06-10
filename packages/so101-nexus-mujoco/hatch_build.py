@@ -11,7 +11,7 @@ class CustomMetadataHook(MetadataHookInterface):
         version = metadata["version"]
         metadata["dependencies"] = [
             f"so101-nexus-core=={version}",
-            "mujoco>=3.0.0",
+            "mujoco>=3.1.3",
             "gymnasium>=1.0.0",
         ]
         metadata["optional-dependencies"] = {
