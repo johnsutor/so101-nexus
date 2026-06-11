@@ -129,20 +129,23 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         )
 
         ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
-        self._ctrl_low = ctrl_range[:, 0].copy()
-        self._ctrl_high = ctrl_range[:, 1].copy()
+        ctrl_low = ctrl_range[:, 0]
+        ctrl_high = ctrl_range[:, 1]
 
-        # Reset states must respect both the actuator ctrlrange and the compiled
-        # joint range. The menagerie wrist_roll actuator advertises a wider
-        # ctrlrange than its joint limit, so clamp resets to the intersection.
+        # Valid position-target bounds: a commanded actuator target must lie
+        # within both the actuator ctrlrange and the compiled joint range. The
+        # menagerie wrist_roll actuator advertises a wider ctrlrange than its
+        # joint limit, so commanding the ctrlrange edge would drive the joint
+        # into its limit. Clamp every position target (reset and control) to the
+        # intersection.
         jnt_range = self.model.jnt_range[self._joint_ids]
-        self._reset_low = np.maximum(self._ctrl_low, jnt_range[:, 0])
-        self._reset_high = np.minimum(self._ctrl_high, jnt_range[:, 1])
+        self._target_low = np.maximum(ctrl_low, jnt_range[:, 0])
+        self._target_high = np.minimum(ctrl_high, jnt_range[:, 1])
 
         if self.control_mode == "pd_joint_pos":
             self.action_space = spaces.Box(
-                low=self._ctrl_low.astype(np.float32),
-                high=self._ctrl_high.astype(np.float32),
+                low=self._target_low.astype(np.float32),
+                high=self._target_high.astype(np.float32),
                 dtype=np.float32,
             )
         else:
@@ -251,7 +254,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """
         if init_qpos is not None:
             target = np.asarray(init_qpos, dtype=np.float64).copy()
-            clipped = np.clip(target, self._ctrl_low, self._ctrl_high)
+            clipped = np.clip(target, self._target_low, self._target_high)
             if not np.array_equal(target, clipped):
                 if not self._init_qpos_clamp_warned:
                     logger.warning(
@@ -270,17 +273,19 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 target = np.array(self.config.robot.rest_qpos_rad, dtype=np.float64)
                 noise_scale = self.robot_init_qpos_noise
 
+        # Clamp the position target to the valid bounds so the held ctrl target
+        # (and the returned value seeding _prev_target) never commands past the
+        # joint limit; a zero action in target-delta mode must hold this pose.
+        applied = np.clip(target, self._target_low, self._target_high)
         for i, jid in enumerate(self._joint_ids):
             qpos_addr = self.model.jnt_qposadr[jid]
             noise = 0.0 if noise_scale == 0.0 else self.np_random.uniform(-noise_scale, noise_scale)
-            # Clamp the final per-joint qpos (target + noise) to the combined
-            # ctrlrange/joint-range bounds so noise cannot push a joint past its
-            # compiled limit.
+            # Re-clamp after adding noise so noise cannot push a joint past its limit.
             self.data.qpos[qpos_addr] = np.clip(
-                target[i] + noise, self._reset_low[i], self._reset_high[i]
+                applied[i] + noise, self._target_low[i], self._target_high[i]
             )
-        self.data.ctrl[self._actuator_ids] = np.clip(target, self._reset_low, self._reset_high)
-        return target
+        self.data.ctrl[self._actuator_ids] = applied
+        return applied
 
     def _randomize_wrist_camera(self) -> None:
         """Randomize wrist camera pose and field of view for domain randomization.
@@ -485,11 +490,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
+            # action_space is already the valid target range for this mode.
             ctrl = action
         elif self.control_mode == "pd_joint_delta_pos":
-            ctrl = np.clip(self._get_current_qpos() + action, self._ctrl_low, self._ctrl_high)
+            ctrl = np.clip(self._get_current_qpos() + action, self._target_low, self._target_high)
         else:
-            self._prev_target = np.clip(self._prev_target + action, self._ctrl_low, self._ctrl_high)
+            self._prev_target = np.clip(
+                self._prev_target + action, self._target_low, self._target_high
+            )
             ctrl = self._prev_target
 
         self.data.ctrl[self._actuator_ids] = ctrl

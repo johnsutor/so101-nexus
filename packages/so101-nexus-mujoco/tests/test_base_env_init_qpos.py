@@ -51,7 +51,7 @@ def test_reset_with_out_of_range_init_qpos_clamps_and_warns_once(caplog):
             env.reset(options={"init_qpos": huge})
 
         # Clamped to the intersection of actuator ctrlrange and joint range.
-        np.testing.assert_allclose(inner._get_current_qpos(), inner._reset_high, atol=1e-6)
+        np.testing.assert_allclose(inner._get_current_qpos(), inner._target_high, atol=1e-6)
         warning_count = sum("init_qpos" in rec.message for rec in caplog.records)
         assert warning_count == 1
     finally:
@@ -77,7 +77,7 @@ def test_reset_without_init_qpos_uses_rest_pose():
         actual_qpos = inner._get_current_qpos()
         # The default rest gripper (-1.1 rad) is below the menagerie gripper joint
         # limit and is clamped; compare against the model-valid rest target.
-        expected = np.clip(rest, inner._reset_low, inner._reset_high)
+        expected = np.clip(rest, inner._target_low, inner._target_high)
         np.testing.assert_allclose(actual_qpos, expected, atol=0.025)
     finally:
         env.close()
@@ -143,7 +143,7 @@ def test_reset_init_pose_none_backward_compat():
         inner = env.unwrapped
         actual_qpos = inner._get_current_qpos()
         # Out-of-range default gripper rest is clamped to the model joint range.
-        expected = np.clip(rest, inner._reset_low, inner._reset_high)
+        expected = np.clip(rest, inner._target_low, inner._target_high)
         np.testing.assert_allclose(actual_qpos, expected, atol=0.025)
     finally:
         env.close()
@@ -204,5 +204,40 @@ def test_default_rest_qpos_with_noise_stays_within_joint_range():
         for seed in range(20):
             env.reset(seed=seed)
             _assert_within_jnt_range(env)
+    finally:
+        env.close()
+
+
+def test_target_delta_zero_action_holds_within_joint_range():
+    """A zero action in target-delta mode must hold the reset pose, not jump.
+
+    Regression: reset clamped wrist_roll qpos to the joint limit but previously
+    seeded _prev_target with the unclamped value, so a zero action drove ctrl
+    back to the (out-of-joint-range) actuator ctrlrange edge.
+    """
+    import gymnasium as gym
+
+    importlib.import_module("so101_nexus_mujoco")
+    from so101_nexus_core.config import PickConfig
+
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        control_mode="pd_joint_target_delta_pos",
+        robot_init_qpos_noise=0.0,
+        render_mode="rgb_array",
+    ).unwrapped
+    try:
+        wr_jnt = env._joint_ids[4]  # wrist_roll
+        wr_act = env._actuator_ids[4]
+        hi = float(env.model.jnt_range[wr_jnt][1])
+
+        # init_qpos above the joint limit but within the actuator ctrlrange.
+        env.reset(seed=0, options={"init_qpos": np.array([0, 0, 0, 0, 2.84, 0.0])})
+        assert env._prev_target[4] <= hi + 1e-9  # seeded with the clamped target
+
+        env.step(np.zeros(6, dtype=np.float32))
+        # Zero action must not command the actuator past the joint limit.
+        assert float(env.data.ctrl[wr_act]) <= hi + 1e-9
     finally:
         env.close()
