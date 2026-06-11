@@ -130,7 +130,8 @@ def test_wrapper_must_be_colocated_with_model(tmp_path):
 
     bad = tmp_path / "probe.xml"
     bad.write_text(xml)
-    with pytest.raises(Exception):
+    # Mesh assets do not resolve from a foreign dir, so the load fails on file open.
+    with pytest.raises(ValueError, match="Error opening file"):
         mujoco.MjModel.from_xml_path(str(bad))
 
 
@@ -167,9 +168,7 @@ def test_rest_tcp_pose_matches_menagerie():
         tcp = env._get_tcp_pose()
         # Pinned compiled menagerie TCP at zero qpos (differs from the old model's
         # ~[0.39136, -0.00001, 0.22647], a deliberate ~2 cm Z shift).
-        assert np.allclose(
-            tcp[:3], [0.3914432501, -0.0009794699, 0.2460073072], atol=1e-6
-        )
+        assert np.allclose(tcp[:3], [0.3914432501, -0.0009794699, 0.2460073072], atol=1e-6)
         # Orientation reflects the library-convention gripperframe quat (0 0 1 0).
         assert np.allclose(
             tcp[3:], [0.7064841888, 0.0172191552, 0.7073102466, 0.0171990353], atol=1e-6
