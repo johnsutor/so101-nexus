@@ -21,7 +21,22 @@ These return paths to the bundled MJCF/URDF assets for each robot arm.
 def get_so101_simulation_dir() -> Path
 ```
 
-Returns the `Path` to the SO-101 simulation asset directory.
+Returns the `Path` to the SO-101 simulation asset directory (`SO101/`). This
+holds the URDF used by the ManiSkill backend and the calibration metadata used
+by the teleop tooling.
+
+### `get_so101_mujoco_model_dir()` / `get_so101_mujoco_model_path()`
+
+```python
+def get_so101_mujoco_model_dir() -> Path
+def get_so101_mujoco_model_path() -> Path
+```
+
+Return the directory and `so101.xml` path of the MJCF model used by the MuJoCo
+backend (the vendored MuJoCo Menagerie model under `SO101_menagerie/`). The
+MuJoCo backend intentionally diverges from the ManiSkill backend here: MuJoCo
+loads this menagerie MJCF, while the ManiSkill URDF and teleop calibration
+metadata stay under `SO101/` (see `get_so101_simulation_dir`).
 
 ### `get_so100_simulation_dir()`
 
