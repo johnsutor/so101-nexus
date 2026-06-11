@@ -17,7 +17,8 @@ import numpy as np
 from so101_nexus_core import (
     ensure_ycb_assets,
     get_mujoco_ycb_rest_pose,
-    get_so101_simulation_dir,
+    get_so101_mujoco_model_dir,
+    get_so101_mujoco_model_path,
     get_ycb_collision_mesh,
     get_ycb_texture_file,
     get_ycb_visual_mesh,
@@ -29,15 +30,15 @@ from so101_nexus_core.config import (
 )
 from so101_nexus_core.constants import COLOR_MAP, sample_color
 from so101_nexus_core.objects import CubeObject, MeshObject, SceneObject, YCBObject
-from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import (
     align_freejoint_geom_to_floor,
     random_yaw_quat,
     sample_separated_positions,
 )
 
-_SO101_DIR = get_so101_simulation_dir()
-_SO101_XML = _SO101_DIR / "so101_new_calib.xml"
+_SO101_DIR = get_so101_mujoco_model_dir()
+_SO101_XML = get_so101_mujoco_model_path()
 
 # Default bounding radius used when we cannot compute one from the object.
 _DEFAULT_BOUNDING_RADIUS = 0.025
@@ -145,10 +146,10 @@ def _build_scene_xml(
 
     return f"""\
 <mujoco model="pick_scene">
-  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
+  {SCENE_OPTION_XML}
 
 {asset_section}  <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>

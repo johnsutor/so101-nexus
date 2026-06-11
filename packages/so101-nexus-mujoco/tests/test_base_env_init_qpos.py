@@ -50,7 +50,8 @@ def test_reset_with_out_of_range_init_qpos_clamps_and_warns_once(caplog):
             env.reset(options={"init_qpos": huge})
             env.reset(options={"init_qpos": huge})
 
-        np.testing.assert_allclose(inner._get_current_qpos(), inner._ctrl_high, atol=1e-6)
+        # Clamped to the intersection of actuator ctrlrange and joint range.
+        np.testing.assert_allclose(inner._get_current_qpos(), inner._reset_high, atol=1e-6)
         warning_count = sum("init_qpos" in rec.message for rec in caplog.records)
         assert warning_count == 1
     finally:
@@ -72,8 +73,12 @@ def test_reset_without_init_qpos_uses_rest_pose():
     )
     try:
         obs, _ = env.reset(seed=0)
-        actual_qpos = env.unwrapped._get_current_qpos()
-        np.testing.assert_allclose(actual_qpos, rest, atol=0.025)
+        inner = env.unwrapped
+        actual_qpos = inner._get_current_qpos()
+        # The default rest gripper (-1.1 rad) is below the menagerie gripper joint
+        # limit and is clamped; compare against the model-valid rest target.
+        expected = np.clip(rest, inner._reset_low, inner._reset_high)
+        np.testing.assert_allclose(actual_qpos, expected, atol=0.025)
     finally:
         env.close()
 
@@ -135,7 +140,69 @@ def test_reset_init_pose_none_backward_compat():
     )
     try:
         env.reset(seed=0)
-        actual_qpos = env.unwrapped._get_current_qpos()
-        np.testing.assert_allclose(actual_qpos, rest, atol=0.025)
+        inner = env.unwrapped
+        actual_qpos = inner._get_current_qpos()
+        # Out-of-range default gripper rest is clamped to the model joint range.
+        expected = np.clip(rest, inner._reset_low, inner._reset_high)
+        np.testing.assert_allclose(actual_qpos, expected, atol=0.025)
+    finally:
+        env.close()
+
+
+def _assert_within_jnt_range(env) -> None:
+    m = env.model
+    for jid in env._joint_ids:
+        adr = m.jnt_qposadr[jid]
+        lo, hi = m.jnt_range[jid]
+        val = float(env.data.qpos[adr])
+        assert lo - 1e-9 <= val <= hi + 1e-9, f"joint {jid} qpos {val} outside [{lo}, {hi}]"
+
+
+def test_init_qpos_above_wrist_roll_limit_is_clamped_to_joint_range():
+    """init_qpos with wrist_roll above the compiled joint limit is clamped.
+
+    The menagerie wrist_roll actuator ctrlrange (~2.84121) is wider than its
+    joint limit (~2.743847); a near-ctrlrange init must not land past jnt_range.
+    """
+    import gymnasium as gym
+
+    importlib.import_module("so101_nexus_mujoco")
+    from so101_nexus_core.config import PickConfig
+
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(reset_settle_frames=0),
+        render_mode="rgb_array",
+    ).unwrapped
+    try:
+        qpos = np.array([0.0, 0.0, 0.0, 0.0, 2.84, 0.0], dtype=np.float64)
+        env.reset(seed=0, options={"init_qpos": qpos})
+        _assert_within_jnt_range(env)
+    finally:
+        env.close()
+
+
+def test_default_rest_qpos_with_noise_stays_within_joint_range():
+    """Default rest-qpos path plus reset noise must not cross the joint range.
+
+    Regression for the post-noise clamp: a near-upper wrist_roll rest pose with
+    nonzero init noise previously wrote qpos past the compiled joint limit.
+    """
+    import gymnasium as gym
+
+    importlib.import_module("so101_nexus_mujoco")
+    from so101_nexus_core.config import PickConfig, RobotConfig
+
+    robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 0.0, 157.0, -63.0))
+    env = gym.make(
+        "MuJoCoPickLift-v1",
+        config=PickConfig(robot=robot, reset_settle_frames=0),
+        robot_init_qpos_noise=0.1,
+        render_mode="rgb_array",
+    ).unwrapped
+    try:
+        for seed in range(20):
+            env.reset(seed=seed)
+            _assert_within_jnt_range(env)
     finally:
         env.close()

@@ -11,18 +11,18 @@ from typing import ClassVar
 import mujoco
 import numpy as np
 
-from so101_nexus_core import get_so101_simulation_dir
+from so101_nexus_core import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus_core.config import (
     ControlMode,
     PickAndPlaceConfig,
 )
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.rewards import reach_progress
-from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
 
-_SO101_DIR = get_so101_simulation_dir()
-_SO101_XML = _SO101_DIR / "so101_new_calib.xml"
+_SO101_DIR = get_so101_mujoco_model_dir()
+_SO101_XML = get_so101_mujoco_model_path()
 
 
 def _build_scene_xml(
@@ -40,10 +40,10 @@ def _build_scene_xml(
     gr, gg, gb, ga = ground_color
     return f"""\
 <mujoco model="pick_and_place_scene">
-  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
+  {SCENE_OPTION_XML}
 
   <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>

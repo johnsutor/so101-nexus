@@ -33,6 +33,17 @@ from so101_nexus_core.rewards import orientation_progress, reach_progress
 
 logger = logging.getLogger(__name__)
 
+# Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
+# vendored menagerie model's option (MuJoCo: the last top-level option wins).
+# Adopts the menagerie's tuned manipulation physics plus scene-level
+# gravity/noslip. The wrapper <compiler> stays before the include so the
+# menagerie compiler's meshdir="assets" still wins for mesh resolution.
+SCENE_OPTION_XML = (
+    '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
+    'integrator="implicitfast" impratio="10" iterations="10" '
+    'ls_iterations="20" noslip_iterations="3"/>'
+)
+
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     """Shared MuJoCo base class for SO101-Nexus tasks.
@@ -59,7 +70,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         "pd_joint_delta_pos",
         "pd_joint_target_delta_pos",
     }
-    _N_SUBSTEPS = 10
+    # Menagerie physics uses timestep=0.005; keep control_dt = timestep *
+    # _N_SUBSTEPS = 0.02 s (unchanged from the old 0.002 * 10).
+    _N_SUBSTEPS = 4
 
     def _init_common(
         self,
@@ -101,15 +114,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         )
         self._tcp_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
 
-        self._gripper_geom_ids = self._get_collision_geoms(self._gripper_body_id)
-        self._jaw_geom_ids = self._get_collision_geoms(self._jaw_body_id)
-
-        static_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "static_finger_pad")
-        moving_pad_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "moving_finger_pad")
-        if static_pad_id >= 0:
-            self._gripper_geom_ids.add(static_pad_id)
-        if moving_pad_id >= 0:
-            self._jaw_geom_ids.add(moving_pad_id)
+        # Menagerie finger contact surfaces use condim=6 (collision_gripper and
+        # collision_gripper_mesh classes); the non-finger wrist-roll box on the
+        # gripper body uses condim=3 and is excluded. Camera-mount boxes live on
+        # the separate camera_mount child body and are excluded by the per-body
+        # filter in _get_finger_geoms.
+        self._gripper_geom_ids = self._get_finger_geoms(self._gripper_body_id)
+        self._jaw_geom_ids = self._get_finger_geoms(self._jaw_body_id)
 
         arm_dof_count = len(SO101_JOINT_NAMES) - 1
         self._arm_qvel_addrs = np.array(
@@ -120,6 +131,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
         self._ctrl_low = ctrl_range[:, 0].copy()
         self._ctrl_high = ctrl_range[:, 1].copy()
+
+        # Reset states must respect both the actuator ctrlrange and the compiled
+        # joint range. The menagerie wrist_roll actuator advertises a wider
+        # ctrlrange than its joint limit, so clamp resets to the intersection.
+        jnt_range = self.model.jnt_range[self._joint_ids]
+        self._reset_low = np.maximum(self._ctrl_low, jnt_range[:, 0])
+        self._reset_high = np.minimum(self._ctrl_high, jnt_range[:, 1])
 
         if self.control_mode == "pd_joint_pos":
             self.action_space = spaces.Box(
@@ -255,8 +273,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         for i, jid in enumerate(self._joint_ids):
             qpos_addr = self.model.jnt_qposadr[jid]
             noise = 0.0 if noise_scale == 0.0 else self.np_random.uniform(-noise_scale, noise_scale)
-            self.data.qpos[qpos_addr] = target[i] + noise
-        self.data.ctrl[self._actuator_ids] = np.clip(target, self._ctrl_low, self._ctrl_high)
+            # Clamp the final per-joint qpos (target + noise) to the combined
+            # ctrlrange/joint-range bounds so noise cannot push a joint past its
+            # compiled limit.
+            self.data.qpos[qpos_addr] = np.clip(
+                target[i] + noise, self._reset_low[i], self._reset_high[i]
+            )
+        self.data.ctrl[self._actuator_ids] = np.clip(target, self._reset_low, self._reset_high)
         return target
 
     def _randomize_wrist_camera(self) -> None:
@@ -292,24 +315,31 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
 
-    def _get_collision_geoms(self, body_id: int) -> set[int]:
-        """Return the set of collision geometry IDs attached to a body.
+    def _get_finger_geoms(self, body_id: int) -> set[int]:
+        """Return the ``condim==6`` collision geom IDs attached to a finger body.
+
+        Selects the menagerie gripper contact surfaces (both ``collision_gripper``
+        primitives and ``collision_gripper_mesh`` meshes, which use ``condim=6``)
+        while excluding the non-finger wrist-roll follower box on the gripper body
+        (plain ``collision`` class, ``condim=3``).
 
         Parameters
         ----------
         body_id : int
-            MuJoCo body ID to query.
+            MuJoCo body ID of the finger (gripper or moving jaw) to query.
 
         Returns
         -------
         set[int]
-            IDs of all geoms with non-zero ``contype`` attached to ``body_id``.
+            IDs of contype-enabled, ``condim==6`` geoms attached to ``body_id``.
         """
-        geom_ids = set()
-        for i in range(self.model.ngeom):
-            if self.model.geom_bodyid[i] == body_id and self.model.geom_contype[i] != 0:
-                geom_ids.add(i)
-        return geom_ids
+        return {
+            i
+            for i in range(self.model.ngeom)
+            if self.model.geom_bodyid[i] == body_id
+            and self.model.geom_contype[i] != 0
+            and self.model.geom_condim[i] == 6
+        }
 
     def _state_obs_size(self) -> int:
         """Return the dimensionality of the flat state observation vector."""

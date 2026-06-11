@@ -8,14 +8,14 @@ from typing import ClassVar
 import mujoco
 import numpy as np
 
-from so101_nexus_core import get_so101_simulation_dir
+from so101_nexus_core import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus_core.config import ControlMode, ReachConfig
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.rewards import simple_reward
-from so101_nexus_mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus_mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
 
-_SO101_DIR = get_so101_simulation_dir()
-_SO101_XML = _SO101_DIR / "so101_new_calib.xml"
+_SO101_DIR = get_so101_mujoco_model_dir()
+_SO101_XML = get_so101_mujoco_model_path()
 
 
 def _build_reach_scene_xml(ground_rgba: list[float], target_radius: float) -> str:
@@ -24,10 +24,10 @@ def _build_reach_scene_xml(ground_rgba: list[float], target_radius: float) -> st
     gr, gg, gb, ga = ground_rgba
     return f"""\
 <mujoco model="reach_scene">
-  <option timestep="0.002" gravity="0 0 -9.81" cone="elliptic" noslip_iterations="3"/>
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
+  {SCENE_OPTION_XML}
 
   <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
