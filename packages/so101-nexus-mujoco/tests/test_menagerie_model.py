@@ -170,8 +170,9 @@ def test_rest_tcp_pose_matches_menagerie():
         assert np.allclose(
             tcp[:3], [0.3914432501, -0.0009794699, 0.2460073072], atol=1e-6
         )
+        # Orientation reflects the library-convention gripperframe quat (0 0 1 0).
         assert np.allclose(
-            tcp[3:], [0.9997036324, 0.0243373359, 0.0005841111, -1.42269e-05], atol=1e-6
+            tcp[3:], [0.7064841888, 0.0172191552, 0.7073102466, 0.0171990353], atol=1e-6
         )
     finally:
         env.close()

@@ -1,9 +1,13 @@
 <mujoco model="so101">
   <!--
-    Local modification of the MuJoCo Menagerie robotstudio_so101 model (Apache 2.0).
-    Changed: the wrist camera's physical intrinsics (sensorsize/focal) were removed
-    and an explicit fovy added, so the simulator's fovy-based FOV randomization is
-    honored (MuJoCo ignores fovy when physical intrinsics are present). See PROVENANCE.md.
+    Local modifications of the MuJoCo Menagerie robotstudio_so101 model (Apache 2.0):
+    1. Wrist camera physical intrinsics (sensorsize/focal) removed and an explicit
+       fovy added, so the simulator's fovy-based FOV randomization is honored
+       (MuJoCo ignores fovy when physical intrinsics are present).
+    2. gripperframe site quat changed from "1 0 1 0" to "0 0 1 0" so its local z
+       points along the gripper "forward"/gaze direction (the library convention
+       used by the look-at task and TCP-orientation observations).
+    See PROVENANCE.md.
   -->
   <option integrator="implicitfast" timestep="0.005" cone="elliptic" iterations="10" ls_iterations="20" impratio="10"/>
 
@@ -203,8 +207,11 @@
                   pos="-0.0125 0 -0.0727"/>
                 <geom name="fixed_jaw_box7" class="collision_gripper" type="box" size="0.001 0.01 0.008"
                   pos="-0.0143 0 -0.053"/>
-                <!-- Frame gripperframe -->
-                <site group="3" name="gripperframe" pos="0.012 -0.000218 -0.098127" quat="1 0 1 0"/>
+                <!-- Frame gripperframe: quat set to the library convention (local
+                     z = gripper "forward"/gaze, wrist->fingertips) so the look-at
+                     task and TCP-orientation observations match the prior model.
+                     Upstream used quat="1 0 1 0". See PROVENANCE.md. -->
+                <site group="3" name="gripperframe" pos="0.012 -0.000218 -0.098127" quat="0 0 1 0"/>
                 <!-- Camera mount -->
                 <body name="camera_mount">
                   <camera name="wrist_cam" mode="fixed" pos="0.0 0.055 -0.045" euler="-0.57 0 0" resolution="1920 1080"

@@ -17,6 +17,11 @@ Studio, developed by I2RT Robotics.
   are present). A notice comment near the top of `so101.xml` records this.
   The value 48.5 degrees is the vertical FOV equivalent of the original
   intrinsics: `2 * atan(0.00324 / (2 * 0.0036)) ~= 48.5`.
+- `so101.xml`: changed the `gripperframe` site quaternion from `1 0 1 0` to
+  `0 0 1 0` (upstream used `1 0 1 0`). The library's convention is that the TCP
+  site's local z axis is the gripper "forward"/gaze direction (wrist toward
+  fingertips); the look-at task and TCP-orientation observations depend on it.
+  The site position is unchanged from upstream.
 
 The vendored `scene.xml` / `scene_box.xml` are kept for provenance only; the
 runtime synthesizes its own scene wrappers and does not load them.
