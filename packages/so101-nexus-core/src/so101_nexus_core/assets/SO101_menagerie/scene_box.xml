@@ -5,6 +5,8 @@
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
     <rgba haze="0.15 0.25 0.35 1"/>
     <global azimuth="160" elevation="-20"/>
+    <quality shadowsize="8192" offsamples="8"/>
+    <map shadowclip="0.5"/>
   </visual>
 
   <asset>
