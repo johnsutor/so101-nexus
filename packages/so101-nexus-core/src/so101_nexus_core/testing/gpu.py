@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-# Substrings identifying a genuine GPU / vectorized-runtime availability failure.
-# Only these become skips; any other construction error must propagate so it
-# fails the test instead of being silently masked.
+# Lowercase substrings identifying a genuine GPU / vectorized-runtime
+# availability failure (matched case-insensitively). Only these become skips;
+# any other construction error must propagate so it fails the test instead of
+# being silently masked. "failed to find device" covers SAPIEN's no-CUDA-device
+# error on CPU-only CI runners (RuntimeError: failed to find device "cuda").
 GPU_UNAVAILABLE_MARKERS = (
-    "GPU PhysX can only be enabled once",
-    "CUDA",
+    "gpu physx can only be enabled once",
+    "cuda",
     "out of memory",
-    "no CUDA-capable device",
-    "Found no NVIDIA",
+    "no cuda-capable device",
+    "found no nvidia",
+    "failed to find device",
 )
 
 
@@ -20,7 +23,7 @@ def skip_if_vectorized_runtime_unavailable(exc: Exception) -> None:
     Use inside an ``except Exception as exc:`` block around vectorized
     (``num_envs > 1``) env construction so genuine construction errors (a bad
     link name, a failed patch) surface as failures rather than being hidden as
-    availability skips.
+    availability skips. Matching is case-insensitive.
 
     Parameters
     ----------
@@ -29,6 +32,7 @@ def skip_if_vectorized_runtime_unavailable(exc: Exception) -> None:
     """
     import pytest
 
-    if any(marker in str(exc) for marker in GPU_UNAVAILABLE_MARKERS):
+    message = str(exc).lower()
+    if any(marker in message for marker in GPU_UNAVAILABLE_MARKERS):
         pytest.skip(f"Vectorized (GPU PhysX) runtime unavailable: {exc}")
     raise exc
