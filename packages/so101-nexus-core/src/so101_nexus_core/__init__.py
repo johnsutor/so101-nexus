@@ -114,12 +114,11 @@ def get_so101_simulation_dir() -> Path:
 
 
 def get_so101_mujoco_model_dir() -> Path:
-    """Return the directory holding the MJCF model used by the MuJoCo backend.
+    """Return the directory holding the vendored MuJoCo Menagerie SO101 model.
 
-    The MuJoCo backend uses the vendored MuJoCo Menagerie model under
-    ``SO101_menagerie/``. The ManiSkill backend and teleop calibration metadata
-    instead use the URDF/XML under ``SO101/`` (see ``get_so101_simulation_dir``).
-    This is the single point of intentional model divergence between backends.
+    Both the MuJoCo and ManiSkill backends load this model
+    (``SO101_menagerie/so101.xml``). The URDF/XML under ``SO101/`` (see
+    ``get_so101_simulation_dir``) remains only for teleop calibration metadata.
     """
     return ASSETS_DIR / "SO101_menagerie"
 
