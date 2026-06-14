@@ -448,6 +448,75 @@ def test_control_mode(env_id, control_mode):
         env.close()
 
 
+DELTA_CONTROL_MODES = ["pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+
+# Physical per-joint delta scale a normalized +1 action maps to (radians):
+# +/-0.05 for the five arm joints, +/-0.2 for the gripper. This mirrors
+# so101_nexus_mujoco.base_env._DELTA_ACTION_SCALE and is the cross-backend
+# contract with ManiSkill.
+_EXPECTED_DELTA_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_action_space_is_normalized(control_mode):
+    """Both delta modes expose a normalized [-1, 1] action space (six joints),
+    matching the ManiSkill backend's delta-mode contract."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        space = env.action_space
+        assert space.shape == (6,)
+        np.testing.assert_allclose(space.low, [-1.0] * 6, atol=1e-6)
+        np.testing.assert_allclose(space.high, [1.0] * 6, atol=1e-6)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_normalized_plus_one_matches_physical_max_delta(control_mode):
+    """An all +1 normalized action moves joint targets by exactly the physical
+    delta scale, i.e. the internal scaling reproduces the old physical-max
+    behavior."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        env.reset(seed=0)
+        unwrapped = env.unwrapped
+        actuator_ids = unwrapped._actuator_ids  # type: ignore[attr-defined]
+        target_high = unwrapped._target_high  # type: ignore[attr-defined]
+
+        # The base the delta is added to differs by mode: pd_joint_delta_pos
+        # integrates from the measured joint positions, pd_joint_target_delta_pos
+        # integrates from the held target. Read each mode's base at step time.
+        if control_mode == "pd_joint_delta_pos":
+            base = unwrapped._get_current_qpos()  # type: ignore[attr-defined]
+        else:
+            base = unwrapped._prev_target.copy()  # type: ignore[attr-defined]
+
+        action = np.ones(6, dtype=np.float32)
+        env.step(action)
+
+        after = unwrapped.data.ctrl[actuator_ids].copy()  # type: ignore[attr-defined]
+        # Per joint, the commanded target moved by the physical scale, unless it
+        # was clamped at the upper target bound.
+        expected = np.minimum(base + _EXPECTED_DELTA_SCALE, target_high)
+        np.testing.assert_allclose(after, expected, atol=1e-6)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_penalty_norms_use_normalized_action(control_mode):
+    """Penalty norms (energy_norm) are computed on the normalized public action,
+    so an all +1 action yields energy_norm == sqrt(6)."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        env.reset(seed=0)
+        action = np.ones(6, dtype=np.float32)
+        _, _, _, _, info = env.step(action)
+        assert info["energy_norm"] == pytest.approx(np.sqrt(6.0), abs=1e-6)
+    finally:
+        env.close()
+
+
 # ---------------------------------------------------------------------------
 # Per-env observation-vector shape + geometry assertions.
 # ---------------------------------------------------------------------------

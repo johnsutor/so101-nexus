@@ -183,10 +183,11 @@ def test_pd_joint_pos_action_space_equals_joint_limits():
 
 
 def test_delta_action_space_is_normalized():
-    """Delta modes keep ManiSkill's default normalized [-1, 1] action space
-    (unchanged from the pre-menagerie behavior). The +/-0.05 arm / +/-0.2
-    gripper delta scale is the controller's internal range, not the action
-    space; normalize_action stays at its default (True) for delta modes."""
+    """Delta modes expose the normalized [-1, 1] action space that is the
+    intended cross-backend contract (the MuJoCo backend matches it). The
+    +/-0.05 arm / +/-0.2 gripper delta scale is the controller's internal
+    range, not the action space; normalize_action stays at its default (True)
+    for delta modes."""
     for mode in ("pd_joint_delta_pos", "pd_joint_target_delta_pos"):
         env = gym.make(
             "ManiSkillReachSO101-v1",

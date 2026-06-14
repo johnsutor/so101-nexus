@@ -33,6 +33,16 @@ from so101_nexus_core.rewards import orientation_progress, reach_progress
 
 logger = logging.getLogger(__name__)
 
+# Internal per-joint physical scale applied to a normalized delta action.
+# The public delta action space is normalized to [-1, 1] (matching the
+# ManiSkill backend's delta-mode contract); a normalized action ``a`` maps to a
+# physical joint-target delta of ``a * _DELTA_ACTION_SCALE``. These are the
+# existing controller delta units (radians): +/-0.05 for the five arm joints
+# and +/-0.2 for the gripper. Reused by both delta control modes.
+_DELTA_ACTION_SCALE = np.array(
+    [0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64
+)
+
 # Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
 # vendored menagerie model's option (MuJoCo: the last top-level option wins).
 # Adopts the menagerie's tuned manipulation physics plus scene-level
@@ -149,9 +159,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 dtype=np.float32,
             )
         else:
-            delta_low = np.array([-0.05, -0.05, -0.05, -0.05, -0.05, -0.2], dtype=np.float32)
-            delta_high = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float32)
-            self.action_space = spaces.Box(low=delta_low, high=delta_high, dtype=np.float32)
+            # Delta modes expose a normalized [-1, 1] action space (cross-backend
+            # contract with ManiSkill). The normalized action is scaled by
+            # _DELTA_ACTION_SCALE in step() before being applied to joint targets.
+            n_joints = len(SO101_JOINT_NAMES)
+            self.action_space = spaces.Box(
+                low=-np.ones(n_joints, dtype=np.float32),
+                high=np.ones(n_joints, dtype=np.float32),
+                dtype=np.float32,
+            )
 
         self._prev_target: np.ndarray | None = None
         # Previous public policy action, used for the action-smoothness penalty.
@@ -505,10 +521,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             # action_space is already the valid target range for this mode.
             ctrl = action
         elif self.control_mode == "pd_joint_delta_pos":
-            ctrl = np.clip(self._get_current_qpos() + action, self._target_low, self._target_high)
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            ctrl = np.clip(self._get_current_qpos() + delta, self._target_low, self._target_high)
         else:
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
             self._prev_target = np.clip(
-                self._prev_target + action, self._target_low, self._target_high
+                self._prev_target + delta, self._target_low, self._target_high
             )
             ctrl = self._prev_target
 
