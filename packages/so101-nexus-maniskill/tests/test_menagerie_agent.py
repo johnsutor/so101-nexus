@@ -158,3 +158,53 @@ def test_delta_action_space_is_normalized():
             np.testing.assert_allclose(space.high, [1.0] * 6, atol=1e-6)
         finally:
             env.close()
+
+
+_CONTROL_MODES = ["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+
+
+def _assert_drive_state(robot):
+    for joint in robot.active_joints:
+        for jobj in joint._objs:
+            assert jobj.stiffness == pytest.approx(mc.DRIVE_STIFFNESS, rel=1e-4)
+            assert jobj.damping == pytest.approx(mc.DRIVE_DAMPING, rel=1e-4)
+            assert jobj.force_limit == pytest.approx(mc.FORCE_LIMIT, rel=1e-4)
+            assert jobj.friction == pytest.approx(mc.JOINT_FRICTIONLOSS, rel=1e-4)
+            np.testing.assert_allclose(np.asarray(jobj.armature), [mc.JOINT_ARMATURE], atol=1e-6)
+
+
+@pytest.mark.parametrize("control_mode", _CONTROL_MODES)
+def test_controller_drive_state(control_mode):
+    env = gym.make(
+        "ManiSkillReachSO101-v1",
+        config=ReachConfig(),
+        num_envs=1,
+        obs_mode="state",
+        render_mode=None,
+        control_mode=control_mode,
+    )
+    try:
+        env.reset()
+        _assert_drive_state(env.unwrapped.agent.robot)
+    finally:
+        env.close()
+
+
+def test_controller_drive_state_survives_mode_switches():
+    env = gym.make(
+        "ManiSkillReachSO101-v1",
+        config=ReachConfig(),
+        num_envs=1,
+        obs_mode="state",
+        render_mode=None,
+        control_mode="pd_joint_pos",
+    )
+    try:
+        env.reset()
+        robot = env.unwrapped.agent.robot
+        for mode in _CONTROL_MODES:
+            env.unwrapped.agent.set_control_mode(mode)
+            env.reset()
+            _assert_drive_state(robot)
+    finally:
+        env.close()

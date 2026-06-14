@@ -54,28 +54,39 @@ class SO101(BaseAgent):
 
     @property
     def _controller_configs(self) -> dict:
-        """Return a dict of available controller configurations for the SO101.
+        """Return controller configs for the SO101 (menagerie STS3215 dynamics).
 
-        Includes absolute joint-position control, delta joint-position control,
-        and target-based delta joint-position control.
+        Drive stiffness/damping, force limit, and Coulomb friction carry the
+        STS3215 values from ``menagerie_constants``. Drive damping folds the
+        passive joint damping in (PhysX has no separate passive viscous joint
+        damping, and controller init overwrites the loader-imported drive).
+        Target bounds use the compiled joint limits (lower/upper=None), which
+        resolves the wrist_roll ctrlrange-wider-than-joint-range mismatch
+        automatically. Armature is set post-load (see _apply_menagerie_patches).
         """
+        joint_names = [joint.name for joint in self.robot.active_joints]
+        stiffness = [mc.DRIVE_STIFFNESS] * 6
+        damping = [mc.DRIVE_DAMPING] * 6
+
         pd_joint_pos = PDJointPosControllerConfig(
-            [joint.name for joint in self.robot.active_joints],
+            joint_names,
             lower=None,
             upper=None,
-            stiffness=[1e3] * 6,
-            damping=[1e2] * 6,
-            force_limit=100,
+            stiffness=stiffness,
+            damping=damping,
+            force_limit=mc.FORCE_LIMIT,
+            friction=mc.JOINT_FRICTIONLOSS,
             normalize_action=False,
         )
 
         pd_joint_delta_pos = PDJointPosControllerConfig(
-            [joint.name for joint in self.robot.active_joints],
+            joint_names,
             [-0.05, -0.05, -0.05, -0.05, -0.05, -0.2],
             [0.05, 0.05, 0.05, 0.05, 0.05, 0.2],
-            stiffness=[1e3] * 6,
-            damping=[1e2] * 6,
-            force_limit=100,
+            stiffness=stiffness,
+            damping=damping,
+            force_limit=mc.FORCE_LIMIT,
+            friction=mc.JOINT_FRICTIONLOSS,
             use_delta=True,
             use_target=False,
         )
