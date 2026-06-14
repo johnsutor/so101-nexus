@@ -26,6 +26,11 @@ class SO101(BaseAgent):
     uid = "so101"
     mjcf_path = str(get_so101_mujoco_model_path())
 
+    # Class-default keyframes. These hold the unclamped configurations (the
+    # default rest gripper is below the menagerie gripper lower limit); runtime
+    # resets clamp every qpos to the joint limits (see base_env._reset_robot).
+    # Do not pass keyframes["rest"].qpos straight to agent.reset() without
+    # clamping.
     keyframes = {
         "rest": Keyframe(
             qpos=np.radians(np.array(RobotConfig().rest_qpos_deg, dtype=np.float64)),
