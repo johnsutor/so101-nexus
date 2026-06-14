@@ -35,7 +35,7 @@ import so101_nexus_core
 | `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera mounting presets for SO-100 and SO-101 |
 | `ASSETS_DIR` | `Path` | Root directory for bundled assets |
 | `SO_ARM100_DIR` | `Path` | Asset directory for the SO-100 arm |
-| `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (ManiSkill URDF and teleop calibration) |
+| `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (URDF/XML retained for teleop calibration; both backends load the menagerie MJCF) |
 
 ### Configuration Classes
 
@@ -95,9 +95,9 @@ See [Scene Objects](/docs/api/objects) for full reference.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `get_so101_simulation_dir()` | `Path` | Path to SO-101 assets (ManiSkill URDF, teleop calibration) |
-| `get_so101_mujoco_model_dir()` | `Path` | Directory of the MuJoCo backend model (vendored menagerie MJCF) |
-| `get_so101_mujoco_model_path()` | `Path` | Path to the MuJoCo backend `so101.xml` (menagerie) |
+| `get_so101_simulation_dir()` | `Path` | Path to SO-101 `SO101/` assets (URDF/XML, retained for teleop calibration) |
+| `get_so101_mujoco_model_dir()` | `Path` | Directory of the vendored menagerie MJCF (loaded by both backends) |
+| `get_so101_mujoco_model_path()` | `Path` | Path to the menagerie `so101.xml` (loaded by both backends) |
 | `get_so100_simulation_dir()` | `Path` | Path to SO-100 simulation assets |
 
 #### YCB Asset Management
