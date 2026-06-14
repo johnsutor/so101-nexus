@@ -103,7 +103,50 @@ class SO101(BaseAgent):
             p=torch.tensor(mc.TCP_OFFSET_POS, dtype=torch.float32),
             q=torch.tensor(mc.TCP_OFFSET_QUAT, dtype=torch.float32),
         )
-        # Task 5 adds: self._apply_menagerie_patches()
+        self._apply_menagerie_patches()
+
+    def _apply_menagerie_patches(self) -> None:
+        """Restore fidelity the ManiSkill MJCF importer drops.
+
+        Applies per-link inertials, gripper-link friction, and joint armature
+        via SAPIEN PhysX setters. Iterates every per-scene PhysX object
+        (``link._objs`` / ``joint._objs``) so vectorized envs are fully patched;
+        ManiSkill's wrapper structs do not forward these setters. See
+        ``menagerie_constants`` for provenance.
+        """
+        # Inertials: mass, principal inertia, and center-of-mass pose.
+        for name, inertial in mc.LINK_INERTIALS.items():
+            link = self.robot.links_map[name]
+            cmass = sapien.Pose(p=inertial.com_pos, q=inertial.principal_quat)
+            for obj in link._objs:
+                obj.set_mass(inertial.mass)
+                obj.set_inertia(list(inertial.principal_moments))
+                obj.set_cmass_local_pose(cmass)
+
+        # Gripper friction: link-level static/dynamic friction + patch radii.
+        # Patching is link-level because built PhysX shapes do not retain MJCF
+        # geom names/classes, so per-class (condim-6 only) selection is not
+        # possible post-build. Lossless for sliding friction (every collision
+        # geom on these bodies has MuJoCo mu = 1.0). The one approximation: the
+        # plain condim-3 wrist-roll-follower box on `gripper` also receives the
+        # patch radii, giving it torsional resistance it lacks in MuJoCo.
+        # Accepted per the design.
+        for name in mc.GRIPPER_FRICTION_LINKS:
+            link = self.robot.links_map[name]
+            for obj in link._objs:
+                for shape in obj.get_collision_shapes():
+                    mat = shape.get_physical_material()
+                    mat.set_static_friction(mc.GRIPPER_STATIC_FRICTION)
+                    mat.set_dynamic_friction(mc.GRIPPER_DYNAMIC_FRICTION)
+                    shape.set_physical_material(mat)
+                    shape.set_patch_radius(mc.GRIPPER_PATCH_RADIUS)
+                    shape.set_min_patch_radius(mc.GRIPPER_MIN_PATCH_RADIUS)
+
+        # Armature: float32 array shaped (dof,) per 1-DoF joint object.
+        armature = np.array([mc.JOINT_ARMATURE], dtype=np.float32)
+        for joint in self.robot.active_joints:
+            for jobj in joint._objs:
+                jobj.set_armature(armature)
 
     @property
     def tcp_pose(self) -> Pose:
