@@ -154,6 +154,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self.action_space = spaces.Box(low=delta_low, high=delta_high, dtype=np.float32)
 
         self._prev_target: np.ndarray | None = None
+        # Previous public policy action, used for the action-smoothness penalty.
+        # None means "no action since the last reset" so the first step reports
+        # an action_delta_norm of 0.0.
+        self._prev_action: np.ndarray | None = None
         self._setup_camera_renderers()
         self._renderer = None
         self._viewer = None
@@ -463,6 +467,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                         f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
                     )
 
+        self._prev_action = None
         applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
         self._randomize_wrist_camera()
@@ -490,6 +495,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
         """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
+        # Penalty norms use the public action as received here, before clipping,
+        # matching the ManiSkill backend convention so the penalty is comparable
+        # across backends. Clipping below only affects the control sent to physics.
+        public_action = np.asarray(action, dtype=np.float64)
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
@@ -510,7 +519,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         obs = self._get_obs()
         info = self._get_info()
-        info["energy_norm"] = float(np.linalg.norm(action))
+        info["energy_norm"] = float(np.linalg.norm(public_action))
+        if self._prev_action is None:
+            info["action_delta_norm"] = 0.0
+        else:
+            info["action_delta_norm"] = float(np.linalg.norm(public_action - self._prev_action))
+        self._prev_action = public_action.copy()
         reward = self._compute_reward(info)
         terminated = bool(info.get("success", False))
 

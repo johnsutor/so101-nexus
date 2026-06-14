@@ -128,8 +128,13 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
         progress = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        return simple_reward(
+        base = simple_reward(
             progress=progress,
             completion_bonus=self.config.reward.completion_bonus,
             success=info.get("success", False),
+        )
+        return self.config.reward.apply_penalties(
+            base,
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )

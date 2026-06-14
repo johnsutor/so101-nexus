@@ -64,6 +64,11 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
         self._init_qpos_clamp_warned = False
+        # Previous public policy action per env row, used for the action-smoothness
+        # penalty. ``_has_prev_action`` is False for rows that have been reset but
+        # not yet stepped, so the first step after a reset reports a delta of 0.
+        self._prev_action: torch.Tensor | None = None
+        self._has_prev_action: torch.Tensor | None = None
 
         # Detect camera observation components
         self._wrist_cam_component: WristCamera | None = None
@@ -88,6 +93,19 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         """Tanh-shaped progress in [0, 1]. See ``so101_nexus_core.rewards.reach_progress``."""
         return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
+    # Tensor equivalent of so101_nexus_core.config.RewardConfig.apply_penalties
+    def _apply_penalties_tensor(
+        self,
+        base: torch.Tensor,
+        action_delta_norm: float | torch.Tensor,
+        energy_norm: float | torch.Tensor,
+    ) -> torch.Tensor:
+        """Subtract action/energy penalties. See ``RewardConfig.apply_penalties``."""
+        cfg = self.config.reward
+        return (
+            base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
+        )
+
     # Tensor equivalent of so101_nexus_core.config.RewardConfig.compute
     def _assemble_normalized_reward(
         self,
@@ -107,9 +125,58 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             + cfg.task_objective * task_progress
             + cfg.completion_bonus * is_complete
         )
-        return (
-            base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
-        )
+        return self._apply_penalties_tensor(base, action_delta_norm, energy_norm)
+
+    def get_reward(
+        self, obs: Any, action: torch.Tensor, info: dict[str, Any]
+    ) -> torch.Tensor:
+        """Stamp penalty norms once per step, then delegate to ManiSkill's dispatch.
+
+        ``get_reward`` is the single hook ManiSkill calls exactly once per step
+        (after ``get_info``/``evaluate`` and ``get_obs``) for every reward mode,
+        and is the only place the public action and the info dict are both
+        available. Stamping here (rather than inside ``compute_dense_reward``)
+        guarantees ``info["energy_norm"]``/``info["action_delta_norm"]`` are
+        written and ``_prev_action`` advances under "sparse"/"none"/"dense"
+        alike, matching the MuJoCo backend which stamps unconditionally in
+        ``step``. The reward computations then read the precomputed norms from
+        ``info`` instead of recomputing or advancing state.
+        """
+        self._stamp_action_penalty_norms(action, info)
+        return super().get_reward(obs=obs, action=action, info=info)
+
+    def _stamp_action_penalty_norms(
+        self, action: torch.Tensor, info: dict[str, Any]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute batched energy and action-delta norms, stamp ``info``, update state.
+
+        ``energy_norm`` is the per-row L2 norm of the action. ``action_delta_norm``
+        is the per-row L2 norm of the difference from the previous action, and is 0
+        for rows whose first step has not yet occurred since the last reset. Both
+        are written into ``info`` so they reach the user-facing info dict, then the
+        stored previous action is advanced. Called exactly once per step from
+        ``get_reward``. Norms use the public action as received by ``step`` (before
+        any controller clipping), matching the MuJoCo backend convention so the
+        penalty is comparable across backends.
+        """
+        energy_norm = torch.linalg.norm(action, dim=-1)
+        has_prev_action = getattr(self, "_has_prev_action", None)
+        if has_prev_action is None:
+            # State buffers were never allocated (e.g. a unit test instantiating
+            # the env via object.__new__); fall back to a zero delta.
+            action_delta_norm = torch.zeros_like(energy_norm)
+        else:
+            prev_action = getattr(self, "_prev_action", None)
+            if prev_action is None:
+                prev_action = torch.zeros_like(action)
+            raw_delta = torch.linalg.norm(action - prev_action, dim=-1)
+            action_delta_norm = torch.where(has_prev_action, raw_delta, torch.zeros_like(raw_delta))
+            # Advance stored state: every stepped row now has a valid prev action.
+            self._prev_action = action.detach().clone()
+            self._has_prev_action = torch.ones_like(has_prev_action)
+        info["energy_norm"] = energy_norm
+        info["action_delta_norm"] = action_delta_norm
+        return action_delta_norm, energy_norm
 
     @property
     def _default_sim_config(self) -> SimConfig:
@@ -248,6 +315,11 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
 
     def _after_reconfigure(self, options: dict) -> None:
         self._initial_obj_z = torch.zeros(self.num_envs, device=self.device)
+        # _prev_action is allocated lazily on the first step (the action shape is
+        # not known here). _has_prev_action gates the action-delta penalty so the
+        # first step after each reset reports a delta of 0.
+        self._prev_action = None
+        self._has_prev_action = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     def _build_ground(self) -> None:
         ground_builder = self.scene.create_actor_builder()
@@ -317,6 +389,10 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         return torch.clamp(qpos, qlimits[..., 0], qlimits[..., 1])
 
     def _reset_robot(self, env_idx: torch.Tensor, options: dict | None = None) -> None:
+        # Mark the reset rows as having no previous action so the first step after
+        # this (full or partial) reset reports an action_delta_norm of 0.
+        if self._has_prev_action is not None:
+            self._has_prev_action[env_idx] = False
         b = len(env_idx)
         init_qpos = self._init_qpos_from_options(options, env_idx)
         if init_qpos is not None:

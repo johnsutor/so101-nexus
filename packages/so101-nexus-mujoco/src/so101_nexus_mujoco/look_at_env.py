@@ -175,8 +175,13 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         orient = orientation_progress(math.cos(float(info["orientation_error"])))
-        return simple_reward(
+        base = simple_reward(
             progress=orient,
             completion_bonus=self.config.reward.completion_bonus,
             success=info.get("success", False),
+        )
+        return self.config.reward.apply_penalties(
+            base,
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )

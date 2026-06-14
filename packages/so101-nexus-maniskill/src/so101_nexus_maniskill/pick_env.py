@@ -26,8 +26,6 @@ from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_core.ycb_geometry import get_maniskill_ycb_spawn_z
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
-_DEFAULT_CONFIG = PickConfig()
-
 
 def _pick_target_and_distractors(
     rng: np.random.Generator,
@@ -299,8 +297,8 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         """Return reach-only reward normalized to [0, 1]."""
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
-        energy_norm = torch.linalg.norm(action, dim=-1)
 
+        # Norms are stamped once per step in get_reward; read, do not recompute.
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
@@ -309,7 +307,8 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
                 "success",
                 torch.zeros(len(reach_progress), dtype=torch.bool, device=self.device),
             ),
-            energy_norm=energy_norm,
+            action_delta_norm=info["action_delta_norm"],
+            energy_norm=info["energy_norm"],
         )
 
 
@@ -334,14 +333,15 @@ class PickLiftEnv(PickEnv):
             torch.tanh(self.config.reward.tanh_shaping_scale * info["lift_height"].clamp(min=0.0))
             * is_grasped
         )
-        energy_norm = torch.linalg.norm(action, dim=-1)
 
+        # Norms are stamped once per step in get_reward; read, do not recompute.
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=lift_progress,
             is_complete=info["success"],
-            energy_norm=energy_norm,
+            action_delta_norm=info["action_delta_norm"],
+            energy_norm=info["energy_norm"],
         )
 
 
@@ -350,7 +350,7 @@ PickLiftSO100Env = register_robot_variant(
     env_id="ManiSkillPickLiftSO100-v1",
     base_cls=PickLiftEnv,
     robot_uid="so100",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )
 PickLiftSO101Env = register_robot_variant(
@@ -358,6 +358,6 @@ PickLiftSO101Env = register_robot_variant(
     env_id="ManiSkillPickLiftSO101-v1",
     base_cls=PickLiftEnv,
     robot_uid="so101",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )

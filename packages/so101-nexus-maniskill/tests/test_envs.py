@@ -383,9 +383,13 @@ def test_lookat_dense_reward_uses_orientation_error_info():
     env = object.__new__(LookAtEnv)
     env.config = LookAtConfig()
     bonus = env.config.reward.completion_bonus
+    # get_reward stamps these norms into info before compute_dense_reward runs;
+    # the reward path reads them rather than recomputing, so supply them here.
     info = {
         "orientation_error": torch.tensor([0.0, torch.pi], dtype=torch.float32),
         "success": torch.tensor([False, True]),
+        "action_delta_norm": torch.zeros(2, dtype=torch.float32),
+        "energy_norm": torch.zeros(2, dtype=torch.float32),
     }
 
     reward = LookAtEnv.compute_dense_reward(

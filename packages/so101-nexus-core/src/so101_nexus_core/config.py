@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -361,8 +361,40 @@ class RewardConfig:
             + self.task_objective * task_progress
             + self.completion_bonus * float(is_complete)
         )
-        penalty = self.action_delta_penalty * action_delta_norm + self.energy_penalty * energy_norm
-        return base - penalty
+        return self.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+        )
+
+    def apply_penalties(
+        self,
+        base: Any,
+        action_delta_norm: Any = 0.0,
+        energy_norm: Any = 0.0,
+    ) -> Any:
+        """Subtract action-smoothness and energy penalties from a base reward.
+
+        Works for Python scalars, NumPy arrays, and torch tensors because it uses
+        only arithmetic operators that all three types overload. A tensor backend
+        may inline the equivalent ops, but should cite this method.
+
+        Parameters
+        ----------
+        base : float or array_like
+            Base reward before penalties.
+        action_delta_norm : float or array_like, optional
+            L2 norm of the difference between consecutive policy actions.
+        energy_norm : float or array_like, optional
+            L2 norm of the current action vector.
+
+        Returns
+        -------
+        Same type as ``base``
+            ``base - action_delta_penalty * action_delta_norm
+            - energy_penalty * energy_norm``.
+        """
+        return (
+            base - self.action_delta_penalty * action_delta_norm - self.energy_penalty * energy_norm
+        )
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -384,7 +416,6 @@ class EnvironmentConfig:
         reward: Reward configuration.
         robot: Robot configuration.
         ground_colors: Ground plane color(s).
-        max_episode_steps: Maximum steps per episode.
         reset_settle_frames: No-op environment frames advanced after reset before observation.
         goal_thresh: Distance threshold for goal achievement.
         spawn_half_size: Half-size of spawn region.
@@ -404,7 +435,6 @@ class EnvironmentConfig:
         reward: RewardConfig | None = None,
         robot: RobotConfig | None = None,
         ground_colors: ColorConfig = "gray",
-        max_episode_steps: int = 1024,
         reset_settle_frames: int = 5,
         goal_thresh: float = 0.025,
         spawn_half_size: float = 0.05,
@@ -421,7 +451,6 @@ class EnvironmentConfig:
         self.reward = reward if reward is not None else RewardConfig()
         self.robot = robot if robot is not None else RobotConfig()
         self.ground_colors = ground_colors
-        self.max_episode_steps = max_episode_steps
         self.reset_settle_frames = reset_settle_frames
         self.goal_thresh = goal_thresh
         self.spawn_half_size = spawn_half_size
@@ -475,10 +504,7 @@ class EnvironmentConfig:
                 raise ValueError("Duplicate camera observation components are not allowed")
 
     def __repr__(self) -> str:  # noqa: D105
-        return (
-            f"{type(self).__name__}(max_episode_steps={self.max_episode_steps}, "
-            f"goal_thresh={self.goal_thresh})"
-        )
+        return f"{type(self).__name__}(goal_thresh={self.goal_thresh})"
 
 
 def _normalize_objects(
@@ -657,7 +683,6 @@ class ReachConfig(EnvironmentConfig):
         success_threshold: float = 0.02,
         **kwargs,
     ) -> None:
-        kwargs.setdefault("max_episode_steps", 512)
         super().__init__(**kwargs)
         self.target_radius = target_radius
         self.target_workspace_half_extent = target_workspace_half_extent
@@ -683,7 +708,6 @@ class LookAtConfig(EnvironmentConfig):
         orientation_success_threshold_deg: float = 5.73,
         **kwargs,
     ) -> None:
-        kwargs.setdefault("max_episode_steps", 256)
         super().__init__(**kwargs)
         self.objects = _normalize_objects(objects, CubeObject())
         self.orientation_success_threshold_deg = orientation_success_threshold_deg
@@ -723,7 +747,6 @@ class MoveConfig(EnvironmentConfig):
         success_threshold: float = 0.01,
         **kwargs,
     ) -> None:
-        kwargs.setdefault("max_episode_steps", 256)
         if direction not in DIRECTION_VECTORS:
             raise ValueError(
                 f"direction must be one of {list(DIRECTION_VECTORS)}, got {direction!r}"

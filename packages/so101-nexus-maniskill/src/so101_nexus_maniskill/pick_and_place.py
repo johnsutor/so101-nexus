@@ -190,14 +190,15 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
         placement_progress = self._reach_progress(info["obj_to_target_dist"]) * is_grasped
-        energy_norm = torch.linalg.norm(action, dim=-1)
 
+        # Norms are stamped once per step in get_reward; read, do not recompute.
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
-            energy_norm=energy_norm,
+            action_delta_norm=info["action_delta_norm"],
+            energy_norm=info["energy_norm"],
         )
 
 
@@ -206,7 +207,7 @@ PickAndPlaceSO100Env = register_robot_variant(
     env_id="ManiSkillPickAndPlaceSO100-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so100",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )
 PickAndPlaceSO101Env = register_robot_variant(
@@ -214,6 +215,6 @@ PickAndPlaceSO101Env = register_robot_variant(
     env_id="ManiSkillPickAndPlaceSO101-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so101",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )
