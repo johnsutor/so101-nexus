@@ -208,3 +208,99 @@ def test_controller_drive_state_survives_mode_switches():
             _assert_drive_state(robot)
     finally:
         env.close()
+
+
+# --- Wrist camera cross-backend parity --------------------------------------
+# Pinned from the MuJoCo backend wrist camera at zero qpos, pitch 37.5deg, zero
+# noise, after the cam_pos/cam_quat fix so the camera tracks the WristCamera
+# component. World optical axes in MuJoCo convention: forward = -cam_xmat[:, 2],
+# up = cam_xmat[:, 1]. SAPIEN convention: forward = +x_local, up = +z_local
+# (confirmed via sapien_utils.look_at). Comparing world axes (not raw quats)
+# avoids the cross-convention mismatch so a mirrored/backward image cannot pass.
+_MJ_WRIST_CAM_POS = (0.33330457, 0.03977481, 0.23604647)
+_MJ_WRIST_CAM_FWD = (0.793387, 0.60804, 0.028695)
+_MJ_WRIST_CAM_UP = (-0.608716, 0.792414, 0.039316)
+
+
+def _wrist_cam_world_axes(env):
+    """Return (pos, forward, up) world axes of the built SO101 wrist camera."""
+    from transforms3d.quaternions import quat2mat
+
+    gp = env.unwrapped._sensors["wrist_camera"].camera.global_pose
+    pos = np.asarray(gp.p).reshape(-1)[:3]
+    rot = quat2mat(np.asarray(gp.q).reshape(-1)[:4])
+    return pos, rot[:, 0], rot[:, 2]  # SAPIEN forward=+x_local, up=+z_local
+
+
+def test_wrist_camera_world_pose_matches_mujoco_backend():
+    from so101_nexus_core.observations import JointPositions, WristCamera
+
+    cfg = ReachConfig(
+        observations=[
+            JointPositions(),
+            WristCamera(
+                width=64,
+                height=64,
+                pos_x_noise=0.0,
+                pos_y_noise=0.0,
+                pos_z_noise=0.0,
+                pitch_deg_range=(37.5, 37.5),
+                fov_deg_range=(60.0, 60.0),
+            ),
+        ]
+    )
+    env = gym.make(
+        "ManiSkillReachSO101-v1", config=cfg, num_envs=1, obs_mode="rgbd", render_mode=None
+    )
+    try:
+        env.reset(seed=0, options={"init_qpos": np.zeros(6)})
+        pos, fwd, up = _wrist_cam_world_axes(env)
+        np.testing.assert_allclose(pos, _MJ_WRIST_CAM_POS, atol=2e-3)
+        assert float(np.dot(fwd, _MJ_WRIST_CAM_FWD)) == pytest.approx(1.0, abs=2e-3)
+        assert float(np.dot(up, _MJ_WRIST_CAM_UP)) == pytest.approx(1.0, abs=2e-3)
+    finally:
+        env.close()
+
+
+def _wrist_cam_world_pos(pos_y_center: float, pos_z_center: float) -> np.ndarray:
+    """SO101 wrist camera world position at zero qpos for given pos centers."""
+    from so101_nexus_core.observations import JointPositions, WristCamera
+
+    cfg = ReachConfig(
+        observations=[
+            JointPositions(),
+            WristCamera(
+                width=64,
+                height=64,
+                pos_x_noise=0.0,
+                pos_y_noise=0.0,
+                pos_z_noise=0.0,
+                pos_y_center=pos_y_center,
+                pos_z_center=pos_z_center,
+                pitch_deg_range=(0.0, 0.0),
+                fov_deg_range=(60.0, 60.0),
+            ),
+        ]
+    )
+    env = gym.make(
+        "ManiSkillReachSO101-v1", config=cfg, num_envs=1, obs_mode="rgbd", render_mode=None
+    )
+    try:
+        env.reset(seed=0, options={"init_qpos": np.zeros(6)})
+        return _wrist_cam_world_axes(env)[0]
+    finally:
+        env.close()
+
+
+def test_wrist_camera_consumes_component_pos_centers():
+    """Non-default WristCamera pos centers must move the SO101 wrist camera.
+
+    Proves the SO101 path reads the WristCamera component (not the static
+    preset). The mount orientation is fixed at a given qpos, so a rigid change
+    of the local center shifts the world position by the same Euclidean
+    distance. The old preset-only path would not move at all.
+    """
+    base = _wrist_cam_world_pos(pos_y_center=0.04, pos_z_center=-0.04)
+    shifted = _wrist_cam_world_pos(pos_y_center=0.10, pos_z_center=-0.10)
+    expected_delta = float(np.linalg.norm([0.0, 0.06, -0.06]))
+    assert float(np.linalg.norm(shifted - base)) == pytest.approx(expected_delta, abs=1e-3)

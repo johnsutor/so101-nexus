@@ -121,16 +121,39 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             w = wc.width
             h = wc.height
             mount_link = self.agent.robot.links_map[cfg["wrist_camera_mount_link"]]
-            pos_c = cfg["wrist_cam_pos_center"]
-            pos_n = cfg["wrist_cam_pos_noise"]
-            eul_c = cfg["wrist_cam_euler_center"]
-            eul_n = cfg["wrist_cam_euler_noise"]
-            fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
 
-            p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n, strict=True)]
-            e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n, strict=True)]
-            q = euler2quat(*e, axes="sxyz")
-            fov = np.random.uniform(fov_lo, fov_hi)
+            if self.agent.uid == "so101":
+                # One source of truth with the MuJoCo backend: build the wrist
+                # camera pose from the WristCamera component (same fields
+                # _randomize_wrist_camera uses), then convert the MuJoCo camera
+                # convention (looks along -z, +y up) to SAPIEN's (+x). x is
+                # noise-only (centered at 0), matching MuJoCo's cam_pos0.
+                from transforms3d.quaternions import qmult
+
+                from so101_nexus_maniskill import menagerie_constants as mc
+
+                px = np.random.uniform(-wc.pos_x_noise, wc.pos_x_noise)
+                py = wc.pos_y_center + np.random.uniform(-wc.pos_y_noise, wc.pos_y_noise)
+                pz = wc.pos_z_center + np.random.uniform(-wc.pos_z_noise, wc.pos_z_noise)
+                p = [px, py, pz]
+                pitch_lo, pitch_hi = wc.pitch_rad_range
+                pitch = np.random.uniform(pitch_lo, pitch_hi)
+                q_mujoco = euler2quat(pitch, 0.0, 0.0, axes="sxyz")
+                # Order pinned by test_wrist_camera_world_pose_matches_mujoco_backend.
+                q = qmult(q_mujoco, mc.MJ_TO_SAPIEN_CAMERA_QUAT)
+                fov_lo, fov_hi = wc.fov_rad_range
+                fov = np.random.uniform(fov_lo, fov_hi)
+            else:
+                # so100: existing preset-driven path (unchanged).
+                pos_c = cfg["wrist_cam_pos_center"]
+                pos_n = cfg["wrist_cam_pos_noise"]
+                eul_c = cfg["wrist_cam_euler_center"]
+                eul_n = cfg["wrist_cam_euler_noise"]
+                fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
+                p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n, strict=True)]
+                e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n, strict=True)]
+                q = euler2quat(*e, axes="sxyz")
+                fov = np.random.uniform(fov_lo, fov_hi)
 
             configs.append(
                 CameraConfig(

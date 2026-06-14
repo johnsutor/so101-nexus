@@ -136,6 +136,14 @@ LINK_INERTIALS: dict[str, LinkInertial] = {
 TCP_OFFSET_POS: tuple[float, float, float] = (0.012, -0.000218, -0.098127)
 TCP_OFFSET_QUAT: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 0.0)
 
+# --- Wrist camera: fixed quaternion (w, x, y, z) converting the MuJoCo camera
+# optical convention (looks along -z, +y up) to SAPIEN's (looks along +x, +z up,
+# +y left, confirmed via sapien_utils.look_at). Applied as
+# qmult(q_mujoco_pitch, MJ_TO_SAPIEN_CAMERA_QUAT) so the SAPIEN wrist camera
+# matches the MuJoCo backend's. Verified against the MuJoCo backend world optical
+# axes in test_wrist_camera_world_pose_matches_mujoco_backend.
+MJ_TO_SAPIEN_CAMERA_QUAT: tuple[float, float, float, float] = (0.5, -0.5, 0.5, 0.5)
+
 # --- Gripper friction (link-level; every collision geom on these bodies has
 # MuJoCo sliding mu = 1.0). patch_radius stands in for MuJoCo torsional friction.
 GRIPPER_FRICTION_LINKS: tuple[str, str, str] = ("gripper", "moving_jaw_so101_v1", "camera_mount")
