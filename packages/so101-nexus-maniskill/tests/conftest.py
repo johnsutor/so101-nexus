@@ -12,28 +12,9 @@ if TYPE_CHECKING:
 
 import so101_nexus_maniskill  # noqa: F401 - registers envs
 from so101_nexus_core.config import ReachConfig
+from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
 
 _BASE_KWARGS = {"obs_mode": "state", "render_mode": None}
-
-# Markers for the SAPIEN single-process GPU-PhysX limitation and GPU
-# unavailability. Only these are treated as "vectorized runtime unavailable"
-# skips; any other construction error (e.g. a bad link name or a failed patch)
-# must propagate so it fails the test instead of being silently skipped.
-_GPU_UNAVAILABLE_MARKERS = (
-    "GPU PhysX can only be enabled once",
-    "CUDA",
-    "out of memory",
-    "no CUDA-capable device",
-    "Found no NVIDIA",
-)
-
-
-def _skip_if_gpu_unavailable(exc: Exception) -> None:
-    """Skip on a known GPU/vectorized-runtime availability error; else re-raise."""
-    message = str(exc)
-    if any(marker in message for marker in _GPU_UNAVAILABLE_MARKERS):
-        pytest.skip(f"ManiSkill vectorized runtime unavailable: {exc}")
-    raise exc
 
 
 @pytest.fixture
@@ -52,7 +33,7 @@ def so101_reach_env_vec() -> Iterator:
     try:
         env = gym.make("ManiSkillReachSO101-v1", config=ReachConfig(), num_envs=2, **_BASE_KWARGS)
     except Exception as exc:  # narrowed: only GPU-availability errors become skips
-        _skip_if_gpu_unavailable(exc)
+        skip_if_vectorized_runtime_unavailable(exc)
     try:
         yield env.unwrapped
     finally:
