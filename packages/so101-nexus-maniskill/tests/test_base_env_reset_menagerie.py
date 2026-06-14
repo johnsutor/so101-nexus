@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-import so101_nexus_maniskill  # noqa: F401 — registers envs
+import so101_nexus_maniskill  # noqa: F401 - registers envs
 from so101_nexus_core.config import PickConfig, ReachConfig, RobotConfig
 
 _BASE = {"obs_mode": "state", "num_envs": 1, "render_mode": None}
@@ -149,7 +149,15 @@ def test_partial_reset_clamps_only_reset_env():
             num_envs=2,
             render_mode=None,
         ).unwrapped
-    except Exception as exc:  # pragma: no cover - runtime/GPU availability
+    except Exception as exc:  # narrowed: only GPU-availability errors become skips
+        _markers = (
+            "GPU PhysX can only be enabled once",
+            "CUDA",
+            "out of memory",
+            "no CUDA-capable device",
+        )
+        if not any(m in str(exc) for m in _markers):
+            raise
         pytest.skip(f"ManiSkill vectorized runtime unavailable: {exc}")
     try:
         env.reset(seed=0)
