@@ -72,10 +72,12 @@ This keeps the branch coherent while preserving reviewable commits. It is broade
 
 ### Rewards and Episode Limits
 
-Both backends should honor the public `RewardConfig` and `EnvironmentConfig` fields.
+Both backends should honor the public `RewardConfig`, and the dead
+`max_episode_steps` config knob should be removed rather than wired up.
 
-- Track elapsed steps in each env instance and set `truncated=True` when `config.max_episode_steps` is reached.
-- Reset elapsed step counters on full and partial resets.
+- Remove `max_episode_steps` from `EnvironmentConfig` and its task-config overrides. Episode length is owned by the Gymnasium registration (MuJoCo) and the registered env spec (ManiSkill). A per-instance config field that silently does nothing is worse than no field.
+- Replace ManiSkill's `_DEFAULT_CONFIG.max_episode_steps` registration values with explicit integer literals so registration no longer depends on the removed field.
+- Update any test or call site that passes `max_episode_steps` into a config.
 - Store the previous public action per episode.
 - Add `action_delta_norm` to `info`, with zero for the first step after reset.
 - Add `energy_norm` to `info` everywhere rewards may use it.
@@ -138,7 +140,8 @@ Keep cleanup targeted to validated drift:
 Add narrow prevention tests rather than relying only on reviewer memory:
 
 - Cross-backend action-space parity for all shared `ControlMode` values.
-- Config-effect tests for Reach workspace, reward penalties, episode truncation, observation components, and seeded Pick sampling.
+- Config-effect tests for Reach workspace, reward penalties, observation components, and seeded Pick sampling.
+- A test confirming `max_episode_steps` is no longer a config field and that episode length follows the registered env spec.
 - A seeded-determinism test for the SO101 wrist camera. Reset with an explicit seed before asserting, because the SO101 camera RNG falls back to global `np.random` before the first seeded reset.
 - A docs/style consistency test for forbidden `Args:` in public source docstrings.
 - A public API test that every public package `__init__.py` defines `__all__`.
