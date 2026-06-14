@@ -24,7 +24,7 @@ def _principal(fullinertia: list[float]) -> tuple[np.ndarray, np.ndarray]:
     return evals, evecs
 
 
-@pytest.mark.parametrize("body_name", list(mc.LINK_INERTIALS))
+@pytest.mark.parametrize("body_name", [n for n in mc.LINK_INERTIALS if n != "camera_mount"])
 def test_inertial_mass_and_com_match_xml(body_name):
     body = _bodies()[body_name]
     inertial = body.find("inertial")
@@ -35,7 +35,7 @@ def test_inertial_mass_and_com_match_xml(body_name):
     np.testing.assert_allclose(const.com_pos, xml_com, atol=1e-9)
 
 
-@pytest.mark.parametrize("body_name", list(mc.LINK_INERTIALS))
+@pytest.mark.parametrize("body_name", [n for n in mc.LINK_INERTIALS if n != "camera_mount"])
 def test_inertial_principal_moments_match_xml(body_name):
     body = _bodies()[body_name]
     inertial = body.find("inertial")
@@ -46,7 +46,7 @@ def test_inertial_principal_moments_match_xml(body_name):
     )
 
 
-@pytest.mark.parametrize("body_name", list(mc.LINK_INERTIALS))
+@pytest.mark.parametrize("body_name", [n for n in mc.LINK_INERTIALS if n != "camera_mount"])
 def test_inertial_full_tensor_reconstructs_xml(body_name):
     """principal_quat is load-bearing: _apply_menagerie_patches feeds it to
     set_cmass_local_pose, so a wrong orientation gives the wrong full inertia
@@ -110,3 +110,22 @@ def test_gripper_friction_links_are_the_three_finger_bodies():
     assert mc.GRIPPER_DYNAMIC_FRICTION == 1.0
     assert mc.GRIPPER_PATCH_RADIUS == 0.1
     assert mc.GRIPPER_MIN_PATCH_RADIUS == 0.1
+
+
+def test_camera_mount_inertial_matches_compiled_xml():
+    mujoco = pytest.importorskip("mujoco")
+    from transforms3d.quaternions import quat2mat
+
+    m = mujoco.MjModel.from_xml_path(str(get_so101_mujoco_model_path()))
+    bid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "camera_mount")
+    const = mc.LINK_INERTIALS["camera_mount"]
+    assert const.mass == pytest.approx(float(m.body_mass[bid]), abs=1e-9)
+    np.testing.assert_allclose(const.com_pos, m.body_ipos[bid], atol=1e-9)
+    np.testing.assert_allclose(
+        sorted(const.principal_moments), sorted(m.body_inertia[bid]), atol=1e-12
+    )
+    rot_const = quat2mat(const.principal_quat)
+    tensor_const = rot_const @ np.diag(const.principal_moments) @ rot_const.T
+    rot_mj = quat2mat(m.body_iquat[bid])  # mujoco quats are (w, x, y, z)
+    tensor_mj = rot_mj @ np.diag(m.body_inertia[bid]) @ rot_mj.T
+    np.testing.assert_allclose(tensor_const, tensor_mj, atol=1e-12)

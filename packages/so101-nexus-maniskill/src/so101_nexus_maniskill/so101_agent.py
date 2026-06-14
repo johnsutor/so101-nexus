@@ -14,34 +14,21 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core import get_so101_simulation_dir
-
-_URDF_DIR = get_so101_simulation_dir()
+from so101_nexus_core import get_so101_mujoco_model_path
+from so101_nexus_core.config import RobotConfig
+from so101_nexus_maniskill import menagerie_constants as mc
 
 
 @register_agent()
 class SO101(BaseAgent):
-    """ManiSkill agent wrapping the SO101 robot arm URDF."""
+    """ManiSkill agent wrapping the SO101 robot arm MJCF (MuJoCo Menagerie)."""
 
     uid = "so101"
-    urdf_path = str(_URDF_DIR / "so101_new_calib.urdf")
-    urdf_config = {
-        "_materials": {
-            "gripper": {"static_friction": 2, "dynamic_friction": 2, "restitution": 0.0}
-        },
-        "link": {
-            "gripper_link": {"material": "gripper", "patch_radius": 0.1, "min_patch_radius": 0.1},
-            "moving_jaw_so101_v1_link": {
-                "material": "gripper",
-                "patch_radius": 0.1,
-                "min_patch_radius": 0.1,
-            },
-        },
-    }
+    mjcf_path = str(get_so101_mujoco_model_path())
 
     keyframes = {
         "rest": Keyframe(
-            qpos=np.array([0, -1.5708, 1.5708, 0.66, 0, -1.1]),
+            qpos=np.radians(np.array(RobotConfig().rest_qpos_deg, dtype=np.float64)),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
         "extended": Keyframe(
@@ -104,21 +91,34 @@ class SO101(BaseAgent):
         return copy.deepcopy(controller_configs)
 
     def _after_loading_articulation(self) -> None:
-        """Cache frequently-accessed link references after the articulation is loaded."""
+        """Cache frequently-used link references after the articulation is loaded.
+
+        Menagerie fidelity patches (inertials, gripper friction, armature) are
+        applied here once implemented; see ``_apply_menagerie_patches``.
+        """
         super()._after_loading_articulation()
-        self.finger1_link = self.robot.links_map["gripper_link"]
-        self.finger2_link = self.robot.links_map["moving_jaw_so101_v1_link"]
-        self.tcp_link = self.robot.links_map["gripper_frame_link"]
+        self.finger1_link = self.robot.links_map["gripper"]
+        self.finger2_link = self.robot.links_map["moving_jaw_so101_v1"]
+        self._tcp_offset = Pose.create_from_pq(
+            p=torch.tensor(mc.TCP_OFFSET_POS, dtype=torch.float32),
+            q=torch.tensor(mc.TCP_OFFSET_QUAT, dtype=torch.float32),
+        )
+        # Task 5 adds: self._apply_menagerie_patches()
+
+    @property
+    def tcp_pose(self) -> Pose:
+        """World-space pose of the tool-centre point (TCP).
+
+        The menagerie model has no TCP link; the TCP is the ``gripperframe``
+        site, composed here as a fixed offset on the ``gripper`` link
+        (``finger1_link``, cached in ``_after_loading_articulation``).
+        """
+        return self.finger1_link.pose * self._tcp_offset
 
     @property
     def tcp_pos(self) -> torch.Tensor:
         """World-space position of the tool-centre point (TCP)."""
-        return self.tcp_link.pose.p
-
-    @property
-    def tcp_pose(self) -> Pose:
-        """World-space pose of the tool-centre point (TCP)."""
-        return self.tcp_link.pose
+        return self.tcp_pose.p
 
     def is_grasping(
         self, object: Actor | None = None, min_force: float = 0.5, max_angle: float = 110
