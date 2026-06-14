@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
     from so101_nexus_core.config import EnvironmentConfig
     from so101_nexus_maniskill.so101_agent import SO101
 
+logger = logging.getLogger(__name__)
+
 
 class SO101NexusManiSkillBaseEnv(BaseEnv):
     """Shared ManiSkill base class for SO101-Nexus tasks."""
@@ -47,14 +50,20 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         config: EnvironmentConfig,
         robot_uids: str,
         robot_cfgs: dict[str, dict[str, Any]],
+        robot_init_qpos_noise: float | None = None,
     ) -> None:
         if robot_uids not in robot_cfgs:
             raise ValueError(f"robot_uids must be one of {list(robot_cfgs)}, got {robot_uids!r}")
 
         self.config = config
-        self.robot_init_qpos_noise = config.robot_init_qpos_noise
+        self.robot_init_qpos_noise = (
+            robot_init_qpos_noise
+            if robot_init_qpos_noise is not None
+            else config.robot_init_qpos_noise
+        )
         self._robot_cfg = robot_cfgs[robot_uids]
         self._initial_obj_z: torch.Tensor | None = None
+        self._init_qpos_clamp_warned = False
 
         # Detect camera observation components
         self._wrist_cam_component: WristCamera | None = None
@@ -121,16 +130,48 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             w = wc.width
             h = wc.height
             mount_link = self.agent.robot.links_map[cfg["wrist_camera_mount_link"]]
-            pos_c = cfg["wrist_cam_pos_center"]
-            pos_n = cfg["wrist_cam_pos_noise"]
-            eul_c = cfg["wrist_cam_euler_center"]
-            eul_n = cfg["wrist_cam_euler_noise"]
-            fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
 
-            p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n, strict=True)]
-            e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n, strict=True)]
-            q = euler2quat(*e, axes="sxyz")
-            fov = np.random.uniform(fov_lo, fov_hi)
+            if self.agent.uid == "so101":
+                # One source of truth with the MuJoCo backend: build the wrist
+                # camera pose from the WristCamera component (same fields
+                # _randomize_wrist_camera uses), then convert the MuJoCo camera
+                # convention (looks along -z, +y up) to SAPIEN's (+x). x is
+                # noise-only (centered at 0), matching MuJoCo's cam_pos0.
+                # Sample with the seeded episode RNG (set before reconfigure and
+                # re-seeded after), so env.reset(seed=...) reproduces the camera,
+                # matching the MuJoCo backend's self.np_random usage. Falls back
+                # to the global RNG only if accessed before the first seeded reset.
+                from transforms3d.quaternions import qmult
+
+                from so101_nexus_maniskill import menagerie_constants as mc
+
+                rng = (
+                    self._episode_rng
+                    if getattr(self, "_episode_rng", None) is not None
+                    else np.random
+                )
+                px = rng.uniform(-wc.pos_x_noise, wc.pos_x_noise)
+                py = wc.pos_y_center + rng.uniform(-wc.pos_y_noise, wc.pos_y_noise)
+                pz = wc.pos_z_center + rng.uniform(-wc.pos_z_noise, wc.pos_z_noise)
+                p = [px, py, pz]
+                pitch_lo, pitch_hi = wc.pitch_rad_range
+                pitch = rng.uniform(pitch_lo, pitch_hi)
+                q_mujoco = euler2quat(pitch, 0.0, 0.0, axes="sxyz")
+                # Order pinned by test_wrist_camera_world_pose_matches_mujoco_backend.
+                q = qmult(q_mujoco, mc.MJ_TO_SAPIEN_CAMERA_QUAT)
+                fov_lo, fov_hi = wc.fov_rad_range
+                fov = rng.uniform(fov_lo, fov_hi)
+            else:
+                # so100: existing preset-driven path (unchanged).
+                pos_c = cfg["wrist_cam_pos_center"]
+                pos_n = cfg["wrist_cam_pos_noise"]
+                eul_c = cfg["wrist_cam_euler_center"]
+                eul_n = cfg["wrist_cam_euler_noise"]
+                fov_lo, fov_hi = cfg["wrist_cam_fov_range"]
+                p = [c + np.random.uniform(-n, n) for c, n in zip(pos_c, pos_n, strict=True)]
+                e = [c + np.random.uniform(-n, n) for c, n in zip(eul_c, eul_n, strict=True)]
+                q = euler2quat(*e, axes="sxyz")
+                fov = np.random.uniform(fov_lo, fov_hi)
 
             configs.append(
                 CameraConfig(
@@ -261,44 +302,84 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                     for part in render_shape.parts:
                         part.material.set_base_color(color)
 
+    def _clamp_to_qlimits(self, qpos: torch.Tensor, env_idx: torch.Tensor) -> torch.Tensor:
+        """Clamp the reset qpos to the joint limits of the reset envs.
+
+        ``qpos`` has shape ``(len(env_idx), dof)``; ``get_qlimits()`` has shape
+        ``(num_envs, dof, 2)``. Slice by ``env_idx`` FIRST so a partial reset
+        (e.g. ``env_idx=[0]`` in a multi-env scene) clamps against the right
+        rows instead of broadcasting one reset qpos against every env row.
+        SAPIEN does not clamp set_qpos; controller bounds equal the joint
+        limits, so clamping to qlimits mirrors the MuJoCo backend's
+        ctrlrange/joint-range clamp.
+        """
+        qlimits = self.agent.robot.get_qlimits()[env_idx]  # (len(env_idx), dof, 2)
+        return torch.clamp(qpos, qlimits[..., 0], qlimits[..., 1])
+
     def _reset_robot(self, env_idx: torch.Tensor, options: dict | None = None) -> None:
         b = len(env_idx)
-        init_qpos = self._init_qpos_from_options(options, b)
+        init_qpos = self._init_qpos_from_options(options, env_idx)
         if init_qpos is not None:
             qpos = init_qpos
         elif (pose := self.config.robot.resolve_pose()) is not None:
-            # Sample a pose per environment using NumPy RNG seeded from torch for reproducibility
             seed = int(torch.randint(0, 2**31, (1,)).item())
             np_rng = np.random.default_rng(seed)
             samples = np.array([pose.sample_rad(np_rng) for _ in range(b)], dtype=np.float32)
             qpos = torch.tensor(samples, dtype=torch.float32, device=self.device)
         else:
-            qpos = (
-                torch.tensor(self.agent.keyframes["rest"].qpos, dtype=torch.float32)
-                .unsqueeze(0)
-                .expand(b, -1)
-                .clone()
+            # Default rest path: source of truth is config.robot.rest_qpos_rad,
+            # matching the MuJoCo backend (honors a user RobotConfig override).
+            rest = torch.tensor(
+                self.config.robot.rest_qpos_rad, dtype=torch.float32, device=self.device
             )
+            qpos = rest.unsqueeze(0).expand(b, -1).clone()
             noise = (torch.rand_like(qpos) * 2 - 1) * self.robot_init_qpos_noise
             qpos = qpos + noise
+        # SAPIEN does not clamp set_qpos; clamp every source (incl. post-noise).
+        qpos = self._clamp_to_qlimits(qpos, env_idx)
         self.agent.reset(qpos)
+        # BaseAgent.reset sets qpos/qvel/qf but NOT the PhysX drive targets, and
+        # ManiSkill only calls controller.reset() after _initialize_episode
+        # returns (after _settle_after_reset has already stepped). Critically,
+        # PDJointPosController.reset() only updates the controller's private
+        # _start_qpos/_target_qpos; it never writes the PhysX drive targets
+        # (verified in mani_skill 3.0.1 pd_joint_pos.py: reset() does not call
+        # set_drive_targets). So reset the controller AND explicitly write the
+        # drive targets to the clamped reset qpos, so settle frames hold the
+        # reset pose instead of pulling toward stale targets from the previous
+        # episode. set_drive_targets uses scene._reset_mask internally, so the
+        # (len(env_idx), dof) qpos is the correct shape for partial resets.
+        self.agent.controller.reset()
+        self.agent.controller.set_drive_targets(qpos)
         self.agent.robot.set_pose(sapien.Pose(p=[0, 0, 0], q=self._robot_cfg["base_quat"]))
 
-    def _init_qpos_from_options(self, options: dict | None, batch_size: int) -> torch.Tensor | None:
-        """Return a validated reset qpos from ``options['init_qpos']``, if present."""
+    def _init_qpos_from_options(
+        self, options: dict | None, env_idx: torch.Tensor
+    ) -> torch.Tensor | None:
+        """Return a validated, qlimit-clamped reset qpos from options['init_qpos']."""
         if options is None or "init_qpos" not in options:
             return None
 
+        batch_size = len(env_idx)
         expected = len(self.agent.keyframes["rest"].qpos)
         raw_qpos = torch.as_tensor(options["init_qpos"], dtype=torch.float32, device=self.device)
         if raw_qpos.shape == (expected,):
-            return raw_qpos.unsqueeze(0).expand(batch_size, -1).clone()
-        if raw_qpos.shape == (batch_size, expected):
-            return raw_qpos.clone()
-        raise ValueError(
-            f"init_qpos shape {tuple(raw_qpos.shape)} != expected "
-            f"({expected},) or ({batch_size}, {expected})"
-        )
+            qpos = raw_qpos.unsqueeze(0).expand(batch_size, -1).clone()
+        elif raw_qpos.shape == (batch_size, expected):
+            qpos = raw_qpos.clone()
+        else:
+            raise ValueError(
+                f"init_qpos shape {tuple(raw_qpos.shape)} != expected "
+                f"({expected},) or ({batch_size}, {expected})"
+            )
+        clamped = self._clamp_to_qlimits(qpos, env_idx)
+        if not torch.equal(clamped, qpos) and not self._init_qpos_clamp_warned:
+            logger.warning(
+                "init_qpos clamped to joint limits for at least one joint; "
+                "further init_qpos clamps on this env will be silent."
+            )
+            self._init_qpos_clamp_warned = True
+        return clamped
 
     def _store_initial_obj_z(self, env_idx: torch.Tensor, z: torch.Tensor) -> None:
         if self._initial_obj_z is None:

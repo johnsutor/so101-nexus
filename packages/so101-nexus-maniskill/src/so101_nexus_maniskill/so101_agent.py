@@ -14,34 +14,26 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from transforms3d.euler import euler2quat
 
-from so101_nexus_core import get_so101_simulation_dir
-
-_URDF_DIR = get_so101_simulation_dir()
+from so101_nexus_core import get_so101_mujoco_model_path
+from so101_nexus_core.config import RobotConfig
+from so101_nexus_maniskill import menagerie_constants as mc
 
 
 @register_agent()
 class SO101(BaseAgent):
-    """ManiSkill agent wrapping the SO101 robot arm URDF."""
+    """ManiSkill agent wrapping the SO101 robot arm MJCF (MuJoCo Menagerie)."""
 
     uid = "so101"
-    urdf_path = str(_URDF_DIR / "so101_new_calib.urdf")
-    urdf_config = {
-        "_materials": {
-            "gripper": {"static_friction": 2, "dynamic_friction": 2, "restitution": 0.0}
-        },
-        "link": {
-            "gripper_link": {"material": "gripper", "patch_radius": 0.1, "min_patch_radius": 0.1},
-            "moving_jaw_so101_v1_link": {
-                "material": "gripper",
-                "patch_radius": 0.1,
-                "min_patch_radius": 0.1,
-            },
-        },
-    }
+    mjcf_path = str(get_so101_mujoco_model_path())
 
+    # Class-default keyframes. These hold the unclamped configurations (the
+    # default rest gripper is below the menagerie gripper lower limit); runtime
+    # resets clamp every qpos to the joint limits (see base_env._reset_robot).
+    # Do not pass keyframes["rest"].qpos straight to agent.reset() without
+    # clamping.
     keyframes = {
         "rest": Keyframe(
-            qpos=np.array([0, -1.5708, 1.5708, 0.66, 0, -1.1]),
+            qpos=np.radians(np.array(RobotConfig().rest_qpos_deg, dtype=np.float64)),
             pose=sapien.Pose(q=euler2quat(0, 0, 0)),
         ),
         "extended": Keyframe(
@@ -67,28 +59,39 @@ class SO101(BaseAgent):
 
     @property
     def _controller_configs(self) -> dict:
-        """Return a dict of available controller configurations for the SO101.
+        """Return controller configs for the SO101 (menagerie STS3215 dynamics).
 
-        Includes absolute joint-position control, delta joint-position control,
-        and target-based delta joint-position control.
+        Drive stiffness/damping, force limit, and Coulomb friction carry the
+        STS3215 values from ``menagerie_constants``. Drive damping folds the
+        passive joint damping in (PhysX has no separate passive viscous joint
+        damping, and controller init overwrites the loader-imported drive).
+        Target bounds use the compiled joint limits (lower/upper=None), which
+        resolves the wrist_roll ctrlrange-wider-than-joint-range mismatch
+        automatically. Armature is set post-load (see _apply_menagerie_patches).
         """
+        joint_names = [joint.name for joint in self.robot.active_joints]
+        stiffness = [mc.DRIVE_STIFFNESS] * 6
+        damping = [mc.DRIVE_DAMPING] * 6
+
         pd_joint_pos = PDJointPosControllerConfig(
-            [joint.name for joint in self.robot.active_joints],
+            joint_names,
             lower=None,
             upper=None,
-            stiffness=[1e3] * 6,
-            damping=[1e2] * 6,
-            force_limit=100,
+            stiffness=stiffness,
+            damping=damping,
+            force_limit=mc.FORCE_LIMIT,
+            friction=mc.JOINT_FRICTIONLOSS,
             normalize_action=False,
         )
 
         pd_joint_delta_pos = PDJointPosControllerConfig(
-            [joint.name for joint in self.robot.active_joints],
+            joint_names,
             [-0.05, -0.05, -0.05, -0.05, -0.05, -0.2],
             [0.05, 0.05, 0.05, 0.05, 0.05, 0.2],
-            stiffness=[1e3] * 6,
-            damping=[1e2] * 6,
-            force_limit=100,
+            stiffness=stiffness,
+            damping=damping,
+            force_limit=mc.FORCE_LIMIT,
+            friction=mc.JOINT_FRICTIONLOSS,
             use_delta=True,
             use_target=False,
         )
@@ -104,21 +107,77 @@ class SO101(BaseAgent):
         return copy.deepcopy(controller_configs)
 
     def _after_loading_articulation(self) -> None:
-        """Cache frequently-accessed link references after the articulation is loaded."""
+        """Cache frequently-used link references after the articulation is loaded.
+
+        Menagerie fidelity patches (inertials, gripper friction, armature) are
+        applied here once implemented; see ``_apply_menagerie_patches``.
+        """
         super()._after_loading_articulation()
-        self.finger1_link = self.robot.links_map["gripper_link"]
-        self.finger2_link = self.robot.links_map["moving_jaw_so101_v1_link"]
-        self.tcp_link = self.robot.links_map["gripper_frame_link"]
+        self.finger1_link = self.robot.links_map["gripper"]
+        self.finger2_link = self.robot.links_map["moving_jaw_so101_v1"]
+        self._tcp_offset = Pose.create_from_pq(
+            p=torch.tensor(mc.TCP_OFFSET_POS, dtype=torch.float32),
+            q=torch.tensor(mc.TCP_OFFSET_QUAT, dtype=torch.float32),
+        )
+        self._apply_menagerie_patches()
+
+    def _apply_menagerie_patches(self) -> None:
+        """Restore fidelity the ManiSkill MJCF importer drops.
+
+        Applies per-link inertials, gripper-link friction, and joint armature
+        via SAPIEN PhysX setters. Iterates every per-scene PhysX object
+        (``link._objs`` / ``joint._objs``) so vectorized envs are fully patched;
+        ManiSkill's wrapper structs do not forward these setters. See
+        ``menagerie_constants`` for provenance.
+        """
+        # Inertials: mass, principal inertia, and center-of-mass pose.
+        for name, inertial in mc.LINK_INERTIALS.items():
+            link = self.robot.links_map[name]
+            cmass = sapien.Pose(p=inertial.com_pos, q=inertial.principal_quat)
+            for obj in link._objs:
+                obj.set_mass(inertial.mass)
+                obj.set_inertia(list(inertial.principal_moments))
+                obj.set_cmass_local_pose(cmass)
+
+        # Gripper friction: link-level static/dynamic friction + patch radii.
+        # Patching is link-level because built PhysX shapes do not retain MJCF
+        # geom names/classes, so per-class (condim-6 only) selection is not
+        # possible post-build. Lossless for sliding friction (every collision
+        # geom on these bodies has MuJoCo mu = 1.0). The one approximation: the
+        # plain condim-3 wrist-roll-follower box on `gripper` also receives the
+        # patch radii, giving it torsional resistance it lacks in MuJoCo.
+        # Accepted per the design.
+        for name in mc.GRIPPER_FRICTION_LINKS:
+            link = self.robot.links_map[name]
+            for obj in link._objs:
+                for shape in obj.get_collision_shapes():
+                    mat = shape.get_physical_material()
+                    mat.set_static_friction(mc.GRIPPER_STATIC_FRICTION)
+                    mat.set_dynamic_friction(mc.GRIPPER_DYNAMIC_FRICTION)
+                    shape.set_physical_material(mat)
+                    shape.set_patch_radius(mc.GRIPPER_PATCH_RADIUS)
+                    shape.set_min_patch_radius(mc.GRIPPER_MIN_PATCH_RADIUS)
+
+        # Armature: float32 array shaped (dof,) per 1-DoF joint object.
+        armature = np.array([mc.JOINT_ARMATURE], dtype=np.float32)
+        for joint in self.robot.active_joints:
+            for jobj in joint._objs:
+                jobj.set_armature(armature)
+
+    @property
+    def tcp_pose(self) -> Pose:
+        """World-space pose of the tool-centre point (TCP).
+
+        The menagerie model has no TCP link; the TCP is the ``gripperframe``
+        site, composed here as a fixed offset on the ``gripper`` link
+        (``finger1_link``, cached in ``_after_loading_articulation``).
+        """
+        return self.finger1_link.pose * self._tcp_offset
 
     @property
     def tcp_pos(self) -> torch.Tensor:
         """World-space position of the tool-centre point (TCP)."""
-        return self.tcp_link.pose.p
-
-    @property
-    def tcp_pose(self) -> Pose:
-        """World-space pose of the tool-centre point (TCP)."""
-        return self.tcp_link.pose
+        return self.tcp_pose.p
 
     def is_grasping(
         self, object: Actor | None = None, min_force: float = 0.5, max_angle: float = 110

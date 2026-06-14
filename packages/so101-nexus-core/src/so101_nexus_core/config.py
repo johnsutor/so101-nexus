@@ -758,15 +758,15 @@ ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {
         wrist_cam_euler_center_deg=(-180.0, -37.5, -90.0),
         wrist_cam_euler_noise_deg=(0.0, 7.5, 0.0),
     ),
-    # SO-101: base identity quaternion (faces +X natively). Wrist cam on gripper_link.
-    # Euler noise 11.459° ≈ 0.2 rad — larger than SO-100 due to different gripper geometry.
+    # SO-101: base identity quaternion (faces +X natively). Wrist cam on
+    # camera_mount (the menagerie body where the wrist camera lives).
     "so101": RobotCameraPreset(
         base_quat=(1.0, 0.0, 0.0, 0.0),
         sensor_cam_eye_pos=(0.0, 0.3, 0.3),
         sensor_cam_target_pos=(0.15, 0.0, 0.02),
         human_cam_eye_pos=(0.0, 0.4, 0.4),
         human_cam_target_pos=(0.15, 0.0, 0.05),
-        wrist_camera_mount_link="gripper_link",
+        wrist_camera_mount_link="camera_mount",
         wrist_cam_pos_center=(0.0, 0.04, -0.04),
         wrist_cam_pos_noise=(0.005, 0.01, 0.01),
         wrist_cam_euler_center_deg=(-180.0, 37.5, -90.0),

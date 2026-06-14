@@ -304,15 +304,18 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         pos_y_center, pos_y_noise = wc.pos_y_center, wc.pos_y_noise
         pos_z_center, pos_z_noise = wc.pos_z_center, wc.pos_z_noise
 
+        # Write the body-relative pose fields the fixed-camera forward kinematics
+        # actually use (cam_pos / cam_quat). The earlier cam_pos0 / cam_mat0
+        # fields are only consulted for tracking-mode cameras, so writing them
+        # left this fixed wrist camera at its MJCF baseline pose (the pitch and
+        # position randomization had no effect). The reset's mj_forward (called
+        # right after this) recomputes cam_xpos / cam_xmat from these fields.
         pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
-        euler = np.array([pitch_rad, 0.0, 0.0])
         quat = np.zeros(4)
-        mujoco.mju_euler2Quat(quat, euler, "XYZ")
-        mat = np.zeros(9)
-        mujoco.mju_quat2Mat(mat, quat)
-        self.model.cam_mat0[self._wrist_cam_id] = mat
+        mujoco.mju_euler2Quat(quat, np.array([pitch_rad, 0.0, 0.0]), "XYZ")
+        self.model.cam_quat[self._wrist_cam_id] = quat
 
-        self.model.cam_pos0[self._wrist_cam_id] = [
+        self.model.cam_pos[self._wrist_cam_id] = [
             self.np_random.uniform(-pos_x_noise, pos_x_noise),
             pos_y_center + self.np_random.uniform(-pos_y_noise, pos_y_noise),
             pos_z_center + self.np_random.uniform(-pos_z_noise, pos_z_noise),

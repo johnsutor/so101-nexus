@@ -47,3 +47,7 @@ def test_build_maniskill_robot_configs_converts_euler_deg_to_rad():
     assert np.array(so100["wrist_cam_euler_noise"]) == pytest.approx(
         np.radians(np.array(preset.wrist_cam_euler_noise_deg))
     )
+
+
+def test_so101_wrist_camera_mounts_on_camera_mount():
+    assert ROBOT_CAMERA_PRESETS["so101"].wrist_camera_mount_link == "camera_mount"
