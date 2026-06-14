@@ -180,6 +180,46 @@ def test_rest_tcp_pose_matches_menagerie():
 # --- wrist camera FOV randomization ----------------------------------------
 
 
+def test_wrist_camera_pose_tracks_component():
+    """The wrist camera pose must respond to the WristCamera component.
+
+    Regression for the fixed-camera bug: _randomize_wrist_camera wrote
+    cam_pos0/cam_mat0 (only used by tracking-mode cameras), so the fixed wrist
+    camera stayed at its MJCF baseline pose regardless of the component's
+    position/pitch. The fix writes cam_pos/cam_quat (used by fixed-camera FK).
+    """
+
+    def cam_pose(pos_y_center: float, pitch_deg: float):
+        cfg = ReachConfig(
+            observations=[
+                JointPositions(),
+                WristCamera(
+                    width=64,
+                    height=64,
+                    pos_x_noise=0.0,
+                    pos_y_noise=0.0,
+                    pos_z_noise=0.0,
+                    pos_y_center=pos_y_center,
+                    pitch_deg_range=(pitch_deg, pitch_deg),
+                    fov_deg_range=(60.0, 60.0),
+                ),
+            ]
+        )
+        env = gym.make("MuJoCoReach-v1", config=cfg, robot_init_qpos_noise=0.0).unwrapped
+        try:
+            env.reset(seed=0, options={"init_qpos": np.zeros(6)})
+            cid = env._wrist_cam_id
+            return env.data.cam_xpos[cid].copy(), env.data.cam_xmat[cid].reshape(3, 3).copy()
+        finally:
+            env.close()
+
+    p1, m1 = cam_pose(0.04, 37.5)
+    p2, _ = cam_pose(0.10, 37.5)  # different position center -> camera moves
+    _, m3 = cam_pose(0.04, -20.0)  # different pitch -> forward axis rotates
+    assert np.linalg.norm(p2 - p1) > 0.01
+    assert float(np.dot(-m1[:, 2], -m3[:, 2])) < 0.999
+
+
 def test_wrist_fov_randomization_changes_projection():
     cfg = ReachConfig(
         observations=[
