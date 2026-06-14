@@ -137,21 +137,30 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
                 # _randomize_wrist_camera uses), then convert the MuJoCo camera
                 # convention (looks along -z, +y up) to SAPIEN's (+x). x is
                 # noise-only (centered at 0), matching MuJoCo's cam_pos0.
+                # Sample with the seeded episode RNG (set before reconfigure and
+                # re-seeded after), so env.reset(seed=...) reproduces the camera,
+                # matching the MuJoCo backend's self.np_random usage. Falls back
+                # to the global RNG only if accessed before the first seeded reset.
                 from transforms3d.quaternions import qmult
 
                 from so101_nexus_maniskill import menagerie_constants as mc
 
-                px = np.random.uniform(-wc.pos_x_noise, wc.pos_x_noise)
-                py = wc.pos_y_center + np.random.uniform(-wc.pos_y_noise, wc.pos_y_noise)
-                pz = wc.pos_z_center + np.random.uniform(-wc.pos_z_noise, wc.pos_z_noise)
+                rng = (
+                    self._episode_rng
+                    if getattr(self, "_episode_rng", None) is not None
+                    else np.random
+                )
+                px = rng.uniform(-wc.pos_x_noise, wc.pos_x_noise)
+                py = wc.pos_y_center + rng.uniform(-wc.pos_y_noise, wc.pos_y_noise)
+                pz = wc.pos_z_center + rng.uniform(-wc.pos_z_noise, wc.pos_z_noise)
                 p = [px, py, pz]
                 pitch_lo, pitch_hi = wc.pitch_rad_range
-                pitch = np.random.uniform(pitch_lo, pitch_hi)
+                pitch = rng.uniform(pitch_lo, pitch_hi)
                 q_mujoco = euler2quat(pitch, 0.0, 0.0, axes="sxyz")
                 # Order pinned by test_wrist_camera_world_pose_matches_mujoco_backend.
                 q = qmult(q_mujoco, mc.MJ_TO_SAPIEN_CAMERA_QUAT)
                 fov_lo, fov_hi = wc.fov_rad_range
-                fov = np.random.uniform(fov_lo, fov_hi)
+                fov = rng.uniform(fov_lo, fov_hi)
             else:
                 # so100: existing preset-driven path (unchanged).
                 pos_c = cfg["wrist_cam_pos_center"]

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-import so101_nexus_maniskill  # noqa: F401 — registers envs
+import so101_nexus_maniskill  # noqa: F401 - registers envs
 from so101_nexus_core.config import ReachConfig, RobotConfig
 from so101_nexus_maniskill import menagerie_constants as mc
 
@@ -304,6 +304,35 @@ def test_wrist_camera_consumes_component_pos_centers():
     shifted = _wrist_cam_world_pos(pos_y_center=0.10, pos_z_center=-0.10)
     expected_delta = float(np.linalg.norm([0.0, 0.06, -0.06]))
     assert float(np.linalg.norm(shifted - base)) == pytest.approx(expected_delta, abs=1e-3)
+
+
+def test_wrist_camera_randomization_is_seeded():
+    """env.reset(seed=...) must reproduce the wrist-camera pose.
+
+    The pose is sampled with the seeded episode RNG (matching the MuJoCo
+    backend's self.np_random), so the same seed yields the same camera and
+    different seeds differ. Regression for global-np.random sampling that
+    ignored the reset seed and broke cross-backend determinism.
+    """
+    from so101_nexus_core.observations import JointPositions, WristCamera
+
+    def cam_pose(seed: int) -> np.ndarray:
+        cfg = ReachConfig(observations=[JointPositions(), WristCamera(width=64, height=64)])
+        env = gym.make(
+            "ManiSkillReachSO101-v1", config=cfg, num_envs=1, obs_mode="rgbd", render_mode=None
+        )
+        try:
+            env.reset(seed=seed)
+            gp = env.unwrapped._sensors["wrist_camera"].camera.global_pose
+            return np.concatenate(
+                [np.asarray(gp.p).reshape(-1)[:3], np.asarray(gp.q).reshape(-1)[:4]]
+            )
+        finally:
+            env.close()
+
+    same_a, same_b, other = cam_pose(123), cam_pose(123), cam_pose(999)
+    np.testing.assert_allclose(same_a, same_b, atol=1e-6)
+    assert not np.allclose(same_a, other, atol=1e-4)
 
 
 # --- Cross-backend TCP parity (zero-qpos and default rest) -------------------
