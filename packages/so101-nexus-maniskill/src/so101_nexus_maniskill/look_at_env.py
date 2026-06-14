@@ -37,6 +37,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
+        robot_init_qpos_noise: float | None = None,
         **kwargs,
     ):
         if config is None:
@@ -44,7 +45,12 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
 
         robot_cfgs = build_maniskill_robot_configs(config=config)
-        self._setup_base(config=config, robot_uids=robot_uids, robot_cfgs=robot_cfgs)
+        self._setup_base(
+            config=config,
+            robot_uids=robot_uids,
+            robot_cfgs=robot_cfgs,
+            robot_init_qpos_noise=robot_init_qpos_noise,
+        )
 
         super().__init__(
             *args,

@@ -34,12 +34,18 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
+        robot_init_qpos_noise: float | None = None,
         **kwargs,
     ):
         if config is None:
             config = ReachConfig()
         robot_cfgs = build_maniskill_robot_configs(config=config)
-        self._setup_base(config=config, robot_uids=robot_uids, robot_cfgs=robot_cfgs)
+        self._setup_base(
+            config=config,
+            robot_uids=robot_uids,
+            robot_cfgs=robot_cfgs,
+            robot_init_qpos_noise=robot_init_qpos_noise,
+        )
 
         self._target_pos: torch.Tensor | None = None
 

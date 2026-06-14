@@ -151,6 +151,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         robot_uids: str = "so100",
         num_envs: int = 1,
         reconfiguration_freq: int | None = None,
+        robot_init_qpos_noise: float | None = None,
         **kwargs,
     ):
         if config is None:
@@ -161,6 +162,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             config=config,
             robot_uids=robot_uids,
             robot_cfgs=robot_cfgs,
+            robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
         self._target_obj: SceneObject | None = None
