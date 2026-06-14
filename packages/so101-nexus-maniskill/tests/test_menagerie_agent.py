@@ -304,3 +304,45 @@ def test_wrist_camera_consumes_component_pos_centers():
     shifted = _wrist_cam_world_pos(pos_y_center=0.10, pos_z_center=-0.10)
     expected_delta = float(np.linalg.norm([0.0, 0.06, -0.06]))
     assert float(np.linalg.norm(shifted - base)) == pytest.approx(expected_delta, abs=1e-3)
+
+
+# --- Cross-backend TCP parity (zero-qpos and default rest) -------------------
+# Pinned by the MuJoCo backend test_rest_tcp_pose_matches_menagerie at zero qpos.
+_MJ_ZERO_QPOS_TCP_POS = (0.3914432501, -0.0009794699, 0.2460073072)
+_MJ_ZERO_QPOS_TCP_QUAT = (0.7064841888, 0.0172191552, 0.7073102466, 0.0171990353)
+# Pinned from the MuJoCo backend at the default clamped rest pose, zero noise.
+_MJ_DEFAULT_REST_TCP_POS = (0.2246947757, -0.0009794652, 0.0616355396)
+_MJ_DEFAULT_REST_TCP_QUAT = (0.4396896602, 0.0218570366, 0.8978199686, 0.0107040535)
+
+
+def test_zero_qpos_tcp_pose_matches_mujoco_backend(so101_reach_env):
+    env = so101_reach_env
+    env.reset(seed=0, options={"init_qpos": np.zeros(6)})
+    tcp = env.agent.tcp_pose
+    pos = tcp.p[0].cpu().numpy()
+    quat = tcp.q[0].cpu().numpy()  # ManiSkill pose quats are (w, x, y, z)
+    np.testing.assert_allclose(pos, _MJ_ZERO_QPOS_TCP_POS, atol=1e-3)
+    dot = abs(float(np.dot(quat, _MJ_ZERO_QPOS_TCP_QUAT)))
+    assert dot == pytest.approx(1.0, abs=2e-3), (quat, _MJ_ZERO_QPOS_TCP_QUAT)
+
+
+def test_default_rest_tcp_pose_matches_mujoco_backend():
+    env = gym.make(
+        "ManiSkillReachSO101-v1",
+        config=ReachConfig(reset_settle_frames=0),
+        num_envs=1,
+        obs_mode="state",
+        render_mode=None,
+    )
+    try:
+        inner = env.unwrapped
+        inner.robot_init_qpos_noise = 0.0
+        inner.reset(seed=0)  # default rest path, clamped to qlimits
+        tcp = inner.agent.tcp_pose
+        pos = tcp.p[0].cpu().numpy()
+        quat = tcp.q[0].cpu().numpy()
+        np.testing.assert_allclose(pos, _MJ_DEFAULT_REST_TCP_POS, atol=2e-3)
+        dot = abs(float(np.dot(quat, _MJ_DEFAULT_REST_TCP_QUAT)))
+        assert dot == pytest.approx(1.0, abs=2e-3), (quat, _MJ_DEFAULT_REST_TCP_QUAT)
+    finally:
+        env.close()
