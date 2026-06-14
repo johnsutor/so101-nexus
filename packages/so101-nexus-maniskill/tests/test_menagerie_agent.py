@@ -53,6 +53,50 @@ def test_tcp_pose_composes_offset_on_gripper_link(so101_reach_env):
     )
 
 
+def _assert_menagerie_patches_applied(robot) -> None:
+    """Assert inertials, gripper friction, and armature are applied on every
+    per-scene PhysX object of ``robot``. Works for any num_envs (each link's
+    ``_objs`` has one entry per sub-scene)."""
+    from transforms3d.quaternions import quat2mat
+
+    for name, inertial in mc.LINK_INERTIALS.items():
+        link = robot.links_map[name]
+        for obj in link._objs:
+            assert obj.mass == pytest.approx(inertial.mass, rel=1e-6), name
+            np.testing.assert_allclose(
+                np.asarray(obj.cmass_local_pose.p), inertial.com_pos, atol=1e-9
+            )
+            rot_applied = quat2mat(np.asarray(obj.cmass_local_pose.q))
+            tensor_applied = rot_applied @ np.diag(np.asarray(obj.inertia)) @ rot_applied.T
+            rot_intended = quat2mat(inertial.principal_quat)
+            tensor_intended = rot_intended @ np.diag(inertial.principal_moments) @ rot_intended.T
+            np.testing.assert_allclose(tensor_applied, tensor_intended, atol=1e-10)
+
+    for name in mc.GRIPPER_FRICTION_LINKS:
+        link = robot.links_map[name]
+        for obj in link._objs:
+            shapes = obj.get_collision_shapes()
+            assert shapes, f"{name} has no collision shapes"
+            for shape in shapes:
+                mat = shape.get_physical_material()
+                assert mat.get_static_friction() == pytest.approx(mc.GRIPPER_STATIC_FRICTION)
+                assert mat.get_dynamic_friction() == pytest.approx(mc.GRIPPER_DYNAMIC_FRICTION)
+                assert shape.get_patch_radius() == pytest.approx(mc.GRIPPER_PATCH_RADIUS)
+                assert shape.get_min_patch_radius() == pytest.approx(mc.GRIPPER_MIN_PATCH_RADIUS)
+
+    for joint in robot.active_joints:
+        for jobj in joint._objs:
+            np.testing.assert_allclose(np.asarray(jobj.armature), [mc.JOINT_ARMATURE], atol=1e-9)
+
+
+def test_menagerie_patches_applied_single_env(so101_reach_env):
+    """Patches apply on the default single (CPU PhysX) env. This runs in CPU-only
+    CI - which skips the num_envs=2 checks below - so the fidelity patches always
+    have direct CI coverage; the vectorized tests add the every-sub-scene guarantee
+    when a GPU is available."""
+    _assert_menagerie_patches_applied(so101_reach_env.agent.robot)
+
+
 def test_link_masses_applied_on_every_subscene(so101_reach_env_vec):
     robot = so101_reach_env_vec.agent.robot
     for name, inertial in mc.LINK_INERTIALS.items():
