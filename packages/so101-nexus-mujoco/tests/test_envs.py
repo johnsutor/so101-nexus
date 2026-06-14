@@ -701,19 +701,89 @@ def test_spawn_center_offsets_pick_and_place_cube_and_target():
     assert np.mean(cube_xs) > 0.10
 
 
-def test_reach_target_on_ground_and_offset():
-    """Reach target spawns on the ground plane and is offset by spawn_center."""
+def test_reach_target_in_3d_workspace():
+    """Reach target occupies the 3-D cubic workspace, matching ManiSkill.
+
+    Mirrors the ManiSkill contract: center = [0.15, 0.0, 0.15], per-axis offset in
+    [-half, +half] with half = target_workspace_half_extent, and z clamped to >= 0.05.
+    """
     env = gym.make("MuJoCoReach-v1")
-    xs: list[float] = []
+    half = env.unwrapped.config.target_workspace_half_extent  # type: ignore[attr-defined]
+    center = np.array([0.15, 0.0, 0.15])
+    zs: list[float] = []
     try:
         for seed in range(20):
             env.reset(seed=seed)
             target_pos = env.unwrapped._target_pos  # type: ignore[attr-defined]
-            assert target_pos[2] < 0.05, f"Target z={target_pos[2]} too high (seed={seed})"
-            xs.append(float(target_pos[0]))
+            assert center[0] - half - 1e-6 <= target_pos[0] <= center[0] + half + 1e-6
+            assert center[1] - half - 1e-6 <= target_pos[1] <= center[1] + half + 1e-6
+            assert target_pos[2] >= 0.05 - 1e-6, (
+                f"Target z={target_pos[2]} below floor (seed={seed})"
+            )
+            zs.append(float(target_pos[2]))
     finally:
         env.close()
-    assert np.mean(xs) > 0.10
+    # With the default half-extent the target distribution must span above the floor,
+    # confirming we sample a 3-D cube and not a floor-only ring.
+    assert max(zs) > 0.05 + 1e-3
+
+
+def test_reach_target_workspace_half_extent_affects_sampling():
+    """Increasing target_workspace_half_extent widens the x/y sampling range."""
+    half_small, half_large = 0.05, 0.25
+    center_x = 0.15
+
+    def _x_spread(half: float) -> float:
+        cfg = ReachConfig(target_workspace_half_extent=half)
+        env = gym.make("MuJoCoReach-v1", config=cfg)
+        xs: list[float] = []
+        try:
+            for seed in range(30):
+                env.reset(seed=seed)
+                xs.append(float(env.unwrapped._target_pos[0]))  # type: ignore[attr-defined]
+        finally:
+            env.close()
+        return max(abs(x - center_x) for x in xs)
+
+    assert _x_spread(half_large) > _x_spread(half_small)
+
+
+def test_move_initial_distance_equals_target_distance():
+    """After reset the TCP-to-target distance equals config.target_distance.
+
+    Regression for the pre-settle vs post-settle target drift: the target must be
+    computed from the settled TCP so the initial distance matches the requested
+    move distance, matching the ManiSkill backend.
+    """
+    cfg = MoveConfig(target_distance=0.10)
+    env = gym.make("MuJoCoMove-v1", config=cfg)
+    try:
+        for seed in range(5):
+            _, info = env.reset(seed=seed)
+            assert info["tcp_to_target_dist"] == pytest.approx(cfg.target_distance, abs=1e-3)
+    finally:
+        env.close()
+
+
+def test_lookat_target_pose_is_dynamics_immune():
+    """LookAt target must not move from contact or gravity (kinematic-equivalent).
+
+    Mirrors ManiSkill's body_type="kinematic": the arm passes through the marker
+    and the marker never drifts under dynamics.
+    """
+    env = gym.make("MuJoCoLookAt-v1")
+    try:
+        env.reset(seed=0)
+        pos_before = env.unwrapped._get_target_pos().copy()  # type: ignore[attr-defined]
+        # Drive the arm hard for several steps; with a colliding/dynamic target this
+        # would bump and shift it. Kinematic target must stay fixed.
+        for _ in range(30):
+            action = env.action_space.sample()
+            env.step(action)
+        pos_after = env.unwrapped._get_target_pos().copy()  # type: ignore[attr-defined]
+        np.testing.assert_allclose(pos_after, pos_before, atol=1e-9)
+    finally:
+        env.close()
 
 
 def test_pick_and_place_target_disc_geom_exists():

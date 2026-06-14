@@ -25,8 +25,13 @@ _SO101_XML = get_so101_mujoco_model_path()
 def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
     """Build MuJoCo XML string for the look-at scene (robot + floor + target object).
 
-    Only CubeObject is supported for the look-at target; the cube is placed as
-    a static visual/collision body so the robot can orient toward it.
+    Only CubeObject is supported for the look-at target; the cube is placed as a
+    kinematic mocap body so the robot can orient toward it. Matching the ManiSkill
+    backend (body_type="kinematic"), the target is purely visual: collision is
+    disabled (contype=0 conaffinity=0) so the arm passes through it, and as a mocap
+    body it is unaffected by gravity or contact (its pose is driven via
+    data.mocap_pos/mocap_quat, set each reset). This prevents the arm from bumping
+    the reference frame, which a dynamic freejoint box previously allowed.
     """
     robot_path = str(_SO101_XML)
     gr, gg, gb, ga = ground_rgba
@@ -48,11 +53,10 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
     <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
-    <body name="look_target" pos="0.15 0 {hs}">
-      <freejoint name="look_target_joint"/>
+    <body name="look_target" pos="0.15 0 {hs}" mocap="true">
       <geom name="look_target_geom" type="box" size="{hs} {hs} {hs}"
-            rgba="{cr} {cg} {cb} {ca}" mass="{obj.mass}"
-            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"/>
+            rgba="{cr} {cg} {cb} {ca}"
+            contype="0" conaffinity="0"/>
     </body>
   </worldbody>
 </mujoco>
@@ -102,13 +106,12 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        self._look_target_joint_id = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_JOINT, "look_target_joint"
-        )
-        self._look_target_qpos_addr = self.model.jnt_qposadr[self._look_target_joint_id]
         self._target_body_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, "look_target"
         )
+        # The target is a mocap body (kinematic): its pose is driven via the
+        # data.mocap_pos / mocap_quat arrays indexed by body_mocapid, not qpos.
+        self._look_target_mocap_id = int(self.model.body_mocapid[self._target_body_id])
 
         self._finish_model_setup()
 
@@ -125,9 +128,11 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         y = cy + self.np_random.uniform(-half, half)
         obj = self._target_obj
         spawn_z = obj.half_size
-        addr = self._look_target_qpos_addr
-        self.data.qpos[addr : addr + 3] = [x, y, spawn_z]
-        self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
+        # Drive the kinematic mocap body via the mocap arrays (unaffected by
+        # dynamics) instead of a freejoint qpos. The arm cannot bump it.
+        mid = self._look_target_mocap_id
+        self.data.mocap_pos[mid] = [x, y, spawn_z]
+        self.data.mocap_quat[mid] = [1.0, 0.0, 0.0, 0.0]
 
     def _get_target_pos(self) -> np.ndarray:
         """Return the current world position of the look-at target body."""
