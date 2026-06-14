@@ -23,21 +23,40 @@ from so101_nexus_core.config import PickConfig, describe_pick_target
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
-from so101_nexus_core.ycb_geometry import get_maniskill_ycb_spawn_z
+from so101_nexus_core.ycb_geometry import (
+    get_maniskill_ycb_bounding_radius,
+    get_maniskill_ycb_spawn_z,
+)
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
+from so101_nexus_maniskill.spawn_utils import sample_separated_positions_torch
+
+# Default bounding radius used when an object type has no computable extent.
+_DEFAULT_BOUNDING_RADIUS = 0.025
 
 
 def _pick_target_and_distractors(
-    rng: np.random.Generator,
+    rng: np.random.Generator | np.random.RandomState,
     objects: list[SceneObject],
     n_distractors: int,
 ) -> tuple[SceneObject, list[SceneObject]]:
     """Randomly select a target and distractor objects from the pool.
 
+    Distractors are drawn without replacement from the non-target pool, matching
+    the MuJoCo backend (``rng.choice(..., replace=False)``), so no distractor
+    identity is duplicated when the pool is large enough.
+
+    Divergence from the MuJoCo backend: this backend samples the target
+    uniformly over the full pool, then distractors uniformly over the remainder,
+    and tolerates ``n_active > pool`` via a ``replace=True`` fallback. MuJoCo
+    instead samples target plus distractors jointly without replacement and
+    would raise on such overflow. Both guarantee distractor uniqueness when the
+    pool allows.
+
     Parameters
     ----------
     rng:
-        NumPy random generator.
+        NumPy random generator or legacy ``RandomState`` (ManiSkill's seeded
+        episode RNG is a ``RandomState``); both expose ``choice``.
     objects:
         Pool of scene objects to sample from.
     n_distractors:
@@ -49,19 +68,30 @@ def _pick_target_and_distractors(
         The chosen target and a list of distractor objects.
     """
     n_pool = len(objects)
-    target_idx = int(rng.integers(n_pool))
+    target_idx = int(rng.choice(n_pool))
     target = objects[target_idx]
 
-    distractor_pool = [o for i, o in enumerate(objects) if i != target_idx]
-    if not distractor_pool:
-        distractor_pool = list(objects)
+    distractor_pool_idx = [i for i in range(n_pool) if i != target_idx]
+    if not distractor_pool_idx:
+        # Single-object pool: the only object doubles as a distractor.
+        distractors = [objects[target_idx] for _ in range(n_distractors)]
+        return target, distractors
 
-    distractors: list[SceneObject] = []
-    for _ in range(n_distractors):
-        d_idx = int(rng.integers(len(distractor_pool)))
-        distractors.append(distractor_pool[d_idx])
-
+    # Without replacement when the pool allows; if more distractors than the
+    # pool can supply uniquely, fall back to sampling with replacement.
+    replace = n_distractors > len(distractor_pool_idx)
+    chosen = rng.choice(distractor_pool_idx, size=n_distractors, replace=replace)
+    distractors = [objects[int(i)] for i in chosen]
     return target, distractors
+
+
+def _obj_bounding_radius(obj: SceneObject) -> float:
+    """Return the XY bounding radius for separation-aware placement, in metres."""
+    if isinstance(obj, CubeObject):
+        return float(obj.half_size * np.sqrt(2))
+    if isinstance(obj, YCBObject):
+        return get_maniskill_ycb_bounding_radius(obj.model_id)
+    return _DEFAULT_BOUNDING_RADIUS
 
 
 def _obj_spawn_z(obj: SceneObject) -> float:
@@ -168,7 +198,9 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         self._task_description: str = ""
         self._obj_spawn_z_val: float = 0.0
         self._distractor_spawn_zs: list[float] = []
-        self._rng = np.random.default_rng()
+        # Bounding radii (target first, then distractors) for separation-aware
+        # placement; populated in _load_scene.
+        self._spawn_bounding_radii: list[float] = []
 
         super().__init__(
             *args,
@@ -187,12 +219,38 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         """Current episode task description derived from target object repr."""
         return self._task_description
 
+    def _default_reconfiguration_freq(self) -> int:
+        """Reconfigure each episode when the object pool can vary the identities.
+
+        Identity selection (target and distractors) happens at scene load, so a
+        variable-object Pick scene (pool larger than the active target+distractor
+        count) must reconfigure every episode for identities to actually change.
+        Single-object or fixed scenes keep the camera-driven base heuristic
+        (0 unless a wrist camera forces a per-episode rebuild) to avoid needless
+        scene rebuilds.
+        """
+        n_pool = len(self.config.objects)
+        n_active = 1 + self.config.n_distractors
+        if n_pool > n_active:
+            return 1
+        return super()._default_reconfiguration_freq()
+
     def _load_scene(self, options: dict) -> None:
         self._build_ground()
 
-        # Sample target and distractors for this scene configuration.
+        # Sample target and distractor IDENTITIES with the seeded episode RNG so
+        # repeated reset(seed=S) reproduces the same identities. ManiSkill sets
+        # self._episode_rng (a seeded np.random.RandomState) before _reconfigure
+        # / _load_scene runs (see mani_skill.envs.sapien_env.BaseEnv.reset).
+        # Fall back to the global RNG only if accessed before the first seeded
+        # reset (e.g. during construction's initial reconfigure).
+        rng: np.random.Generator | np.random.RandomState = (
+            self._episode_rng
+            if getattr(self, "_episode_rng", None) is not None
+            else np.random.default_rng()
+        )
         target, distractors = _pick_target_and_distractors(
-            self._rng,
+            rng,
             self.config.objects,
             self.config.n_distractors,
         )
@@ -201,6 +259,9 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         self._task_description = describe_pick_target(target)
         self._obj_spawn_z_val = _obj_spawn_z(target)
         self._distractor_spawn_zs = [_obj_spawn_z(d) for d in distractors]
+        self._spawn_bounding_radii = [_obj_bounding_radius(target)] + [
+            _obj_bounding_radius(d) for d in distractors
+        ]
 
         # Build vectorized target actor (one per env, merged into one).
         target_actors: list[Actor] = []
@@ -236,14 +297,27 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             angle_half = cfg["spawn_angle_half_range"]
             cx, cy = cfg["cube_spawn_center"]
 
-            total_objects = 1 + len(self.distractors)
-            all_r = min_r + torch.rand(b, total_objects, device=self.device) * (max_r - min_r)
-            all_theta = (torch.rand(b, total_objects, device=self.device) * 2 - 1) * angle_half
+            # Sample target + distractor XY with bounding-radius-aware separation,
+            # enforcing config.min_object_separation. Mirrors the MuJoCo backend's
+            # sample_separated_positions (so101_nexus_mujoco.spawn_utils) but
+            # batched per env row. positions: (b, total_objects, 2).
+            bounding_radii = torch.tensor(
+                self._spawn_bounding_radii, dtype=torch.float32, device=self.device
+            )
+            positions = sample_separated_positions_torch(
+                num_envs=b,
+                bounding_radii=bounding_radii,
+                min_r=min_r,
+                max_r=max_r,
+                angle_half=angle_half,
+                min_clearance=self.config.min_object_separation,
+                center=(cx, cy),
+                device=self.device,
+            )
 
             # Target pose
             target_xyz = torch.zeros((b, 3), device=self.device)
-            target_xyz[:, 0] = cx + all_r[:, 0] * torch.cos(all_theta[:, 0])
-            target_xyz[:, 1] = cy + all_r[:, 0] * torch.sin(all_theta[:, 0])
+            target_xyz[:, :2] = positions[:, 0, :]
             target_xyz[:, 2] = self._obj_spawn_z_val
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=target_xyz, q=qs))
@@ -252,8 +326,7 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
             for d_idx, distractor in enumerate(self.distractors):
                 slot = 1 + d_idx
                 d_xyz = torch.zeros((b, 3), device=self.device)
-                d_xyz[:, 0] = cx + all_r[:, slot] * torch.cos(all_theta[:, slot])
-                d_xyz[:, 1] = cy + all_r[:, slot] * torch.sin(all_theta[:, slot])
+                d_xyz[:, :2] = positions[:, slot, :]
                 d_xyz[:, 2] = self._distractor_spawn_zs[d_idx]
                 d_qs = random_quaternions(b, lock_x=True, lock_y=True)
                 distractor.set_pose(Pose.create_from_pq(p=d_xyz, q=d_qs))

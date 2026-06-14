@@ -27,6 +27,34 @@ def get_maniskill_ycb_spawn_z(model_id: str, margin: float = 0.002) -> float:
     return float(-bbox_min_z + margin)
 
 
+def get_maniskill_ycb_bounding_radius(model_id: str) -> float:
+    """Return the XY bounding radius for a ManiSkill YCB object, in metres.
+
+    The radius is half the diagonal of the object's XY bounding box, derived
+    from the ManiSkill YCB metadata and the object scale. It is used for
+    bounding-radius-aware separation when placing objects so two objects do not
+    overlap.
+
+    Parameters
+    ----------
+    model_id : str
+        ManiSkill YCB model identifier.
+
+    Returns
+    -------
+    float
+        Half the XY bounding-box diagonal, in metres.
+    """
+    model_db = _load_maniskill_pick_db()
+    metadata = model_db[model_id]
+    scale = metadata.get("scales", [1.0])[0]
+    bbox_min = metadata["bbox"]["min"]
+    bbox_max = metadata["bbox"]["max"]
+    dx = (bbox_max[0] - bbox_min[0]) * scale
+    dy = (bbox_max[1] - bbox_min[1]) * scale
+    return float(np.sqrt(dx * dx + dy * dy) / 2.0)
+
+
 def get_mujoco_ycb_rest_pose(verts: np.ndarray, margin: float = 0.002) -> tuple[np.ndarray, float]:
     """Return a stable object rest quaternion and spawn Z from raw mesh vertices.
 

@@ -147,7 +147,12 @@ def test_pick_ycb_object(env_id, model_id):
 
 @pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
 def test_pick_multiple_cubes_with_distractors(env_id):
-    """PickLift with a pool of cubes and distractors spawns correctly."""
+    """PickLift with a pool of cubes and distractors spawns correctly.
+
+    Also verifies distractors are sampled without replacement: with a 3-cube
+    pool and 2 distractors, every spawned object identity (target + distractors)
+    is distinct.
+    """
     objects: list[CubeObject] = [
         CubeObject(color="red"),
         CubeObject(color="blue"),
@@ -157,7 +162,146 @@ def test_pick_multiple_cubes_with_distractors(env_id):
     env = gym.make(env_id, config=config, **BASE_KWARGS)
     try:
         env.reset()
+        inner = env.unwrapped
+        colors = [inner._target_obj.color] + [d.color for d in inner._distractors_spec]
+        assert len(set(colors)) == len(colors), f"duplicate distractor identities: {colors}"
         _run_episode(env)
+    finally:
+        env.close()
+
+
+def _spawned_identities(inner) -> tuple[str, tuple[str, ...]]:
+    """Return (target_color, (distractor_colors,)) for the current episode."""
+    return inner._target_obj.color, tuple(d.color for d in inner._distractors_spec)
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_identities_reproducible_by_seed(env_id):
+    """reset(seed=S) reproduces the same target/distractor identities."""
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    config = PickConfig(objects=objects, n_distractors=1)  # type: ignore[arg-type]
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        env.reset(seed=123)
+        first = _spawned_identities(inner)
+        env.reset(seed=123)
+        second = _spawned_identities(inner)
+        assert first == second, f"seed=123 not reproducible: {first} vs {second}"
+
+        # A different seed is allowed to differ; scan a few to show identities
+        # actually vary across seeds (variable-object pool reconfigures).
+        seen = set()
+        for s in range(8):
+            env.reset(seed=s)
+            seen.add(_spawned_identities(inner))
+        assert len(seen) > 1, f"identities never varied across seeds: {seen}"
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_distractors_unique_when_pool_allows(env_id):
+    """Distractors are unique (no duplicates) when the pool is large enough."""
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+        CubeObject(color="yellow"),
+    ]
+    config = PickConfig(objects=objects, n_distractors=3)  # type: ignore[arg-type]
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        for s in range(6):
+            env.reset(seed=s)
+            target, distractors = _spawned_identities(inner)
+            all_ids = [target, *distractors]
+            assert len(set(all_ids)) == len(all_ids), f"duplicate identity: {all_ids}"
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_object_separation_respected(env_id):
+    """Spawned objects satisfy min_object_separation + bounding radii (num_envs=1)."""
+    from so101_nexus_maniskill.pick_env import _obj_bounding_radius
+
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    min_sep = 0.04
+    config = PickConfig(  # type: ignore[arg-type]
+        objects=objects, n_distractors=2, min_object_separation=min_sep
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        for s in range(6):
+            env.reset(seed=s)
+            radii = [_obj_bounding_radius(inner._target_obj)] + [
+                _obj_bounding_radius(d) for d in inner._distractors_spec
+            ]
+            xys = [inner.obj.pose.p[0, :2].cpu()] + [
+                d.pose.p[0, :2].cpu() for d in inner.distractors
+            ]
+            n = len(xys)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dist = float(torch.linalg.norm(xys[i] - xys[j]))
+                    required = min_sep + radii[i] + radii[j]
+                    # Settling can nudge objects slightly; allow a small tolerance.
+                    assert dist >= required - 0.02, (
+                        f"objects {i},{j} too close: {dist} < {required}"
+                    )
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_separation_batched_vec(env_id):
+    """GPU-gated: batched per-row separation holds for num_envs>1."""
+    from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
+    from so101_nexus_maniskill.pick_env import _obj_bounding_radius
+
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    min_sep = 0.04
+    config = PickConfig(  # type: ignore[arg-type]
+        objects=objects, n_distractors=2, min_object_separation=min_sep
+    )
+    try:
+        env = gym.make(
+            env_id, config=config, obs_mode="state", num_envs=2, render_mode=None
+        )
+    except Exception as exc:  # narrowed: only GPU-availability errors become skips
+        skip_if_vectorized_runtime_unavailable(exc)
+    try:
+        inner = env.unwrapped
+        env.reset(seed=0)
+        radii = [_obj_bounding_radius(inner._target_obj)] + [
+            _obj_bounding_radius(d) for d in inner._distractors_spec
+        ]
+        xys = [inner.obj.pose.p[:, :2].cpu()] + [
+            d.pose.p[:, :2].cpu() for d in inner.distractors
+        ]
+        n = len(xys)
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = torch.linalg.norm(xys[i] - xys[j], dim=1)
+                required = min_sep + radii[i] + radii[j]
+                assert bool((dist >= required - 0.02).all()), (
+                    f"objects {i},{j} too close in some env row"
+                )
     finally:
         env.close()
 
