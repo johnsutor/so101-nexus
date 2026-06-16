@@ -24,6 +24,7 @@ from so101_nexus_core.config import (
     PickAndPlaceConfig,
     PickConfig,
     ReachConfig,
+    RobotConfig,
 )
 from so101_nexus_core.constants import CUBE_COLOR_MAP, YCB_OBJECTS
 from so101_nexus_core.objects import CubeObject, YCBObject
@@ -1262,5 +1263,67 @@ def test_pick_lift_robot_base_at_origin():
         assert base_pos[0].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[1].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[2].item() == pytest.approx(0.0, abs=0.01)
+    finally:
+        env.close()
+
+
+# Non-default thresholds, distinct from the agent defaults (min_force=0.5,
+# threshold=0.2), so a captured value can only equal these if the env forwarded
+# the configured RobotConfig fields rather than relying on the hardcoded default.
+_GRASP_FORCE = 1.7
+_STATIC_VEL = 0.0123
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_lift_forwards_grasp_force_threshold(env_id):
+    """PickLift.evaluate must pass RobotConfig.grasp_force_threshold to is_grasping."""
+    config = PickConfig(robot=RobotConfig(grasp_force_threshold=_GRASP_FORCE))
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset()
+        captured: dict = {}
+
+        original = inner.agent.is_grasping
+
+        def _capture(object=None, *, min_force=None, **kwargs):
+            captured["min_force"] = min_force
+            return original(object, min_force=min_force, **kwargs)
+
+        inner.agent.is_grasping = _capture
+        inner.evaluate()
+        assert captured["min_force"] == pytest.approx(_GRASP_FORCE)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_forwards_thresholds(env_id):
+    """PickAndPlace.evaluate must forward both grasp and static RobotConfig fields."""
+    config = PickAndPlaceConfig(
+        robot=RobotConfig(grasp_force_threshold=_GRASP_FORCE, static_vel_threshold=_STATIC_VEL)
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset()
+        captured: dict = {}
+
+        orig_grasp = inner.agent.is_grasping
+        orig_static = inner.agent.is_static
+
+        def _capture_grasp(object=None, *, min_force=None, **kwargs):
+            captured["min_force"] = min_force
+            return orig_grasp(object, min_force=min_force, **kwargs)
+
+        def _capture_static(*, threshold=None, **kwargs):
+            captured["threshold"] = threshold
+            return orig_static(threshold=threshold, **kwargs)
+
+        inner.agent.is_grasping = _capture_grasp
+        inner.agent.is_static = _capture_static
+        inner.evaluate()
+        assert captured["min_force"] == pytest.approx(_GRASP_FORCE)
+        assert captured["threshold"] == pytest.approx(_STATIC_VEL)
     finally:
         env.close()

@@ -342,7 +342,9 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
     def evaluate(self) -> dict[str, torch.Tensor]:
         """Return per-env metrics: is_grasped, lift_height, tcp_to_obj_dist."""
         tcp_to_obj_dist = torch.linalg.norm(self.obj.pose.p - self.agent.tcp_pose.p, axis=1)
-        is_grasped = self.agent.is_grasping(self.obj)
+        is_grasped = self.agent.is_grasping(
+            self.obj, min_force=self.config.robot.grasp_force_threshold
+        )
 
         obj_z = self.obj.pose.p[:, 2]
         lift_height = obj_z - self._initial_obj_z

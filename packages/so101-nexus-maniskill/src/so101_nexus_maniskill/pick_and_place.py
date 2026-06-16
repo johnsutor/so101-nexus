@@ -267,8 +267,10 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         obj_to_target_dist = torch.linalg.norm(obj_to_target_xy, axis=1)
         cube_near_ground = self.obj.pose.p[:, 2] < (self.cube_half_size + 0.01)
         is_obj_placed = (obj_to_target_dist <= self._robot_cfg["goal_thresh"]) & cube_near_ground
-        is_grasped = self.agent.is_grasping(self.obj)
-        is_robot_static = self.agent.is_static()
+        is_grasped = self.agent.is_grasping(
+            self.obj, min_force=self.config.robot.grasp_force_threshold
+        )
+        is_robot_static = self.agent.is_static(threshold=self.config.robot.static_vel_threshold)
 
         obj_z = self.obj.pose.p[:, 2]
         lift_height = obj_z - self._initial_obj_z
