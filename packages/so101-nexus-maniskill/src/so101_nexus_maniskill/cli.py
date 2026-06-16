@@ -17,7 +17,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _setup_teleop_backend() -> None:
     """Register ManiSkill gym envs before launching teleop."""
-    import so101_nexus_maniskill  # noqa: F401 — register gym envs eagerly
+    import so101_nexus_maniskill  # noqa: F401 - register gym envs eagerly
 
 
 def main() -> None:

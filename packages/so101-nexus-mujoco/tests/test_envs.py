@@ -17,7 +17,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-import so101_nexus_mujoco  # noqa: F401 — registers envs
+import so101_nexus_mujoco  # noqa: F401 - registers envs
 from so101_nexus_core.config import (
     LookAtConfig,
     MoveConfig,
@@ -82,7 +82,7 @@ def _run_episode(env, n_steps: int = N_STEPS):
 
 
 # ---------------------------------------------------------------------------
-# Shared contract — one parametrized call per env id.
+# Shared contract - one parametrized call per env id.
 # ---------------------------------------------------------------------------
 
 
@@ -202,7 +202,7 @@ def test_pick_and_place_info_keys_exact():
 
 
 # ---------------------------------------------------------------------------
-# Object parametrics — cubes, YCB, mixed pools.
+# Object parametrics - cubes, YCB, mixed pools.
 # ---------------------------------------------------------------------------
 
 
@@ -887,7 +887,7 @@ def test_pick_and_place_rgb_array_render():
 
 
 # ---------------------------------------------------------------------------
-# Camera observation integration — not part of the shared contract.
+# Camera observation integration - not part of the shared contract.
 # ---------------------------------------------------------------------------
 
 

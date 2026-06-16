@@ -6,7 +6,7 @@ imported into ``gymnasium.envs.registry`` to assert against.
 
 from __future__ import annotations
 
-import so101_nexus_mujoco  # noqa: F401 — registers MuJoCo gym envs
+import so101_nexus_mujoco  # noqa: F401 - registers MuJoCo gym envs
 from so101_nexus_core.testing.env_id_filter import run_env_id_filter_contract
 
 

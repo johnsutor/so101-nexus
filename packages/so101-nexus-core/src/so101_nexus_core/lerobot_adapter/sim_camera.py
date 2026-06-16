@@ -64,7 +64,8 @@ class SimCamera(Camera):
         self._env = None
 
     def _read_frame(self) -> Any:
-        assert self._env is not None
+        if self._env is None:
+            raise RuntimeError("SimCamera is not connected to an environment")
         env = getattr(self._env, "unwrapped", self._env)
         get_obs = getattr(env, "_get_obs", None)
         if callable(get_obs):

@@ -26,7 +26,7 @@ COLOR_MAP: dict[str, list[float]] = {
     "gray": [0.5, 0.5, 0.5, 1.0],
 }
 
-# CUBE_COLOR_MAP omits "gray" (reserved for ground) — otherwise identical to COLOR_MAP.
+# CUBE_COLOR_MAP omits "gray" (reserved for ground) - otherwise identical to COLOR_MAP.
 CUBE_COLOR_MAP: dict[str, list[float]] = {k: v for k, v in COLOR_MAP.items() if k != "gray"}
 
 TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP

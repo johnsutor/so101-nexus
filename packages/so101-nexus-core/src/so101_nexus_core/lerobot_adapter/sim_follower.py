@@ -178,7 +178,8 @@ class SimSOFollower(Robot):
     @check_if_not_connected
     def get_observation(self) -> RobotObservation:
         """Read simulator qpos and camera frames in LeRobot observation format."""
-        assert self._env is not None
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
         gripper_limits_rad = self._require_gripper_limits()
 
         start = time.perf_counter()
@@ -213,7 +214,8 @@ class SimSOFollower(Robot):
     @check_if_not_connected
     def send_action(self, action: RobotAction) -> RobotAction:
         """Send a normalized LeRobot joint target to the simulator."""
-        assert self._env is not None
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
         gripper_limits_rad = self._require_gripper_limits()
 
         goal_pos = {
@@ -283,7 +285,8 @@ class SimSOFollower(Robot):
         self,
         gripper_limits_rad: GripperLimitsRad,
     ) -> dict[str, float]:
-        assert self._env is not None
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
         qpos_rad = read_sim_qpos(self._env)
         ticks = sim_rad_to_motor_ticks(
             qpos_rad,

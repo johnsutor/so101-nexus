@@ -118,7 +118,7 @@ def compute_overhead_eye_target(
 
     Returns
     -------
-    (eye, target) — each a 3-element list [x, y, z].
+    (eye, target) - each a 3-element list [x, y, z].
     """
     params = compute_overhead_camera_params(
         spawn_center=spawn_center,

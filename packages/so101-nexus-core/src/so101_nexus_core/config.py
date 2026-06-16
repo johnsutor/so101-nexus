@@ -72,9 +72,12 @@ _validate_color_config = validate_color_config
 class RenderConfig:
     """Render camera resolution settings (visualization only, not observations).
 
-    Args:
-        width: Render image width in pixels.
-        height: Render image height in pixels.
+    Parameters
+    ----------
+    width : int
+        Render image width in pixels.
+    height : int
+        Render image height in pixels.
     """
 
     def __init__(self, width: int = 640, height: int = 480) -> None:
@@ -188,7 +191,7 @@ POSES: dict[str, Pose] = {
 class RobotConfig:
     """Configurable robot parameters.
 
-    Joint names are intentionally not included here — they are structural
+    Joint names are intentionally not included here - they are structural
     identifiers that must match the URDF/MJCF and should not be overridden.
 
     Parameters
@@ -252,17 +255,28 @@ class RobotConfig:
 class RobotCameraPreset:
     """Robot-specific camera and mounting parameters.
 
-    Args:
-        base_quat: Base quaternion (w, x, y, z).
-        sensor_cam_eye_pos: Sensor camera eye position.
-        sensor_cam_target_pos: Sensor camera target position.
-        human_cam_eye_pos: Human camera eye position.
-        human_cam_target_pos: Human camera target position.
-        wrist_camera_mount_link: Link name for wrist camera mounting.
-        wrist_cam_pos_center: Center position for wrist camera.
-        wrist_cam_pos_noise: Position noise for wrist camera.
-        wrist_cam_euler_center_deg: Center Euler angles in degrees.
-        wrist_cam_euler_noise_deg: Euler angle noise in degrees.
+    Parameters
+    ----------
+    base_quat : tuple[float, float, float, float]
+        Base quaternion (w, x, y, z).
+    sensor_cam_eye_pos : tuple[float, float, float]
+        Sensor camera eye position.
+    sensor_cam_target_pos : tuple[float, float, float]
+        Sensor camera target position.
+    human_cam_eye_pos : tuple[float, float, float]
+        Human camera eye position.
+    human_cam_target_pos : tuple[float, float, float]
+        Human camera target position.
+    wrist_camera_mount_link : str
+        Link name for wrist camera mounting.
+    wrist_cam_pos_center : tuple[float, float, float]
+        Center position for wrist camera.
+    wrist_cam_pos_noise : tuple[float, float, float]
+        Position noise for wrist camera.
+    wrist_cam_euler_center_deg : tuple[float, float, float]
+        Center Euler angles in degrees.
+    wrist_cam_euler_noise_deg : tuple[float, float, float]
+        Euler angle noise in degrees.
     """
 
     def __init__(
@@ -314,14 +328,22 @@ class RewardConfig:
     The four component weights must sum to 1.0. Penalty terms are applied
     additively and subtracted from the base reward.
 
-    Args:
-        reaching: Weight for TCP-to-object distance shaping.
-        grasping: Weight for grasp binary signal.
-        task_objective: Weight for task-specific progress.
-        completion_bonus: Weight for episode completion signal.
-        action_delta_penalty: Penalty coefficient on L2 norm of consecutive action deltas.
-        energy_penalty: Penalty coefficient on L2 norm of the action vector (energy cost).
-        tanh_shaping_scale: Scale factor for tanh distance shaping.
+    Parameters
+    ----------
+    reaching : float
+        Weight for TCP-to-object distance shaping.
+    grasping : float
+        Weight for grasp binary signal.
+    task_objective : float
+        Weight for task-specific progress.
+    completion_bonus : float
+        Weight for episode completion signal.
+    action_delta_penalty : float
+        Penalty coefficient on L2 norm of consecutive action deltas.
+    energy_penalty : float
+        Penalty coefficient on L2 norm of the action vector (energy cost).
+    tanh_shaping_scale : float
+        Scale factor for tanh distance shaping.
     """
 
     def __init__(
@@ -411,22 +433,38 @@ class EnvironmentConfig:
     Contains only parameters that every environment needs. Task-specific
     parameters live in subclass configs (PickConfig, etc.).
 
-    Args:
-        render: Render camera resolution settings (visualization only).
-        reward: Reward configuration.
-        robot: Robot configuration.
-        ground_colors: Ground plane color(s).
-        reset_settle_frames: No-op environment frames advanced after reset before observation.
-        goal_thresh: Distance threshold for goal achievement.
-        spawn_half_size: Half-size of spawn region.
-        spawn_center: Center of spawn region (x, y).
-        spawn_min_radius: Minimum spawn radius.
-        spawn_max_radius: Maximum spawn radius.
-        spawn_angle_half_range_deg: Half angular range for spawn angle in degrees.
-        obs_mode: Observation mode (state or visual).
-        robot_colors: Robot arm color(s).
-        robot_init_qpos_noise: Initial joint position noise.
-        observations: Observation components to include in the state vector.
+    Parameters
+    ----------
+    render : RenderConfig, optional
+        Render camera resolution settings (visualization only).
+    reward : RewardConfig, optional
+        Reward configuration.
+    robot : RobotConfig, optional
+        Robot configuration.
+    ground_colors : ColorConfig
+        Ground plane color(s).
+    reset_settle_frames : int
+        No-op environment frames advanced after reset before observation.
+    goal_thresh : float
+        Distance threshold for goal achievement.
+    spawn_half_size : float
+        Half-size of spawn region.
+    spawn_center : tuple[float, float]
+        Center of spawn region (x, y).
+    spawn_min_radius : float
+        Minimum spawn radius.
+    spawn_max_radius : float
+        Maximum spawn radius.
+    spawn_angle_half_range_deg : float
+        Half angular range for spawn angle in degrees.
+    obs_mode : ObsMode
+        Observation mode (state or visual).
+    robot_colors : ColorConfig
+        Robot arm color(s).
+    robot_init_qpos_noise : float
+        Initial joint position noise.
+    observations : list, optional
+        Observation components to include in the state vector.
     """
 
     def __init__(
@@ -465,10 +503,10 @@ class EnvironmentConfig:
         if self.obs_mode not in ("state", "visual"):
             raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
         if self.obs_mode == "visual":
-            from so101_nexus_core.observations import _CameraObservation as _CamObs
+            from so101_nexus_core.observations import CameraObservation
 
             has_camera_component = self.observations is not None and any(
-                isinstance(c, _CamObs) for c in self.observations
+                isinstance(c, CameraObservation) for c in self.observations
             )
             if not has_camera_component:
                 raise ValueError(
@@ -497,9 +535,9 @@ class EnvironmentConfig:
                 f"got {self.spawn_angle_half_range_deg}"
             )
         if self.observations is not None:
-            from so101_nexus_core.observations import _CameraObservation
+            from so101_nexus_core.observations import CameraObservation
 
-            cam_types = [type(c) for c in self.observations if isinstance(c, _CameraObservation)]
+            cam_types = [type(c) for c in self.observations if isinstance(c, CameraObservation)]
             if len(cam_types) != len(set(cam_types)):
                 raise ValueError("Duplicate camera observation components are not allowed")
 
@@ -539,15 +577,22 @@ class PickConfig(EnvironmentConfig):
     objects are sampled from the remaining pool and placed as distractors.
     Task descriptions are auto-generated from each object's ``__repr__``.
 
-    Args:
-        objects: Pool of scene objects to sample from. Accepts a single ``SceneObject``,
-            a list of ``SceneObject``, or ``None`` (defaults to ``[CubeObject()]``).
-            A single object is automatically wrapped in a list.
-        n_distractors: Number of distractor objects to place. 0 means single-object scene.
-        lift_threshold: Minimum height above initial z to count as lifted.
-        max_goal_height: Height cap used to normalize lift progress to [0, 1].
-        min_object_separation: Minimum distance between spawned objects (metres).
-        **kwargs: Forwarded to EnvironmentConfig.
+    Parameters
+    ----------
+    objects : list[SceneObject] or SceneObject, optional
+        Pool of scene objects to sample from. Accepts a single ``SceneObject``,
+        a list of ``SceneObject``, or ``None`` (defaults to ``[CubeObject()]``).
+        A single object is automatically wrapped in a list.
+    n_distractors : int
+        Number of distractor objects to place. 0 means single-object scene.
+    lift_threshold : float
+        Minimum height above initial z to count as lifted.
+    max_goal_height : float
+        Height cap used to normalize lift progress to [0, 1].
+    min_object_separation : float
+        Minimum distance between spawned objects (metres).
+    **kwargs
+        Forwarded to EnvironmentConfig.
     """
 
     def __init__(
@@ -589,14 +634,22 @@ class PickConfig(EnvironmentConfig):
 class PickAndPlaceConfig(EnvironmentConfig):
     """Config for pick-and-place environments.
 
-    Args:
-        cube_colors: Cube color(s).
-        target_colors: Target disc color(s).
-        cube_half_size: Half-size of the cube in metres.
-        cube_mass: Mass of the cube in kg.
-        target_disc_radius: Radius of the target disc.
-        min_cube_target_separation: Minimum separation between cube and target.
-        **kwargs: Forwarded to EnvironmentConfig.
+    Parameters
+    ----------
+    cube_colors : ColorConfig
+        Cube color(s).
+    target_colors : ColorConfig
+        Target disc color(s).
+    cube_half_size : float
+        Half-size of the cube in metres.
+    cube_mass : float
+        Mass of the cube in kg.
+    target_disc_radius : float
+        Radius of the target disc.
+    min_cube_target_separation : float
+        Minimum separation between cube and target.
+    **kwargs
+        Forwarded to EnvironmentConfig.
     """
 
     def __init__(
@@ -682,12 +735,16 @@ class PickAndPlaceConfig(EnvironmentConfig):
 class ReachConfig(EnvironmentConfig):
     """Config for the reach-to-target primitive task.
 
-    Args:
-        target_radius: Visual radius of the target site sphere (metres).
-        target_workspace_half_extent: Half-width of the cubic workspace to
-            sample target positions from (metres).
-        success_threshold: TCP-to-target distance (m) that counts as success.
-        **kwargs: Forwarded to EnvironmentConfig.
+    Parameters
+    ----------
+    target_radius : float
+        Visual radius of the target site sphere (metres).
+    target_workspace_half_extent : float
+        Half-width of the cubic workspace to sample target positions from (metres).
+    success_threshold : float
+        TCP-to-target distance (m) that counts as success.
+    **kwargs
+        Forwarded to EnvironmentConfig.
     """
 
     def __init__(
@@ -708,12 +765,16 @@ class ReachConfig(EnvironmentConfig):
 class LookAtConfig(EnvironmentConfig):
     """Config for the look-at primitive task.
 
-    Args:
-        objects: Object(s) to sample as the look-at target. Accepts a single
-            SceneObject, a list, or None (defaults to [CubeObject()]).
-            Only CubeObject targets are currently supported.
-        orientation_success_threshold_deg: Max angular error in degrees for success.
-        **kwargs: Forwarded to EnvironmentConfig.
+    Parameters
+    ----------
+    objects : list[SceneObject] or SceneObject, optional
+        Object(s) to sample as the look-at target. Accepts a single
+        SceneObject, a list, or None (defaults to [CubeObject()]).
+        Only CubeObject targets are currently supported.
+    orientation_success_threshold_deg : float
+        Max angular error in degrees for success.
+    **kwargs
+        Forwarded to EnvironmentConfig.
     """
 
     def __init__(
@@ -747,11 +808,16 @@ class LookAtConfig(EnvironmentConfig):
 class MoveConfig(EnvironmentConfig):
     """Config for the directional move primitive task.
 
-    Args:
-        direction: Cardinal direction to move the TCP.
-        target_distance: Distance in metres to travel from the initial TCP position.
-        success_threshold: Max residual distance (m) to count as success.
-        **kwargs: Forwarded to EnvironmentConfig.
+    Parameters
+    ----------
+    direction : MoveDirection
+        Cardinal direction to move the TCP.
+    target_distance : float
+        Distance in metres to travel from the initial TCP position.
+    success_threshold : float
+        Max residual distance (m) to count as success.
+    **kwargs
+        Forwarded to EnvironmentConfig.
     """
 
     def __init__(
@@ -778,7 +844,7 @@ class MoveConfig(EnvironmentConfig):
         return f"Move the end-effector {self.direction} by {self.target_distance:.2f} m."
 
 
-# sqrt(2)/2 — used for 90-degree rotation quaternions in camera presets.
+# sqrt(2)/2 - used for 90-degree rotation quaternions in camera presets.
 SQRT_HALF = float(np.sqrt(0.5))
 
 ROBOT_CAMERA_PRESETS: dict[str, RobotCameraPreset] = {

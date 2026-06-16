@@ -1,5 +1,7 @@
 """ManiSkill pick-and-place task environment for SO101-Nexus."""
 
+from __future__ import annotations
+
 from typing import Any, ClassVar
 
 import sapien
@@ -224,9 +226,7 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         per-episode sampled color is applied to an already-built actor.
         """
         for entity in actor._objs:
-            render_body: RenderBodyComponent = entity.find_component_by_type(
-                RenderBodyComponent
-            )
+            render_body: RenderBodyComponent = entity.find_component_by_type(RenderBodyComponent)
             if render_body is None:
                 continue
             for render_shape in render_body.render_shapes:

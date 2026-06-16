@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     EnvironmentConfig,
 )
 from so101_nexus_core.observations import (
+    CameraObservation,
     EndEffectorPose,
     GazeDirection,
     GraspState,
@@ -27,7 +28,6 @@ from so101_nexus_core.observations import (
     TargetOffset,
     TargetPosition,
     WristCamera,
-    _CameraObservation,
 )
 from so101_nexus_core.rewards import orientation_progress, reach_progress
 
@@ -315,7 +315,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             return
 
         wc = self._wrist_cam_component
-        assert wc is not None, "wrist renderer requires a WristCamera component"
+        if wc is None:
+            raise RuntimeError("wrist renderer requires a WristCamera component")
         pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
         fov_lo, fov_hi = wc.fov_deg_range
         pos_x_noise = wc.pos_x_noise
@@ -435,7 +436,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
         parts: list[np.ndarray] = []
-        assert self.config.observations is not None, "config.observations must be set"
+        if self.config.observations is None:
+            raise RuntimeError("config.observations must be set")
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._get_current_qpos())
@@ -448,7 +450,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
             ):
                 parts.append(self._get_component_data(comp))
-            elif isinstance(comp, _CameraObservation):
+            elif isinstance(comp, CameraObservation):
                 continue  # camera images handled separately in _get_obs
             else:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
@@ -596,6 +598,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _reach_only_reward(self, info: dict) -> float:
         """Reach-only reward: tanh distance shaping toward the object with no task progress."""
+        # mirrors RewardConfig.compute() in so101_nexus_core.config
         rp = reach_progress(info["tcp_to_obj_dist"], scale=self.config.reward.tanh_shaping_scale)
         is_grasped = info["is_grasped"] > 0.5
         return self.config.reward.compute(
@@ -609,6 +612,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _lift_reward(self, info: dict) -> float:
         """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
+        # mirrors RewardConfig.compute() in so101_nexus_core.config
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
@@ -655,13 +659,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             obs["state"] = state
 
         if self._wrist_renderer is not None:
-            assert self._wrist_cam_id is not None
+            if self._wrist_cam_id is None:
+                raise RuntimeError("wrist camera id is not initialized")
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             obs["wrist_camera"] = self._wrist_renderer.render()
 
         overhead_renderer = self._overhead_obs_renderer
         if overhead_renderer is not None:
-            assert self._overhead_obs_cam is not None
+            if self._overhead_obs_cam is None:
+                raise RuntimeError("overhead camera id is not initialized")
             overhead_renderer.update_scene(self.data, camera=self._overhead_obs_cam)
             obs["overhead_camera"] = overhead_renderer.render()
 

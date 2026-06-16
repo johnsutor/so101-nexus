@@ -16,7 +16,7 @@ from so101_nexus_core.config import (
     ControlMode,
     PickAndPlaceConfig,
 )
-from so101_nexus_core.constants import COLOR_MAP, sample_color, sample_color_name
+from so101_nexus_core.constants import COLOR_MAP, sample_color_name
 from so101_nexus_core.rewards import reach_progress
 from so101_nexus_mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
@@ -108,13 +108,21 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self.target_disc_radius = config.target_disc_radius
         self.task_description = self.config.task_description
 
+        # Colors are sampled with a seeded RNG and overwritten in _task_reset; use
+        # the first configured color here so construction stays deterministic and
+        # avoids an unseeded RNG call.
+        ground_name = (
+            config.ground_colors
+            if isinstance(config.ground_colors, str)
+            else config.ground_colors[0]
+        )
         xml_string = _build_scene_xml(
             config.cube_half_size,
-            sample_color(config.cube_colors),
-            sample_color(config.target_colors),
+            COLOR_MAP[cube_name],
+            COLOR_MAP[target_name],
             config.target_disc_radius,
             config.cube_mass,
-            sample_color(config.ground_colors),
+            COLOR_MAP[ground_name],
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)

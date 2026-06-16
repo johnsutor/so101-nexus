@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import so101_nexus_maniskill  # noqa: F401 — registers ManiSkill gym envs
+import so101_nexus_maniskill  # noqa: F401 - registers ManiSkill gym envs
 from so101_nexus_core.testing.env_id_filter import run_env_id_filter_contract
 
 

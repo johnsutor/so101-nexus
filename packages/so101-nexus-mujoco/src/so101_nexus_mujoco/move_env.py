@@ -52,7 +52,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     Info: tcp_to_target_dist, success.
     task_description: "Move the end-effector <direction> by <distance> m."
 
-    DO NOT call _is_grasping() in this env — there is no graspable object.
+    DO NOT call _is_grasping() in this env - there is no graspable object.
     """
 
     config: MoveConfig

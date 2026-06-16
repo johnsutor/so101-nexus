@@ -1,6 +1,13 @@
 """MuJoCo backend for SO101-Nexus: registers all MuJoCo Gymnasium environments."""
 
+from __future__ import annotations
+
 import gymnasium
+
+# This package exposes its environments through Gymnasium registration and lazy
+# entry points (see ``gymnasium.register`` below) rather than top-level
+# re-exports, so the public name surface here is empty.
+__all__: list[str] = []
 
 gymnasium.register(
     id="MuJoCoPickLift-v1",

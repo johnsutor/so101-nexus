@@ -22,12 +22,12 @@ from transforms3d.euler import euler2quat
 from so101_nexus_core.camera_utils import _DEFAULT_VFOV_DEG, compute_overhead_eye_target
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.observations import (
+    CameraObservation,
     EndEffectorPose,
     GraspState,
     JointPositions,
     OverheadCamera,
     WristCamera,
-    _CameraObservation,
 )
 
 if TYPE_CHECKING:
@@ -89,12 +89,12 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         """
         return 1 if self._wrist_cam_component is not None else 0
 
-    # Tensor equivalent of so101_nexus_core.rewards.reach_progress
+    # mirrors reach_progress() in so101_nexus_core.rewards
     def _reach_progress(self, dist: torch.Tensor) -> torch.Tensor:
         """Tanh-shaped progress in [0, 1]. See ``so101_nexus_core.rewards.reach_progress``."""
         return 1.0 - torch.tanh(self.config.reward.tanh_shaping_scale * dist)
 
-    # Tensor equivalent of so101_nexus_core.config.RewardConfig.apply_penalties
+    # mirrors RewardConfig.apply_penalties() in so101_nexus_core.config
     def _apply_penalties_tensor(
         self,
         base: torch.Tensor,
@@ -107,7 +107,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
             base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
         )
 
-    # Tensor equivalent of so101_nexus_core.config.RewardConfig.compute
+    # mirrors RewardConfig.compute() in so101_nexus_core.config
     def _assemble_normalized_reward(
         self,
         *,
@@ -514,7 +514,7 @@ class SO101NexusManiSkillBaseEnv(BaseEnv):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 continue  # ManiSkill includes qpos automatically
-            if isinstance(comp, _CameraObservation):
+            if isinstance(comp, CameraObservation):
                 continue  # Handled via _default_sensor_configs
             if isinstance(comp, EndEffectorPose):
                 obs["tcp_pose"] = self.agent.tcp_pose.raw_pose

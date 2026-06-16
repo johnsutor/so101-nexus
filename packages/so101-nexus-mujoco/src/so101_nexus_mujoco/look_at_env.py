@@ -70,7 +70,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     Info: orientation_error (radians), success.
     task_description is auto-generated: "Look at the <repr(obj)>."
 
-    DO NOT call _is_grasping() in this env — there is no graspable object
+    DO NOT call _is_grasping() in this env - there is no graspable object
     (the object is present for visual targeting, not grasping).
     """
 

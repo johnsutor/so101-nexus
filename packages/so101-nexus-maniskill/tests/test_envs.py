@@ -18,7 +18,7 @@ import pytest
 import torch
 from mani_skill import ASSET_DIR
 
-import so101_nexus_maniskill  # noqa: F401 — registers envs
+import so101_nexus_maniskill  # noqa: F401 - registers envs
 from so101_nexus_core.config import (
     LookAtConfig,
     MoveConfig,

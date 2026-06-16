@@ -51,7 +51,7 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
     Default obs (6,): joint_positions.
     Info: tcp_to_target_dist, success.
 
-    DO NOT call _is_grasping() in this env — there is no graspable object.
+    DO NOT call _is_grasping() in this env - there is no graspable object.
     """
 
     config: ReachConfig
