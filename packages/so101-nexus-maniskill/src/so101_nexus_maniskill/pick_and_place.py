@@ -18,6 +18,111 @@ _DEFAULT_CONFIG = PickAndPlaceConfig()
 PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
 
 
+def _sample_polar_arc_xy(
+    *,
+    rows: int,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
+    center: tuple[float, float],
+    device: torch.device | str,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample ``rows`` XY positions uniformly in a polar arc around ``center``."""
+    cx, cy = center
+    r = min_r + torch.rand(rows, device=device, generator=generator) * (max_r - min_r)
+    theta = (torch.rand(rows, device=device, generator=generator) * 2 - 1) * angle_half
+    xy = torch.zeros((rows, 2), device=device)
+    xy[:, 0] = cx + r * torch.cos(theta)
+    xy[:, 1] = cy + r * torch.sin(theta)
+    return xy
+
+
+def sample_cube_xy_separated_from_target(
+    *,
+    target_xy: torch.Tensor,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
+    min_separation: float,
+    center: tuple[float, float],
+    device: torch.device | str,
+    max_attempts: int = 100,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample per-env cube XY in a polar arc, separated from a fixed target XY.
+
+    For each environment row, an XY position is sampled in the polar arc and
+    rejected if it lies within ``min_separation`` of that row's ``target_xy``.
+    Only rows that still violate the constraint are resampled, up to
+    ``max_attempts`` times, after which the last sample is accepted as best
+    effort. This mirrors the per-row mask semantics of
+    ``spawn_utils.sample_separated_positions_torch`` for the single-object case.
+
+    Parameters
+    ----------
+    target_xy : torch.Tensor
+        Shape ``(num_envs, 2)`` fixed target XY positions to stay clear of.
+    min_r, max_r : float
+        Radial bounds from ``center``, in metres.
+    angle_half : float
+        Half-angle of the arc in radians; samples are drawn from
+        ``[-angle_half, angle_half]``.
+    min_separation : float
+        Minimum XY distance between the cube and its target.
+    center : tuple[float, float]
+        XY offset applied to all sampled positions.
+    device : torch.device or str
+        Device on which to allocate tensors.
+    max_attempts : int, optional
+        Maximum resampling attempts before accepting best effort.
+    generator : torch.Generator, optional
+        Optional torch RNG for reproducible sampling.
+
+    Returns
+    -------
+    torch.Tensor
+        Shape ``(num_envs, 2)`` cube XY positions per environment.
+    """
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+
+    num_envs = int(target_xy.shape[0])
+    sampler = _sample_polar_arc_xy
+
+    xy = sampler(
+        rows=num_envs,
+        min_r=min_r,
+        max_r=max_r,
+        angle_half=angle_half,
+        center=center,
+        device=device,
+        generator=generator,
+    )
+    for _ in range(max_attempts):
+        dists = torch.linalg.norm(xy - target_xy, dim=1)  # (num_envs,)
+        invalid = dists < min_separation  # (num_envs,)
+        # bool(invalid.any()) forces a device-to-host sync per iteration
+        # (bounded by max_attempts), an accepted tradeoff for this rejection
+        # loop. On exhausting max_attempts the loop falls through and the last
+        # sample is returned even if still too close (silent best-effort).
+        if not bool(invalid.any()):
+            break
+        n_bad = int(invalid.sum())
+        # Resample ONLY the invalid rows; valid rows are left untouched.
+        xy[invalid] = sampler(
+            rows=n_bad,
+            min_r=min_r,
+            max_r=max_r,
+            angle_half=angle_half,
+            center=center,
+            device=device,
+            generator=generator,
+        )
+
+    return xy
+
+
 class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
     """Pick-and-place environment with a visible coloured target disc on the ground."""
 
@@ -126,14 +231,18 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             self.target_site.set_pose(Pose.create_from_pq(p=target_xyz, q=target_q))
 
             xyz = torch.zeros((b, 3), device=self.device)
-            for _ in range(100):
-                r_c = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
-                theta_c = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
-                xyz[:, 0] = cx + r_c * torch.cos(theta_c)
-                xyz[:, 1] = cy + r_c * torch.sin(theta_c)
-                dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
-                if (dists >= self.config.min_cube_target_separation).all():
-                    break
+            # Resample only the rows whose cube falls within
+            # min_cube_target_separation of their target (per-row mask), instead
+            # of forcing every row to resample when any single row fails.
+            xyz[:, :2] = sample_cube_xy_separated_from_target(
+                target_xy=target_xyz[:, :2],
+                min_r=min_r,
+                max_r=max_r,
+                angle_half=angle_half,
+                min_separation=self.config.min_cube_target_separation,
+                center=(cx, cy),
+                device=self.device,
+            )
             xyz[:, 2] = self.cube_half_size
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))

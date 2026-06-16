@@ -956,6 +956,95 @@ def test_pick_and_place_cube_target_separation(env_id):
 
 
 @pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_cube_target_separation_batched_vec(env_id):
+    """GPU-gated: every env row satisfies min_cube_target_separation for num_envs>1."""
+    from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
+
+    min_sep = PickAndPlaceConfig().min_cube_target_separation
+    try:
+        env = gym.make(env_id, obs_mode="state", num_envs=16, render_mode=None)
+    except Exception as exc:  # narrowed: only GPU-availability errors become skips
+        skip_if_vectorized_runtime_unavailable(exc)
+    try:
+        inner = env.unwrapped
+        for s in range(3):
+            env.reset(seed=s)
+            cube_xy = inner.obj.pose.p[:, :2].cpu()
+            target_xy = inner.target_site.pose.p[:, :2].cpu()
+            dists = torch.linalg.norm(cube_xy - target_xy, dim=1)
+            assert bool((dists >= min_sep - 1e-4).all()), (
+                f"some env row violates min_cube_target_separation: min={dists.min().item()}"
+            )
+    finally:
+        env.close()
+
+
+def test_sample_cube_xy_separated_returns_valid_positions():
+    """Sampler returns per-row positions that all satisfy the separation (CPU)."""
+    from so101_nexus_maniskill.pick_and_place import sample_cube_xy_separated_from_target
+
+    device = torch.device("cpu")
+    min_sep = 0.1
+    target_xy = torch.zeros((4, 2), device=device)
+
+    gen = torch.Generator(device="cpu")
+    gen.manual_seed(0)
+
+    out = sample_cube_xy_separated_from_target(
+        target_xy=target_xy,
+        min_r=0.5,
+        max_r=0.6,
+        angle_half=0.3,
+        min_separation=min_sep,
+        center=(0.0, 0.0),
+        device=device,
+        generator=gen,
+    )
+    assert out.shape == (4, 2)
+    dists = torch.linalg.norm(out - target_xy, dim=1)
+    assert bool((dists >= min_sep).all())
+
+
+def test_sample_cube_xy_separated_only_invalid_rows_change(monkeypatch):
+    """Valid rows are left untouched; only invalid rows are resampled."""
+    from so101_nexus_maniskill import pick_and_place as pap
+
+    device = torch.device("cpu")
+    min_sep = 0.1
+    target_xy = torch.zeros((3, 2), device=device)
+
+    # First sampler call returns a full batch with row 0 on top of the target
+    # (invalid) and rows 1, 2 far away (valid). The single resample call must
+    # request exactly the one invalid row and is handed a valid position.
+    requested_rows: list[int] = []
+
+    def fake_sampler(*, rows, min_r, max_r, angle_half, center, device, generator=None):
+        requested_rows.append(rows)
+        if len(requested_rows) == 1:
+            return torch.tensor([[0.0, 0.0], [5.0, 0.0], [6.0, 0.0]], device=device)
+        return torch.full((rows, 2), 9.0, device=device)
+
+    monkeypatch.setattr(pap, "_sample_polar_arc_xy", fake_sampler)
+
+    out = pap.sample_cube_xy_separated_from_target(
+        target_xy=target_xy,
+        min_r=0.5,
+        max_r=0.6,
+        angle_half=0.3,
+        min_separation=min_sep,
+        center=(0.0, 0.0),
+        device=device,
+    )
+
+    # Valid rows are untouched; the invalid row was resampled to a valid spot.
+    assert torch.equal(out[1], torch.tensor([5.0, 0.0]))
+    assert torch.equal(out[2], torch.tensor([6.0, 0.0]))
+    assert bool((torch.linalg.norm(out - target_xy, dim=1) >= min_sep).all())
+    # Exactly one resample, of exactly the single invalid row.
+    assert requested_rows == [3, 1]
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
 def test_pick_and_place_target_disc_lies_flat(env_id):
     """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z)."""
     env = gym.make(env_id, **BASE_KWARGS)
