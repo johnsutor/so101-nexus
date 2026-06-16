@@ -41,7 +41,10 @@ from so101_nexus_core.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus_core.testing import run_env_contract
+from so101_nexus_core.testing import (
+    run_env_contract,
+    skip_if_vectorized_runtime_unavailable,
+)
 from so101_nexus_maniskill.look_at_env import LookAtEnv
 from so101_nexus_maniskill.pick_and_place import (
     PickAndPlaceSO100Env,
@@ -102,10 +105,16 @@ def _run_episode(env, n_steps: int = N_STEPS):
 
 
 def _make_vector_env_or_skip(env_id: str, **kwargs):
+    """Build a vectorized env, skipping only on GPU/runtime-availability errors.
+
+    Delegates to the shared ``skip_if_vectorized_runtime_unavailable`` helper so
+    genuine construction errors (a bad link name, a failed patch) surface as
+    failures instead of being masked as skips.
+    """
     try:
         return gym.make(env_id, **kwargs)
     except Exception as exc:
-        pytest.skip(f"ManiSkill vectorized runtime unavailable: {exc}")
+        skip_if_vectorized_runtime_unavailable(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +282,6 @@ def test_pick_object_separation_respected(env_id):
 @pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
 def test_pick_separation_batched_vec(env_id):
     """GPU-gated: batched per-row separation holds for num_envs>1."""
-    from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
     from so101_nexus_maniskill.pick_env import _obj_bounding_radius
 
     objects = [
@@ -1083,8 +1091,6 @@ def test_pick_and_place_cube_target_separation(env_id):
 @pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
 def test_pick_and_place_cube_target_separation_batched_vec(env_id):
     """GPU-gated: every env row satisfies min_cube_target_separation for num_envs>1."""
-    from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
-
     min_sep = PickAndPlaceConfig().min_cube_target_separation
     try:
         env = gym.make(env_id, obs_mode="state", num_envs=16, render_mode=None)
