@@ -22,6 +22,7 @@ from mani_skill.utils.structs.pose import Pose
 from so101_nexus_core.config import PickConfig, describe_pick_target
 from so101_nexus_core.constants import sample_color
 from so101_nexus_core.objects import CubeObject, SceneObject, YCBObject
+from so101_nexus_core.observations import ObjectOffset, ObjectPose
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_core.ycb_geometry import (
     get_maniskill_ycb_bounding_radius,
@@ -353,18 +354,19 @@ class PickEnv(SO101NexusManiSkillBaseEnv):
         }
 
     def _get_obs_extra(self, info: dict) -> dict[str, torch.Tensor]:
-        obs = {
-            "tcp_pose": self.agent.tcp_pose.raw_pose,
-            "is_grasped": info["is_grasped"],
-        }
-        if "state" in self.obs_mode:
-            obs.update(
-                {
-                    "obj_pose": self.obj.pose.raw_pose,
-                    "tcp_to_obj_pos": self.obj.pose.p - self.agent.tcp_pose.p,
-                }
-            )
-        return obs
+        return self._build_obs_extra_from_components(info)
+
+    def _add_component_obs(
+        self, obs: dict[str, torch.Tensor], component: object, info: dict
+    ) -> None:
+        # Semantics mirror so101_nexus_mujoco.pick_env.PickEnv._get_component_data:
+        # ObjectPose = object pose; ObjectOffset = obj_pos - tcp_pos.
+        if isinstance(component, ObjectPose):
+            obs["object_pose"] = self.obj.pose.raw_pose
+        elif isinstance(component, ObjectOffset):
+            obs["object_offset"] = self.obj.pose.p - self.agent.tcp_pose.p
+        else:
+            super()._add_component_obs(obs, component, info)
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Return reach-only reward normalized to [0, 1]."""

@@ -30,9 +30,13 @@ from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
+    GraspState,
     JointPositions,
+    ObjectOffset,
+    ObjectPose,
     OverheadCamera,
     TargetOffset,
+    TargetPosition,
     WristCamera,
 )
 from so101_nexus_core.testing import run_env_contract
@@ -708,6 +712,129 @@ def test_move_observation_component(env_id, obs_cls, expected_key):
             extra = env.unwrapped._get_obs_extra(info)
             assert expected_key in extra
         _run_episode(env)
+    finally:
+        env.close()
+
+
+_pick_obs_params = [
+    (EndEffectorPose, "tcp_pose"),
+    (GraspState, "is_grasped"),
+    (ObjectPose, "object_pose"),
+    (ObjectOffset, "object_offset"),
+]
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+@pytest.mark.parametrize(
+    "obs_cls,expected_key",
+    _pick_obs_params,
+    ids=[cls.__name__ for cls, _ in _pick_obs_params],
+)
+def test_pick_observation_component(env_id, obs_cls, expected_key):
+    """Each valid Pick observation component appears in obs_extra when requested."""
+    config = PickConfig(observations=[JointPositions(), obs_cls()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert expected_key in extra
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_obs_extra_honors_config_observations(env_id):
+    """Pick obs_extra is component-driven, not a fixed object-state leak.
+
+    Regression: the old _get_obs_extra emitted obj_pose/tcp regardless of
+    config.observations. With observations=[JointPositions()] no object
+    components are requested, so obs_extra must contain no object state.
+    """
+    config = PickConfig(observations=[JointPositions()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert "object_pose" not in extra
+        assert "object_offset" not in extra
+        assert "tcp_pose" not in extra
+        assert "is_grasped" not in extra
+
+        # With object components present, they ARE included.
+        config2 = PickConfig(observations=[JointPositions(), ObjectPose(), ObjectOffset()])
+        env2 = gym.make(env_id, config=config2, **BASE_KWARGS)
+        try:
+            env2.reset()
+            _, _, _, _, info2 = env2.step(env2.action_space.sample())
+            extra2 = env2.unwrapped._get_obs_extra(info2)
+            assert "object_pose" in extra2
+            assert "object_offset" in extra2
+        finally:
+            env2.close()
+    finally:
+        env.close()
+
+
+_pick_and_place_obs_params = [
+    (EndEffectorPose, "tcp_pose"),
+    (GraspState, "is_grasped"),
+    (ObjectPose, "object_pose"),
+    (ObjectOffset, "object_offset"),
+    (TargetPosition, "target_position"),
+    (TargetOffset, "target_offset"),
+]
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+@pytest.mark.parametrize(
+    "obs_cls,expected_key",
+    _pick_and_place_obs_params,
+    ids=[cls.__name__ for cls, _ in _pick_and_place_obs_params],
+)
+def test_pick_and_place_observation_component(env_id, obs_cls, expected_key):
+    """Each valid PickAndPlace observation component appears in obs_extra."""
+    config = PickAndPlaceConfig(observations=[JointPositions(), obs_cls()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert expected_key in extra
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_obs_extra_honors_config_observations(env_id):
+    """PickAndPlace obs_extra is component-driven, not a fixed target/object leak."""
+    config = PickAndPlaceConfig(observations=[JointPositions()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert "object_pose" not in extra
+        assert "object_offset" not in extra
+        assert "target_position" not in extra
+        assert "target_offset" not in extra
+
+        # With target components present, they ARE included.
+        config2 = PickAndPlaceConfig(
+            observations=[JointPositions(), TargetPosition(), TargetOffset()]
+        )
+        env2 = gym.make(env_id, config=config2, **BASE_KWARGS)
+        try:
+            env2.reset()
+            _, _, _, _, info2 = env2.step(env2.action_space.sample())
+            extra2 = env2.unwrapped._get_obs_extra(info2)
+            assert "target_position" in extra2
+            assert "target_offset" in extra2
+        finally:
+            env2.close()
     finally:
         env.close()
 
