@@ -10,6 +10,7 @@ of this file.
 from __future__ import annotations
 
 import importlib
+import math
 
 import gymnasium as gym
 import numpy as np
@@ -285,9 +286,7 @@ def test_pick_separation_batched_vec(env_id):
         objects=objects, n_distractors=2, min_object_separation=min_sep
     )
     try:
-        env = gym.make(
-            env_id, config=config, obs_mode="state", num_envs=2, render_mode=None
-        )
+        env = gym.make(env_id, config=config, obs_mode="state", num_envs=2, render_mode=None)
     except Exception as exc:  # narrowed: only GPU-availability errors become skips
         skip_if_vectorized_runtime_unavailable(exc)
     try:
@@ -296,9 +295,7 @@ def test_pick_separation_batched_vec(env_id):
         radii = [_obj_bounding_radius(inner._target_obj)] + [
             _obj_bounding_radius(d) for d in inner._distractors_spec
         ]
-        xys = [inner.obj.pose.p[:, :2].cpu()] + [
-            d.pose.p[:, :2].cpu() for d in inner.distractors
-        ]
+        xys = [inner.obj.pose.p[:, :2].cpu()] + [d.pose.p[:, :2].cpu() for d in inner.distractors]
         n = len(xys)
         for i in range(n):
             for j in range(i + 1, n):
@@ -1325,5 +1322,70 @@ def test_pick_and_place_forwards_thresholds(env_id):
         inner.evaluate()
         assert captured["min_force"] == pytest.approx(_GRASP_FORCE)
         assert captured["threshold"] == pytest.approx(_STATIC_VEL)
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# Sim/control frequency and human render camera FOV (cross-backend parity).
+# ---------------------------------------------------------------------------
+
+
+def test_sim_config_matches_mujoco_timestep(so101_reach_env):
+    """ManiSkill sim/control freq match the MuJoCo 0.005 s / 0.02 s cadence."""
+    sim_cfg = so101_reach_env.sim_config
+    assert sim_cfg.sim_freq == 200
+    assert sim_cfg.control_freq == 50
+    # 200 Hz sim -> 0.005 s step; 50 Hz control -> 0.02 s interval.
+    assert 1.0 / sim_cfg.sim_freq == pytest.approx(0.005)
+    assert 1.0 / sim_cfg.control_freq == pytest.approx(0.02)
+
+
+def test_human_render_camera_fov_is_45_deg(so101_reach_env):
+    """The human render camera vertical FOV matches MuJoCo's 45 deg (in radians)."""
+    cam_cfg = so101_reach_env._default_human_render_camera_configs
+    assert cam_cfg.fov == pytest.approx(math.radians(45.0))
+
+
+# ---------------------------------------------------------------------------
+# PickAndPlace seeded color / description agreement.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_color_description_agreement(env_id):
+    """task_description names the SAME color applied to the cube/target."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple"],
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=7)
+        desc = inner.task_description
+        assert inner.cube_color_name in config.cube_colors
+        assert inner.target_color_name in config.target_colors
+        assert inner.cube_color_name in desc
+        assert inner.target_color_name in desc
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_color_reproducible_by_seed(env_id):
+    """reset(seed=S) reproduces the same sampled cube/target colors twice."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple", "orange"],
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=42)
+        first = (inner.cube_color_name, inner.target_color_name)
+        inner.reset(seed=42)
+        second = (inner.cube_color_name, inner.target_color_name)
+        assert first == second
     finally:
         env.close()

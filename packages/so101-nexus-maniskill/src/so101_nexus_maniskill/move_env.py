@@ -128,9 +128,7 @@ class MoveEnv(SO101NexusManiSkillBaseEnv):
         # mirrors simple_reward() in so101_nexus_core.rewards
         base = (1.0 - bonus) * reach + bonus * info["success"]
         # Norms are stamped once per step in get_reward; read, do not recompute.
-        return self._apply_penalties_tensor(
-            base, info["action_delta_norm"], info["energy_norm"]
-        )
+        return self._apply_penalties_tensor(base, info["action_delta_norm"], info["energy_norm"])
 
 
 MoveSO100Env = register_robot_variant(

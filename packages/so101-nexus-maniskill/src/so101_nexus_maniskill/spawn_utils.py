@@ -84,9 +84,7 @@ def sample_separated_positions_torch(
         min_dist = bounding_radii[k] + bounding_radii[:k] + min_clearance  # (k,)
         for _ in range(max_attempts):
             # (num_envs, k) distance from candidate k to each placed object j.
-            dists = torch.linalg.norm(
-                positions[:, k, :].unsqueeze(1) - positions[:, :k, :], dim=2
-            )
+            dists = torch.linalg.norm(positions[:, k, :].unsqueeze(1) - positions[:, :k, :], dim=2)
             violating = (dists < min_dist.unsqueeze(0)).any(dim=1)  # (num_envs,)
             # bool(violating.any()) and int(violating.sum()) each force a
             # device-to-host sync per iteration (bounded by max_attempts), an

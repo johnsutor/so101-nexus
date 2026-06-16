@@ -380,6 +380,34 @@ def test_wrist_camera_randomization_is_seeded():
     assert not np.allclose(same_a, other, atol=1e-4)
 
 
+def test_so100_wrist_camera_randomization_is_seeded():
+    """env.reset(seed=...) must reproduce the SO100 wrist-camera world pose.
+
+    The SO100 preset-driven path now samples position/euler/fov with the seeded
+    episode RNG (matching SO101 and the MuJoCo backend), so the same seed yields
+    the same camera. Regression for global-np.random sampling that ignored the
+    reset seed. num_envs=1, CPU.
+    """
+    from so101_nexus_core.observations import JointPositions, WristCamera
+
+    def cam_pose(seed: int) -> np.ndarray:
+        cfg = ReachConfig(observations=[JointPositions(), WristCamera(width=64, height=64)])
+        env = gym.make(
+            "ManiSkillReachSO100-v1", config=cfg, num_envs=1, obs_mode="rgbd", render_mode=None
+        )
+        try:
+            env.reset(seed=seed)
+            gp = env.unwrapped._sensors["wrist_camera"].camera.global_pose
+            return np.concatenate(
+                [np.asarray(gp.p).reshape(-1)[:3], np.asarray(gp.q).reshape(-1)[:4]]
+            )
+        finally:
+            env.close()
+
+    same_a, same_b = cam_pose(123), cam_pose(123)
+    np.testing.assert_allclose(same_a, same_b, atol=1e-6)
+
+
 # --- Cross-backend TCP parity (zero-qpos and default rest) -------------------
 # Pinned by the MuJoCo backend test_rest_tcp_pose_matches_menagerie at zero qpos.
 _MJ_ZERO_QPOS_TCP_POS = (0.3914432501, -0.0009794699, 0.2460073072)

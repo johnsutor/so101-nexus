@@ -3,14 +3,16 @@
 from typing import Any, ClassVar
 
 import sapien
+import sapien.render
 import torch
 from mani_skill.envs.utils.randomization.pose import random_quaternions
 from mani_skill.utils.building import actors
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
+from sapien.render import RenderBodyComponent
 
 from so101_nexus_core.config import PickAndPlaceConfig
-from so101_nexus_core.constants import sample_color
+from so101_nexus_core.constants import COLOR_MAP, sample_color, sample_color_name
 from so101_nexus_core.observations import (
     ObjectOffset,
     ObjectPose,
@@ -214,10 +216,50 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         self.add_to_state_dict_registry(self.target_site)
         self._apply_robot_color_if_needed()
 
+    def _apply_actor_color(self, actor: Actor, color: list[float]) -> None:
+        """Set the base color of every render part of ``actor``.
+
+        Mirrors ``_apply_robot_color_if_needed``: walks the SAPIEN render body
+        of each underlying object and overrides the material base color so the
+        per-episode sampled color is applied to an already-built actor.
+        """
+        for entity in actor._objs:
+            render_body: RenderBodyComponent = entity.find_component_by_type(
+                RenderBodyComponent
+            )
+            if render_body is None:
+                continue
+            for render_shape in render_body.render_shapes:
+                for part in render_shape.parts:
+                    part.material.set_base_color(color)
+
+    def _sample_and_apply_colors(self) -> None:
+        """Sample cube/target colors with the seeded RNG and apply + describe them.
+
+        Uses ``self._episode_rng`` (global-np.random fallback before the first
+        seeded reset) so colors are reproducible under ``reset(seed=...)`` and
+        the ``task_description`` agrees with the rendered colors. The MuJoCo
+        backend stores color on the model's geom_rgba; here it is stored on the
+        SAPIEN render materials of the built cube/target actors. This is the
+        documented per-backend divergence in HOW the sampled color is applied.
+        """
+        # _episode_rng (seeded per reset) is a numpy RandomState-like object that
+        # satisfies the Generator-style .choice protocol sample_color_name uses.
+        # Before the first seeded reset it is absent; fall back to None so
+        # sample_color_name builds a fresh unseeded generator (global-random
+        # behavior), mirroring the SO101 wrist-camera fallback intent.
+        rng = getattr(self, "_episode_rng", None)
+        self.cube_color_name = sample_color_name(self.cube_colors, rng)
+        self.target_color_name = sample_color_name(self.target_colors, rng)
+        self._apply_actor_color(self.obj, COLOR_MAP[self.cube_color_name])
+        self._apply_actor_color(self.target_site, COLOR_MAP[self.target_color_name])
+        self.task_description = self.config.describe(self.cube_color_name, self.target_color_name)
+
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx, options)
+            self._sample_and_apply_colors()
 
             cfg = self._robot_cfg
             min_r = cfg["spawn_min_radius"]

@@ -143,9 +143,7 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
         # mirrors simple_reward() in so101_nexus_core.rewards
         base = (1.0 - bonus) * orient + bonus * info["success"]
         # Norms are stamped once per step in get_reward; read, do not recompute.
-        return self._apply_penalties_tensor(
-            base, info["action_delta_norm"], info["energy_norm"]
-        )
+        return self._apply_penalties_tensor(base, info["action_delta_norm"], info["energy_norm"])
 
 
 LookAtSO100Env = register_robot_variant(

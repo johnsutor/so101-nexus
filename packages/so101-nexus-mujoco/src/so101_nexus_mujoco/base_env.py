@@ -39,9 +39,7 @@ logger = logging.getLogger(__name__)
 # physical joint-target delta of ``a * _DELTA_ACTION_SCALE``. These are the
 # existing controller delta units (radians): +/-0.05 for the five arm joints
 # and +/-0.2 for the gripper. Reused by both delta control modes.
-_DELTA_ACTION_SCALE = np.array(
-    [0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64
-)
+_DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
 
 # Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
 # vendored menagerie model's option (MuJoCo: the last top-level option wins).

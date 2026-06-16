@@ -191,6 +191,21 @@ class TestSampleColor:
     def test_single_element_list(self):
         assert sample_color(["green"]) == COLOR_MAP["green"]
 
+    def test_seeded_rng_is_reproducible(self):
+        colors = ["red", "green", "blue", "yellow"]
+        a = sample_color(colors, np.random.default_rng(7))
+        b = sample_color(colors, np.random.default_rng(7))
+        assert a == b
+
+    def test_sample_color_name_matches_rgba(self):
+        from so101_nexus_core.constants import sample_color_name
+
+        colors = ["red", "green", "blue"]
+        name = sample_color_name(colors, np.random.default_rng(11))
+        rgba = sample_color(colors, np.random.default_rng(11))
+        assert name in colors
+        assert COLOR_MAP[name] == rgba
+
 
 class TestRewardWeights:
     def test_weights_sum_to_one(self):

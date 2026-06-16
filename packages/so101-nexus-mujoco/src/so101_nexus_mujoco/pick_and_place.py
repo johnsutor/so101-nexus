@@ -16,7 +16,7 @@ from so101_nexus_core.config import (
     ControlMode,
     PickAndPlaceConfig,
 )
-from so101_nexus_core.constants import sample_color
+from so101_nexus_core.constants import COLOR_MAP, sample_color, sample_color_name
 from so101_nexus_core.rewards import reach_progress
 from so101_nexus_mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
 from so101_nexus_mujoco.spawn_utils import random_yaw_quat
@@ -124,6 +124,9 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
         self._cube_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "cube")
         self._obj_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "cube_geom")
+        self._target_geom_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_GEOM, "target_disc"
+        )
 
         cube_joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "cube_joint")
         self._cube_qpos_addr = self.model.jnt_qposadr[cube_joint_id]
@@ -218,6 +221,19 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _task_reset(self) -> None:
         rng = self.np_random
+        # Sample cube/target colors once per episode with the seeded RNG so the
+        # rendered colors are reproducible under reset(seed=...) and the
+        # task_description (built below) agrees with what is rendered. The
+        # MuJoCo backend stores color on the model's geom_rgba (the cube/target
+        # are static geoms in the compiled model); the ManiSkill backend stores
+        # it on the SAPIEN render materials at reconfigure time. This is the
+        # documented per-backend divergence in HOW the sampled color is applied.
+        self.cube_color_name = sample_color_name(self.config.cube_colors, rng)
+        self.target_color_name = sample_color_name(self.config.target_colors, rng)
+        self.model.geom_rgba[self._obj_geom_id] = COLOR_MAP[self.cube_color_name]
+        self.model.geom_rgba[self._target_geom_id] = COLOR_MAP[self.target_color_name]
+        self.task_description = self.config.describe(self.cube_color_name, self.target_color_name)
+
         min_r = self.config.spawn_min_radius
         max_r = self.config.spawn_max_radius
         angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))

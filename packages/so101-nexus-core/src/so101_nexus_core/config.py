@@ -655,14 +655,28 @@ class PickAndPlaceConfig(EnvironmentConfig):
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
         )
 
+    @staticmethod
+    def describe(cube_name: str, target_name: str) -> str:
+        """Build the task description for a specific cube and target color.
+
+        Backends call this with the per-episode sampled color names so the
+        rendered scene and the description always agree.
+        """
+        return f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
+
     @property
     def task_description(self) -> str:
-        """Canonical task description derived from configured colors."""
+        """Canonical task description derived from configured colors.
+
+        Uses the FIRST configured color for each of cube and target. Backends
+        that sample colors per episode override the stored description with
+        ``describe(...)`` so it reflects the actually rendered colors.
+        """
         cube_name = self.cube_colors if isinstance(self.cube_colors, str) else self.cube_colors[0]
         target_name = (
             self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
         )
-        return f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
+        return self.describe(cube_name, target_name)
 
 
 class ReachConfig(EnvironmentConfig):

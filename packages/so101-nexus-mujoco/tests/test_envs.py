@@ -1119,3 +1119,54 @@ def test_pick_hidden_ycb_slots_are_inert_below_floor():
                 assert z < -5.0, f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
     finally:
         env.close()
+
+
+# ---------------------------------------------------------------------------
+# PickAndPlace seeded color / description agreement (mirrors ManiSkill backend).
+# ---------------------------------------------------------------------------
+
+
+def test_pick_and_place_color_description_agreement():
+    """task_description names the SAME color applied to the cube/target geoms."""
+    import numpy as np
+
+    from so101_nexus_core.constants import COLOR_MAP
+
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple"],
+    )
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=7)
+        desc = inner.task_description
+        assert inner.cube_color_name in config.cube_colors
+        assert inner.target_color_name in config.target_colors
+        assert inner.cube_color_name in desc
+        assert inner.target_color_name in desc
+        # Rendered geom rgba matches the named color.
+        cube_rgba = inner.model.geom_rgba[inner._obj_geom_id]
+        target_rgba = inner.model.geom_rgba[inner._target_geom_id]
+        np.testing.assert_allclose(cube_rgba, COLOR_MAP[inner.cube_color_name], atol=1e-6)
+        np.testing.assert_allclose(target_rgba, COLOR_MAP[inner.target_color_name], atol=1e-6)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_color_reproducible_by_seed():
+    """reset(seed=S) reproduces the same sampled cube/target colors twice."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple", "orange"],
+    )
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=42)
+        first = (inner.cube_color_name, inner.target_color_name)
+        inner.reset(seed=42)
+        second = (inner.cube_color_name, inner.target_color_name)
+        assert first == second
+    finally:
+        env.close()
