@@ -35,6 +35,7 @@ from so101_nexus_core.teleop.app import (
     _normalized_init_config,
     _progress_text,
 )
+from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus_core.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
 from so101_nexus_core.teleop.recorder import RecordingState
 
@@ -754,6 +755,49 @@ def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
     assert seen["fps"] == 30
     assert seen["robot_type"] == "so101"
     assert seen["features"] == {"action": {}}
+
+
+def test_write_env_config_meta_writes_reloadable_profile(tmp_path) -> None:
+    """Finalize drops a profile JSON into meta/ that reloads via load_profile_overrides."""
+    import json
+
+    from so101_nexus_core.config import PickConfig
+    from so101_nexus_core.teleop.app import _write_env_config_meta
+    from so101_nexus_core.teleop.config_customization import load_profile_overrides
+
+    session = {
+        "dataset": types.SimpleNamespace(root=tmp_path),
+        "env_id": "So101PickCube-v0",
+        "env_overrides": TeleopConfigOverrides(n_distractors=2, ground_colors=("red",)),
+    }
+
+    _write_env_config_meta(session)
+
+    path = tmp_path / "meta" / "so101_nexus_env.json"
+    profile = json.loads(path.read_text())
+    assert profile == {"envs": {"So101PickCube-v0": {"n_distractors": 2, "ground_colors": ["red"]}}}
+
+    reloaded = load_profile_overrides(path, "So101PickCube-v0", PickConfig())
+    assert reloaded.n_distractors == 2
+    assert reloaded.ground_colors == ("red",)
+
+
+def test_write_env_config_meta_handles_no_overrides(tmp_path) -> None:
+    """An env id with no customization still records a reproducible env section."""
+    import json
+
+    from so101_nexus_core.teleop.app import _write_env_config_meta
+
+    session = {
+        "dataset": types.SimpleNamespace(root=tmp_path),
+        "env_id": "So101ReachTarget-v0",
+        "env_overrides": None,
+    }
+
+    _write_env_config_meta(session)
+
+    profile = json.loads((tmp_path / "meta" / "so101_nexus_env.json").read_text())
+    assert profile == {"envs": {"So101ReachTarget-v0": {}}}
 
 
 def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:

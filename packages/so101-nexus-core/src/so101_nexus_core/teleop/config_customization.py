@@ -221,6 +221,51 @@ def overrides_from_mapping(raw: Mapping[str, Any]) -> TeleopConfigOverrides:
     return TeleopConfigOverrides(**kwargs)
 
 
+def object_to_mapping(obj: SceneObject) -> dict[str, Any]:
+    """Serialize a scene object to a profile mapping (inverse of :func:`object_from_mapping`)."""
+    if isinstance(obj, CubeObject):
+        return {
+            "type": "cube",
+            "color": obj.color,
+        }  # ponytail: schema drops mass, see object_from_mapping
+    if isinstance(obj, YCBObject):
+        return {"type": "ycb", "model_id": obj.model_id}
+    if isinstance(obj, MeshObject):
+        return {
+            "type": "mesh",
+            "collision_mesh_path": obj.collision_mesh_path,
+            "visual_mesh_path": obj.visual_mesh_path,
+            "mass": obj.mass,
+            "name": obj.name,
+            "scale": obj.scale,
+        }
+    raise ValueError(f"cannot serialize unsupported scene object: {obj!r}")
+
+
+def overrides_to_mapping(overrides: TeleopConfigOverrides) -> dict[str, Any]:
+    """Serialize overrides to a profile mapping (inverse of :func:`overrides_from_mapping`)."""
+    mapping: dict[str, Any] = {}
+    if overrides.objects is not None:
+        mapping["objects"] = [object_to_mapping(obj) for obj in overrides.objects]
+    if overrides.object_specs is not None:
+        mapping["object_specs"] = list(overrides.object_specs)
+    for key in (
+        "n_distractors",
+        "ground_colors",
+        "robot_colors",
+        "cube_colors",
+        "target_colors",
+        "spawn_min_radius",
+        "spawn_max_radius",
+        "spawn_angle_half_range_deg",
+        "reset_settle_frames",
+    ):
+        value = getattr(overrides, key)
+        if value is not None:
+            mapping[key] = list(value) if isinstance(value, tuple) else value
+    return mapping
+
+
 def load_config_factory(ref: str | None) -> ConfigFactory | None:
     """Resolve a ``module:function`` config factory reference."""
     if not ref:

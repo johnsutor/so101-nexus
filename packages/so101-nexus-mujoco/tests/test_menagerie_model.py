@@ -54,9 +54,6 @@ def _raw_model() -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_path(str(get_so101_mujoco_model_path()))
 
 
-# --- vendored model file ---------------------------------------------------
-
-
 def test_wrist_cam_has_no_physical_intrinsics():
     m = _raw_model()
     cam_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
@@ -80,9 +77,6 @@ def test_model_diff_bindings():
     # wrist_roll joint upper is tighter than its advertised ctrlrange upper.
     assert m.jnt_range[jid("wrist_roll")][1] < 2.80
     assert m.actuator_ctrlrange[aid("wrist_roll")][1] > 2.80
-
-
-# --- env construction / physics binding ------------------------------------
 
 
 @pytest.mark.parametrize("env_id,cfg_cls", _ENVS)
@@ -135,9 +129,6 @@ def test_wrapper_must_be_colocated_with_model(tmp_path):
         mujoco.MjModel.from_xml_path(str(bad))
 
 
-# --- grasp geom selection --------------------------------------------------
-
-
 def test_grasp_geom_sets_select_condim6_fingers():
     env = gym.make("MuJoCoPickLift-v1", config=PickConfig()).unwrapped
     try:
@@ -158,9 +149,6 @@ def test_grasp_geom_sets_select_condim6_fingers():
         env.close()
 
 
-# --- TCP pose (task-semantic change) ---------------------------------------
-
-
 def test_rest_tcp_pose_matches_menagerie():
     env = gym.make("MuJoCoReach-v1", config=ReachConfig(), robot_init_qpos_noise=0.0).unwrapped
     try:
@@ -175,9 +163,6 @@ def test_rest_tcp_pose_matches_menagerie():
         )
     finally:
         env.close()
-
-
-# --- wrist camera FOV randomization ----------------------------------------
 
 
 def test_wrist_camera_pose_tracks_component():

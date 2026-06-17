@@ -255,7 +255,6 @@ def test_controller_drive_state_survives_mode_switches():
         env.close()
 
 
-# --- Wrist camera cross-backend parity --------------------------------------
 # Pinned from the MuJoCo backend wrist camera at zero qpos, pitch 37.5deg, zero
 # noise, after the cam_pos/cam_quat fix so the camera tracks the WristCamera
 # component. World optical axes in MuJoCo convention: forward = -cam_xmat[:, 2],
@@ -408,7 +407,6 @@ def test_so100_wrist_camera_randomization_is_seeded():
     np.testing.assert_allclose(same_a, same_b, atol=1e-6)
 
 
-# --- Cross-backend TCP parity (zero-qpos and default rest) -------------------
 # Pinned by the MuJoCo backend test_rest_tcp_pose_matches_menagerie at zero qpos.
 _MJ_ZERO_QPOS_TCP_POS = (0.3914432501, -0.0009794699, 0.2460073072)
 _MJ_ZERO_QPOS_TCP_QUAT = (0.7064841888, 0.0172191552, 0.7073102466, 0.0171990353)

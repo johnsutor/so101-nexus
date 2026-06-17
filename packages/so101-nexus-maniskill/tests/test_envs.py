@@ -117,20 +117,10 @@ def _make_vector_env_or_skip(env_id: str, **kwargs):
         skip_if_vectorized_runtime_unavailable(exc)
 
 
-# ---------------------------------------------------------------------------
-# Shared contract.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("env_id,config_cls", ENV_MATRIX)
 def test_gymnasium_contract(env_id, config_cls):
     del config_cls  # parametrized for symmetry with other matrix tests.
     run_env_contract(env_id, make_kwargs=BASE_KWARGS)
-
-
-# ---------------------------------------------------------------------------
-# Object parametrics.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
@@ -367,11 +357,6 @@ def test_pick_and_place_target_colors(env_id, target_color):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Action / observation space smoke.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("env_id", ENV_IDS)
 def test_default_state_rollout_smoke(env_id):
     """Default state-mode envs expose spaces, reset repeatedly, and keep bounded rewards."""
@@ -395,11 +380,6 @@ def test_default_state_rollout_smoke(env_id):
                 env.reset()
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# Reset settling.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("env_id,config_cls", RESET_SETTLE_ENV_MATRIX)
@@ -505,11 +485,6 @@ def test_partial_reset_settle_preserves_inactive_env_state():
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Per-env evaluate() / info key assertions.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("env_id", REACH_ENV_IDS)
 def test_reach_evaluate_keys(env_id):
     env = gym.make(env_id, **BASE_KWARGS)
@@ -602,11 +577,6 @@ def test_pick_and_place_evaluate_keys_exact(env_id):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Task-description shape checks.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("env_id", ENV_IDS)
 def test_task_description_starts_with_capital(env_id):
     env = gym.make(env_id, **BASE_KWARGS)
@@ -631,11 +601,6 @@ def test_pick_and_place_task_description_includes_colors(env_id):
         assert "blue" in desc
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# Observation-component coverage.
-# ---------------------------------------------------------------------------
 
 
 _reach_obs_params = [
@@ -845,11 +810,6 @@ def test_pick_and_place_obs_extra_honors_config_observations(env_id):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Camera observation integration.
-# ---------------------------------------------------------------------------
-
-
 _obs_cam_env_params = [
     (REACH_ENV_IDS[0], ReachConfig),
     (LOOKAT_ENV_IDS[0], LookAtConfig),
@@ -956,11 +916,6 @@ def test_actor_builders_set_initial_poses(monkeypatch, env_id):
     assert not any("No initial pose set for actor builder" in w for w in warnings)
 
 
-# ---------------------------------------------------------------------------
-# Construction / config validation.
-# ---------------------------------------------------------------------------
-
-
 class TestConstructionValidation:
     def test_pick_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
@@ -999,11 +954,6 @@ class TestConstructionValidation:
     def test_pick_and_place_invalid_robot_uid(self):
         with pytest.raises(ValueError, match="robot_uids"):
             gym.make("ManiSkillPickAndPlaceSO100-v1", robot_uids="panda", **BASE_KWARGS)
-
-
-# ---------------------------------------------------------------------------
-# Scene / geometry regression guards.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS + PICK_AND_PLACE_ENV_IDS)
@@ -1203,11 +1153,6 @@ def test_pick_and_place_spawn_center_offsets_cube(env_id):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Robot subclass / scene structure checks.
-# ---------------------------------------------------------------------------
-
-
 def test_pick_lift_so100_uses_so100_agent():
     env = gym.make("ManiSkillPickLiftSO100-v1", **BASE_KWARGS)
     try:
@@ -1332,11 +1277,6 @@ def test_pick_and_place_forwards_thresholds(env_id):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Sim/control frequency and human render camera FOV (cross-backend parity).
-# ---------------------------------------------------------------------------
-
-
 def test_sim_config_matches_mujoco_timestep(so101_reach_env):
     """ManiSkill sim/control freq match the MuJoCo 0.005 s / 0.02 s cadence."""
     sim_cfg = so101_reach_env.sim_config
@@ -1351,11 +1291,6 @@ def test_human_render_camera_fov_is_45_deg(so101_reach_env):
     """The human render camera vertical FOV matches MuJoCo's 45 deg (in radians)."""
     cam_cfg = so101_reach_env._default_human_render_camera_configs
     assert cam_cfg.fov == pytest.approx(math.radians(45.0))
-
-
-# ---------------------------------------------------------------------------
-# PickAndPlace seeded color / description agreement.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
