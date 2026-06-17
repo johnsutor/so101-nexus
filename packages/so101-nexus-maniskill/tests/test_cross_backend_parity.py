@@ -20,7 +20,12 @@ import numpy as np
 import pytest
 
 import so101_nexus_maniskill  # noqa: F401 - registers ManiSkill envs
-import so101_nexus_mujoco  # noqa: F401 - registers MuJoCo envs
+
+# This parity module needs both backends installed. The ManiSkill CI job does
+# not install the MuJoCo package, so skip the whole module when it is absent.
+so101_nexus_mujoco = pytest.importorskip(
+    "so101_nexus_mujoco"
+)  # noqa: F841 - registers MuJoCo envs
 from so101_nexus_core.config import ReachConfig
 from so101_nexus_core.testing import skip_if_vectorized_runtime_unavailable
 
