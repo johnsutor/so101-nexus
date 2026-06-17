@@ -295,6 +295,14 @@ Body joints are stored in LeRobot degree units and the gripper is stored in
 normalization. `observation.state` comes from simulated follower readback, not
 the leader echo.
 
+On finalize (and before any Hub push), the app writes the environment id and
+customization overrides to `meta/so101_nexus_env.json` inside the dataset. The
+file is itself a valid [config profile](#config-profiles), so you can reproduce
+a recording's environment by passing it back as
+`--env-config-profile meta/so101_nexus_env.json`. It captures UI/CLI overrides;
+contributions from a separate `--env-config-profile` used at record time are not
+merged in.
+
 On first recording, the app creates a simulator-only calibration file at
 `$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json` (or the
 LeRobot default calibration root when `HF_LEROBOT_CALIBRATION` is unset). No

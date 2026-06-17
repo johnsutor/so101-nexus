@@ -14,7 +14,9 @@ from so101_nexus_core.teleop.config_customization import (
     load_profile_overrides,
     object_from_mapping,
     object_from_spec,
+    object_to_mapping,
     overrides_from_mapping,
+    overrides_to_mapping,
 )
 
 
@@ -253,6 +255,37 @@ def test_overrides_from_mapping_accepts_object_specs() -> None:
 
     assert overrides.object_specs == ("cube:red",)
     assert overrides.n_distractors == 0
+
+
+def test_overrides_to_mapping_round_trips_through_from_mapping() -> None:
+    import json
+
+    overrides = TeleopConfigOverrides(
+        objects=(CubeObject(color="blue"), YCBObject(model_id="011_banana")),
+        n_distractors=2,
+        ground_colors=("red", "green"),
+        spawn_max_radius=0.3,
+        reset_settle_frames=5,
+    )
+
+    mapping = overrides_to_mapping(overrides)
+
+    json.dumps(mapping)
+    assert overrides_to_mapping(overrides_from_mapping(mapping)) == mapping
+
+
+def test_object_to_mapping_serializes_mesh() -> None:
+    mesh = MeshObject(
+        collision_mesh_path="c.obj",
+        visual_mesh_path="v.obj",
+        mass=0.2,
+        name="widget",
+        scale=2.0,
+    )
+
+    mapping = object_to_mapping(mesh)
+
+    assert object_to_mapping(object_from_mapping(mapping)) == mapping
 
 
 def test_overrides_from_mapping_rejects_non_finite_float() -> None:

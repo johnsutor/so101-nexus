@@ -85,10 +85,6 @@ def _python_files(root: Path) -> list[Path]:
     return [p for p in root.rglob("*.py") if not _is_excluded(p)]
 
 
-# ---------------------------------------------------------------------------
-# Guardrail 2: no Google-style ``Args:`` docstring blocks in public source.
-# ---------------------------------------------------------------------------
-
 # Matches a docstring line that is exactly an ``Args:`` section header (optional
 # indentation), the Google-style block we forbid in favor of NumPy-style
 # ``Parameters``.
@@ -120,11 +116,6 @@ def test_no_google_style_args_blocks_in_source():
     )
 
 
-# ---------------------------------------------------------------------------
-# Guardrail 3: every top-level package __init__ defines __all__.
-# ---------------------------------------------------------------------------
-
-
 def _defines_dunder_all(init_path: Path) -> bool:
     """True when ``init_path`` assigns the name ``__all__`` at module scope."""
     tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
@@ -149,10 +140,6 @@ def test_package_init_defines_dunder_all(pkg):
         f"{init_path.relative_to(REPO_ROOT)} must define __all__ (an empty list is acceptable)"
     )
 
-
-# ---------------------------------------------------------------------------
-# Guardrail 4: no em dashes, en dashes, or emoji in source or tests.
-# ---------------------------------------------------------------------------
 
 # Defined by codepoint so this guardrail file does not itself contain the very
 # characters it forbids (which would otherwise make the scan flag itself).
@@ -201,10 +188,6 @@ def test_no_em_en_dashes_or_emoji_in_source_and_tests():
                 offenders.append(f"{rel}: {', '.join(problems)}")
     assert not offenders, "Forbidden characters found:\n" + "\n".join(sorted(offenders))
 
-
-# ---------------------------------------------------------------------------
-# Guardrail 5 (core half): max_episode_steps is not a config field.
-# ---------------------------------------------------------------------------
 
 _CONFIG_CLASSES = [
     EnvironmentConfig,

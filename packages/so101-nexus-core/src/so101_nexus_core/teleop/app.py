@@ -27,6 +27,7 @@ from so101_nexus_core.teleop.config_customization import (
     default_cube_color_choices,
     default_object_choices,
     load_config_factory,
+    overrides_to_mapping,
 )
 from so101_nexus_core.teleop.dataset import (
     OVERHEAD_KEY,
@@ -927,6 +928,27 @@ def _cb_retry_init_with_session(session: dict, init_state: dict, leader_port: st
     return _start_init_attempt(session, init_state, leader_port, last_config)
 
 
+def _write_env_config_meta(session: dict) -> None:
+    """Persist the env id and customization overrides as a reloadable profile.
+
+    Written to the dataset ``meta/`` dir so a recording can be reproduced via
+    ``--env-config-profile``. JSON, not TOML, because the stdlib cannot write
+    TOML and both are accepted profile formats.
+    """
+    import json
+
+    dataset = session["dataset"]
+    env_id = session.get("env_id")
+    overrides = session.get("env_overrides")
+    if env_id is None:
+        return
+    section = overrides_to_mapping(overrides) if overrides is not None else {}
+    profile = {"envs": {env_id: section}}
+    meta_dir = Path(dataset.root) / "meta"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    (meta_dir / "so101_nexus_env.json").write_text(json.dumps(profile, indent=2))
+
+
 def _cb_push_to_hub(session: dict):
     """Push the completed dataset to HuggingFace Hub.
 
@@ -951,6 +973,7 @@ def _cb_push_to_hub(session: dict):
 
     try:
         session["dataset"].finalize()
+        _write_env_config_meta(session)
         session["dataset"].push_to_hub()
     except Exception as exc:
         msg = str(exc).strip() or type(exc).__name__
@@ -975,6 +998,7 @@ def _cb_finalize_and_close(session: dict):
 
     try:
         session["dataset"].finalize()
+        _write_env_config_meta(session)
     except Exception as exc:
         raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
     with contextlib.suppress(Exception):
@@ -1046,7 +1070,7 @@ def _build_setup_screen(
         )
         with gr.Row():
             wrist_camera_width_input = gr.Slider(
-                minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Width"
+                minimum=64, maximum=1024, value=640, step=32, label="Wrist Camera Width"
             )
             wrist_camera_height_input = gr.Slider(
                 minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Height"

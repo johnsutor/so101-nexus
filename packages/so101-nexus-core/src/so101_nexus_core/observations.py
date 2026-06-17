@@ -141,11 +141,6 @@ class TargetPosition(Observation):
         return 3
 
 
-# ---------------------------------------------------------------------------
-# Camera components - add image tensors to dict-style observation spaces
-# ---------------------------------------------------------------------------
-
-
 class CameraObservation(Observation):
     """Base for camera observation components.
 

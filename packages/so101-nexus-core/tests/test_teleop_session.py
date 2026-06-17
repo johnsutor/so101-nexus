@@ -29,10 +29,6 @@ from so101_nexus_core.teleop.session import (
     validate_hub_repo_id,
 )
 
-# ---------------------------------------------------------------------------
-# _default_repo_id
-# ---------------------------------------------------------------------------
-
 
 def test_default_repo_id_format(monkeypatch) -> None:
     """Repo id encodes env_id and a 15-char timestamp."""
@@ -57,11 +53,6 @@ def test_default_repo_id_sanitizes_slashes_and_spaces() -> None:
     slug_match = re.match(r"local/teleop-(.+)-\d{8}_\d{6}$", repo_id)
     assert slug_match is not None, repo_id
     assert slug_match.group(1) == "foo-bar_baz"
-
-
-# ---------------------------------------------------------------------------
-# validate_hub_repo_id
-# ---------------------------------------------------------------------------
 
 
 def test_validate_hub_repo_id_blank_is_local_only() -> None:
@@ -96,11 +87,6 @@ def test_validate_hub_repo_id_local_default_passes() -> None:
     assert validate_hub_repo_id("local/teleop-Reach-v0-20260518_120000") is RepoIdStatus.OK
 
 
-# ---------------------------------------------------------------------------
-# _resolve_env_config
-# ---------------------------------------------------------------------------
-
-
 class _ExplicitConfigEnv:
     default_config_cls = ReachConfig
 
@@ -131,11 +117,6 @@ def test_resolve_env_config_propagates_config_construction_errors() -> None:
         _resolve_env_config(_RaisingConfigEnv)
 
 
-# ---------------------------------------------------------------------------
-# Camera-replacement helpers
-# ---------------------------------------------------------------------------
-
-
 def test_replace_wrist_camera_preserves_other_fields() -> None:
     original = WristCamera(width=160, height=120, pos_x_noise=0.05, pos_y_noise=0.07)
 
@@ -156,11 +137,6 @@ def test_replace_overhead_camera_preserves_fov() -> None:
     assert replaced.width == 320
     assert replaced.height == 240
     assert replaced.fov_deg == 42.0
-
-
-# ---------------------------------------------------------------------------
-# _wire_camera_observations
-# ---------------------------------------------------------------------------
 
 
 def test_wire_camera_observations_resizes_existing_cameras() -> None:
@@ -293,11 +269,6 @@ def test_recording_env_kwargs_rejects_overrides_without_config(monkeypatch) -> N
             (640, 480),
             overrides=TeleopConfigOverrides(object_specs=("cube:blue",)),
         )
-
-
-# ---------------------------------------------------------------------------
-# Optional: state-plot rendering (gated on plotly)
-# ---------------------------------------------------------------------------
 
 
 def test_make_state_plot_returns_figure_with_one_trace_per_joint() -> None:

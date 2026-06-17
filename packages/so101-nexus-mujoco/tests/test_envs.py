@@ -81,21 +81,11 @@ def _run_episode(env, n_steps: int = N_STEPS):
     return obs, info
 
 
-# ---------------------------------------------------------------------------
-# Shared contract - one parametrized call per env id.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("env_id,config_cls", ENV_MATRIX)
 def test_gymnasium_contract(env_id: str, config_cls: type):
     """Every env satisfies the shared Gymnasium contract."""
     del config_cls  # parametrized for symmetry with other matrix tests.
     run_env_contract(env_id)
-
-
-# ---------------------------------------------------------------------------
-# Observation-component matrix (backend-generic but not in the shared contract).
-# ---------------------------------------------------------------------------
 
 
 _ENV_OBS_MAP: dict[str, list[type]] = {
@@ -157,11 +147,6 @@ def test_all_observation_components_combined(env_id, config_cls):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Per-env info keys (backend-specific content not in the shared contract).
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "env_id,extra_key",
     [
@@ -199,11 +184,6 @@ def test_pick_and_place_info_keys_exact():
         assert set(info.keys()) == expected
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# Object parametrics - cubes, YCB, mixed pools.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("color", CUBE_COLORS)
@@ -517,11 +497,6 @@ def test_delta_penalty_norms_use_normalized_action(control_mode):
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Per-env observation-vector shape + geometry assertions.
-# ---------------------------------------------------------------------------
-
-
 def test_pick_and_place_default_obs_shape():
     """PickAndPlace default obs is a 24-dim flat vector."""
     env = gym.make("MuJoCoPickAndPlace-v1")
@@ -591,11 +566,6 @@ def test_pick_and_place_reward_in_unit_range():
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Reset settling.
-# ---------------------------------------------------------------------------
-
-
 def test_reset_settle_zero_keeps_mujoco_time_at_reset():
     config = ReachConfig(reset_settle_frames=0)
     env = gym.make("MuJoCoReach-v1", config=config)
@@ -630,11 +600,6 @@ def test_pick_initial_object_z_matches_post_settle_pose():
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Task-description shape checks.
-# ---------------------------------------------------------------------------
-
-
 def test_pick_and_place_task_description_mentions_colors():
     config = PickAndPlaceConfig(cube_colors="red", target_colors="blue")
     env = gym.make("MuJoCoPickAndPlace-v1", config=config)
@@ -663,11 +628,6 @@ def test_pick_and_place_task_description_is_instance_attr():
         assert "task_description" in env.unwrapped.__dict__  # type: ignore[attr-defined]
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# MuJoCo-specific geometry / scene checks.
-# ---------------------------------------------------------------------------
 
 
 def test_spawn_center_offsets_object_positions():
@@ -818,11 +778,6 @@ def test_pick_and_place_no_mocap_goal_body():
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# LookAt regression: TCP forward must match gripper direction.
-# ---------------------------------------------------------------------------
-
-
 def test_lookat_reward_uses_orientation_error_info(monkeypatch):
     """Reward must use info from _get_info(), not recompute orientation vectors."""
     env = gym.make("MuJoCoLookAt-v1")
@@ -870,11 +825,6 @@ def test_lookat_tcp_forward_matches_gripper_direction():
         env.close()
 
 
-# ---------------------------------------------------------------------------
-# Render mode smoke.
-# ---------------------------------------------------------------------------
-
-
 def test_pick_and_place_rgb_array_render():
     env = gym.make("MuJoCoPickAndPlace-v1", render_mode="rgb_array")
     try:
@@ -884,11 +834,6 @@ def test_pick_and_place_rgb_array_render():
         assert frame.ndim == 3
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# Camera observation integration - not part of the shared contract.
-# ---------------------------------------------------------------------------
 
 
 _CAMERA_ENVS: list[tuple[str, type]] = ENV_MATRIX
@@ -1119,11 +1064,6 @@ def test_pick_hidden_ycb_slots_are_inert_below_floor():
                 assert z < -5.0, f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
     finally:
         env.close()
-
-
-# ---------------------------------------------------------------------------
-# PickAndPlace seeded color / description agreement (mirrors ManiSkill backend).
-# ---------------------------------------------------------------------------
 
 
 def test_pick_and_place_color_description_agreement():
