@@ -1,4 +1,4 @@
-"""YCB mesh asset management — downloads from HuggingFace on demand."""
+"""YCB mesh asset management - downloads from HuggingFace on demand."""
 
 from __future__ import annotations
 

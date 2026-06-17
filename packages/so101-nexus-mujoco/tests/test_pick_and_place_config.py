@@ -1,6 +1,6 @@
 """Pure config-validation tests for PickAndPlaceConfig.
 
-These don't require MuJoCo to run — they exercise argument validation and
+These don't require MuJoCo to run - they exercise argument validation and
 shared-constants propagation on ``PickAndPlaceConfig`` / ``PickAndPlaceEnv``.
 Kept separate from ``test_envs.py`` so the fast-config tests don't run under
 xvfb in CI.

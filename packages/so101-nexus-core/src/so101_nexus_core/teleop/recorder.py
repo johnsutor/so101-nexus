@@ -302,7 +302,8 @@ def recording_thread(
 
         state.clear_episode()
         env = follower._env
-        assert env is not None
+        if env is None:
+            raise RuntimeError("follower environment is not connected after connect()")
         state.task_description = getattr(env.unwrapped, "task_description", "")
         state.is_recording = True
 

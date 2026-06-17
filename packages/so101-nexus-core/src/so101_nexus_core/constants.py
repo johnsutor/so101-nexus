@@ -26,7 +26,7 @@ COLOR_MAP: dict[str, list[float]] = {
     "gray": [0.5, 0.5, 0.5, 1.0],
 }
 
-# CUBE_COLOR_MAP omits "gray" (reserved for ground) — otherwise identical to COLOR_MAP.
+# CUBE_COLOR_MAP omits "gray" (reserved for ground) - otherwise identical to COLOR_MAP.
 CUBE_COLOR_MAP: dict[str, list[float]] = {k: v for k, v in COLOR_MAP.items() if k != "gray"}
 
 TARGET_COLOR_MAP: dict[str, list[float]] = CUBE_COLOR_MAP
@@ -53,11 +53,33 @@ def validate_color_config(colors: ColorConfig, field_name: str) -> None:
             raise ValueError(f"{field_name} must be one of {list(COLOR_MAP)}, got {name!r}")
 
 
-def sample_color(colors: ColorConfig, rng: np.random.Generator | None = None) -> list[float]:
-    """Resolve a ColorConfig to an RGBA list. Samples uniformly if given a list."""
+def sample_color_name(colors: ColorConfig, rng: np.random.Generator | None = None) -> str:
+    """Resolve a ColorConfig to a single color name. Samples uniformly if given a list.
+
+    Parameters
+    ----------
+    colors : ColorConfig
+        A single color name or a list of color names.
+    rng : numpy.random.Generator, optional
+        Seeded RNG used to sample from a list. When ``None`` a fresh
+        unseeded generator is used (backward-compatible global-random behavior).
+
+    Returns
+    -------
+    str
+        The chosen color name.
+    """
     if isinstance(colors, str):
-        return COLOR_MAP[colors]
+        return colors
     if rng is None:
         rng = np.random.default_rng()
-    chosen = rng.choice(colors)
-    return COLOR_MAP[chosen]
+    return str(rng.choice(colors))
+
+
+def sample_color(colors: ColorConfig, rng: np.random.Generator | None = None) -> list[float]:
+    """Resolve a ColorConfig to an RGBA list. Samples uniformly if given a list.
+
+    Pass a seeded ``rng`` for reproducible color selection under
+    ``reset(seed=...)``; ``None`` keeps the unseeded global-random behavior.
+    """
+    return COLOR_MAP[sample_color_name(colors, rng)]

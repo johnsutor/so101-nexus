@@ -17,7 +17,7 @@ import mujoco
 import numpy as np
 import pytest
 
-import so101_nexus_mujoco  # noqa: F401 — registers envs
+import so101_nexus_mujoco  # noqa: F401 - registers envs
 from so101_nexus_core import (
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,

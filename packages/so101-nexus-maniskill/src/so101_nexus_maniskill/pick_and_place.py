@@ -1,21 +1,136 @@
 """ManiSkill pick-and-place task environment for SO101-Nexus."""
 
+from __future__ import annotations
+
 from typing import Any, ClassVar
 
 import sapien
+import sapien.render
 import torch
 from mani_skill.envs.utils.randomization.pose import random_quaternions
 from mani_skill.utils.building import actors
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
+from sapien.render import RenderBodyComponent
 
 from so101_nexus_core.config import PickAndPlaceConfig
-from so101_nexus_core.constants import sample_color
+from so101_nexus_core.constants import COLOR_MAP, sample_color, sample_color_name
+from so101_nexus_core.observations import (
+    ObjectOffset,
+    ObjectPose,
+    TargetOffset,
+    TargetPosition,
+)
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
 _DEFAULT_CONFIG = PickAndPlaceConfig()
 PICK_AND_PLACE_CONFIGS: dict[str, dict] = build_maniskill_robot_configs(config=_DEFAULT_CONFIG)
+
+
+def _sample_polar_arc_xy(
+    *,
+    rows: int,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
+    center: tuple[float, float],
+    device: torch.device | str,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample ``rows`` XY positions uniformly in a polar arc around ``center``."""
+    cx, cy = center
+    r = min_r + torch.rand(rows, device=device, generator=generator) * (max_r - min_r)
+    theta = (torch.rand(rows, device=device, generator=generator) * 2 - 1) * angle_half
+    xy = torch.zeros((rows, 2), device=device)
+    xy[:, 0] = cx + r * torch.cos(theta)
+    xy[:, 1] = cy + r * torch.sin(theta)
+    return xy
+
+
+def sample_cube_xy_separated_from_target(
+    *,
+    target_xy: torch.Tensor,
+    min_r: float,
+    max_r: float,
+    angle_half: float,
+    min_separation: float,
+    center: tuple[float, float],
+    device: torch.device | str,
+    max_attempts: int = 100,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Sample per-env cube XY in a polar arc, separated from a fixed target XY.
+
+    For each environment row, an XY position is sampled in the polar arc and
+    rejected if it lies within ``min_separation`` of that row's ``target_xy``.
+    Only rows that still violate the constraint are resampled, up to
+    ``max_attempts`` times, after which the last sample is accepted as best
+    effort. This mirrors the per-row mask semantics of
+    ``spawn_utils.sample_separated_positions_torch`` for the single-object case.
+
+    Parameters
+    ----------
+    target_xy : torch.Tensor
+        Shape ``(num_envs, 2)`` fixed target XY positions to stay clear of.
+    min_r, max_r : float
+        Radial bounds from ``center``, in metres.
+    angle_half : float
+        Half-angle of the arc in radians; samples are drawn from
+        ``[-angle_half, angle_half]``.
+    min_separation : float
+        Minimum XY distance between the cube and its target.
+    center : tuple[float, float]
+        XY offset applied to all sampled positions.
+    device : torch.device or str
+        Device on which to allocate tensors.
+    max_attempts : int, optional
+        Maximum resampling attempts before accepting best effort.
+    generator : torch.Generator, optional
+        Optional torch RNG for reproducible sampling.
+
+    Returns
+    -------
+    torch.Tensor
+        Shape ``(num_envs, 2)`` cube XY positions per environment.
+    """
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+
+    num_envs = int(target_xy.shape[0])
+    sampler = _sample_polar_arc_xy
+
+    xy = sampler(
+        rows=num_envs,
+        min_r=min_r,
+        max_r=max_r,
+        angle_half=angle_half,
+        center=center,
+        device=device,
+        generator=generator,
+    )
+    for _ in range(max_attempts):
+        dists = torch.linalg.norm(xy - target_xy, dim=1)  # (num_envs,)
+        invalid = dists < min_separation  # (num_envs,)
+        # bool(invalid.any()) forces a device-to-host sync per iteration
+        # (bounded by max_attempts), an accepted tradeoff for this rejection
+        # loop. On exhausting max_attempts the loop falls through and the last
+        # sample is returned even if still too close (silent best-effort).
+        if not bool(invalid.any()):
+            break
+        n_bad = int(invalid.sum())
+        # Resample ONLY the invalid rows; valid rows are left untouched.
+        xy[invalid] = sampler(
+            rows=n_bad,
+            min_r=min_r,
+            max_r=max_r,
+            angle_half=angle_half,
+            center=center,
+            device=device,
+            generator=generator,
+        )
+
+    return xy
 
 
 class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
@@ -103,10 +218,48 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         self.add_to_state_dict_registry(self.target_site)
         self._apply_robot_color_if_needed()
 
+    def _apply_actor_color(self, actor: Actor, color: list[float]) -> None:
+        """Set the base color of every render part of ``actor``.
+
+        Mirrors ``_apply_robot_color_if_needed``: walks the SAPIEN render body
+        of each underlying object and overrides the material base color so the
+        per-episode sampled color is applied to an already-built actor.
+        """
+        for entity in actor._objs:
+            render_body: RenderBodyComponent = entity.find_component_by_type(RenderBodyComponent)
+            if render_body is None:
+                continue
+            for render_shape in render_body.render_shapes:
+                for part in render_shape.parts:
+                    part.material.set_base_color(color)
+
+    def _sample_and_apply_colors(self) -> None:
+        """Sample cube/target colors with the seeded RNG and apply + describe them.
+
+        Uses ``self._episode_rng`` (global-np.random fallback before the first
+        seeded reset) so colors are reproducible under ``reset(seed=...)`` and
+        the ``task_description`` agrees with the rendered colors. The MuJoCo
+        backend stores color on the model's geom_rgba; here it is stored on the
+        SAPIEN render materials of the built cube/target actors. This is the
+        documented per-backend divergence in HOW the sampled color is applied.
+        """
+        # _episode_rng (seeded per reset) is a numpy RandomState-like object that
+        # satisfies the Generator-style .choice protocol sample_color_name uses.
+        # Before the first seeded reset it is absent; fall back to None so
+        # sample_color_name builds a fresh unseeded generator (global-random
+        # behavior), mirroring the SO101 wrist-camera fallback intent.
+        rng = getattr(self, "_episode_rng", None)
+        self.cube_color_name = sample_color_name(self.cube_colors, rng)
+        self.target_color_name = sample_color_name(self.target_colors, rng)
+        self._apply_actor_color(self.obj, COLOR_MAP[self.cube_color_name])
+        self._apply_actor_color(self.target_site, COLOR_MAP[self.target_color_name])
+        self.task_description = self.config.describe(self.cube_color_name, self.target_color_name)
+
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict) -> None:
         with torch.device(self.device):
             b = len(env_idx)
             self._reset_robot(env_idx, options)
+            self._sample_and_apply_colors()
 
             cfg = self._robot_cfg
             min_r = cfg["spawn_min_radius"]
@@ -126,14 +279,18 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
             self.target_site.set_pose(Pose.create_from_pq(p=target_xyz, q=target_q))
 
             xyz = torch.zeros((b, 3), device=self.device)
-            for _ in range(100):
-                r_c = min_r + torch.rand(b, device=self.device) * (max_r - min_r)
-                theta_c = (torch.rand(b, device=self.device) * 2 - 1) * angle_half
-                xyz[:, 0] = cx + r_c * torch.cos(theta_c)
-                xyz[:, 1] = cy + r_c * torch.sin(theta_c)
-                dists = torch.linalg.norm(xyz[:, :2] - target_xyz[:, :2], dim=1)
-                if (dists >= self.config.min_cube_target_separation).all():
-                    break
+            # Resample only the rows whose cube falls within
+            # min_cube_target_separation of their target (per-row mask), instead
+            # of forcing every row to resample when any single row fails.
+            xyz[:, :2] = sample_cube_xy_separated_from_target(
+                target_xy=target_xyz[:, :2],
+                min_r=min_r,
+                max_r=max_r,
+                angle_half=angle_half,
+                min_separation=self.config.min_cube_target_separation,
+                center=(cx, cy),
+                device=self.device,
+            )
             xyz[:, 2] = self.cube_half_size
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
@@ -152,8 +309,10 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         obj_to_target_dist = torch.linalg.norm(obj_to_target_xy, axis=1)
         cube_near_ground = self.obj.pose.p[:, 2] < (self.cube_half_size + 0.01)
         is_obj_placed = (obj_to_target_dist <= self._robot_cfg["goal_thresh"]) & cube_near_ground
-        is_grasped = self.agent.is_grasping(self.obj)
-        is_robot_static = self.agent.is_static()
+        is_grasped = self.agent.is_grasping(
+            self.obj, min_force=self.config.robot.grasp_force_threshold
+        )
+        is_robot_static = self.agent.is_static(threshold=self.config.robot.static_vel_threshold)
 
         obj_z = self.obj.pose.p[:, 2]
         lift_height = obj_z - self._initial_obj_z
@@ -170,34 +329,40 @@ class PickAndPlaceEnv(SO101NexusManiSkillBaseEnv):
         }
 
     def _get_obs_extra(self, info: dict) -> dict[str, torch.Tensor]:
-        obs = {
-            "tcp_pose": self.agent.tcp_pose.raw_pose,
-            "is_grasped": info["is_grasped"],
-            "target_pos": self.target_site.pose.p,
-        }
-        if "state" in self.obs_mode:
-            obs.update(
-                {
-                    "obj_pose": self.obj.pose.raw_pose,
-                    "tcp_to_obj_pos": self.obj.pose.p - self.agent.tcp_pose.p,
-                    "obj_to_target_pos": self.target_site.pose.p - self.obj.pose.p,
-                }
-            )
-        return obs
+        return self._build_obs_extra_from_components(info)
+
+    def _add_component_obs(
+        self, obs: dict[str, torch.Tensor], component: object, info: dict
+    ) -> None:
+        # Semantics mirror so101_nexus_mujoco.pick_and_place.PickAndPlaceEnv
+        # ._get_component_data: ObjectPose = cube pose; ObjectOffset =
+        # obj_pos - tcp_pos; TargetPosition = target position; TargetOffset =
+        # target_pos - obj_pos.
+        if isinstance(component, ObjectPose):
+            obs["object_pose"] = self.obj.pose.raw_pose
+        elif isinstance(component, ObjectOffset):
+            obs["object_offset"] = self.obj.pose.p - self.agent.tcp_pose.p
+        elif isinstance(component, TargetPosition):
+            obs["target_position"] = self.target_site.pose.p
+        elif isinstance(component, TargetOffset):
+            obs["target_offset"] = self.target_site.pose.p - self.obj.pose.p
+        else:
+            super()._add_component_obs(obs, component, info)
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
         """Compute the normalized dense reward for pick-and-place."""
         reach_progress = self._reach_progress(info["tcp_to_obj_dist"])
         is_grasped = info["is_grasped"]
         placement_progress = self._reach_progress(info["obj_to_target_dist"]) * is_grasped
-        energy_norm = torch.linalg.norm(action, dim=-1)
 
+        # Norms are stamped once per step in get_reward; read, do not recompute.
         return self._assemble_normalized_reward(
             reach_progress=reach_progress,
             is_grasped=is_grasped,
             task_progress=placement_progress,
             is_complete=info["success"],
-            energy_norm=energy_norm,
+            action_delta_norm=info["action_delta_norm"],
+            energy_norm=info["energy_norm"],
         )
 
 
@@ -206,7 +371,7 @@ PickAndPlaceSO100Env = register_robot_variant(
     env_id="ManiSkillPickAndPlaceSO100-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so100",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )
 PickAndPlaceSO101Env = register_robot_variant(
@@ -214,6 +379,6 @@ PickAndPlaceSO101Env = register_robot_variant(
     env_id="ManiSkillPickAndPlaceSO101-v1",
     base_cls=PickAndPlaceEnv,
     robot_uid="so101",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=1024,
     caller_globals=globals(),
 )

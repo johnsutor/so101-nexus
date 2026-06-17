@@ -52,7 +52,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     Info: tcp_to_target_dist, success.
     task_description: "Move the end-effector <direction> by <distance> m."
 
-    DO NOT call _is_grasping() in this env — there is no graspable object.
+    DO NOT call _is_grasping() in this env - there is no graspable object.
     """
 
     config: MoveConfig
@@ -98,13 +98,27 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         return self.config.task_description
 
     def _task_reset(self) -> None:
-        # Forward kinematics is up-to-date because reset() calls mj_forward after _task_reset.
-        # We use the current TCP position after joint reset (before mj_forward) so we
-        # call mj_forward here to ensure site positions are updated.
-        mujoco.mj_forward(self.model, self.data)
-        initial_tcp_pos = self.data.site_xpos[self._tcp_site_id].copy()
-        self._target_pos = initial_tcp_pos + self._dir_vec * self.config.target_distance
-        # Keep target above floor
+        # The move target is computed from the POST-settle TCP position so the
+        # initial tcp_to_target_dist equals config.target_distance, matching the
+        # ManiSkill backend (which settles before placing the target). The actual
+        # placement happens in _refresh_reset_reference_state, the post-settle hook
+        # base reset() calls after _settle_after_reset(). Nothing between _task_reset
+        # and that hook reads the target site, so no provisional placement is needed.
+        pass
+
+    def _refresh_reset_reference_state(self) -> None:
+        # Recompute the target from the settled TCP so the initial distance is
+        # exactly config.target_distance (within tolerance), matching ManiSkill.
+        self._place_target_from_tcp()
+
+    def _place_target_from_tcp(self) -> None:
+        """Place the move target target_distance from the current TCP along the move direction."""
+        tcp_pos = self.data.site_xpos[self._tcp_site_id].copy()
+        self._target_pos = tcp_pos + self._dir_vec * self.config.target_distance
+        # Keep target above floor. For downward move directions this clamp can
+        # shorten the achievable distance, so the initial tcp_to_target_dist may be
+        # less than config.target_distance. This matches the ManiSkill backend's
+        # identical clamp (cross-backend consistent).
         self._target_pos[2] = max(self._target_pos[2], 0.02)
         self.model.site_pos[self._move_target_site_id] = self._target_pos
 
@@ -129,8 +143,13 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
         progress = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        return simple_reward(
+        base = simple_reward(
             progress=progress,
             completion_bonus=self.config.reward.completion_bonus,
             success=info.get("success", False),
+        )
+        return self.config.reward.apply_penalties(
+            base,
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
         )

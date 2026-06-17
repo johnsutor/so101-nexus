@@ -142,16 +142,19 @@ class TargetPosition(Observation):
 
 
 # ---------------------------------------------------------------------------
-# Camera components — add image tensors to dict-style observation spaces
+# Camera components - add image tensors to dict-style observation spaces
 # ---------------------------------------------------------------------------
 
 
-class _CameraObservation(Observation):
+class CameraObservation(Observation):
     """Base for camera observation components.
 
-    Args:
-        width: Image width in pixels.
-        height: Image height in pixels.
+    Parameters
+    ----------
+    width : int
+        Image width in pixels.
+    height : int
+        Image height in pixels.
     """
 
     _name: str  # set by subclasses
@@ -163,18 +166,22 @@ class _CameraObservation(Observation):
         self.height = height
 
     @property
-    def name(self) -> str:
+    def name(self) -> str:  # noqa: D102
         return self._name
 
     @property
-    def size(self) -> int:
+    def size(self) -> int:  # noqa: D102
         return 0
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # noqa: D105
         return f"{type(self).__name__}(width={self.width}, height={self.height})"
 
 
-class WristCamera(_CameraObservation):
+_CameraObservation = CameraObservation
+"""Backward-compatibility alias for :class:`CameraObservation`."""
+
+
+class WristCamera(CameraObservation):
     """RGB image from the camera mounted on the robot's wrist.
 
     Parameters
@@ -239,7 +246,7 @@ class WristCamera(_CameraObservation):
         )
 
 
-class OverheadCamera(_CameraObservation):
+class OverheadCamera(CameraObservation):
     """RGB image from the stationary camera above the workspace.
 
     Parameters

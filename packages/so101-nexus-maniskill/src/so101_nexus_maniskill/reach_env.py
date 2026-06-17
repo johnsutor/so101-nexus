@@ -14,8 +14,6 @@ from so101_nexus_core.observations import TargetOffset
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
-_DEFAULT_CONFIG = ReachConfig()
-
 
 class ReachEnv(SO101NexusManiSkillBaseEnv):
     """Reach primitive: move TCP to a randomly sampled 3-D target position.
@@ -118,11 +116,13 @@ class ReachEnv(SO101NexusManiSkillBaseEnv):
             super()._add_component_obs(obs, component, info)
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        """Tanh-shaped reach reward with completion bonus."""
+        """Tanh-shaped reach reward with completion bonus and action penalties."""
         reach = self._reach_progress(info["tcp_to_target_dist"])
         bonus = self.config.reward.completion_bonus
         # mirrors simple_reward() in so101_nexus_core.rewards
-        return (1.0 - bonus) * reach + bonus * info["success"]
+        base = (1.0 - bonus) * reach + bonus * info["success"]
+        # Norms are stamped once per step in get_reward; read, do not recompute.
+        return self._apply_penalties_tensor(base, info["action_delta_norm"], info["energy_norm"])
 
 
 ReachSO100Env = register_robot_variant(
@@ -130,7 +130,7 @@ ReachSO100Env = register_robot_variant(
     env_id="ManiSkillReachSO100-v1",
     base_cls=ReachEnv,
     robot_uid="so100",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=512,
     caller_globals=globals(),
 )
 ReachSO101Env = register_robot_variant(
@@ -138,6 +138,6 @@ ReachSO101Env = register_robot_variant(
     env_id="ManiSkillReachSO101-v1",
     base_cls=ReachEnv,
     robot_uid="so101",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=512,
     caller_globals=globals(),
 )

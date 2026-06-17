@@ -2,7 +2,7 @@
 
 These tests cover ``_default_repo_id``, ``_resolve_env_config``,
 ``_replace_wrist_camera``, ``_replace_overhead_camera``, and
-``_wire_camera_observations`` — all of which are pure-logic helpers
+``_wire_camera_observations`` - all of which are pure-logic helpers
 that don't require gymnasium or any optional dependency.
 """
 

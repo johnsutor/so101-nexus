@@ -1,6 +1,9 @@
 """ManiSkill agent definition for the SO101 robot arm."""
 
+from __future__ import annotations
+
 import copy
+from typing import TYPE_CHECKING
 
 import numpy as np
 import sapien
@@ -10,13 +13,15 @@ from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import PDJointPosControllerConfig
 from mani_skill.agents.registration import register_agent
 from mani_skill.utils import common
-from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from transforms3d.euler import euler2quat
 
 from so101_nexus_core import get_so101_mujoco_model_path
 from so101_nexus_core.config import RobotConfig
 from so101_nexus_maniskill import menagerie_constants as mc
+
+if TYPE_CHECKING:
+    from mani_skill.utils.structs.actor import Actor
 
 
 @register_agent()
@@ -260,9 +265,12 @@ class SO101(BaseAgent):
         sapien.Pose
             A :class:`sapien.Pose` representing the desired grasp frame.
         """
-        assert np.abs(1 - np.linalg.norm(approaching)) < 1e-3
-        assert np.abs(1 - np.linalg.norm(closing)) < 1e-3
-        assert np.abs(approaching @ closing) <= 1e-3
+        if np.abs(1 - np.linalg.norm(approaching)) >= 1e-3:
+            raise ValueError("approaching must be a unit vector")
+        if np.abs(1 - np.linalg.norm(closing)) >= 1e-3:
+            raise ValueError("closing must be a unit vector")
+        if np.abs(approaching @ closing) > 1e-3:
+            raise ValueError("approaching and closing must be orthogonal")
         ortho = np.cross(closing, approaching)
         T = np.eye(4)
         T[:3, :3] = np.stack([ortho, closing, approaching], axis=1)

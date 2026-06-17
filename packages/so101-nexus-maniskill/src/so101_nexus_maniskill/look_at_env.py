@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 from so101_nexus_core.robot_presets import build_maniskill_robot_configs
 from so101_nexus_maniskill.base_env import SO101NexusManiSkillBaseEnv, register_robot_variant
 
-_DEFAULT_CONFIG = LookAtConfig()
-
 
 class LookAtEnv(SO101NexusManiSkillBaseEnv):
     """LookAt primitive: orient the TCP toward a sampled target object.
@@ -138,12 +136,14 @@ class LookAtEnv(SO101NexusManiSkillBaseEnv):
             super()._add_component_obs(obs, component, info)
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict) -> torch.Tensor:
-        """Cosine similarity reward for orientation toward target."""
+        """Cosine similarity orientation reward with completion bonus and penalties."""
         # tensor equivalent of orientation_progress(cos(orientation_error))
         orient = (torch.cos(info["orientation_error"]) + 1) / 2
         bonus = self.config.reward.completion_bonus
         # mirrors simple_reward() in so101_nexus_core.rewards
-        return (1.0 - bonus) * orient + bonus * info["success"]
+        base = (1.0 - bonus) * orient + bonus * info["success"]
+        # Norms are stamped once per step in get_reward; read, do not recompute.
+        return self._apply_penalties_tensor(base, info["action_delta_norm"], info["energy_norm"])
 
 
 LookAtSO100Env = register_robot_variant(
@@ -151,7 +151,7 @@ LookAtSO100Env = register_robot_variant(
     env_id="ManiSkillLookAtSO100-v1",
     base_cls=LookAtEnv,
     robot_uid="so100",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=256,
     caller_globals=globals(),
 )
 LookAtSO101Env = register_robot_variant(
@@ -159,6 +159,6 @@ LookAtSO101Env = register_robot_variant(
     env_id="ManiSkillLookAtSO101-v1",
     base_cls=LookAtEnv,
     robot_uid="so101",
-    max_episode_steps=_DEFAULT_CONFIG.max_episode_steps,
+    max_episode_steps=256,
     caller_globals=globals(),
 )

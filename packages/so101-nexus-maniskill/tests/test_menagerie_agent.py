@@ -183,10 +183,11 @@ def test_pd_joint_pos_action_space_equals_joint_limits():
 
 
 def test_delta_action_space_is_normalized():
-    """Delta modes keep ManiSkill's default normalized [-1, 1] action space
-    (unchanged from the pre-menagerie behavior). The +/-0.05 arm / +/-0.2
-    gripper delta scale is the controller's internal range, not the action
-    space; normalize_action stays at its default (True) for delta modes."""
+    """Delta modes expose the normalized [-1, 1] action space that is the
+    intended cross-backend contract (the MuJoCo backend matches it). The
+    +/-0.05 arm / +/-0.2 gripper delta scale is the controller's internal
+    range, not the action space; normalize_action stays at its default (True)
+    for delta modes."""
     for mode in ("pd_joint_delta_pos", "pd_joint_target_delta_pos"):
         env = gym.make(
             "ManiSkillReachSO101-v1",
@@ -377,6 +378,34 @@ def test_wrist_camera_randomization_is_seeded():
     same_a, same_b, other = cam_pose(123), cam_pose(123), cam_pose(999)
     np.testing.assert_allclose(same_a, same_b, atol=1e-6)
     assert not np.allclose(same_a, other, atol=1e-4)
+
+
+def test_so100_wrist_camera_randomization_is_seeded():
+    """env.reset(seed=...) must reproduce the SO100 wrist-camera world pose.
+
+    The SO100 preset-driven path now samples position/euler/fov with the seeded
+    episode RNG (matching SO101 and the MuJoCo backend), so the same seed yields
+    the same camera. Regression for global-np.random sampling that ignored the
+    reset seed. num_envs=1, CPU.
+    """
+    from so101_nexus_core.observations import JointPositions, WristCamera
+
+    def cam_pose(seed: int) -> np.ndarray:
+        cfg = ReachConfig(observations=[JointPositions(), WristCamera(width=64, height=64)])
+        env = gym.make(
+            "ManiSkillReachSO100-v1", config=cfg, num_envs=1, obs_mode="rgbd", render_mode=None
+        )
+        try:
+            env.reset(seed=seed)
+            gp = env.unwrapped._sensors["wrist_camera"].camera.global_pose
+            return np.concatenate(
+                [np.asarray(gp.p).reshape(-1)[:3], np.asarray(gp.q).reshape(-1)[:4]]
+            )
+        finally:
+            env.close()
+
+    same_a, same_b = cam_pose(123), cam_pose(123)
+    np.testing.assert_allclose(same_a, same_b, atol=1e-6)
 
 
 # --- Cross-backend TCP parity (zero-qpos and default rest) -------------------

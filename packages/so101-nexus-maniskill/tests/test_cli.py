@@ -20,10 +20,6 @@ def test_build_parser_requires_subcommand():
     run_parser_requires_subcommand(maniskill_cli, pytest=pytest)
 
 
-def test_build_parser_wrist_roll_offset_parses():
-    run_parser_contract(maniskill_cli)
-
-
 def test_main_dispatches_teleop(monkeypatch):
     run_main_dispatch_contract(
         maniskill_cli,

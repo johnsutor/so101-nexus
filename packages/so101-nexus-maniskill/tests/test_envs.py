@@ -10,6 +10,7 @@ of this file.
 from __future__ import annotations
 
 import importlib
+import math
 
 import gymnasium as gym
 import numpy as np
@@ -17,25 +18,33 @@ import pytest
 import torch
 from mani_skill import ASSET_DIR
 
-import so101_nexus_maniskill  # noqa: F401 — registers envs
+import so101_nexus_maniskill  # noqa: F401 - registers envs
 from so101_nexus_core.config import (
     LookAtConfig,
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
     ReachConfig,
+    RobotConfig,
 )
 from so101_nexus_core.constants import CUBE_COLOR_MAP, YCB_OBJECTS
 from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import (
     EndEffectorPose,
     GazeDirection,
+    GraspState,
     JointPositions,
+    ObjectOffset,
+    ObjectPose,
     OverheadCamera,
     TargetOffset,
+    TargetPosition,
     WristCamera,
 )
-from so101_nexus_core.testing import run_env_contract
+from so101_nexus_core.testing import (
+    run_env_contract,
+    skip_if_vectorized_runtime_unavailable,
+)
 from so101_nexus_maniskill.look_at_env import LookAtEnv
 from so101_nexus_maniskill.pick_and_place import (
     PickAndPlaceSO100Env,
@@ -96,10 +105,16 @@ def _run_episode(env, n_steps: int = N_STEPS):
 
 
 def _make_vector_env_or_skip(env_id: str, **kwargs):
+    """Build a vectorized env, skipping only on GPU/runtime-availability errors.
+
+    Delegates to the shared ``skip_if_vectorized_runtime_unavailable`` helper so
+    genuine construction errors (a bad link name, a failed patch) surface as
+    failures instead of being masked as skips.
+    """
     try:
         return gym.make(env_id, **kwargs)
     except Exception as exc:
-        pytest.skip(f"ManiSkill vectorized runtime unavailable: {exc}")
+        skip_if_vectorized_runtime_unavailable(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +162,12 @@ def test_pick_ycb_object(env_id, model_id):
 
 @pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
 def test_pick_multiple_cubes_with_distractors(env_id):
-    """PickLift with a pool of cubes and distractors spawns correctly."""
+    """PickLift with a pool of cubes and distractors spawns correctly.
+
+    Also verifies distractors are sampled without replacement: with a 3-cube
+    pool and 2 distractors, every spawned object identity (target + distractors)
+    is distinct.
+    """
     objects: list[CubeObject] = [
         CubeObject(color="red"),
         CubeObject(color="blue"),
@@ -157,7 +177,141 @@ def test_pick_multiple_cubes_with_distractors(env_id):
     env = gym.make(env_id, config=config, **BASE_KWARGS)
     try:
         env.reset()
+        inner = env.unwrapped
+        colors = [inner._target_obj.color] + [d.color for d in inner._distractors_spec]
+        assert len(set(colors)) == len(colors), f"duplicate distractor identities: {colors}"
         _run_episode(env)
+    finally:
+        env.close()
+
+
+def _spawned_identities(inner) -> tuple[str, tuple[str, ...]]:
+    """Return (target_color, (distractor_colors,)) for the current episode."""
+    return inner._target_obj.color, tuple(d.color for d in inner._distractors_spec)
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_identities_reproducible_by_seed(env_id):
+    """reset(seed=S) reproduces the same target/distractor identities."""
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    config = PickConfig(objects=objects, n_distractors=1)  # type: ignore[arg-type]
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        env.reset(seed=123)
+        first = _spawned_identities(inner)
+        env.reset(seed=123)
+        second = _spawned_identities(inner)
+        assert first == second, f"seed=123 not reproducible: {first} vs {second}"
+
+        # A different seed is allowed to differ; scan a few to show identities
+        # actually vary across seeds (variable-object pool reconfigures).
+        seen = set()
+        for s in range(8):
+            env.reset(seed=s)
+            seen.add(_spawned_identities(inner))
+        assert len(seen) > 1, f"identities never varied across seeds: {seen}"
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_distractors_unique_when_pool_allows(env_id):
+    """Distractors are unique (no duplicates) when the pool is large enough."""
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+        CubeObject(color="yellow"),
+    ]
+    config = PickConfig(objects=objects, n_distractors=3)  # type: ignore[arg-type]
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        for s in range(6):
+            env.reset(seed=s)
+            target, distractors = _spawned_identities(inner)
+            all_ids = [target, *distractors]
+            assert len(set(all_ids)) == len(all_ids), f"duplicate identity: {all_ids}"
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_object_separation_respected(env_id):
+    """Spawned objects satisfy min_object_separation + bounding radii (num_envs=1)."""
+    from so101_nexus_maniskill.pick_env import _obj_bounding_radius
+
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    min_sep = 0.04
+    config = PickConfig(  # type: ignore[arg-type]
+        objects=objects, n_distractors=2, min_object_separation=min_sep
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        for s in range(6):
+            env.reset(seed=s)
+            radii = [_obj_bounding_radius(inner._target_obj)] + [
+                _obj_bounding_radius(d) for d in inner._distractors_spec
+            ]
+            xys = [inner.obj.pose.p[0, :2].cpu()] + [
+                d.pose.p[0, :2].cpu() for d in inner.distractors
+            ]
+            n = len(xys)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dist = float(torch.linalg.norm(xys[i] - xys[j]))
+                    required = min_sep + radii[i] + radii[j]
+                    # Settling can nudge objects slightly; allow a small tolerance.
+                    assert dist >= required - 0.02, (
+                        f"objects {i},{j} too close: {dist} < {required}"
+                    )
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_separation_batched_vec(env_id):
+    """GPU-gated: batched per-row separation holds for num_envs>1."""
+    from so101_nexus_maniskill.pick_env import _obj_bounding_radius
+
+    objects = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        CubeObject(color="green"),
+    ]
+    min_sep = 0.04
+    config = PickConfig(  # type: ignore[arg-type]
+        objects=objects, n_distractors=2, min_object_separation=min_sep
+    )
+    try:
+        env = gym.make(env_id, config=config, obs_mode="state", num_envs=2, render_mode=None)
+    except Exception as exc:  # narrowed: only GPU-availability errors become skips
+        skip_if_vectorized_runtime_unavailable(exc)
+    try:
+        inner = env.unwrapped
+        env.reset(seed=0)
+        radii = [_obj_bounding_radius(inner._target_obj)] + [
+            _obj_bounding_radius(d) for d in inner._distractors_spec
+        ]
+        xys = [inner.obj.pose.p[:, :2].cpu()] + [d.pose.p[:, :2].cpu() for d in inner.distractors]
+        n = len(xys)
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = torch.linalg.norm(xys[i] - xys[j], dim=1)
+                required = min_sep + radii[i] + radii[j]
+                assert bool((dist >= required - 0.02).all()), (
+                    f"objects {i},{j} too close in some env row"
+                )
     finally:
         env.close()
 
@@ -383,9 +537,13 @@ def test_lookat_dense_reward_uses_orientation_error_info():
     env = object.__new__(LookAtEnv)
     env.config = LookAtConfig()
     bonus = env.config.reward.completion_bonus
+    # get_reward stamps these norms into info before compute_dense_reward runs;
+    # the reward path reads them rather than recomputing, so supply them here.
     info = {
         "orientation_error": torch.tensor([0.0, torch.pi], dtype=torch.float32),
         "success": torch.tensor([False, True]),
+        "action_delta_norm": torch.zeros(2, dtype=torch.float32),
+        "energy_norm": torch.zeros(2, dtype=torch.float32),
     }
 
     reward = LookAtEnv.compute_dense_reward(
@@ -560,6 +718,129 @@ def test_move_observation_component(env_id, obs_cls, expected_key):
             extra = env.unwrapped._get_obs_extra(info)
             assert expected_key in extra
         _run_episode(env)
+    finally:
+        env.close()
+
+
+_pick_obs_params = [
+    (EndEffectorPose, "tcp_pose"),
+    (GraspState, "is_grasped"),
+    (ObjectPose, "object_pose"),
+    (ObjectOffset, "object_offset"),
+]
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+@pytest.mark.parametrize(
+    "obs_cls,expected_key",
+    _pick_obs_params,
+    ids=[cls.__name__ for cls, _ in _pick_obs_params],
+)
+def test_pick_observation_component(env_id, obs_cls, expected_key):
+    """Each valid Pick observation component appears in obs_extra when requested."""
+    config = PickConfig(observations=[JointPositions(), obs_cls()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert expected_key in extra
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_obs_extra_honors_config_observations(env_id):
+    """Pick obs_extra is component-driven, not a fixed object-state leak.
+
+    Regression: the old _get_obs_extra emitted obj_pose/tcp regardless of
+    config.observations. With observations=[JointPositions()] no object
+    components are requested, so obs_extra must contain no object state.
+    """
+    config = PickConfig(observations=[JointPositions()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert "object_pose" not in extra
+        assert "object_offset" not in extra
+        assert "tcp_pose" not in extra
+        assert "is_grasped" not in extra
+
+        # With object components present, they ARE included.
+        config2 = PickConfig(observations=[JointPositions(), ObjectPose(), ObjectOffset()])
+        env2 = gym.make(env_id, config=config2, **BASE_KWARGS)
+        try:
+            env2.reset()
+            _, _, _, _, info2 = env2.step(env2.action_space.sample())
+            extra2 = env2.unwrapped._get_obs_extra(info2)
+            assert "object_pose" in extra2
+            assert "object_offset" in extra2
+        finally:
+            env2.close()
+    finally:
+        env.close()
+
+
+_pick_and_place_obs_params = [
+    (EndEffectorPose, "tcp_pose"),
+    (GraspState, "is_grasped"),
+    (ObjectPose, "object_pose"),
+    (ObjectOffset, "object_offset"),
+    (TargetPosition, "target_position"),
+    (TargetOffset, "target_offset"),
+]
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+@pytest.mark.parametrize(
+    "obs_cls,expected_key",
+    _pick_and_place_obs_params,
+    ids=[cls.__name__ for cls, _ in _pick_and_place_obs_params],
+)
+def test_pick_and_place_observation_component(env_id, obs_cls, expected_key):
+    """Each valid PickAndPlace observation component appears in obs_extra."""
+    config = PickAndPlaceConfig(observations=[JointPositions(), obs_cls()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert expected_key in extra
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_obs_extra_honors_config_observations(env_id):
+    """PickAndPlace obs_extra is component-driven, not a fixed target/object leak."""
+    config = PickAndPlaceConfig(observations=[JointPositions()])
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        env.reset()
+        _, _, _, _, info = env.step(env.action_space.sample())
+        extra = env.unwrapped._get_obs_extra(info)
+        assert "object_pose" not in extra
+        assert "object_offset" not in extra
+        assert "target_position" not in extra
+        assert "target_offset" not in extra
+
+        # With target components present, they ARE included.
+        config2 = PickAndPlaceConfig(
+            observations=[JointPositions(), TargetPosition(), TargetOffset()]
+        )
+        env2 = gym.make(env_id, config=config2, **BASE_KWARGS)
+        try:
+            env2.reset()
+            _, _, _, _, info2 = env2.step(env2.action_space.sample())
+            extra2 = env2.unwrapped._get_obs_extra(info2)
+            assert "target_position" in extra2
+            assert "target_offset" in extra2
+        finally:
+            env2.close()
     finally:
         env.close()
 
@@ -808,6 +1089,93 @@ def test_pick_and_place_cube_target_separation(env_id):
 
 
 @pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_cube_target_separation_batched_vec(env_id):
+    """GPU-gated: every env row satisfies min_cube_target_separation for num_envs>1."""
+    min_sep = PickAndPlaceConfig().min_cube_target_separation
+    try:
+        env = gym.make(env_id, obs_mode="state", num_envs=16, render_mode=None)
+    except Exception as exc:  # narrowed: only GPU-availability errors become skips
+        skip_if_vectorized_runtime_unavailable(exc)
+    try:
+        inner = env.unwrapped
+        for s in range(3):
+            env.reset(seed=s)
+            cube_xy = inner.obj.pose.p[:, :2].cpu()
+            target_xy = inner.target_site.pose.p[:, :2].cpu()
+            dists = torch.linalg.norm(cube_xy - target_xy, dim=1)
+            assert bool((dists >= min_sep - 1e-4).all()), (
+                f"some env row violates min_cube_target_separation: min={dists.min().item()}"
+            )
+    finally:
+        env.close()
+
+
+def test_sample_cube_xy_separated_returns_valid_positions():
+    """Sampler returns per-row positions that all satisfy the separation (CPU)."""
+    from so101_nexus_maniskill.pick_and_place import sample_cube_xy_separated_from_target
+
+    device = torch.device("cpu")
+    min_sep = 0.1
+    target_xy = torch.zeros((4, 2), device=device)
+
+    gen = torch.Generator(device="cpu")
+    gen.manual_seed(0)
+
+    out = sample_cube_xy_separated_from_target(
+        target_xy=target_xy,
+        min_r=0.5,
+        max_r=0.6,
+        angle_half=0.3,
+        min_separation=min_sep,
+        center=(0.0, 0.0),
+        device=device,
+        generator=gen,
+    )
+    assert out.shape == (4, 2)
+    dists = torch.linalg.norm(out - target_xy, dim=1)
+    assert bool((dists >= min_sep).all())
+
+
+def test_sample_cube_xy_separated_only_invalid_rows_change(monkeypatch):
+    """Valid rows are left untouched; only invalid rows are resampled."""
+    from so101_nexus_maniskill import pick_and_place as pap
+
+    device = torch.device("cpu")
+    min_sep = 0.1
+    target_xy = torch.zeros((3, 2), device=device)
+
+    # First sampler call returns a full batch with row 0 on top of the target
+    # (invalid) and rows 1, 2 far away (valid). The single resample call must
+    # request exactly the one invalid row and is handed a valid position.
+    requested_rows: list[int] = []
+
+    def fake_sampler(*, rows, min_r, max_r, angle_half, center, device, generator=None):
+        requested_rows.append(rows)
+        if len(requested_rows) == 1:
+            return torch.tensor([[0.0, 0.0], [5.0, 0.0], [6.0, 0.0]], device=device)
+        return torch.full((rows, 2), 9.0, device=device)
+
+    monkeypatch.setattr(pap, "_sample_polar_arc_xy", fake_sampler)
+
+    out = pap.sample_cube_xy_separated_from_target(
+        target_xy=target_xy,
+        min_r=0.5,
+        max_r=0.6,
+        angle_half=0.3,
+        min_separation=min_sep,
+        center=(0.0, 0.0),
+        device=device,
+    )
+
+    # Valid rows are untouched; the invalid row was resampled to a valid spot.
+    assert torch.equal(out[1], torch.tensor([5.0, 0.0]))
+    assert torch.equal(out[2], torch.tensor([6.0, 0.0]))
+    assert bool((torch.linalg.norm(out - target_xy, dim=1) >= min_sep).all())
+    # Exactly one resample, of exactly the single invalid row.
+    assert requested_rows == [3, 1]
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
 def test_pick_and_place_target_disc_lies_flat(env_id):
     """Target disc cylinder must be rotated so it lies flat on the ground (axis along Z)."""
     env = gym.make(env_id, **BASE_KWARGS)
@@ -898,5 +1266,132 @@ def test_pick_lift_robot_base_at_origin():
         assert base_pos[0].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[1].item() == pytest.approx(0.0, abs=0.01)
         assert base_pos[2].item() == pytest.approx(0.0, abs=0.01)
+    finally:
+        env.close()
+
+
+# Non-default thresholds, distinct from the agent defaults (min_force=0.5,
+# threshold=0.2), so a captured value can only equal these if the env forwarded
+# the configured RobotConfig fields rather than relying on the hardcoded default.
+_GRASP_FORCE = 1.7
+_STATIC_VEL = 0.0123
+
+
+@pytest.mark.parametrize("env_id", PICK_LIFT_ENV_IDS)
+def test_pick_lift_forwards_grasp_force_threshold(env_id):
+    """PickLift.evaluate must pass RobotConfig.grasp_force_threshold to is_grasping."""
+    config = PickConfig(robot=RobotConfig(grasp_force_threshold=_GRASP_FORCE))
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset()
+        captured: dict = {}
+
+        original = inner.agent.is_grasping
+
+        def _capture(object=None, *, min_force=None, **kwargs):
+            captured["min_force"] = min_force
+            return original(object, min_force=min_force, **kwargs)
+
+        inner.agent.is_grasping = _capture
+        inner.evaluate()
+        assert captured["min_force"] == pytest.approx(_GRASP_FORCE)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_forwards_thresholds(env_id):
+    """PickAndPlace.evaluate must forward both grasp and static RobotConfig fields."""
+    config = PickAndPlaceConfig(
+        robot=RobotConfig(grasp_force_threshold=_GRASP_FORCE, static_vel_threshold=_STATIC_VEL)
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset()
+        captured: dict = {}
+
+        orig_grasp = inner.agent.is_grasping
+        orig_static = inner.agent.is_static
+
+        def _capture_grasp(object=None, *, min_force=None, **kwargs):
+            captured["min_force"] = min_force
+            return orig_grasp(object, min_force=min_force, **kwargs)
+
+        def _capture_static(*, threshold=None, **kwargs):
+            captured["threshold"] = threshold
+            return orig_static(threshold=threshold, **kwargs)
+
+        inner.agent.is_grasping = _capture_grasp
+        inner.agent.is_static = _capture_static
+        inner.evaluate()
+        assert captured["min_force"] == pytest.approx(_GRASP_FORCE)
+        assert captured["threshold"] == pytest.approx(_STATIC_VEL)
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# Sim/control frequency and human render camera FOV (cross-backend parity).
+# ---------------------------------------------------------------------------
+
+
+def test_sim_config_matches_mujoco_timestep(so101_reach_env):
+    """ManiSkill sim/control freq match the MuJoCo 0.005 s / 0.02 s cadence."""
+    sim_cfg = so101_reach_env.sim_config
+    assert sim_cfg.sim_freq == 200
+    assert sim_cfg.control_freq == 50
+    # 200 Hz sim -> 0.005 s step; 50 Hz control -> 0.02 s interval.
+    assert 1.0 / sim_cfg.sim_freq == pytest.approx(0.005)
+    assert 1.0 / sim_cfg.control_freq == pytest.approx(0.02)
+
+
+def test_human_render_camera_fov_is_45_deg(so101_reach_env):
+    """The human render camera vertical FOV matches MuJoCo's 45 deg (in radians)."""
+    cam_cfg = so101_reach_env._default_human_render_camera_configs
+    assert cam_cfg.fov == pytest.approx(math.radians(45.0))
+
+
+# ---------------------------------------------------------------------------
+# PickAndPlace seeded color / description agreement.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_color_description_agreement(env_id):
+    """task_description names the SAME color applied to the cube/target."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple"],
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=7)
+        desc = inner.task_description
+        assert inner.cube_color_name in config.cube_colors
+        assert inner.target_color_name in config.target_colors
+        assert inner.cube_color_name in desc
+        assert inner.target_color_name in desc
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", PICK_AND_PLACE_ENV_IDS)
+def test_pick_and_place_color_reproducible_by_seed(env_id):
+    """reset(seed=S) reproduces the same sampled cube/target colors twice."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple", "orange"],
+    )
+    env = gym.make(env_id, config=config, **BASE_KWARGS)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=42)
+        first = (inner.cube_color_name, inner.target_color_name)
+        inner.reset(seed=42)
+        second = (inner.cube_color_name, inner.target_color_name)
+        assert first == second
     finally:
         env.close()

@@ -17,7 +17,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-import so101_nexus_mujoco  # noqa: F401 — registers envs
+import so101_nexus_mujoco  # noqa: F401 - registers envs
 from so101_nexus_core.config import (
     LookAtConfig,
     MoveConfig,
@@ -82,7 +82,7 @@ def _run_episode(env, n_steps: int = N_STEPS):
 
 
 # ---------------------------------------------------------------------------
-# Shared contract — one parametrized call per env id.
+# Shared contract - one parametrized call per env id.
 # ---------------------------------------------------------------------------
 
 
@@ -202,7 +202,7 @@ def test_pick_and_place_info_keys_exact():
 
 
 # ---------------------------------------------------------------------------
-# Object parametrics — cubes, YCB, mixed pools.
+# Object parametrics - cubes, YCB, mixed pools.
 # ---------------------------------------------------------------------------
 
 
@@ -448,6 +448,75 @@ def test_control_mode(env_id, control_mode):
         env.close()
 
 
+DELTA_CONTROL_MODES = ["pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+
+# Physical per-joint delta scale a normalized +1 action maps to (radians):
+# +/-0.05 for the five arm joints, +/-0.2 for the gripper. This mirrors
+# so101_nexus_mujoco.base_env._DELTA_ACTION_SCALE and is the cross-backend
+# contract with ManiSkill.
+_EXPECTED_DELTA_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_action_space_is_normalized(control_mode):
+    """Both delta modes expose a normalized [-1, 1] action space (six joints),
+    matching the ManiSkill backend's delta-mode contract."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        space = env.action_space
+        assert space.shape == (6,)
+        np.testing.assert_allclose(space.low, [-1.0] * 6, atol=1e-6)
+        np.testing.assert_allclose(space.high, [1.0] * 6, atol=1e-6)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_normalized_plus_one_matches_physical_max_delta(control_mode):
+    """An all +1 normalized action moves joint targets by exactly the physical
+    delta scale, i.e. the internal scaling reproduces the old physical-max
+    behavior."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        env.reset(seed=0)
+        unwrapped = env.unwrapped
+        actuator_ids = unwrapped._actuator_ids  # type: ignore[attr-defined]
+        target_high = unwrapped._target_high  # type: ignore[attr-defined]
+
+        # The base the delta is added to differs by mode: pd_joint_delta_pos
+        # integrates from the measured joint positions, pd_joint_target_delta_pos
+        # integrates from the held target. Read each mode's base at step time.
+        if control_mode == "pd_joint_delta_pos":
+            base = unwrapped._get_current_qpos()  # type: ignore[attr-defined]
+        else:
+            base = unwrapped._prev_target.copy()  # type: ignore[attr-defined]
+
+        action = np.ones(6, dtype=np.float32)
+        env.step(action)
+
+        after = unwrapped.data.ctrl[actuator_ids].copy()  # type: ignore[attr-defined]
+        # Per joint, the commanded target moved by the physical scale, unless it
+        # was clamped at the upper target bound.
+        expected = np.minimum(base + _EXPECTED_DELTA_SCALE, target_high)
+        np.testing.assert_allclose(after, expected, atol=1e-6)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_penalty_norms_use_normalized_action(control_mode):
+    """Penalty norms (energy_norm) are computed on the normalized public action,
+    so an all +1 action yields energy_norm == sqrt(6)."""
+    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    try:
+        env.reset(seed=0)
+        action = np.ones(6, dtype=np.float32)
+        _, _, _, _, info = env.step(action)
+        assert info["energy_norm"] == pytest.approx(np.sqrt(6.0), abs=1e-6)
+    finally:
+        env.close()
+
+
 # ---------------------------------------------------------------------------
 # Per-env observation-vector shape + geometry assertions.
 # ---------------------------------------------------------------------------
@@ -632,19 +701,89 @@ def test_spawn_center_offsets_pick_and_place_cube_and_target():
     assert np.mean(cube_xs) > 0.10
 
 
-def test_reach_target_on_ground_and_offset():
-    """Reach target spawns on the ground plane and is offset by spawn_center."""
+def test_reach_target_in_3d_workspace():
+    """Reach target occupies the 3-D cubic workspace, matching ManiSkill.
+
+    Mirrors the ManiSkill contract: center = [0.15, 0.0, 0.15], per-axis offset in
+    [-half, +half] with half = target_workspace_half_extent, and z clamped to >= 0.05.
+    """
     env = gym.make("MuJoCoReach-v1")
-    xs: list[float] = []
+    half = env.unwrapped.config.target_workspace_half_extent  # type: ignore[attr-defined]
+    center = np.array([0.15, 0.0, 0.15])
+    zs: list[float] = []
     try:
         for seed in range(20):
             env.reset(seed=seed)
             target_pos = env.unwrapped._target_pos  # type: ignore[attr-defined]
-            assert target_pos[2] < 0.05, f"Target z={target_pos[2]} too high (seed={seed})"
-            xs.append(float(target_pos[0]))
+            assert center[0] - half - 1e-6 <= target_pos[0] <= center[0] + half + 1e-6
+            assert center[1] - half - 1e-6 <= target_pos[1] <= center[1] + half + 1e-6
+            assert target_pos[2] >= 0.05 - 1e-6, (
+                f"Target z={target_pos[2]} below floor (seed={seed})"
+            )
+            zs.append(float(target_pos[2]))
     finally:
         env.close()
-    assert np.mean(xs) > 0.10
+    # With the default half-extent the target distribution must span above the floor,
+    # confirming we sample a 3-D cube and not a floor-only ring.
+    assert max(zs) > 0.05 + 1e-3
+
+
+def test_reach_target_workspace_half_extent_affects_sampling():
+    """Increasing target_workspace_half_extent widens the x/y sampling range."""
+    half_small, half_large = 0.05, 0.25
+    center_x = 0.15
+
+    def _x_spread(half: float) -> float:
+        cfg = ReachConfig(target_workspace_half_extent=half)
+        env = gym.make("MuJoCoReach-v1", config=cfg)
+        xs: list[float] = []
+        try:
+            for seed in range(30):
+                env.reset(seed=seed)
+                xs.append(float(env.unwrapped._target_pos[0]))  # type: ignore[attr-defined]
+        finally:
+            env.close()
+        return max(abs(x - center_x) for x in xs)
+
+    assert _x_spread(half_large) > _x_spread(half_small)
+
+
+def test_move_initial_distance_equals_target_distance():
+    """After reset the TCP-to-target distance equals config.target_distance.
+
+    Regression for the pre-settle vs post-settle target drift: the target must be
+    computed from the settled TCP so the initial distance matches the requested
+    move distance, matching the ManiSkill backend.
+    """
+    cfg = MoveConfig(target_distance=0.10)
+    env = gym.make("MuJoCoMove-v1", config=cfg)
+    try:
+        for seed in range(5):
+            _, info = env.reset(seed=seed)
+            assert info["tcp_to_target_dist"] == pytest.approx(cfg.target_distance, abs=1e-3)
+    finally:
+        env.close()
+
+
+def test_lookat_target_pose_is_dynamics_immune():
+    """LookAt target must not move from contact or gravity (kinematic-equivalent).
+
+    Mirrors ManiSkill's body_type="kinematic": the arm passes through the marker
+    and the marker never drifts under dynamics.
+    """
+    env = gym.make("MuJoCoLookAt-v1")
+    try:
+        env.reset(seed=0)
+        pos_before = env.unwrapped._get_target_pos().copy()  # type: ignore[attr-defined]
+        # Drive the arm hard for several steps; with a colliding/dynamic target this
+        # would bump and shift it. Kinematic target must stay fixed.
+        for _ in range(30):
+            action = env.action_space.sample()
+            env.step(action)
+        pos_after = env.unwrapped._get_target_pos().copy()  # type: ignore[attr-defined]
+        np.testing.assert_allclose(pos_after, pos_before, atol=1e-9)
+    finally:
+        env.close()
 
 
 def test_pick_and_place_target_disc_geom_exists():
@@ -748,7 +887,7 @@ def test_pick_and_place_rgb_array_render():
 
 
 # ---------------------------------------------------------------------------
-# Camera observation integration — not part of the shared contract.
+# Camera observation integration - not part of the shared contract.
 # ---------------------------------------------------------------------------
 
 
@@ -978,5 +1117,56 @@ def test_pick_hidden_ycb_slots_are_inert_below_floor():
                     )
                 assert z < 0.0, f"hidden YCB slot {i} drifted above the floor: z={z}"
                 assert z < -5.0, f"hidden YCB slot {i} suspiciously close to the floor: z={z}"
+    finally:
+        env.close()
+
+
+# ---------------------------------------------------------------------------
+# PickAndPlace seeded color / description agreement (mirrors ManiSkill backend).
+# ---------------------------------------------------------------------------
+
+
+def test_pick_and_place_color_description_agreement():
+    """task_description names the SAME color applied to the cube/target geoms."""
+    import numpy as np
+
+    from so101_nexus_core.constants import COLOR_MAP
+
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple"],
+    )
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=7)
+        desc = inner.task_description
+        assert inner.cube_color_name in config.cube_colors
+        assert inner.target_color_name in config.target_colors
+        assert inner.cube_color_name in desc
+        assert inner.target_color_name in desc
+        # Rendered geom rgba matches the named color.
+        cube_rgba = inner.model.geom_rgba[inner._obj_geom_id]
+        target_rgba = inner.model.geom_rgba[inner._target_geom_id]
+        np.testing.assert_allclose(cube_rgba, COLOR_MAP[inner.cube_color_name], atol=1e-6)
+        np.testing.assert_allclose(target_rgba, COLOR_MAP[inner.target_color_name], atol=1e-6)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_color_reproducible_by_seed():
+    """reset(seed=S) reproduces the same sampled cube/target colors twice."""
+    config = PickAndPlaceConfig(
+        cube_colors=["red", "green", "yellow"],
+        target_colors=["blue", "purple", "orange"],
+    )
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=42)
+        first = (inner.cube_color_name, inner.target_color_name)
+        inner.reset(seed=42)
+        second = (inner.cube_color_name, inner.target_color_name)
+        assert first == second
     finally:
         env.close()

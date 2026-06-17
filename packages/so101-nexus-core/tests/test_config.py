@@ -24,9 +24,9 @@ from so101_nexus_core.observations import OverheadCamera, WristCamera
 
 class TestConfigInheritance:
     def test_pick_config_inherits_base_defaults(self):
-        cfg = PickConfig(max_episode_steps=512)
-        assert cfg.max_episode_steps == 512
-        assert cfg.goal_thresh == 0.025
+        cfg = PickConfig(goal_thresh=0.05)
+        assert cfg.goal_thresh == 0.05
+        assert cfg.spawn_half_size == 0.05
 
     def test_pick_and_place_inherits_base_defaults(self):
         cfg = PickAndPlaceConfig()
@@ -48,8 +48,8 @@ class TestConfigInheritance:
 
     def test_configs_are_mutable(self):
         cfg = PickConfig()
-        cfg.max_episode_steps = 512
-        assert cfg.max_episode_steps == 512
+        cfg.goal_thresh = 0.05
+        assert cfg.goal_thresh == 0.05
 
 
 class TestConfigConsistency:
@@ -63,9 +63,11 @@ class TestConfigConsistency:
         assert cfg.width > 0
         assert cfg.height > 0
 
-    def test_default_max_episode_steps_is_1024(self):
+    def test_max_episode_steps_field_removed(self):
+        # max_episode_steps was removed as a dead config knob; episode length is
+        # owned by the gym registration (MuJoCo) and register_env (ManiSkill).
         cfg = EnvironmentConfig()
-        assert cfg.max_episode_steps == 1024
+        assert not hasattr(cfg, "max_episode_steps")
 
     def test_default_reset_settle_frames_is_5(self):
         cfg = EnvironmentConfig()
@@ -84,6 +86,63 @@ class TestConfigConsistency:
     def test_reset_settle_frames_rejects_non_integer_values(self, value):
         with pytest.raises(ValueError, match="reset_settle_frames"):
             EnvironmentConfig(reset_settle_frames=value)  # type: ignore[arg-type]
+
+
+class TestApplyPenalties:
+    def test_default_config_is_identity(self):
+        cfg = RewardConfig()
+        base = 0.73
+        result = cfg.apply_penalties(base, action_delta_norm=2.0, energy_norm=3.0)
+        assert result == pytest.approx(base)
+
+    def test_nonzero_energy_penalty_lowers_reward(self):
+        cfg = RewardConfig(energy_penalty=0.1)
+        base = 1.0
+        result = cfg.apply_penalties(base, energy_norm=2.0)
+        assert result == pytest.approx(1.0 - 0.1 * 2.0)
+        assert result < base
+
+    def test_nonzero_action_delta_penalty_lowers_reward(self):
+        cfg = RewardConfig(action_delta_penalty=0.2)
+        base = 1.0
+        result = cfg.apply_penalties(base, action_delta_norm=0.5)
+        assert result == pytest.approx(1.0 - 0.2 * 0.5)
+        assert result < base
+
+    def test_compute_matches_apply_penalties(self):
+        cfg = RewardConfig(action_delta_penalty=0.05, energy_penalty=0.1)
+        computed = cfg.compute(
+            reach_progress=0.5,
+            is_grasped=False,
+            task_progress=0.0,
+            is_complete=False,
+            action_delta_norm=1.5,
+            energy_norm=2.5,
+        )
+        base = cfg.compute(
+            reach_progress=0.5, is_grasped=False, task_progress=0.0, is_complete=False
+        )
+        expected = cfg.apply_penalties(base, action_delta_norm=1.5, energy_norm=2.5)
+        assert computed == pytest.approx(expected)
+
+    def test_apply_penalties_works_on_numpy_arrays(self):
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        base = np.array([1.0, 0.5])
+        delta = np.array([1.0, 2.0])
+        energy = np.array([0.5, 1.0])
+        result = cfg.apply_penalties(base, action_delta_norm=delta, energy_norm=energy)
+        expected = base - 0.1 * delta - 0.2 * energy
+        np.testing.assert_allclose(result, expected)
+
+    def test_apply_penalties_works_on_torch_tensors(self):
+        torch = pytest.importorskip("torch")
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        base = torch.tensor([1.0, 0.5])
+        delta = torch.tensor([1.0, 2.0])
+        energy = torch.tensor([0.5, 1.0])
+        result = cfg.apply_penalties(base, action_delta_norm=delta, energy_norm=energy)
+        expected = base - 0.1 * delta - 0.2 * energy
+        assert torch.allclose(result, expected)
 
 
 class TestPickAndPlaceInvariants:
@@ -131,6 +190,21 @@ class TestSampleColor:
 
     def test_single_element_list(self):
         assert sample_color(["green"]) == COLOR_MAP["green"]
+
+    def test_seeded_rng_is_reproducible(self):
+        colors = ["red", "green", "blue", "yellow"]
+        a = sample_color(colors, np.random.default_rng(7))
+        b = sample_color(colors, np.random.default_rng(7))
+        assert a == b
+
+    def test_sample_color_name_matches_rgba(self):
+        from so101_nexus_core.constants import sample_color_name
+
+        colors = ["red", "green", "blue"]
+        name = sample_color_name(colors, np.random.default_rng(11))
+        rgba = sample_color(colors, np.random.default_rng(11))
+        assert name in colors
+        assert COLOR_MAP[name] == rgba
 
 
 class TestRewardWeights:

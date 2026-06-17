@@ -17,6 +17,7 @@ from so101_nexus_core.config import (
     EnvironmentConfig,
 )
 from so101_nexus_core.observations import (
+    CameraObservation,
     EndEffectorPose,
     GazeDirection,
     GraspState,
@@ -27,11 +28,18 @@ from so101_nexus_core.observations import (
     TargetOffset,
     TargetPosition,
     WristCamera,
-    _CameraObservation,
 )
 from so101_nexus_core.rewards import orientation_progress, reach_progress
 
 logger = logging.getLogger(__name__)
+
+# Internal per-joint physical scale applied to a normalized delta action.
+# The public delta action space is normalized to [-1, 1] (matching the
+# ManiSkill backend's delta-mode contract); a normalized action ``a`` maps to a
+# physical joint-target delta of ``a * _DELTA_ACTION_SCALE``. These are the
+# existing controller delta units (radians): +/-0.05 for the five arm joints
+# and +/-0.2 for the gripper. Reused by both delta control modes.
+_DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
 
 # Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
 # vendored menagerie model's option (MuJoCo: the last top-level option wins).
@@ -149,11 +157,21 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 dtype=np.float32,
             )
         else:
-            delta_low = np.array([-0.05, -0.05, -0.05, -0.05, -0.05, -0.2], dtype=np.float32)
-            delta_high = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float32)
-            self.action_space = spaces.Box(low=delta_low, high=delta_high, dtype=np.float32)
+            # Delta modes expose a normalized [-1, 1] action space (cross-backend
+            # contract with ManiSkill). The normalized action is scaled by
+            # _DELTA_ACTION_SCALE in step() before being applied to joint targets.
+            n_joints = len(SO101_JOINT_NAMES)
+            self.action_space = spaces.Box(
+                low=-np.ones(n_joints, dtype=np.float32),
+                high=np.ones(n_joints, dtype=np.float32),
+                dtype=np.float32,
+            )
 
         self._prev_target: np.ndarray | None = None
+        # Previous public policy action, used for the action-smoothness penalty.
+        # None means "no action since the last reset" so the first step reports
+        # an action_delta_norm of 0.0.
+        self._prev_action: np.ndarray | None = None
         self._setup_camera_renderers()
         self._renderer = None
         self._viewer = None
@@ -297,7 +315,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             return
 
         wc = self._wrist_cam_component
-        assert wc is not None, "wrist renderer requires a WristCamera component"
+        if wc is None:
+            raise RuntimeError("wrist renderer requires a WristCamera component")
         pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
         fov_lo, fov_hi = wc.fov_deg_range
         pos_x_noise = wc.pos_x_noise
@@ -417,7 +436,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
         parts: list[np.ndarray] = []
-        assert self.config.observations is not None, "config.observations must be set"
+        if self.config.observations is None:
+            raise RuntimeError("config.observations must be set")
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._get_current_qpos())
@@ -430,7 +450,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
             ):
                 parts.append(self._get_component_data(comp))
-            elif isinstance(comp, _CameraObservation):
+            elif isinstance(comp, CameraObservation):
                 continue  # camera images handled separately in _get_obs
             else:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
@@ -463,6 +483,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                         f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
                     )
 
+        self._prev_action = None
         applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
         self._randomize_wrist_camera()
@@ -490,16 +511,24 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
         """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
+        # Penalty norms use the public action as received here, before clipping,
+        # matching the ManiSkill backend convention so the penalty is comparable
+        # across backends. Clipping below only affects the control sent to physics.
+        public_action = np.asarray(action, dtype=np.float64)
         action = np.clip(action, self.action_space.low, self.action_space.high)
 
         if self.control_mode == "pd_joint_pos":
             # action_space is already the valid target range for this mode.
             ctrl = action
         elif self.control_mode == "pd_joint_delta_pos":
-            ctrl = np.clip(self._get_current_qpos() + action, self._target_low, self._target_high)
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            ctrl = np.clip(self._get_current_qpos() + delta, self._target_low, self._target_high)
         else:
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
             self._prev_target = np.clip(
-                self._prev_target + action, self._target_low, self._target_high
+                self._prev_target + delta, self._target_low, self._target_high
             )
             ctrl = self._prev_target
 
@@ -510,7 +539,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         obs = self._get_obs()
         info = self._get_info()
-        info["energy_norm"] = float(np.linalg.norm(action))
+        info["energy_norm"] = float(np.linalg.norm(public_action))
+        if self._prev_action is None:
+            info["action_delta_norm"] = 0.0
+        else:
+            info["action_delta_norm"] = float(np.linalg.norm(public_action - self._prev_action))
+        self._prev_action = public_action.copy()
         reward = self._compute_reward(info)
         terminated = bool(info.get("success", False))
 
@@ -564,6 +598,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _reach_only_reward(self, info: dict) -> float:
         """Reach-only reward: tanh distance shaping toward the object with no task progress."""
+        # mirrors RewardConfig.compute() in so101_nexus_core.config
         rp = reach_progress(info["tcp_to_obj_dist"], scale=self.config.reward.tanh_shaping_scale)
         is_grasped = info["is_grasped"] > 0.5
         return self.config.reward.compute(
@@ -577,6 +612,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _lift_reward(self, info: dict) -> float:
         """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
+        # mirrors RewardConfig.compute() in so101_nexus_core.config
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
@@ -623,13 +659,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             obs["state"] = state
 
         if self._wrist_renderer is not None:
-            assert self._wrist_cam_id is not None
+            if self._wrist_cam_id is None:
+                raise RuntimeError("wrist camera id is not initialized")
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             obs["wrist_camera"] = self._wrist_renderer.render()
 
         overhead_renderer = self._overhead_obs_renderer
         if overhead_renderer is not None:
-            assert self._overhead_obs_cam is not None
+            if self._overhead_obs_cam is None:
+                raise RuntimeError("overhead camera id is not initialized")
             overhead_renderer.update_scene(self.data, camera=self._overhead_obs_cam)
             obs["overhead_camera"] = overhead_renderer.render()
 

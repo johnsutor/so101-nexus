@@ -6,7 +6,7 @@ These live in the mujoco package because they exercise
 
 from __future__ import annotations
 
-import so101_nexus_mujoco  # noqa: F401 — registers gym envs
+import so101_nexus_mujoco  # noqa: F401 - registers gym envs
 from so101_nexus_core.objects import CubeObject, YCBObject
 from so101_nexus_core.observations import OverheadCamera, WristCamera
 from so101_nexus_core.teleop.config_customization import TeleopConfigOverrides

@@ -26,7 +26,7 @@ def _setup_teleop_backend() -> None:
             "to avoid GLFW/libdecor launch failures.",
             file=sys.stderr,
         )
-    import so101_nexus_mujoco  # noqa: F401 — register gym envs eagerly
+    import so101_nexus_mujoco  # noqa: F401 - register gym envs eagerly
 
 
 def main() -> None:

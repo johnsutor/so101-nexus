@@ -34,10 +34,14 @@ class SceneObject(ABC):
 class CubeObject(SceneObject):
     """Axis-aligned box for use in simulation scenes.
 
-    Args:
-        half_size: Half-extent of each side in metres.
-        mass: Object mass in kg.
-        color: Named color from COLOR_MAP (e.g. "red", "blue").
+    Parameters
+    ----------
+    half_size : float
+        Half-extent of each side in metres.
+    mass : float
+        Object mass in kg.
+    color : ColorName
+        Named color from COLOR_MAP (e.g. "red", "blue").
     """
 
     def __init__(
@@ -63,9 +67,12 @@ class CubeObject(SceneObject):
 class YCBObject(SceneObject):
     """YCB dataset object identified by model_id (e.g. '003_cracker_box').
 
-    Args:
-        model_id: YCB dataset identifier. Must be a key in YCB_OBJECTS.
-        mass_override: Optional mass in kg to override the default mesh mass.
+    Parameters
+    ----------
+    model_id : str
+        YCB dataset identifier. Must be a key in YCB_OBJECTS.
+    mass_override : float, optional
+        Mass in kg to override the default mesh mass.
     """
 
     def __init__(
@@ -87,12 +94,18 @@ class YCBObject(SceneObject):
 class MeshObject(SceneObject):
     """Arbitrary mesh object (collision + visual) for .obj/.stl support.
 
-    Args:
-        collision_mesh_path: Absolute path to the collision mesh file.
-        visual_mesh_path: Absolute path to the visual mesh file.
-        mass: Object mass in kg.
-        name: Human-readable name used in task descriptions and ``__repr__``.
-        scale: Uniform scale factor applied to the mesh.
+    Parameters
+    ----------
+    collision_mesh_path : str
+        Absolute path to the collision mesh file.
+    visual_mesh_path : str
+        Absolute path to the visual mesh file.
+    mass : float
+        Object mass in kg.
+    name : str
+        Human-readable name used in task descriptions and ``__repr__``.
+    scale : float
+        Uniform scale factor applied to the mesh.
     """
 
     def __init__(
