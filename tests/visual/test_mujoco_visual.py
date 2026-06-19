@@ -11,15 +11,15 @@ import mujoco
 import numpy as np
 import pytest
 
-import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core.config import (
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus.config import (
     PickAndPlaceConfig,
     PickConfig,
     RenderConfig,
 )
-from so101_nexus_core.objects import CubeObject, YCBObject
-from so101_nexus_core.observations import JointPositions, WristCamera
-from so101_nexus_core.visualization import CameraView, to_uint8
+from so101_nexus.objects import CubeObject, YCBObject
+from so101_nexus.observations import JointPositions, WristCamera
+from so101_nexus.visualization import CameraView, to_uint8
 
 from .conftest import verify_scene
 

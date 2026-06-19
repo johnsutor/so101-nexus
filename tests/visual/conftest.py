@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     import numpy as np
 
-from so101_nexus_core.visualization import CameraView, compose_frame
+from so101_nexus.visualization import CameraView, compose_frame
 
 VISUAL_TEST_MODEL_ENV = "VISUAL_TEST_MODEL"
 VISUAL_TEST_API_BASE_ENV = "VISUAL_TEST_API_BASE"

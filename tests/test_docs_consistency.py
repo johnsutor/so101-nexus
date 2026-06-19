@@ -27,7 +27,7 @@ def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     offenders = []
     for path in TEXT_DOCS:
         text = _read(path)
-        if "—" in text or "–" in text or emoji.search(text):  # noqa: RUF001
+        if "\u2014" in text or "\u2013" in text or emoji.search(text):
             offenders.append(str(path.relative_to(ROOT)))
     assert offenders == [], f"Found em dashes, en dashes, or emoji in user-facing docs: {offenders}"
 
@@ -42,12 +42,10 @@ def test_environment_nav_lists_all_environment_pages() -> None:
 
 
 def test_docs_do_not_import_public_objects_from_backend_submodules() -> None:
-    """Public configs and object classes live in ``so101_nexus_core``."""
+    """Public configs and object classes live in ``so101_nexus``."""
     forbidden = (
-        "so101_nexus_mujoco.config",
-        "so101_nexus_mujoco.objects",
-        "so101_nexus_maniskill.config",
-        "so101_nexus_maniskill.objects",
+        "so101_nexus.mujoco.config",
+        "so101_nexus.mujoco.objects",
     )
     offenders = []
     for path in DOCS.rglob("*.mdx"):
@@ -56,8 +54,7 @@ def test_docs_do_not_import_public_objects_from_backend_submodules() -> None:
             if pattern in text:
                 offenders.append((str(path.relative_to(ROOT)), pattern))
     assert offenders == [], (
-        "Docs import public objects from backend submodules instead of "
-        f"so101_nexus_core: {offenders}"
+        f"Docs import public objects from backend submodules instead of so101_nexus: {offenders}"
     )
 
 

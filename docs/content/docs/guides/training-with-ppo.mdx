@@ -3,26 +3,13 @@ title: Training with PPO
 description: Train policies on SO101-Nexus environments using the included CleanRL-based PPO script.
 ---
 
-SO101-Nexus includes a PPO training script at `examples/ppo.py`. It is a CleanRL-based implementation with an MLP actor-critic that serves as a baseline for RL training. The script auto-detects the backend from the environment ID prefix.
+SO101-Nexus includes a PPO training script at `examples/ppo.py`. It is a CleanRL-based implementation with an MLP actor-critic that serves as a baseline for RL training.
 
 ## Quick start
-
-### MuJoCo
 
 ```bash
 uv run python examples/ppo.py \
     --env-id MuJoCoPickLift-v1 \
-    --total-timesteps 200000
-```
-
-### ManiSkill
-
-ManiSkill environments require the `--prerelease=allow` flag due to package constraints:
-
-```bash
-uv run --package so101-nexus-maniskill --prerelease=allow \
-    python examples/ppo.py \
-    --env-id ManiSkillPickLiftSO101-v1 \
     --total-timesteps 200000
 ```
 
@@ -43,7 +30,7 @@ uv run --package so101-nexus-maniskill --prerelease=allow \
 
 The `--num-envs` flag controls how many environments run in parallel. More environments increase throughput but require more memory.
 
-For MuJoCo, environments are vectorized using Gymnasium's built-in `SyncVectorEnv`. ManiSkill environments use ManiSkill's native GPU-accelerated vectorization when available.
+Environments are vectorized using Gymnasium's built-in `SyncVectorEnv`.
 
 A reasonable starting point for local training:
 

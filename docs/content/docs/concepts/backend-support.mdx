@@ -1,31 +1,28 @@
 ---
 title: Backend Support
-description: Simulator backends, environment availability, and key differences.
+description: The MuJoCo backend, environment availability, and vectorization.
 ---
 
-SO101-Nexus supports MuJoCo and ManiSkill as simulation backends. Genesis is on the roadmap but not yet implemented.
+SO101-Nexus uses MuJoCo as its simulation backend. A MuJoCo Warp backend for GPU-parallel simulation is planned but not yet implemented.
 
 ## Task Availability
 
-All five tasks are available on both backends:
+All five tasks run on the SO-101 arm:
 
-| Task | MuJoCo | ManiSkill |
-|------|--------|-----------|
-| PickLift | SO-101 | SO-100, SO-101 |
-| PickAndPlace | SO-101 | SO-100, SO-101 |
-| Reach | SO-101 | SO-100, SO-101 |
-| LookAt | SO-101 | SO-100, SO-101 |
-| Move | SO-101 | SO-100, SO-101 |
+| Task | Robot |
+|------|-------|
+| PickLift | SO-101 |
+| PickAndPlace | SO-101 |
+| Reach | SO-101 |
+| LookAt | SO-101 |
+| Move | SO-101 |
 
 ## Vectorization
 
-ManiSkill runs multiple simulation instances in a single GPU-accelerated process by passing `num_envs` directly to `gym.make()`. MuJoCo environments must be vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper.
+MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU. The planned MuJoCo Warp backend will add GPU-parallel simulation.
 
-## Key Differences
+## Objects
 
-- **Robot models** -- MuJoCo environments use the SO-101 arm. ManiSkill has separate SO-100 and SO-101 variants for each task.
-- **Object support** -- MuJoCo supports CubeObject, YCBObject, and MeshObject. ManiSkill supports CubeObject and YCBObject only.
-- **Observations** -- Both backends use the same composable observation components (`observations` parameter). See [Observations](/docs/concepts/observations-and-camera-modes) for details.
-- **GPU batching** -- ManiSkill supports `num_envs` for GPU-accelerated parallel simulation. MuJoCo uses CPU-based vectorization.
+MuJoCo supports `CubeObject`, `YCBObject`, and `MeshObject`. All environments use the same composable observation components (`observations` parameter). See [Observations](/docs/concepts/observations-and-camera-modes) for details.
 
 For details on object types, see the [Objects API reference](/docs/api/objects). For observation configuration, see [Observations](/docs/concepts/observations-and-camera-modes).

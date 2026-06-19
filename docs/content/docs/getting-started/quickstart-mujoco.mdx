@@ -7,7 +7,7 @@ description: Run your first MuJoCo environment in SO101-Nexus.
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco  # registers MuJoCo envs with Gymnasium
+import so101_nexus.mujoco  # registers MuJoCo envs with Gymnasium
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 obs, info = env.reset()
@@ -21,7 +21,7 @@ for _ in range(1000):
 env.close()
 ```
 
-Import `so101_nexus_mujoco` before calling `gym.make()` -- the import registers all MuJoCo environments. Set `render_mode="human"` for a live viewer window, or `render_mode="rgb_array"` to capture frames programmatically.
+Import `so101_nexus.mujoco` before calling `gym.make()` -- the import registers all MuJoCo environments. Set `render_mode="human"` for a live viewer window, or `render_mode="rgb_array"` to capture frames programmatically.
 
 ## Try a Different Task
 
@@ -44,8 +44,8 @@ Swap the default cube for a real-world object from the YCB dataset:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import PickConfig, YCBObject
+import so101_nexus.mujoco
+from so101_nexus import PickConfig, YCBObject
 
 config = PickConfig(objects=YCBObject(model_id="011_banana"))
 env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")

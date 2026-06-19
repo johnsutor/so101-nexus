@@ -34,7 +34,7 @@ Camera components add image tensors to a dict-style observation space. They have
 Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
 
 ```python
-from so101_nexus_core import WristCamera, OverheadCamera
+from so101_nexus import WristCamera, OverheadCamera
 
 # Default resolution
 wrist = WristCamera()
@@ -51,7 +51,7 @@ overhead = OverheadCamera(width=320, height=240, fov_deg=45.0)
 Pass a list of components via the `observations` parameter on any config. Each task provides sensible defaults when `observations` is not specified.
 
 ```python
-from so101_nexus_core import (
+from so101_nexus import (
     PickConfig, JointPositions, EndEffectorPose, GraspState,
     ObjectPose, ObjectOffset, WristCamera,
 )
@@ -101,7 +101,7 @@ The observation contains whatever components are listed in `observations`. This 
 Designed for vision-based policies. Requires at least one camera component (e.g. `WristCamera()` or `OverheadCamera()`) in the `observations` list. Construction raises an error if no camera component is present.
 
 ```python
-from so101_nexus_core import PickConfig, JointPositions, WristCamera
+from so101_nexus import PickConfig, JointPositions, WristCamera
 
 config = PickConfig(
     obs_mode="visual",
@@ -111,12 +111,12 @@ config = PickConfig(
 
 ### Units: Degrees vs Radians
 
-Configuration APIs (`REST_POSE`, `*_deg` fields, spawn ranges, leader-arm helpers) use **degrees** per the library convention. Runtime values exposed by the env (`obs["state"]`, `env.step(action)`, `env.action_space.low/high`) use **radians**, which is the native unit of the underlying MuJoCo and ManiSkill engines and the unit the integrator consumes when writing `ctrl`. Converting on every step would add runtime work without changing the simulation result.
+Configuration APIs (`REST_POSE`, `*_deg` fields, spawn ranges, leader-arm helpers) use **degrees** per the library convention. Runtime values exposed by the env (`obs["state"]`, `env.step(action)`, `env.action_space.low/high`) use **radians**, which is the native unit of the underlying MuJoCo engine (and the planned MuJoCo Warp backend) and the unit the integrator consumes when writing `ctrl`. Converting on every step would add runtime work without changing the simulation result.
 
 Code that crosses into LeRobot territory converts at the boundary:
 
-- The teleop recorder (`so101_nexus_core.teleop`) stores actions and states in degrees.
-- The MolmoAct adapter (`so101_nexus_core.policy_adapters`) reads `obs["state"]` and converts to degrees before calling `select_action`, then converts the policy's degree-valued action back to radians before `env.step`.
+- The teleop recorder (`so101_nexus.teleop`) stores actions and states in degrees.
+- The MolmoAct adapter (`so101_nexus.policy_adapters`) reads `obs["state"]` and converts to degrees before calling `select_action`, then converts the policy's degree-valued action back to radians before `env.step`.
 
 This matches LeRobot's `use_degrees=true` convention. For background on why LeRobot uses degrees, mid-range zero, and no wrap-around, see [Backward compatibility](https://github.com/huggingface/lerobot/blob/main/docs/source/backwardcomp.mdx).
 
@@ -124,7 +124,7 @@ This matches LeRobot's `use_degrees=true` convention. For background on why LeRo
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
+import so101_nexus.mujoco
 
 # State-only (default)
 env = gym.make("MuJoCoPickLift-v1")
@@ -133,7 +133,7 @@ print(f"Observation shape: {obs.shape}")  # (18,)
 env.close()
 
 # With camera
-from so101_nexus_core import (
+from so101_nexus import (
     PickConfig, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, WristCamera,
 )
 

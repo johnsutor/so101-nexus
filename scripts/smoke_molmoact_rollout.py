@@ -45,7 +45,7 @@ def _import_env_backend(env_id: str, env_module: str | None) -> None:
         importlib.import_module(env_module)
         return
 
-    from so101_nexus_core.teleop.leader import import_backend_for_env_id
+    from so101_nexus.teleop.leader import import_backend_for_env_id
 
     import_backend_for_env_id(env_id)
 
@@ -57,7 +57,7 @@ def main() -> None:
 
     import gymnasium as gym
 
-    from so101_nexus_core.policy_adapters import MolmoActPolicy, RolloutRecorder
+    from so101_nexus.policy_adapters import MolmoActPolicy, RolloutRecorder
 
     policy = MolmoActPolicy.from_pretrained(
         args.repo_id,

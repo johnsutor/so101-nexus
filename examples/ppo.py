@@ -1,7 +1,7 @@
 """Train PPO agents on SO101-Nexus environments.
 
-This script adapts CleanRL's PPO training loop to the SO101-Nexus MuJoCo and
-ManiSkill environments. It uses an MLP actor-critic over state observations
+This script adapts CleanRL's PPO training loop to the SO101-Nexus MuJoCo
+environments. It uses an MLP actor-critic over state observations
 with continuous actions.
 """
 
@@ -22,16 +22,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 def import_backend_for_env_id(env_id: str) -> None:
     """Import the simulator package needed to register *env_id*."""
-    if env_id.startswith("ManiSkill"):
-        importlib.import_module("so101_nexus_maniskill")
-        return
     if env_id.startswith("MuJoCo"):
-        importlib.import_module("so101_nexus_mujoco")
+        importlib.import_module("so101_nexus.mujoco")
         return
-    raise ValueError(
-        "env_id must start with 'ManiSkill' or 'MuJoCo' "
-        "so the corresponding backend can be imported"
-    )
+    raise ValueError("env_id must start with 'MuJoCo' so the corresponding backend can be imported")
 
 
 @dataclass
@@ -111,11 +105,6 @@ class Args:
 _LAYER_INIT_STD = float(np.sqrt(2))
 
 
-def is_maniskill_env(env_id: str) -> bool:
-    """Return whether *env_id* targets a ManiSkill backend."""
-    return env_id.startswith("ManiSkill")
-
-
 def make_mujoco_env(env_id, idx, capture_video, run_name):
     """Build a thunk that creates one MuJoCo environment instance."""
 
@@ -131,23 +120,8 @@ def make_mujoco_env(env_id, idx, capture_video, run_name):
 
 
 def make_env(env_id, idx, capture_video, run_name, gamma):
-    """Build an environment factory compatible with the selected backend."""
+    """Build an environment factory for one MuJoCo environment instance."""
     del gamma
-
-    if is_maniskill_env(env_id):
-
-        def thunk():
-            if capture_video and idx == 0:
-                return gym.make(
-                    env_id,
-                    render_mode="rgb_array",
-                    obs_mode="state",
-                    control_mode="pd_joint_delta_pos",
-                )
-            return gym.make(env_id, obs_mode="state", control_mode="pd_joint_delta_pos")
-
-        return thunk
-
     return make_mujoco_env(env_id, idx, capture_video, run_name)
 
 
@@ -163,21 +137,10 @@ def frames_to_tchw(frames: np.ndarray) -> np.ndarray:
 
 def make_video_eval_env(env_id: str):
     """Create a single-environment evaluator configured for video rendering."""
-    if is_maniskill_env(env_id):
-        from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
-
-        env = gym.make(
-            env_id,
-            num_envs=1,
-            obs_mode="state",
-            control_mode="pd_joint_delta_pos",
-            render_mode="rgb_array",
-        )
-        return ManiSkillVectorEnv(env, auto_reset=True, ignore_terminations=False)
     return gym.make(env_id, render_mode="rgb_array")
 
 
-def maybe_log_wandb_rollout_video(  # noqa: C901
+def maybe_log_wandb_rollout_video(
     *,
     args: Args,
     agent: "Agent",
@@ -193,7 +156,6 @@ def maybe_log_wandb_rollout_video(  # noqa: C901
         return
 
     eval_env = make_video_eval_env(args.env_id)
-    maniskill = is_maniskill_env(args.env_id)
     frames: list[np.ndarray] = []
 
     def _to_frame(raw_frame):
@@ -221,8 +183,7 @@ def maybe_log_wandb_rollout_video(  # noqa: C901
         with torch.no_grad():
             action, _, _, _ = agent.get_action_and_value(obs_tensor)
         step_action = action.cpu().numpy()
-        if not maniskill:
-            step_action = step_action[0]
+        step_action = step_action[0]
         obs, _, terminated, truncated, _ = eval_env.step(step_action)
         term = bool(torch.as_tensor(terminated).bool().any().item())
         trunc = bool(torch.as_tensor(truncated).bool().any().item())
@@ -322,28 +283,12 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     import_backend_for_env_id(args.env_id)
-    if is_maniskill_env(args.env_id):
-        from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
-
-        maniskill_env = gym.make(
-            args.env_id,
-            num_envs=args.num_envs,
-            obs_mode="state",
-            control_mode="pd_joint_delta_pos",
-        )
-        envs = ManiSkillVectorEnv(
-            maniskill_env,
-            auto_reset=True,
-            ignore_terminations=False,
-            record_metrics=True,
-        )
-    else:
-        envs = gym.vector.SyncVectorEnv(
-            [
-                make_mujoco_env(args.env_id, i, args.capture_video, run_name)
-                for i in range(args.num_envs)
-            ]
-        )
+    envs = gym.vector.SyncVectorEnv(
+        [
+            make_mujoco_env(args.env_id, i, args.capture_video, run_name)
+            for i in range(args.num_envs)
+        ]
+    )
     assert isinstance(envs.single_action_space, gym.spaces.Box), (
         "only continuous action space is supported"
     )
@@ -394,19 +339,7 @@ if __name__ == "__main__":
             next_obs = torch.as_tensor(next_obs, dtype=torch.float32, device=device)
             next_done = next_done.to(dtype=torch.float32)
 
-            if is_maniskill_env(args.env_id):
-                if "final_info" in infos:
-                    mask = infos["_final_info"]
-                    ep = infos["final_info"]["episode"]
-                    done_returns = ep["return"][mask]
-                    done_lengths = ep["episode_len"][mask]
-                    for ret, length in zip(done_returns, done_lengths, strict=True):
-                        ep_return = float(ret.item())
-                        ep_length = float(length.item())
-                        print(f"global_step={global_step}, episodic_return={ep_return}")
-                        writer.add_scalar("charts/episodic_return", ep_return, global_step)
-                        writer.add_scalar("charts/episodic_length", ep_length, global_step)
-            elif "final_info" in infos:
+            if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")

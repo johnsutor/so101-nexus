@@ -1,26 +1,76 @@
 [project]
-name = "so101-nexus-workspace"
-version = "0.3.12"
-description = "Workspace root for SO101-Nexus simulation environments"
+name = "so101-nexus"
+version = "0.4.0"
+description = "MuJoCo simulation environments for the SO-101 robot arm, built for imitation learning and teleoperation with LeRobot"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy",
+    "huggingface_hub",
+    "trimesh",
+    "scipy",
+    "mujoco>=3.1.3",
+    "gymnasium>=1.0.0",
+]
+license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+viz = ["Pillow"]
+teleop = [
+    "lerobot[feetech]>=0.5.0,<0.6",
+    "gradio>=5.0.0",
+    "plotly>=6.0.0",
+    "opencv-python>=4.8.0",
+    "Pillow",
+]
+molmoact = [
+    "transformers>=5.8",
+    "huggingface-hub",
+    "Pillow",
+    "accelerate",
+]
+train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
 ]
 
-[tool.uv.workspace]
-members = ["packages/*"]
+[project.scripts]
+so101-nexus = "so101_nexus.cli:main"
 
-[tool.uv]
-conflicts = [
-    [
-        { package = "so101-nexus-maniskill" },
-        { package = "so101-nexus-mujoco" },
-    ],
-]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/so101_nexus"]
+exclude = ["src/so101_nexus/assets/**/*"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/so101_nexus/assets/SO101" = "so101_nexus/assets/SO101"
+"src/so101_nexus/assets/SO101_menagerie" = "so101_nexus/assets/SO101_menagerie"
 
 [dependency-groups]
-dev = ["hypothesis>=6.140.0", "pytest-cov>=7.0.0", "ruff", "ty"]
+dev = [{ include-group = "test" }, "ruff", "ty"]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=7.0.0",
+    "hypothesis>=6.140.0",
+    "imageio[ffmpeg]",
+    "Pillow",
+    "lerobot[feetech]>=0.5.0,<0.6",
+]
 visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
 
 [tool.ruff]
@@ -77,35 +127,31 @@ max-returns = 6
 convention = "numpy"
 
 [tool.ruff.lint.isort]
-known-first-party = ["so101_nexus_core", "so101_nexus_maniskill", "so101_nexus_mujoco"]
+known-first-party = ["so101_nexus"]
 
 [tool.ty.analysis]
 replace-imports-with-any = [
+    "cv2",
     "gradio",
     "gradio.**",
     "hatchling.metadata.plugin.interface",
-    "mani_skill",
-    "mani_skill.**",
     "mujoco",
     "mujoco.**",
-    "sapien",
-    "sapien.**",
+    "plotly",
+    "plotly.**",
     "transforms3d",
     "transforms3d.**",
     "tyro",
 ]
 
 [tool.ty.environment]
-extra-paths = ["packages/so101-nexus-maniskill/src"]
+extra-paths = ["src"]
 
 [tool.ty.src]
 exclude = ["**/tests/**"]
 
 [tool.coverage.run]
-source = ["."]
-parallel = true
-concurrency = ["thread"]
-data_file = ".coverage"
+source = ["so101_nexus"]
 omit = [
     "**/__init__.py",
     "**/tests/*",
@@ -122,27 +168,14 @@ exclude_lines = [
 show_missing = true
 
 [tool.coverage.paths]
-core = [
-    "packages/so101-nexus-core/src/so101_nexus_core",
-    "**/site-packages/so101_nexus_core",
-]
-mujoco = [
-    "packages/so101-nexus-mujoco/src/so101_nexus_mujoco",
-    "**/site-packages/so101_nexus_mujoco",
-]
-maniskill = [
-    "packages/so101-nexus-maniskill/src/so101_nexus_maniskill",
-    "**/site-packages/so101_nexus_maniskill",
+package = [
+    "src/so101_nexus",
+    "**/site-packages/so101_nexus",
 ]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "-ra"]
-testpaths = [
-    "packages/so101-nexus-core/tests",
-    "packages/so101-nexus-maniskill/tests",
-    "packages/so101-nexus-mujoco/tests",
-    "tests",
-]
+testpaths = ["tests"]
 markers = [
     "slow: slower integration tests",
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",

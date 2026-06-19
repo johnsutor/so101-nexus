@@ -6,18 +6,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "release-smoke.yml"
-PUBLISHED_PROJECTS = (
-    ROOT / "packages" / "so101-nexus-core" / "pyproject.toml",
-    ROOT / "packages" / "so101-nexus-mujoco" / "pyproject.toml",
-    ROOT / "packages" / "so101-nexus-maniskill" / "pyproject.toml",
-)
+PUBLISHED_PROJECTS = (ROOT / "pyproject.toml",)
 
 
 def _release_smoke_python_version() -> tuple[int, int]:
     text = RELEASE_SMOKE_WORKFLOW.read_text(encoding="utf-8")
     match = re.search(
         r"- name: Set up Python\n"
-        r"\s+uses: actions/setup-python@v5\n"
+        r"\s+uses: actions/setup-python@[^\n]+\n"
         r"\s+with:\n"
         r"\s+python-version:\s*[\"']?(\d+\.\d+)[\"']?",
         text,

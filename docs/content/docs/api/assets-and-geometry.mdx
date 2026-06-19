@@ -5,10 +5,10 @@ description: Reference for YCB asset management and geometry helpers.
 
 # Assets and Geometry
 
-`so101_nexus_core` provides functions for downloading YCB assets, resolving mesh paths, and computing spawn geometry. All functions are importable from the top-level package.
+`so101_nexus` provides functions for downloading YCB assets, resolving mesh paths, and computing spawn geometry. All functions are importable from the top-level package.
 
 ```python
-from so101_nexus_core import ensure_ycb_assets, get_ycb_collision_mesh
+from so101_nexus import ensure_ycb_assets, get_ycb_collision_mesh
 ```
 
 ## Simulation Directory Helpers
@@ -22,8 +22,8 @@ def get_so101_simulation_dir() -> Path
 ```
 
 Returns the `Path` to the SO-101 simulation asset directory (`SO101/`). This
-holds the URDF/XML retained for the teleop tooling's calibration metadata. Both
-the MuJoCo and ManiSkill backends now load the vendored menagerie MJCF instead
+holds the URDF/XML retained for the teleop tooling's calibration metadata. The
+MuJoCo backend loads the vendored menagerie MJCF instead
 (see `get_so101_mujoco_model_dir` below).
 
 ### `get_so101_mujoco_model_dir()` / `get_so101_mujoco_model_path()`
@@ -34,7 +34,7 @@ def get_so101_mujoco_model_path() -> Path
 ```
 
 Return the directory and `so101.xml` path of the vendored MuJoCo Menagerie
-model under `SO101_menagerie/`. Both the MuJoCo and ManiSkill backends load this
+model under `SO101_menagerie/`. The MuJoCo backend loads this
 model. The URDF/XML under `SO101/` remains only for teleop calibration metadata
 (see `get_so101_simulation_dir`).
 
@@ -131,22 +131,7 @@ Returns the path to the visual mesh (`visual.obj`) for the given YCB model.
 
 ## Geometry Helpers
 
-These functions compute spawn positions and orientations for YCB objects in each backend.
-
-### `get_maniskill_ycb_spawn_z()`
-
-```python
-def get_maniskill_ycb_spawn_z(model_id: str, margin: float = 0.002) -> float
-```
-
-Computes the spawn z-height for a YCB object in ManiSkill so that it rests on the table surface.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `model_id` | `str` | required | A valid YCB model ID |
-| `margin` | `float` | `0.002` | Small offset above the surface to avoid interpenetration |
-
-**Returns:** `float` z-coordinate for spawning.
+These functions compute spawn positions and orientations for YCB objects in MuJoCo.
 
 ### `get_mujoco_ycb_rest_pose()`
 

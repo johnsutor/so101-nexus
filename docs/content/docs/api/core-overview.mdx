@@ -1,14 +1,14 @@
 ---
 title: Core Package
-description: Public API surface of so101_nexus_core.
+description: Public API surface of so101_nexus.
 ---
 
 # Core Package
 
-`so101_nexus_core` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry used by all backends. It is installed automatically as a dependency of any backend package.
+`so101_nexus` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry. The MuJoCo backend lives under `so101_nexus.mujoco` and is registered by importing it.
 
 ```python
-import so101_nexus_core
+import so101_nexus
 ```
 
 ## Exports by Category
@@ -35,7 +35,7 @@ import so101_nexus_core
 | `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera mounting presets for SO-100 and SO-101 |
 | `ASSETS_DIR` | `Path` | Root directory for bundled assets |
 | `SO_ARM100_DIR` | `Path` | Asset directory for the SO-100 arm |
-| `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (URDF/XML retained for teleop calibration; both backends load the menagerie MJCF) |
+| `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (URDF/XML retained for teleop calibration; the MuJoCo backend loads the menagerie MJCF) |
 
 ### Configuration Classes
 
@@ -96,8 +96,8 @@ See [Scene Objects](/docs/api/objects) for full reference.
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `get_so101_simulation_dir()` | `Path` | Path to SO-101 `SO101/` assets (URDF/XML, retained for teleop calibration) |
-| `get_so101_mujoco_model_dir()` | `Path` | Directory of the vendored menagerie MJCF (loaded by both backends) |
-| `get_so101_mujoco_model_path()` | `Path` | Path to the menagerie `so101.xml` (loaded by both backends) |
+| `get_so101_mujoco_model_dir()` | `Path` | Directory of the vendored menagerie MJCF (loaded by the MuJoCo backend) |
+| `get_so101_mujoco_model_path()` | `Path` | Path to the menagerie `so101.xml` (loaded by the MuJoCo backend) |
 | `get_so100_simulation_dir()` | `Path` | Path to SO-100 simulation assets |
 
 #### YCB Asset Management
@@ -110,7 +110,6 @@ See [Assets and Geometry](/docs/api/assets-and-geometry) for full reference.
 | `get_ycb_mesh_dir(model_id)` | Path to mesh directory for a YCB model |
 | `get_ycb_collision_mesh(model_id)` | Path to `collision.obj` |
 | `get_ycb_visual_mesh(model_id)` | Path to `visual.obj` |
-| `get_maniskill_ycb_spawn_z(model_id)` | Spawn height for ManiSkill |
 | `get_mujoco_ycb_rest_pose(verts)` | Rest orientation and spawn height for MuJoCo |
 
 #### Environment Registry
@@ -123,4 +122,4 @@ See [Environment Registry](/docs/api/environment-registry) for details on how re
 
 ### Processor APIs
 
-The optional `so101_nexus_core.processors` subpackage provides LeRobot-style action and observation processor steps and a Gym wrapper that emits LeRobot-shaped observations. It requires the `teleop` extra (`pip install so101-nexus-core[teleop]`). See [LeRobot Processors](/docs/api/lerobot-processors) for the full reference.
+The optional `so101_nexus.processors` subpackage provides LeRobot-style action and observation processor steps and a Gym wrapper that emits LeRobot-shaped observations. It requires the `teleop` extra (`pip install so101-nexus[teleop]`). See [LeRobot Processors](/docs/api/lerobot-processors) for the full reference.

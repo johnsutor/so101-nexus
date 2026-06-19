@@ -7,18 +7,6 @@
     "mujoco-pick-and-place",
     "mujoco-reach",
     "mujoco-look-at",
-    "mujoco-move",
-    "---ManiSkill SO-100---",
-    "maniskill-pick-lift-so100",
-    "maniskill-pick-and-place-so100",
-    "maniskill-reach-so100",
-    "maniskill-look-at-so100",
-    "maniskill-move-so100",
-    "---ManiSkill SO-101---",
-    "maniskill-pick-lift-so101",
-    "maniskill-pick-and-place-so101",
-    "maniskill-reach-so101",
-    "maniskill-look-at-so101",
-    "maniskill-move-so101"
+    "mujoco-move"
   ]
 }

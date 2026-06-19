@@ -77,10 +77,7 @@ cat >"$tmpdir/branch-protection.json" <<'JSON'
     "strict": true,
     "contexts": [
       "lint",
-      "test (core)",
-      "test (mujoco)",
-      "test (maniskill)",
-      "coverage",
+      "test",
       "docs",
       "dependency-review"
     ]

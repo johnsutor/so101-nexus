@@ -3,7 +3,7 @@
 <img src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/assets/so101.png" width="250" alt="SO-101 Arm">
 
 <h3 align="center">
-    <p>SO101-Nexus: Simulation environments for the SO-101 robot arm across ManiSkill, Genesis, and MuJoCo</p>
+    <p>SO101-Nexus: Gymnasium-compatible MuJoCo simulation environments for the SO-101 robot arm</p>
 </h3>
 
 <p align="center">
@@ -20,25 +20,22 @@
 
 ## Overview
 
-SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It supports multiple simulation backends ([ManiSkill](https://github.com/haosulab/ManiSkill), [Genesis](https://genesis-world.readthedocs.io/), and [MuJoCo](https://mujoco.org/)) so that researchers can train and evaluate policies without being locked into a single physics engine. SO101-Nexus integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
+SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible [MuJoCo](https://mujoco.org/) environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It is built for imitation-learning and teleoperation dataset collection and evaluation, and integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
 
 For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/docs).
 
 ## Why
 
-Robust robot policies should generalize across simulators before being deployed in the real world. Sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
+There are very few standardized simulation environments for the SO-101 robot arm. SO101-Nexus fills that gap with Gymnasium-compatible MuJoCo environments that drop directly into the LeRobot stack for teleoperation, dataset recording, and real-policy evaluation (for example, MolmoAct).
 
-At the same time, there are very few standardized simulation environments available for the SO-100 and SO-101 robot arms. SO101-Nexus addresses this by providing Gymnasium-compatible environments across multiple physics backends, enabling consistent experimentation and benchmarking.
+The environments also expose primitives such as object localization and grasping, providing a foundation for training text-conditioned embodied policies via curriculum learning.
 
-In addition, SO101-Nexus provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
+A MuJoCo Warp backend is planned to add GPU-parallel throughput for large-scale training.
 
 ## Installation
 
-Install only the backend you need:
-
 ```bash
-pip install so101-nexus-mujoco      # MuJoCo backend
-pip install so101-nexus-maniskill   # ManiSkill backend
+pip install so101-nexus
 ```
 
 ### From source (development)
@@ -46,24 +43,16 @@ pip install so101-nexus-maniskill   # ManiSkill backend
 ```bash
 git clone https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
-
-# Install a single backend for development (swap package name to switch backends)
-uv sync --package so101-nexus-mujoco
-uv sync --package so101-nexus-maniskill --prerelease=allow
+uv sync
 ```
 
 ## Try Teleop with uvx
 
-You can launch the Gradio teleop recorder against either backend without a permanent install. `uvx` resolves the package, the `teleop` extra, and runs the CLI in an ephemeral environment:
+You can launch the Gradio teleop recorder without a permanent install. `uvx` resolves the package, the `teleop` extra, and runs the CLI in an ephemeral environment:
 
 ```bash
-# MuJoCo
-uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop \
+uvx --from "so101-nexus[teleop]" so101-nexus teleop \
     --leader-port /dev/ttyACM0
-
-# ManiSkill
-uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
-    so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
 Pass `--leader-port` to point at your serial device. Gradio recordings use
@@ -77,7 +66,7 @@ For LeRobot-compatible sim-real datasets, use upstream `lerobot-record` with the
 
 ```bash
 lerobot-record \
-  --robot.discover_packages_path=so101_nexus_core.lerobot_adapter \
+  --robot.discover_packages_path=so101_nexus.lerobot_adapter \
   --robot.type=sim_so_follower \
   --robot.env_id=MuJoCoReach-v1 \
   --robot.id=my_robot \
@@ -98,7 +87,7 @@ Keep `--robot.use_degrees=true` when targeting SO100/101 checkpoints such as `al
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco  # noqa: F401  (or so101_nexus_maniskill)
+import so101_nexus.mujoco  # noqa: F401
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
 
@@ -116,10 +105,9 @@ See the [docs](https://so101-nexus.com/docs) for the full list of environments, 
 
 ## Roadmap
 
-- [x] ManiSkill environments for SO-100 and SO-101 (all five tasks)
-- [x] MuJoCo environments for SO-101 (all five tasks)
-- [x] Primitive tasks: Reach, LookAt, Move, PickLift, PickAndPlace
-- [ ] Genesis environments for SO-100 and SO-101
+- [x] MuJoCo environments for the SO-101 arm (all five tasks)
+- [x] MuJoCo SO-101 tasks: Reach, LookAt, Move, PickLift, PickAndPlace
+- [ ] MuJoCo Warp backend for GPU-parallel throughput
 - [ ] TD-MPC baselines and exemplars for every environment
 - [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 
@@ -128,7 +116,7 @@ See the [docs](https://so101-nexus.com/docs) for the full list of environments, 
 ```bash
 git clone https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
-uv sync --package so101-nexus-mujoco
+uv sync
 
 make test       # run all tests
 make format     # format code

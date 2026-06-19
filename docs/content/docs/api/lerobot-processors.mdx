@@ -5,20 +5,20 @@ description: Action and observation processor steps, default pipelines, and the 
 
 # LeRobot Processors
 
-The `so101_nexus_core.processors` subpackage exposes the LeRobot-compatible building blocks SO101-Nexus uses for teleoperation, dataset recording, and observation-shape conversion. Every step subclasses LeRobot's typed processor bases and is registered with `ProcessorStepRegistry`, so pipelines can be saved and loaded via `save_pretrained` and `from_pretrained`.
+The `so101_nexus.processors` subpackage exposes the LeRobot-compatible building blocks SO101-Nexus uses for teleoperation, dataset recording, and observation-shape conversion. Every step subclasses LeRobot's typed processor bases and is registered with `ProcessorStepRegistry`, so pipelines can be saved and loaded via `save_pretrained` and `from_pretrained`.
 
 ## Optional Dependency
 
 Importing the `processors` subpackage requires `lerobot`. Install the optional extra:
 
 ```bash
-pip install "so101-nexus-core[teleop]"
+pip install "so101-nexus[teleop]"
 ```
 
 or with `uv`:
 
 ```bash
-uv sync --package so101-nexus-core --group teleop
+uv sync --group teleop
 ```
 
 ## Environment Wrappers
@@ -41,9 +41,9 @@ Build a `LeRobotEnvWrapper` around a registered SO101-Nexus env id. Extra keywor
 The wrapped env must have a `Dict` observation space, which means at least one camera component (`WristCamera` or `OverheadCamera`) or another non-default observation must be configured. Wrapping the default state-only env raises `TypeError`.
 
 ```python
-import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core import JointPositions, PickConfig, WristCamera
-from so101_nexus_core.processors import make_lerobot_env
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus import JointPositions, PickConfig, WristCamera
+from so101_nexus.processors import make_lerobot_env
 
 config = PickConfig(
     obs_mode="visual",
@@ -146,8 +146,8 @@ For a custom env-observation pipeline, build a `DataProcessorPipeline` and pass 
 ```python
 import gymnasium as gym
 from lerobot.processor import DataProcessorPipeline, RenameObservationsProcessorStep
-from so101_nexus_core import JointPositions, PickConfig, WristCamera
-from so101_nexus_core.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
+from so101_nexus import JointPositions, PickConfig, WristCamera
+from so101_nexus.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
 
 config = PickConfig(
     obs_mode="visual",
