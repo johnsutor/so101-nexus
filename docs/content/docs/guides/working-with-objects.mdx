@@ -11,7 +11,7 @@ When you don't specify any objects, environments use a single red cube:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
+import so101_nexus.mujoco
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 # Scene contains one red cube by default
@@ -22,7 +22,7 @@ env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 Swap the default cube for any supported object by passing it through `PickConfig`:
 
 ```python
-from so101_nexus_core import PickConfig, CubeObject
+from so101_nexus import PickConfig, CubeObject
 
 # A blue cube instead of the default red
 config = PickConfig(objects=CubeObject(color="blue"))
@@ -32,7 +32,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 Or use a real-world object from the YCB dataset (assets are downloaded automatically on first use):
 
 ```python
-from so101_nexus_core import PickConfig, YCBObject
+from so101_nexus import PickConfig, YCBObject
 
 config = PickConfig(objects=YCBObject(model_id="011_banana"))
 env = gym.make("MuJoCoPickLift-v1", config=config)
@@ -45,7 +45,7 @@ Available YCB objects: `009_gelatin_box`, `011_banana`, `030_fork`, `031_spoon`,
 Pass a list of objects. The environment will select one as the manipulation target at each reset:
 
 ```python
-from so101_nexus_core import PickConfig, CubeObject, YCBObject
+from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
     objects=[
@@ -64,7 +64,7 @@ Distractors are extra objects placed in the scene that the agent must ignore. Th
 The pool you pass via `objects` must contain at least `n_distractors + 1` entries: one becomes the target each reset, and the rest are distractors.
 
 ```python
-from so101_nexus_core import PickConfig, CubeObject
+from so101_nexus import PickConfig, CubeObject
 
 config = PickConfig(
     objects=[
@@ -84,7 +84,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
 Load an arbitrary mesh file as a scene object with `MeshObject`. This is only supported on the MuJoCo backend.
 
 ```python
-from so101_nexus_core import PickConfig, MeshObject
+from so101_nexus import PickConfig, MeshObject
 
 obj = MeshObject(
     collision_mesh_path="/path/to/collision.stl",
@@ -101,7 +101,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 Each object has a string representation that the environment uses to build its task description. This matters for language-conditioned policies:
 
 ```python
-from so101_nexus_core import CubeObject, YCBObject
+from so101_nexus import CubeObject, YCBObject
 
 print(repr(CubeObject(color="blue")))    # includes "blue cube"
 print(repr(YCBObject(model_id="011_banana")))  # includes "banana"

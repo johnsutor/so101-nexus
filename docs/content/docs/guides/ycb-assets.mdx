@@ -20,10 +20,10 @@ SO101-Nexus includes a subset of the YCB (Yale-Columbia-Berkeley) object dataset
 | `043_phillips_screwdriver` | Phillips screwdriver |
 | `058_golf_ball` | Golf ball |
 
-The full mapping is available in the `YCB_OBJECTS` dictionary exported from `so101_nexus_core`.
+The full mapping is available in the `YCB_OBJECTS` dictionary exported from `so101_nexus`.
 
 ```python
-from so101_nexus_core import YCB_OBJECTS
+from so101_nexus import YCB_OBJECTS
 
 for model_id, name in YCB_OBJECTS.items():
     print(f"{model_id}: {name}")
@@ -34,7 +34,7 @@ for model_id, name in YCB_OBJECTS.items():
 When you create a `YCBObject` and use it in an environment, the required mesh files are downloaded automatically via `ensure_ycb_assets`.
 
 ```python
-from so101_nexus_core import YCBObject
+from so101_nexus import YCBObject
 
 # Assets for "011_banana" are downloaded on first use
 obj = YCBObject(model_id="011_banana")
@@ -43,7 +43,7 @@ obj = YCBObject(model_id="011_banana")
 You can also trigger the download explicitly:
 
 ```python
-from so101_nexus_core import ensure_ycb_assets
+from so101_nexus import ensure_ycb_assets
 
 ensure_ycb_assets("011_banana")
 ```
@@ -72,7 +72,7 @@ Four helper functions provide paths to cached assets:
 | `get_ycb_texture_file(model_id)` | Expected path to the optional texture image |
 
 ```python
-from so101_nexus_core import (
+from so101_nexus import (
     get_ycb_collision_mesh,
     get_ycb_mesh_dir,
     get_ycb_texture_file,

@@ -1,22 +1,22 @@
 ---
 title: SO101-Nexus
-description: Gymnasium-compatible simulation environments for SO-100 and SO-101 robot arms.
+description: Gymnasium-compatible MuJoCo simulation environments for the SO-101 robot arm.
 ---
 
-SO101-Nexus provides [Gymnasium](https://gymnasium.farama.org/)-compatible simulation environments for the [SO-100 and SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arms.
+SO101-Nexus provides [Gymnasium](https://gymnasium.farama.org/)-compatible MuJoCo simulation environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm.
 
-There are very few standardized simulation environments available for these arms. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded environments across multiple physics backends, enabling consistent experimentation and benchmarking. Robust policies should generalize across simulators before being deployed in the real world; sim-to-sim transfer helps identify policies that rely on simulator-specific artifacts.
+There are very few standardized simulation environments available for the SO-101 arm. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded MuJoCo environments that drop directly into the LeRobot stack for teleoperation, dataset recording, and real-policy evaluation.
 
 SO101-Nexus also provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
 
 ## Key Features
 
 - **Standard Gymnasium API** -- works with any RL library that supports Gymnasium
-- **Multiple backends** -- MuJoCo for fast single-env workflows, ManiSkill for GPU-accelerated batched simulation
+- **MuJoCo backend** -- fast single-environment workflows, with a MuJoCo Warp backend planned for GPU-parallel throughput
 - **Five manipulation tasks** -- pick-and-lift, pick-and-place, reach, look-at, and move
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards
 - **YCB object support** -- use real-world object meshes from the YCB dataset
-- **Sim-to-real transfer** -- environments match the physical SO-100 and SO-101 arms
+- **Sim-to-real transfer** -- environments match the physical SO-101 arm
 - **[Built-in teleoperation](/docs/teleoperation/overview)** -- record LeRobot datasets with a physical SO-100 or SO-101 leader arm, capturing wrist and overhead cameras out of the box
 
 ## Quick Examples
@@ -25,7 +25,7 @@ Pick up and lift an object in five lines:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
+import so101_nexus.mujoco
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 obs, info = env.reset()
@@ -43,8 +43,8 @@ Use a banana from the YCB dataset instead of the default cube:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import PickConfig, YCBObject
+import so101_nexus.mujoco
+from so101_nexus import PickConfig, YCBObject
 
 config = PickConfig(objects=YCBObject(model_id="011_banana"))
 env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
@@ -54,8 +54,8 @@ Add distractors and randomize colors for domain randomization:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import PickConfig, CubeObject, YCBObject
+import so101_nexus.mujoco
+from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
     objects=[
@@ -81,13 +81,12 @@ SO101-Nexus ships five manipulation primitives that cover the fundamentals of ro
 - **LookAt** -- orient the end-effector to gaze at a target object
 - **Move** -- move the end-effector to a target position with tight tolerance
 
-All five tasks are available on both the MuJoCo and ManiSkill backends. ManiSkill additionally supports GPU-accelerated batched simulation and SO-100 arm variants. Genesis support is on the roadmap.
+All five tasks run on the MuJoCo backend on the SO-101 arm. A MuJoCo Warp backend for GPU-parallel simulation is planned.
 
 ## Get Started
 
-- **[Installation](/docs/getting-started/installation)** -- install the backend you need with pip or from source
+- **[Installation](/docs/getting-started/installation)** -- install the library with pip or from source
 - **[MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco)** -- run your first MuJoCo environment
-- **[ManiSkill Quickstart](/docs/getting-started/quickstart-maniskill)** -- run batched GPU-accelerated environments
 - **[Working with Objects](/docs/guides/working-with-objects)** -- use cubes, YCB objects, or custom meshes
 - **[Customizing Environments](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, and more
 - **[Teleoperation](/docs/teleoperation/overview)**: collect demonstrations with a physical leader arm and push them to the Hugging Face Hub

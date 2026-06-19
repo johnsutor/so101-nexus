@@ -27,13 +27,9 @@ jobs:
       matrix:
         include:
           - backend: mujoco
-            package: so101-nexus-mujoco
-            env_id: MuJoCoPickCubeGoal-v1
+            package: so101-nexus
+            env_id: MuJoCoReach-v1
             apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
-          - backend: maniskill
-            package: so101-nexus-maniskill
-            env_id: ManiSkillPickLiftSO101-v1
-            apt_packages: "mesa-vulkan-drivers libvulkan1"
 
     steps:
       - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3

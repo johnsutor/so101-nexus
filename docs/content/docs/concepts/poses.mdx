@@ -28,7 +28,7 @@ This lets you keep some joints in known-good configurations while varying others
 ### Set a pose in config
 
 ```python
-from so101_nexus_core import RobotConfig, PickConfig
+from so101_nexus import RobotConfig, PickConfig
 
 # Use a built-in pose by name
 robot = RobotConfig(init_pose="rest")
@@ -38,7 +38,7 @@ config = PickConfig(robot=robot)
 ### Create a custom pose
 
 ```python
-from so101_nexus_core import Pose, RobotConfig, PickConfig
+from so101_nexus import Pose, RobotConfig, PickConfig
 
 my_pose = Pose(
     name="looking_left",

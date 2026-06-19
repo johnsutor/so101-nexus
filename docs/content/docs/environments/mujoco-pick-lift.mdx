@@ -62,8 +62,8 @@ Pass `n_distractors` in the config to add non-target objects to the scene. These
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import CubeObject, PickConfig
+import so101_nexus.mujoco
+from so101_nexus import CubeObject, PickConfig
 
 env = gym.make(
     "MuJoCoPickLift-v1",

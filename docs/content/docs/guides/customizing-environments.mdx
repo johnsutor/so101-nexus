@@ -3,7 +3,7 @@ title: Customizing Environments
 description: Practical recipes for configuring episode length, cameras, colors, spawn regions, rewards, and more.
 ---
 
-Every SO101-Nexus environment accepts a typed config object that controls its behavior. Configs are classes from `so101_nexus_core` and can be passed to `gymnasium.make` via the `config` keyword.
+Every SO101-Nexus environment accepts a typed config object that controls its behavior. Configs are classes from `so101_nexus` and can be passed to `gymnasium.make` via the `config` keyword.
 
 ## Change Episode Length
 
@@ -11,8 +11,8 @@ Shorter episodes speed up training on simple tasks. Longer episodes give the age
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import ReachConfig
+import so101_nexus.mujoco
+from so101_nexus import ReachConfig
 
 config = ReachConfig(max_episode_steps=256)
 env = gym.make("MuJoCoReach-v1", config=config)
@@ -24,8 +24,8 @@ Include camera images by adding a camera component to the `observations` list. T
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import (
+import so101_nexus.mujoco
+from so101_nexus import (
     PickConfig, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, WristCamera,
 )
 
@@ -45,7 +45,7 @@ print(obs["wrist_camera"].shape)  # (224, 224, 3): camera image
 You can also add an overhead camera, or both:
 
 ```python
-from so101_nexus_core import OverheadCamera
+from so101_nexus import OverheadCamera
 
 config = PickConfig(observations=[
     EndEffectorPose(),
@@ -62,7 +62,7 @@ config = PickConfig(observations=[
 For vision-based policies, use `obs_mode="visual"` to signal that the policy should not rely on privileged simulator state. This mode requires at least one camera component in the observations list.
 
 ```python
-from so101_nexus_core import PickConfig, JointPositions, WristCamera
+from so101_nexus import PickConfig, JointPositions, WristCamera
 
 config = PickConfig(
     obs_mode="visual",
@@ -80,7 +80,7 @@ obs["wrist_camera"]       # (224, 224, 3) camera image
 Randomize colors and spawn positions to improve sim-to-real transfer. Color fields accept a single color name or a list -- when a list is provided, the environment samples uniformly at each reset.
 
 ```python
-from so101_nexus_core import PickConfig
+from so101_nexus import PickConfig
 
 config = PickConfig(
     # Randomize visual appearance
@@ -105,7 +105,7 @@ the raw reset state.
 
 ```python
 import gymnasium as gym
-from so101_nexus_core import PickConfig
+from so101_nexus import PickConfig
 
 config = PickConfig(reset_settle_frames=0)
 env = gym.make("MuJoCoPickLift-v1", config=config)
@@ -116,7 +116,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). The four weights must sum to 1.0. Optional penalty terms are applied separately.
 
 ```python
-from so101_nexus_core import RewardConfig, PickConfig
+from so101_nexus import RewardConfig, PickConfig
 
 reward = RewardConfig(
     reaching=0.20,
@@ -135,7 +135,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 `PickConfig` extends `EnvironmentConfig` with object and distractor settings. Use it for PickLift environments.
 
 ```python
-from so101_nexus_core import PickConfig, CubeObject, YCBObject
+from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
     objects=[
@@ -158,7 +158,7 @@ When multiple objects are provided, the environment selects one as the target at
 `PickAndPlaceConfig` controls the cube and target disc appearance. Use it for PickAndPlace environments.
 
 ```python
-from so101_nexus_core import PickAndPlaceConfig
+from so101_nexus import PickAndPlaceConfig
 
 config = PickAndPlaceConfig(
     cube_colors=["red", "green", "blue"],

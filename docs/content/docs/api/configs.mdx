@@ -5,14 +5,14 @@ description: Reference for all configuration classes.
 
 # Configuration Classes
 
-All configuration classes live in `so101_nexus_core` and are plain Python classes with default constructor arguments. They control rendering, robot parameters, reward shaping, observation composition, and environment behavior.
+All configuration classes live in `so101_nexus` and are plain Python classes with default constructor arguments. They control rendering, robot parameters, reward shaping, observation composition, and environment behavior.
 
 ## RenderConfig
 
 Controls image resolution for the visualization render camera (not observations).
 
 ```python
-from so101_nexus_core import RenderConfig
+from so101_nexus import RenderConfig
 
 render = RenderConfig(width=640, height=480)
 ```
@@ -31,7 +31,7 @@ render = RenderConfig(width=640, height=480)
 Defines a named robot arm configuration with fixed and free joints. See [Initial Poses](/docs/concepts/poses) for a conceptual overview.
 
 ```python
-from so101_nexus_core import Pose
+from so101_nexus import Pose
 
 pose = Pose(
     name="custom",
@@ -73,7 +73,7 @@ pose = Pose(
 Access via the `POSES` dict or by constant:
 
 ```python
-from so101_nexus_core import POSES, REST_POSE
+from so101_nexus import POSES, REST_POSE
 
 pose = POSES["rest"]   # same as REST_POSE
 ```
@@ -85,7 +85,7 @@ pose = POSES["rest"]   # same as REST_POSE
 Controls the arm rest pose and grasping thresholds.
 
 ```python
-from so101_nexus_core import RobotConfig
+from so101_nexus import RobotConfig
 
 robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 ```
@@ -114,7 +114,7 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 Defines reward component weights and computes the shaped reward.
 
 ```python
-from so101_nexus_core import RewardConfig
+from so101_nexus import RewardConfig
 
 reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.40, completion_bonus=0.10)
 ```
@@ -170,7 +170,7 @@ Returns a single `float` reward value.
 Base configuration for all environments. Task-specific configs extend this class.
 
 ```python
-from so101_nexus_core import EnvironmentConfig
+from so101_nexus import EnvironmentConfig
 
 config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 ```
@@ -227,7 +227,7 @@ Observation components are lightweight descriptor classes passed via the `observ
 #### `WristCamera`
 
 ```python
-from so101_nexus_core import WristCamera
+from so101_nexus import WristCamera
 
 cam = WristCamera(width=224, height=224)
 ```
@@ -249,7 +249,7 @@ Properties: `fov_rad_range`, `pitch_rad_range` (converted to radians).
 #### `OverheadCamera`
 
 ```python
-from so101_nexus_core import OverheadCamera
+from so101_nexus import OverheadCamera
 
 cam = OverheadCamera(width=320, height=240, fov_deg=45.0)
 ```
@@ -267,7 +267,7 @@ cam = OverheadCamera(width=320, height=240, fov_deg=45.0)
 Extends `EnvironmentConfig` with parameters for pick and lift tasks.
 
 ```python
-from so101_nexus_core import PickConfig, CubeObject, YCBObject
+from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
     objects=[CubeObject(color="blue"), YCBObject("011_banana")],
@@ -298,7 +298,7 @@ When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectP
 Extends `EnvironmentConfig` with parameters for pick-and-place tasks.
 
 ```python
-from so101_nexus_core import PickAndPlaceConfig
+from so101_nexus import PickAndPlaceConfig
 
 config = PickAndPlaceConfig(
     cube_colors="blue",
@@ -331,7 +331,7 @@ When `observations` is not specified: `[EndEffectorPose(), GraspState(), TargetP
 Extends `EnvironmentConfig` with parameters for the reach-to-target primitive task.
 
 ```python
-from so101_nexus_core import ReachConfig
+from so101_nexus import ReachConfig
 
 config = ReachConfig(target_radius=0.03, success_threshold=0.02)
 ```
@@ -357,7 +357,7 @@ When `observations` is not specified: `[JointPositions()]` (6 dimensions).
 Extends `EnvironmentConfig` with parameters for the look-at primitive task.
 
 ```python
-from so101_nexus_core import LookAtConfig, CubeObject
+from so101_nexus import LookAtConfig, CubeObject
 
 config = LookAtConfig(
     objects=CubeObject(color="blue"),
@@ -385,7 +385,7 @@ When `observations` is not specified: `[JointPositions()]` (6 dimensions).
 Extends `EnvironmentConfig` with parameters for the directional move primitive task.
 
 ```python
-from so101_nexus_core import MoveConfig
+from so101_nexus import MoveConfig
 
 config = MoveConfig(direction="up", target_distance=0.10)
 ```

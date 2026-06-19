@@ -5,15 +5,15 @@ description: Reference for scene object types used in environments.
 
 # Scene Objects
 
-Scene objects define what the robot interacts with. All object types live in `so101_nexus_core` and share the abstract `SceneObject` base class.
+Scene objects define what the robot interacts with. All object types live in `so101_nexus` and share the abstract `SceneObject` base class.
 
 ## Backend Support
 
-| Class | MuJoCo | ManiSkill |
-|-------|--------|-----------|
-| `CubeObject` | Yes | Yes |
-| `YCBObject` | Yes | Yes |
-| `MeshObject` | Yes | No |
+| Class | MuJoCo |
+|-------|--------|
+| `CubeObject` | Yes |
+| `YCBObject` | Yes |
+| `MeshObject` | Yes |
 
 ---
 
@@ -22,7 +22,7 @@ Scene objects define what the robot interacts with. All object types live in `so
 Base class for all scene objects. Subclasses must implement `__repr__()`, which returns a natural-language description of the object (used in logging and debugging).
 
 ```python
-from so101_nexus_core import SceneObject
+from so101_nexus import SceneObject
 ```
 
 `SceneObject` cannot be instantiated directly. Use one of the concrete subclasses below.
@@ -34,7 +34,7 @@ from so101_nexus_core import SceneObject
 A solid-color cube with configurable size and mass.
 
 ```python
-from so101_nexus_core import CubeObject
+from so101_nexus import CubeObject
 
 cube = CubeObject(half_size=0.02, mass=0.015, color="blue")
 repr(cube)  # "blue cube"
@@ -59,7 +59,7 @@ Returns `"{color} cube"`, for example `"red cube"`.
 A YCB benchmark object loaded from mesh files. Assets are downloaded automatically on first use.
 
 ```python
-from so101_nexus_core import YCBObject
+from so101_nexus import YCBObject
 
 banana = YCBObject("011_banana")
 repr(banana)  # human-readable name from YCB_OBJECTS dict
@@ -97,10 +97,10 @@ Returns the human-readable name from the `YCB_OBJECTS` dictionary.
 
 ## MeshObject
 
-A custom mesh object defined by collision and visual mesh files. Only supported on the MuJoCo backend.
+A custom mesh object defined by collision and visual mesh files.
 
 ```python
-from so101_nexus_core import MeshObject
+from so101_nexus import MeshObject
 
 obj = MeshObject(
     collision_mesh_path="/path/to/collision.obj",
@@ -125,7 +125,3 @@ repr(obj)  # "custom widget"
 ### `__repr__()`
 
 Returns the `name` provided at construction.
-
-### Backend Limitation
-
-`MeshObject` is only supported in MuJoCo environments. Passing a `MeshObject` to a ManiSkill environment will raise an error.

@@ -5,7 +5,7 @@ Renders a short episode with random actions and saves:
   - An MP4 video of the full episode (episode.mp4)
 
 Usage:
-    pip install -e packages/so101-nexus-core -e packages/so101-nexus-mujoco
+    pip install -e .
     pip install imageio[ffmpeg] Pillow
     python visualize_env.py
 """
@@ -20,14 +20,14 @@ import mujoco
 if TYPE_CHECKING:
     import numpy as np
 
-    from so101_nexus_core.config import EnvironmentConfig
+    from so101_nexus.config import EnvironmentConfig
 
-import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core.camera_utils import (
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus.camera_utils import (
     compute_angled_camera_params,
     compute_overhead_camera_params,
 )
-from so101_nexus_core.visualization import (
+from so101_nexus.visualization import (
     CameraView,
     compose_frame,
     save_frame_grid,

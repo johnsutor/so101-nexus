@@ -5,36 +5,33 @@ description: How environment registration and discovery works.
 
 # Environment Registry
 
-SO101-Nexus environments are registered with Gymnasium at import time. Each backend package registers its own set of environment IDs when you import it.
+SO101-Nexus environments are registered with Gymnasium at import time. Importing `so101_nexus.mujoco` registers the MuJoCo environment IDs.
 
 ## How Registration Works
 
-Importing a backend package triggers registration:
+Importing the MuJoCo backend triggers registration:
 
 ```python
-import so101_nexus_mujoco      # registers MuJoCo environments
-import so101_nexus_maniskill   # registers ManiSkill environments
+import so101_nexus.mujoco      # registers MuJoCo environments
 ```
-
-ManiSkill environments are also registered via the `@register_env` decorator for use with ManiSkill's own vectorized API.
 
 After importing, create environments with `gym.make()`:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
+import so101_nexus.mujoco
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 ```
 
-You must import the backend package before calling `gym.make()`. Without the import, Gymnasium will not find the environment ID.
+You must import `so101_nexus.mujoco` before calling `gym.make()`. Without the import, Gymnasium will not find the environment ID.
 
 ## Discovering Registered Environments
 
 ### `all_registered_env_ids()`
 
 ```python
-from so101_nexus_core.env_ids import all_registered_env_ids
+from so101_nexus.env_ids import all_registered_env_ids
 
 ids = all_registered_env_ids()
 ```
@@ -43,16 +40,15 @@ ids = all_registered_env_ids()
 def all_registered_env_ids() -> list[str]
 ```
 
-Returns a list of all SO101-Nexus environment IDs. With both backends imported, the function returns 15 environment IDs (5 MuJoCo + 10 ManiSkill), including the pick-and-place tasks.
+Returns a list of all SO101-Nexus environment IDs. With the MuJoCo backend imported, the function returns the five MuJoCo environment IDs, including the pick-and-place tasks.
 
 ## Required Imports
 
-Each backend must be imported before its environments can be used. The core package alone does not register any environments.
+You must import `so101_nexus.mujoco` before its environments can be used. Importing the top-level `so101_nexus` package alone does not register any environments.
 
-| Backend Package | Import Statement | Registers |
-|----------------|-----------------|-----------|
-| `so101-nexus-mujoco` | `import so101_nexus_mujoco` | MuJoCo environments |
-| `so101-nexus-maniskill` | `import so101_nexus_maniskill` | ManiSkill environments |
+| Package | Import Statement | Registers |
+|---------|-----------------|-----------|
+| `so101-nexus` | `import so101_nexus.mujoco` | MuJoCo environments |
 
 ## Passing Configuration
 
@@ -60,8 +56,8 @@ All environments accept a `config` keyword argument through `gym.make()`:
 
 ```python
 import gymnasium as gym
-import so101_nexus_mujoco
-from so101_nexus_core import PickConfig, CubeObject
+import so101_nexus.mujoco
+from so101_nexus import PickConfig, CubeObject
 
 config = PickConfig(
     objects=[CubeObject(color="blue")],

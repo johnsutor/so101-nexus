@@ -10,7 +10,7 @@ description: Running the AllenAI MolmoAct2 SO100/SO101 checkpoint in SO101-Nexus
 Install the optional MolmoAct dependencies before loading the real model:
 
 ```bash
-pip install "so101-nexus-core[molmoact]"
+pip install "so101-nexus[molmoact]"
 ```
 
 The adapter can still be imported without this extra. Hugging Face and transformer imports happen only when you call `MolmoActPolicy.from_pretrained(...)`.
@@ -21,10 +21,10 @@ The adapter can still be imported without this extra. Hugging Face and transform
 import gymnasium as gym
 import torch
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from so101_nexus_core import SO101_JOINT_NAMES
-from so101_nexus_core.policy_adapters import MolmoActPolicy, RolloutRecorder
-from so101_nexus_core.teleop.dataset import FieldSelection, build_features
-import so101_nexus_mujoco  # noqa: F401
+from so101_nexus import SO101_JOINT_NAMES
+from so101_nexus.policy_adapters import MolmoActPolicy, RolloutRecorder
+from so101_nexus.teleop.dataset import FieldSelection, build_features
+import so101_nexus.mujoco  # noqa: F401
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array", control_mode="pd_joint_pos")
 action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}

@@ -1,0 +1,680 @@
+"""MuJoCo base environment for SO101-Nexus simulation tasks."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import gymnasium
+import mujoco
+import numpy as np
+from gymnasium import spaces
+
+from so101_nexus.camera_utils import compute_overhead_camera_params
+from so101_nexus.config import (
+    SO101_JOINT_NAMES,
+    ControlMode,
+    EnvironmentConfig,
+)
+from so101_nexus.observations import (
+    CameraObservation,
+    EndEffectorPose,
+    GazeDirection,
+    GraspState,
+    JointPositions,
+    ObjectOffset,
+    ObjectPose,
+    OverheadCamera,
+    TargetOffset,
+    TargetPosition,
+    WristCamera,
+)
+from so101_nexus.rewards import orientation_progress, reach_progress
+
+logger = logging.getLogger(__name__)
+
+# Internal per-joint physical scale applied to a normalized delta action.
+# The public delta action space is normalized to [-1, 1] (the cross-backend
+# normalized delta action contract); a normalized action ``a`` maps to a
+# physical joint-target delta of ``a * _DELTA_ACTION_SCALE``. These are the
+# existing controller delta units (radians): +/-0.05 for the five arm joints
+# and +/-0.2 for the gripper. Reused by both delta control modes.
+_DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+# Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
+# vendored menagerie model's option (MuJoCo: the last top-level option wins).
+# Adopts the menagerie's tuned manipulation physics plus scene-level
+# gravity/noslip. The wrapper <compiler> stays before the include so the
+# menagerie compiler's meshdir="assets" still wins for mesh resolution.
+SCENE_OPTION_XML = (
+    '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
+    'integrator="implicitfast" impratio="10" iterations="10" '
+    'ls_iterations="20" noslip_iterations="3"/>'
+)
+
+
+class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
+    """Shared MuJoCo base class for SO101-Nexus tasks.
+
+    Notes
+    -----
+    ``_is_grasping()`` requires ``_obj_geom_id`` to be set by the subclass.
+    Primitive envs without a graspable object (``ReachEnv``, ``LookAtEnv``,
+    ``MoveEnv``) must **never** call ``_is_grasping()``.
+    """
+
+    metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
+    model: mujoco.MjModel
+    data: mujoco.MjData
+    config: EnvironmentConfig
+    _obj_geom_id: int
+    action_space: spaces.Box
+    observation_space: spaces.Space
+    _wrist_renderer: mujoco.Renderer | None
+    _renderer: mujoco.Renderer | None
+    _viewer: Any | None
+    _VALID_CONTROL_MODES: set[str] = {
+        "pd_joint_pos",
+        "pd_joint_delta_pos",
+        "pd_joint_target_delta_pos",
+    }
+    # Menagerie physics uses timestep=0.005; keep control_dt = timestep *
+    # _N_SUBSTEPS = 0.02 s (unchanged from the old 0.002 * 10).
+    _N_SUBSTEPS = 4
+
+    def _init_common(
+        self,
+        *,
+        config: EnvironmentConfig,
+        render_mode: str | None,
+        control_mode: ControlMode,
+        robot_init_qpos_noise: float,
+    ) -> None:
+        if control_mode not in self._VALID_CONTROL_MODES:
+            valid = sorted(self._VALID_CONTROL_MODES)
+            raise ValueError(f"control_mode must be one of {valid}, got {control_mode!r}")
+
+        self.config = config
+        self.control_mode = control_mode
+        self.render_mode = render_mode
+        self.robot_init_qpos_noise = robot_init_qpos_noise
+        self._privileged_state: np.ndarray | None = None
+        self._init_qpos_clamp_warned = False
+
+    def _finish_model_setup(self) -> None:
+        self._joint_ids = np.array(
+            [
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, n)
+                for n in SO101_JOINT_NAMES
+            ],
+            dtype=np.int32,
+        )
+        self._actuator_ids = np.array(
+            [
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
+                for n in SO101_JOINT_NAMES
+            ],
+            dtype=np.int32,
+        )
+        self._gripper_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "gripper")
+        self._jaw_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "moving_jaw_so101_v1"
+        )
+        self._tcp_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
+
+        # Menagerie finger contact surfaces use condim=6 (collision_gripper and
+        # collision_gripper_mesh classes); the non-finger wrist-roll box on the
+        # gripper body uses condim=3 and is excluded. Camera-mount boxes live on
+        # the separate camera_mount child body and are excluded by the per-body
+        # filter in _get_finger_geoms.
+        self._gripper_geom_ids = self._get_finger_geoms(self._gripper_body_id)
+        self._jaw_geom_ids = self._get_finger_geoms(self._jaw_body_id)
+
+        arm_dof_count = len(SO101_JOINT_NAMES) - 1
+        self._arm_qvel_addrs = np.array(
+            [self.model.jnt_dofadr[self._joint_ids[i]] for i in range(arm_dof_count)],
+            dtype=np.int32,
+        )
+
+        ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
+        ctrl_low = ctrl_range[:, 0]
+        ctrl_high = ctrl_range[:, 1]
+
+        # Valid position-target bounds: a commanded actuator target must lie
+        # within both the actuator ctrlrange and the compiled joint range. The
+        # menagerie wrist_roll actuator advertises a wider ctrlrange than its
+        # joint limit, so commanding the ctrlrange edge would drive the joint
+        # into its limit. Clamp every position target (reset and control) to the
+        # intersection.
+        jnt_range = self.model.jnt_range[self._joint_ids]
+        self._target_low = np.maximum(ctrl_low, jnt_range[:, 0])
+        self._target_high = np.minimum(ctrl_high, jnt_range[:, 1])
+
+        if self.control_mode == "pd_joint_pos":
+            self.action_space = spaces.Box(
+                low=self._target_low.astype(np.float32),
+                high=self._target_high.astype(np.float32),
+                dtype=np.float32,
+            )
+        else:
+            # Delta modes expose a normalized [-1, 1] action space (the
+            # cross-backend contract). The normalized action is scaled by
+            # _DELTA_ACTION_SCALE in step() before being applied to joint targets.
+            n_joints = len(SO101_JOINT_NAMES)
+            self.action_space = spaces.Box(
+                low=-np.ones(n_joints, dtype=np.float32),
+                high=np.ones(n_joints, dtype=np.float32),
+                dtype=np.float32,
+            )
+
+        self._prev_target: np.ndarray | None = None
+        # Previous public policy action, used for the action-smoothness penalty.
+        # None means "no action since the last reset" so the first step reports
+        # an action_delta_norm of 0.0.
+        self._prev_action: np.ndarray | None = None
+        self._setup_camera_renderers()
+        self._renderer = None
+        self._viewer = None
+
+    def _setup_camera_renderers(self) -> None:
+        """Detect camera observation components and set up renderers + obs space."""
+        self._wrist_cam_component: WristCamera | None = None
+        self._overhead_cam_component: OverheadCamera | None = None
+        if self.config.observations is not None:
+            for comp in self.config.observations:
+                if isinstance(comp, WristCamera):
+                    self._wrist_cam_component = comp
+                elif isinstance(comp, OverheadCamera):
+                    self._overhead_cam_component = comp
+
+        if self._wrist_cam_component is not None:
+            self._wrist_cam_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam"
+            )
+            wrist_w = self._wrist_cam_component.width
+            wrist_h = self._wrist_cam_component.height
+            self._wrist_renderer = mujoco.Renderer(self.model, height=wrist_h, width=wrist_w)
+        else:
+            self._wrist_cam_id = None
+            self._wrist_renderer = None
+
+        if self._overhead_cam_component is not None:
+            cam = self._overhead_cam_component
+            params = compute_overhead_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                fov_deg=cam.fov_deg,
+                aspect=cam.width / cam.height,
+            )
+            self._overhead_obs_cam = mujoco.MjvCamera()
+            self._overhead_obs_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            self._overhead_obs_cam.lookat[:] = params["lookat"]
+            self._overhead_obs_cam.distance = params["distance"]
+            self._overhead_obs_cam.elevation = params["elevation"]
+            self._overhead_obs_cam.azimuth = params["azimuth"]
+            self._overhead_obs_renderer = mujoco.Renderer(
+                self.model, height=cam.height, width=cam.width
+            )
+        else:
+            self._overhead_obs_cam = None
+            self._overhead_obs_renderer = None
+
+        self.observation_space = self._build_observation_space()
+
+    def _build_observation_space(self) -> spaces.Space:
+        """Build observation space from detected camera components."""
+        has_any_camera = (
+            self._wrist_cam_component is not None or self._overhead_cam_component is not None
+        )
+        if not has_any_camera:
+            return spaces.Box(
+                low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
+            )
+        state_size = (
+            len(SO101_JOINT_NAMES) if self.config.obs_mode == "visual" else self._state_obs_size()
+        )
+        obs_dict: dict[str, spaces.Space] = {
+            "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64),
+        }
+        if self._wrist_cam_component is not None:
+            wc = self._wrist_cam_component
+            obs_dict["wrist_camera"] = spaces.Box(
+                low=0,
+                high=255,
+                shape=(wc.height, wc.width, 3),
+                dtype=np.uint8,
+            )
+        if self._overhead_cam_component is not None:
+            oc = self._overhead_cam_component
+            obs_dict["overhead_camera"] = spaces.Box(
+                low=0,
+                high=255,
+                shape=(oc.height, oc.width, 3),
+                dtype=np.uint8,
+            )
+        return spaces.Dict(obs_dict)
+
+    def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> np.ndarray:
+        """Reset arm joints to a target configuration with optional noise.
+
+        Parameters
+        ----------
+        init_qpos : np.ndarray or None
+            If provided, joints are set to this configuration clipped to
+            actuator control bounds (no noise).
+            If None, joints are reset based on ``config.robot.init_pose`` if set,
+            otherwise the default rest pose with Gaussian noise.
+
+        Returns
+        -------
+        np.ndarray
+            The target joint positions actually applied (before per-joint noise).
+        """
+        if init_qpos is not None:
+            target = np.asarray(init_qpos, dtype=np.float64).copy()
+            clipped = np.clip(target, self._target_low, self._target_high)
+            if not np.array_equal(target, clipped):
+                if not self._init_qpos_clamp_warned:
+                    logger.warning(
+                        "init_qpos clipped to control bounds for at least one joint; "
+                        "further init_qpos clamps on this env will be silent."
+                    )
+                    self._init_qpos_clamp_warned = True
+                target = clipped
+            noise_scale = 0.0
+        else:
+            pose = self.config.robot.resolve_pose()
+            if pose is not None:
+                target = np.array(pose.sample_rad(self.np_random), dtype=np.float64)
+                noise_scale = 0.0  # free joints already have randomness
+            else:
+                target = np.array(self.config.robot.rest_qpos_rad, dtype=np.float64)
+                noise_scale = self.robot_init_qpos_noise
+
+        # Clamp the position target to the valid bounds so the held ctrl target
+        # (and the returned value seeding _prev_target) never commands past the
+        # joint limit; a zero action in target-delta mode must hold this pose.
+        applied = np.clip(target, self._target_low, self._target_high)
+        for i, jid in enumerate(self._joint_ids):
+            qpos_addr = self.model.jnt_qposadr[jid]
+            noise = 0.0 if noise_scale == 0.0 else self.np_random.uniform(-noise_scale, noise_scale)
+            # Re-clamp after adding noise so noise cannot push a joint past its limit.
+            self.data.qpos[qpos_addr] = np.clip(
+                applied[i] + noise, self._target_low[i], self._target_high[i]
+            )
+        self.data.ctrl[self._actuator_ids] = applied
+        return applied
+
+    def _randomize_wrist_camera(self) -> None:
+        """Randomize wrist camera pose and field of view for domain randomization.
+
+        Uses ``WristCamera`` observation component parameters. No-ops when no
+        wrist camera is active.
+        """
+        if self._wrist_renderer is None:
+            return
+
+        wc = self._wrist_cam_component
+        if wc is None:
+            raise RuntimeError("wrist renderer requires a WristCamera component")
+        pitch_lo_rad, pitch_hi_rad = wc.pitch_rad_range
+        fov_lo, fov_hi = wc.fov_deg_range
+        pos_x_noise = wc.pos_x_noise
+        pos_y_center, pos_y_noise = wc.pos_y_center, wc.pos_y_noise
+        pos_z_center, pos_z_noise = wc.pos_z_center, wc.pos_z_noise
+
+        # Write the body-relative pose fields the fixed-camera forward kinematics
+        # actually use (cam_pos / cam_quat). The earlier cam_pos0 / cam_mat0
+        # fields are only consulted for tracking-mode cameras, so writing them
+        # left this fixed wrist camera at its MJCF baseline pose (the pitch and
+        # position randomization had no effect). The reset's mj_forward (called
+        # right after this) recomputes cam_xpos / cam_xmat from these fields.
+        pitch_rad = self.np_random.uniform(pitch_lo_rad, pitch_hi_rad)
+        quat = np.zeros(4)
+        mujoco.mju_euler2Quat(quat, np.array([pitch_rad, 0.0, 0.0]), "XYZ")
+        self.model.cam_quat[self._wrist_cam_id] = quat
+
+        self.model.cam_pos[self._wrist_cam_id] = [
+            self.np_random.uniform(-pos_x_noise, pos_x_noise),
+            pos_y_center + self.np_random.uniform(-pos_y_noise, pos_y_noise),
+            pos_z_center + self.np_random.uniform(-pos_z_noise, pos_z_noise),
+        ]
+
+        self.model.cam_fovy[self._wrist_cam_id] = self.np_random.uniform(fov_lo, fov_hi)
+
+    def _get_finger_geoms(self, body_id: int) -> set[int]:
+        """Return the ``condim==6`` collision geom IDs attached to a finger body.
+
+        Selects the menagerie gripper contact surfaces (both ``collision_gripper``
+        primitives and ``collision_gripper_mesh`` meshes, which use ``condim=6``)
+        while excluding the non-finger wrist-roll follower box on the gripper body
+        (plain ``collision`` class, ``condim=3``).
+
+        Parameters
+        ----------
+        body_id : int
+            MuJoCo body ID of the finger (gripper or moving jaw) to query.
+
+        Returns
+        -------
+        set[int]
+            IDs of contype-enabled, ``condim==6`` geoms attached to ``body_id``.
+        """
+        return {
+            i
+            for i in range(self.model.ngeom)
+            if self.model.geom_bodyid[i] == body_id
+            and self.model.geom_contype[i] != 0
+            and self.model.geom_condim[i] == 6
+        }
+
+    def _state_obs_size(self) -> int:
+        """Return the dimensionality of the flat state observation vector."""
+        if self.config.observations is not None:
+            return sum(c.size for c in self.config.observations if c.size > 0)
+        # Legacy default for pick envs that haven't migrated yet
+        return 18
+
+    def _get_tcp_pose(self) -> np.ndarray:
+        """Return the tool-centre-point pose as a 7-vector [x, y, z, qw, qx, qy, qz]."""
+        pos = self.data.site_xpos[self._tcp_site_id].copy()
+        mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, mat.flatten())
+        return np.concatenate([pos, quat])
+
+    def _is_grasping(self) -> float:
+        """Return 1.0 if the gripper and jaw are both in contact with the target object.
+
+        Uses ``config.robot.grasp_force_threshold`` to filter low-force contacts.
+
+        Returns
+        -------
+        float
+            1.0 when a two-sided grasp is detected, 0.0 otherwise.
+        """
+        gripper_contact = False
+        jaw_contact = False
+
+        force_buf = np.zeros(6)
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            g1, g2 = contact.geom1, contact.geom2
+
+            obj_involved = self._obj_geom_id in (g1, g2)
+            if not obj_involved:
+                continue
+
+            other = g2 if g1 == self._obj_geom_id else g1
+
+            mujoco.mj_contactForce(self.model, self.data, i, force_buf)
+            normal_force = abs(force_buf[0])
+
+            if normal_force >= self.config.robot.grasp_force_threshold:
+                if other in self._gripper_geom_ids:
+                    gripper_contact = True
+                if other in self._jaw_geom_ids:
+                    jaw_contact = True
+
+        return 1.0 if (gripper_contact and jaw_contact) else 0.0
+
+    def _is_robot_static(self) -> bool:
+        """Return True if all arm joints are below the static velocity threshold.
+
+        Uses ``config.robot.static_vel_threshold`` as the cutoff.
+        """
+        arm_vels = self.data.qvel[self._arm_qvel_addrs]
+        return bool(np.all(np.abs(arm_vels) < self.config.robot.static_vel_threshold))
+
+    def _get_current_qpos(self) -> np.ndarray:
+        """Return the current joint positions for all controlled joints."""
+        return np.array(
+            [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
+            dtype=np.float64,
+        )
+
+    def _compute_obs_components(self) -> np.ndarray:
+        """Build the flat state vector from the observation component list."""
+        parts: list[np.ndarray] = []
+        if self.config.observations is None:
+            raise RuntimeError("config.observations must be set")
+        for comp in self.config.observations:
+            if isinstance(comp, JointPositions):
+                parts.append(self._get_current_qpos())
+            elif isinstance(comp, EndEffectorPose):
+                parts.append(self._get_tcp_pose())
+            elif isinstance(comp, GraspState):
+                parts.append(np.array([self._is_grasping()]))
+            elif isinstance(
+                comp,
+                (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
+            ):
+                parts.append(self._get_component_data(comp))
+            elif isinstance(comp, CameraObservation):
+                continue  # camera images handled separately in _get_obs
+            else:
+                raise ValueError(f"Unsupported observation component: {comp!r}")
+        return np.concatenate(parts)
+
+    def _get_component_data(self, component: object) -> np.ndarray:
+        """Return data for a task-specific observation component.
+
+        Subclasses override this for components like TargetOffset or GazeDirection
+        that depend on task state (target position, object position, etc.).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support observation component {component!r}"
+        )
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
+        """Reset the environment and return the initial observation and info."""
+        super().reset(seed=seed, options=options)
+        mujoco.mj_resetData(self.model, self.data)
+
+        init_qpos: np.ndarray | None = None
+        if options is not None:
+            raw = options.get("init_qpos")
+            if raw is not None:
+                init_qpos = np.asarray(raw, dtype=np.float64)
+                if init_qpos.shape != (len(self._joint_ids),):
+                    raise ValueError(
+                        f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
+                    )
+
+        self._prev_action = None
+        applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
+        self._task_reset()
+        self._randomize_wrist_camera()
+
+        self._prev_target = applied_qpos.copy()
+        mujoco.mj_forward(self.model, self.data)
+        self._settle_after_reset()
+        self._refresh_reset_reference_state()
+
+        obs = self._get_obs()
+        info = self._get_info()
+        return obs, info
+
+    def _settle_after_reset(self) -> None:
+        """Advance configured no-op frames after reset before returning observations."""
+        # data.ctrl was set during robot reset and must remain held while settling.
+        for _ in range(self.config.reset_settle_frames):
+            for _ in range(self._N_SUBSTEPS):
+                mujoco.mj_step(self.model, self.data)
+
+    def _refresh_reset_reference_state(self) -> None:
+        """Refresh task reference state after reset settling."""
+
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
+        """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
+        # Penalty norms use the public action as received here, before clipping,
+        # following the cross-backend convention so the penalty is comparable
+        # across backends. Clipping below only affects the control sent to physics.
+        public_action = np.asarray(action, dtype=np.float64)
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        if self.control_mode == "pd_joint_pos":
+            # action_space is already the valid target range for this mode.
+            ctrl = action
+        elif self.control_mode == "pd_joint_delta_pos":
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            ctrl = np.clip(self._get_current_qpos() + delta, self._target_low, self._target_high)
+        else:
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            self._prev_target = np.clip(
+                self._prev_target + delta, self._target_low, self._target_high
+            )
+            ctrl = self._prev_target
+
+        self.data.ctrl[self._actuator_ids] = ctrl
+
+        for _ in range(self._N_SUBSTEPS):
+            mujoco.mj_step(self.model, self.data)
+
+        obs = self._get_obs()
+        info = self._get_info()
+        info["energy_norm"] = float(np.linalg.norm(public_action))
+        if self._prev_action is None:
+            info["action_delta_norm"] = 0.0
+        else:
+            info["action_delta_norm"] = float(np.linalg.norm(public_action - self._prev_action))
+        self._prev_action = public_action.copy()
+        reward = self._compute_reward(info)
+        terminated = bool(info.get("success", False))
+
+        return obs, reward, terminated, False, info
+
+    def render(self) -> np.ndarray | None:
+        """Render the current frame and return an RGB array, or None."""
+        if self.render_mode == "rgb_array":
+            if self._renderer is None:
+                self._renderer = mujoco.Renderer(
+                    self.model,
+                    height=self.config.render.height,
+                    width=self.config.render.width,
+                )
+            if not hasattr(self, "_overhead_cam"):
+                params = compute_overhead_camera_params(
+                    spawn_center=self.config.spawn_center,
+                    spawn_max_radius=self.config.spawn_max_radius,
+                    aspect=self.config.render.width / self.config.render.height,
+                )
+                self._overhead_cam = mujoco.MjvCamera()
+                self._overhead_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+                self._overhead_cam.lookat[:] = params["lookat"]
+                self._overhead_cam.distance = params["distance"]
+                self._overhead_cam.elevation = params["elevation"]
+                self._overhead_cam.azimuth = params["azimuth"]
+            self._renderer.update_scene(self.data, camera=self._overhead_cam)
+            return self._renderer.render()
+        if self.render_mode == "human":
+            if self._viewer is None:
+                self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+            self._viewer.sync()
+            return None
+        return None
+
+    def close(self) -> None:
+        """Release MuJoCo renderers and viewer resources."""
+        if self._wrist_renderer is not None:
+            self._wrist_renderer.close()
+            self._wrist_renderer = None
+        overhead_renderer = self._overhead_obs_renderer
+        if overhead_renderer is not None:
+            overhead_renderer.close()
+            self._overhead_obs_renderer = None
+        if self._renderer is not None:
+            self._renderer.close()
+            self._renderer = None
+        if self._viewer is not None:
+            self._viewer.close()
+            self._viewer = None
+
+    def _reach_only_reward(self, info: dict) -> float:
+        """Reach-only reward: tanh distance shaping toward the object with no task progress."""
+        # mirrors RewardConfig.compute() in so101_nexus.config
+        rp = reach_progress(info["tcp_to_obj_dist"], scale=self.config.reward.tanh_shaping_scale)
+        is_grasped = info["is_grasped"] > 0.5
+        return self.config.reward.compute(
+            reach_progress=rp,
+            is_grasped=is_grasped,
+            task_progress=0.0,
+            is_complete=info.get("success", False),
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
+        )
+
+    def _lift_reward(self, info: dict) -> float:
+        """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
+        # mirrors RewardConfig.compute() in so101_nexus.config
+        scale = self.config.reward.tanh_shaping_scale
+        rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
+        is_grasped = info["is_grasped"] > 0.5
+        # Lift progress is tanh(scale * max(height, 0)) when grasped, 0 otherwise.
+        # This is NOT the same as reach_progress (which is 1 - tanh), so use np.tanh directly.
+        lift_prog = float(np.tanh(scale * max(info["lift_height"], 0.0))) if is_grasped else 0.0
+        return self.config.reward.compute(
+            reach_progress=rp,
+            is_grasped=is_grasped,
+            task_progress=lift_prog,
+            is_complete=info.get("success", False),
+            action_delta_norm=info.get("action_delta_norm", 0.0),
+            energy_norm=info.get("energy_norm", 0.0),
+        )
+
+    def _reach_to_target_reward(self, tcp_pos: np.ndarray, target_pos: np.ndarray) -> float:
+        """Tanh-shaped reward for reaching a 3-D target position."""
+        dist = float(np.linalg.norm(tcp_pos - target_pos))
+        return reach_progress(dist, scale=self.config.reward.tanh_shaping_scale)
+
+    def _orientation_toward_reward(self, current_dir: np.ndarray, target_dir: np.ndarray) -> float:
+        """Cosine-similarity reward for aligning a direction vector with a target."""
+        cos_sim = float(
+            np.dot(current_dir, target_dir)
+            / (np.linalg.norm(current_dir) * np.linalg.norm(target_dir) + 1e-8)
+        )
+        return orientation_progress(cos_sim)
+
+    def _task_reset(self) -> None:
+        raise NotImplementedError
+
+    def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
+        """Build observation from component list, optionally including camera images."""
+        state = self._compute_obs_components()
+        has_any_camera = self._wrist_renderer is not None or self._overhead_obs_renderer is not None
+        if not has_any_camera:
+            return state
+
+        obs: dict[str, np.ndarray] = {}
+        if self.config.obs_mode == "visual":
+            self._privileged_state = state
+            obs["state"] = self._get_current_qpos()
+        else:
+            obs["state"] = state
+
+        if self._wrist_renderer is not None:
+            if self._wrist_cam_id is None:
+                raise RuntimeError("wrist camera id is not initialized")
+            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
+            obs["wrist_camera"] = self._wrist_renderer.render()
+
+        overhead_renderer = self._overhead_obs_renderer
+        if overhead_renderer is not None:
+            if self._overhead_obs_cam is None:
+                raise RuntimeError("overhead camera id is not initialized")
+            overhead_renderer.update_scene(self.data, camera=self._overhead_obs_cam)
+            obs["overhead_camera"] = overhead_renderer.render()
+
+        return obs
+
+    def _get_info(self) -> dict:
+        raise NotImplementedError
+
+    def _compute_reward(self, info: dict) -> float:
+        raise NotImplementedError

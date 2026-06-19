@@ -33,13 +33,7 @@ This will list connected serial devices. Note the port (e.g. `/dev/ttyACM0` or `
 Teleoperation lives behind the backend CLI, not a standalone script:
 
 ```bash
-uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
-```
-
-For ManiSkill, swap the package:
-
-```bash
-uv run --prerelease=allow so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+uv run so101-nexus teleop --leader-port /dev/ttyACM0
 ```
 
 For deeper coverage of session configuration, dataset layout, and troubleshooting, see [/docs/teleoperation/overview](https://so101-nexus.github.io/docs/teleoperation/overview).
@@ -84,19 +78,7 @@ Basic PPO baselines for all SO101-Nexus registered environments, using CleanRL's
 uv run python examples/ppo.py --env-id MuJoCoPickLift-v1 --total-timesteps 200000
 ```
 
-For ManiSkill environments:
-
-```bash
-uv run --package so101-nexus-maniskill --prerelease=allow python examples/ppo.py --env-id ManiSkillPickLiftSO101-v1 --total-timesteps 200000
-```
-
-For MuJoCo environments:
-
-```bash
-uv run --package so101-nexus-mujoco python examples/ppo.py --env-id MuJoCoPickLift-v1 --total-timesteps 200000
-```
-
-This PPO script now uses ManiSkill's native batched env creation (`gym.make(..., num_envs=N)`) and the official `ManiSkillVectorEnv` adapter instead of custom ManiSkill wrappers.
+This PPO script vectorizes the MuJoCo environments through Gymnasium's `SyncVectorEnv` wrapper, controlled by `--num-envs`.
 
 ### List all environment IDs
 

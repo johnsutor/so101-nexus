@@ -1,56 +1,40 @@
 ---
 title: Installation
-description: Install SO101-Nexus backends with pip or from source.
+description: Install SO101-Nexus with pip or from source.
 ---
 
-Python **>=3.12** is required. Install only the backend you need.
+Python **>=3.12** is required.
 
 ## Install with pip
 
 ```bash
-# MuJoCo backend
-pip install so101-nexus-mujoco
-
-# ManiSkill backend
-pip install so101-nexus-maniskill
+pip install so101-nexus
 ```
-
-Each backend package pulls in `so101-nexus-core` automatically.
 
 ## Try without installing
 
 If you only want to try the teleop recorder, [uv](https://docs.astral.sh/uv/) can run it in an ephemeral environment with no permanent install:
 
 ```bash
-# MuJoCo
-uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop
-
-# ManiSkill
-uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
-    so101-nexus-maniskill teleop
+uvx --from "so101-nexus[teleop]" so101-nexus teleop
 ```
 
 See the [teleoperation docs](/docs/teleoperation/overview) for hardware requirements, troubleshooting, and full usage.
 
 ## Install from Source
 
-Clone the repository, then use `uv` to sync the backend you want:
+Clone the repository, then sync with `uv`:
 
 ```bash
 git clone https://github.com/johnsutor/so101-nexus.git
 cd so101-nexus
-
-# MuJoCo backend
-uv sync --package so101-nexus-mujoco
-
-# ManiSkill backend
-uv sync --package so101-nexus-maniskill --prerelease=allow
+uv sync
 ```
 
 ## Verify Installation
 
 ```python
-import so101_nexus_mujoco  # or so101_nexus_maniskill
+import so101_nexus.mujoco
 import gymnasium as gym
 
 env = gym.make("MuJoCoPickLift-v1")

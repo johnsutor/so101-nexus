@@ -18,7 +18,7 @@ Install SO101-Nexus with the `teleop` extra so `lerobot[feetech]` is available, 
 
 ```bash
 lerobot-record \
-  --robot.discover_packages_path=so101_nexus_core.lerobot_adapter \
+  --robot.discover_packages_path=so101_nexus.lerobot_adapter \
   --robot.type=sim_so_follower \
   --robot.env_id=MuJoCoReach-v1 \
   --robot.id=my_robot \
@@ -32,7 +32,7 @@ lerobot-record \
   --dataset.single_task="reach the target"
 ```
 
-`--robot.discover_packages_path` is a parser hook, not a `RobotConfig` field. It imports `so101_nexus_core.lerobot_adapter` before config parsing so the LeRobot `@register_subclass` decorators for `sim_so_follower` and `sim` cameras run.
+`--robot.discover_packages_path` is a parser hook, not a `RobotConfig` field. It imports `so101_nexus.lerobot_adapter` before config parsing so the LeRobot `@register_subclass` decorators for `sim_so_follower` and `sim` cameras run.
 
 The default is `--robot.use_degrees=true`, matching LeRobot 0.5 SO follower and SO leader defaults. Percent mode is also supported when both sides opt in:
 
@@ -64,14 +64,14 @@ For simulator-only tests, create an explicit synthetic follower calibration file
 
 ```python
 from pathlib import Path
-from so101_nexus_core.lerobot_adapter.synthetic_calibration import write_synthetic_calibration
+from so101_nexus.lerobot_adapter.synthetic_calibration import write_synthetic_calibration
 
 write_synthetic_calibration(Path("calibration"), "my_robot")
 ```
 
 Synthetic calibration files use LeRobot's normal `MotorCalibration` schema and the SO101 motor ids `1..6`, but they are not a replacement for measured physical calibration data.
 
-Current validation is MuJoCo-first. The adapter protocol also reads ManiSkill-style `agent.robot.get_qpos()`, but ManiSkill recording should be treated as pending backend qpos/action validation.
+The adapter is validated against the MuJoCo backend, reading simulator joint positions and writing actions through it.
 
 ## Recording with the Gradio teleop app
 
@@ -91,9 +91,9 @@ simulator-only calibration file automatically at
 `LeRobotEnvWrapper` requires a `Dict` observation space. Configure the env with at least one camera component (or pick another component beyond the default state-only set) before wrapping it.
 
 ```python
-import so101_nexus_mujoco  # noqa: F401
-from so101_nexus_core import JointPositions, PickConfig, WristCamera
-from so101_nexus_core.processors import make_lerobot_env
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus import JointPositions, PickConfig, WristCamera
+from so101_nexus.processors import make_lerobot_env
 
 config = PickConfig(
     obs_mode="visual",
@@ -109,8 +109,8 @@ To customize the pipeline, build one yourself and pass it in:
 ```python
 import gymnasium as gym
 from lerobot.processor import DataProcessorPipeline, RenameObservationsProcessorStep
-from so101_nexus_core import JointPositions, PickConfig, WristCamera
-from so101_nexus_core.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
+from so101_nexus import JointPositions, PickConfig, WristCamera
+from so101_nexus.processors import Hwc2ChwImageObservationStep, LeRobotEnvWrapper
 
 config = PickConfig(
     obs_mode="visual",

@@ -1,36 +1,25 @@
 ---
 title: Overview
-description: Packages, backends, and how they fit together.
+description: The SO101-Nexus library and how it fits together.
 ---
 
-SO101-Nexus is split into two backend packages. You install only the one you need -- the shared `so101-nexus-core` package is pulled in automatically as a dependency.
+SO101-Nexus is a single installable library, `so101-nexus`. Install it with `pip install so101-nexus`.
 
-- **`so101-nexus-mujoco`** -- MuJoCo-based environments for the SO-101 arm. All five tasks are available.
-- **`so101-nexus-maniskill`** -- ManiSkill-based environments for both the SO-100 and SO-101 arms. All five tasks are available with GPU-accelerated batched simulation.
+The shared API (configuration, rewards, observations, scene objects, teleop, and the LeRobot adapter) lives at the top level under `so101_nexus`. The MuJoCo backend lives at `so101_nexus.mujoco`.
 
-Importing a backend package registers its environments with Gymnasium:
+Importing the MuJoCo backend registers its environments with Gymnasium:
 
 ```python
-import so101_nexus_mujoco      # registers MuJoCo envs
-import so101_nexus_maniskill   # registers ManiSkill envs
+import so101_nexus.mujoco   # registers MuJoCo envs
 ```
 
 After importing, create environments with `gymnasium.make()`.
 
-## When to Use Each Backend
+## Backend
 
-**MuJoCo** is the right choice when you want:
-- Fast single-environment simulation with a live viewer
-- Custom mesh objects (`MeshObject`)
-
-**ManiSkill** is the right choice when you want:
-- GPU-accelerated batched simulation via `num_envs` for faster training
-- SO-100 arm support alongside SO-101
-
-Both backends support all five task types (PickLift, PickAndPlace, Reach, LookAt, Move).
+MuJoCo is the current simulation backend. It provides all five tasks (PickLift, PickAndPlace, Reach, LookAt, Move) on the SO-101 arm, fast single-environment simulation with a live viewer, and custom mesh objects (`MeshObject`). A MuJoCo Warp backend for GPU-parallel simulation is planned.
 
 ## Next Steps
 
-- [Installation](/docs/getting-started/installation) -- install your chosen backend
+- [Installation](/docs/getting-started/installation) -- install the library
 - [MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco) -- run your first environment
-- [ManiSkill Quickstart](/docs/getting-started/quickstart-maniskill) -- run batched environments

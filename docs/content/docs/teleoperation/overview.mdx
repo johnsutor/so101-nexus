@@ -3,23 +3,18 @@ title: Teleop Dataset Recording
 description: Record demonstration datasets by teleoperating a simulated robot with a physical leader arm.
 ---
 
-SO101-Nexus ships with a Gradio-based teleop recorder in the core package.
+SO101-Nexus ships with a Gradio-based teleop recorder.
 You drive a simulated robot with a physical SO-100 or SO-101 leader arm,
 and demonstrations are saved as LeRobot v3 datasets ready to push to the
 Hugging Face Hub.
 
 ## Quickstart with uvx
 
-If you have [uv](https://docs.astral.sh/uv/) installed, you can launch the recorder against either backend without setting up a venv. `uvx` resolves the package and the `teleop` extra into an ephemeral environment:
+If you have [uv](https://docs.astral.sh/uv/) installed, you can launch the recorder without setting up a venv. `uvx` resolves the package and the `teleop` extra into an ephemeral environment:
 
 ```bash
-# MuJoCo
-uvx --from "so101-nexus-mujoco[teleop]" so101-nexus-mujoco teleop \
+uvx --from "so101-nexus[teleop]" so101-nexus teleop \
     --leader-port /dev/ttyACM0
-
-# ManiSkill
-uvx --from "so101-nexus-maniskill[teleop]" --prerelease=allow \
-    so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
 ```
 
 This is the fastest way to try teleop end to end. The rest of this guide assumes you have run a regular install for repeat use, but the `uvx` command above is enough for a one-off session.
@@ -27,25 +22,16 @@ This is the fastest way to try teleop end to end. The rest of this guide assumes
 ## Installation
 
 Teleop deps (`lerobot[feetech]`, `gradio`, `plotly`, `opencv-python`) live
-in the `teleop` extra on `so101-nexus-core`. Install them alongside the
-backend you want to record against:
+in the `teleop` extra on `so101-nexus`. Install them with:
 
 ```bash
-# MuJoCo
-uv sync --package so101-nexus-mujoco --extra teleop
-
-# ManiSkill
-uv sync --package so101-nexus-maniskill --extra teleop
+uv sync --extra teleop
 ```
 
 With pip:
 
 ```bash
-# MuJoCo
-pip install "so101-nexus-core[teleop]" so101-nexus-mujoco
-
-# ManiSkill
-pip install "so101-nexus-core[teleop]" so101-nexus-maniskill
+pip install "so101-nexus[teleop]"
 ```
 
 ## Hardware
@@ -69,14 +55,10 @@ terminal, then click `Retry Initialization` in the same browser session.
 
 ## Launching the recorder
 
-Each backend exposes a `teleop` subcommand:
+The `teleop` subcommand launches the recorder:
 
 ```bash
-# MuJoCo
-uv run so101-nexus-mujoco teleop --leader-port /dev/ttyACM0
-
-# ManiSkill
-uv run so101-nexus-maniskill teleop --leader-port /dev/ttyACM0
+uv run so101-nexus teleop --leader-port /dev/ttyACM0
 ```
 
 A Gradio UI opens in your browser. Most settings live in the UI; the CLI
@@ -195,7 +177,7 @@ spawn_angle_half_range_deg = 60.0
 Launch with:
 
 ```bash
-uv run so101-nexus-mujoco teleop \
+uv run so101-nexus teleop \
     --leader-port /dev/ttyACM0 \
     --env-config-profile teleop-profile.toml
 ```
@@ -223,7 +205,7 @@ scale = 1.0
 For advanced setups, provide a Python factory:
 
 ```bash
-uv run so101-nexus-mujoco teleop \
+uv run so101-nexus teleop \
     --leader-port /dev/ttyACM0 \
     --env-config-factory my_project.teleop_configs:build_config
 ```
@@ -231,7 +213,7 @@ uv run so101-nexus-mujoco teleop \
 The factory receives `(env_id, base_config)`. It may return a config object:
 
 ```python
-from so101_nexus_core import CubeObject, PickConfig, YCBObject
+from so101_nexus import CubeObject, PickConfig, YCBObject
 
 
 def build_config(env_id, base_config):
@@ -251,7 +233,7 @@ Custom environments must be registered with Gymnasium before teleop builds
 the dropdown. Import the registration module and list the environment ID:
 
 ```bash
-uv run so101-nexus-mujoco teleop \
+uv run so101-nexus teleop \
     --leader-port /dev/ttyACM0 \
     --env-module my_project.envs \
     --extra-env-id CustomPick-v1
