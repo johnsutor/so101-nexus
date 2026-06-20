@@ -185,6 +185,7 @@ package = [
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "-ra"]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "slow: slower integration tests",
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
