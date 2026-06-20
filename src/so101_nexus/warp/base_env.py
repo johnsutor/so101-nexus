@@ -210,6 +210,50 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def close(self) -> None:
         """No-op: Warp device memory is released when the env is garbage-collected."""
 
+    def _action_to_ctrl(self, action: torch.Tensor) -> torch.Tensor:
+        if self.control_mode == "pd_joint_pos":
+            return torch.clamp(action, self._target_low, self._target_high)
+        delta = action * self._delta_scale
+        if self.control_mode == "pd_joint_delta_pos":
+            return torch.clamp(self._joint_qpos() + delta, self._target_low, self._target_high)
+        self._prev_target = torch.clamp(
+            self._prev_target + delta, self._target_low, self._target_high
+        )
+        return self._prev_target
+
+    def step(
+        self, action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+        """Apply actions to all worlds, advance physics, autoreset done worlds."""
+        public_action = torch.as_tensor(action, device=self.device, dtype=torch.float32)
+        energy_norm = torch.linalg.norm(public_action, dim=1)
+        if self._prev_action is None:
+            action_delta_norm = torch.zeros(self.num_envs, device=self.device)
+        else:
+            action_delta_norm = torch.linalg.norm(public_action - self._prev_action, dim=1)
+        self._prev_action = public_action.clone()
+
+        clipped = torch.clamp(public_action, self._action_low, self._action_high)
+        self.ctrl[:, self._act_ids] = self._action_to_ctrl(clipped)
+        with wp.ScopedDevice(self._wp_device):
+            for _ in range(self._N_SUBSTEPS):
+                mjw.step(self.model, self.data)
+        self._elapsed += 1
+
+        reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
+        terminated = success
+        truncated = self._elapsed >= self.max_episode_steps
+        done = terminated | truncated
+        if bool(done.any()):
+            with wp.ScopedDevice(self._wp_device):
+                # _prev_action is a single un-masked tensor, so a just-reset world's
+                # next-step action_delta_norm is measured against its pre-reset action.
+                # Benign at the default action_delta_penalty=0; enabling that penalty
+                # on Warp needs per-world _prev_action masking (deferred).
+                self._write_reset_state(done)
+                mjw.forward(self.model, self.data)
+        return self._compute_obs(), reward, terminated, truncated, info
+
     # Task seams (subclasses implement).
     def _task_reset(self, mask: torch.Tensor) -> None:
         raise NotImplementedError

@@ -87,3 +87,21 @@ class WarpReachVectorEnv(SO101NexusWarpVectorEnv):
         if isinstance(component, TargetOffset):
             return self._targets - self._tcp_pos()
         return super()._get_component_data(component)
+
+    def _compute_reward_terminated(
+        self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+        dist = torch.linalg.norm(self._targets - self._tcp_pos(), dim=1)
+        # Tensor path of so101_nexus.rewards.reach_progress / simple_reward.
+        progress = reach_progress(dist, scale=self.config.reward.tanh_shaping_scale)
+        success = dist < self.config.success_threshold
+        base = simple_reward(
+            progress=progress,
+            completion_bonus=self.config.reward.completion_bonus,
+            success=success,
+        )
+        reward = self.config.reward.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+        )
+        info = {"tcp_to_target_dist": dist, "success": success}
+        return reward.to(torch.float32), success, info

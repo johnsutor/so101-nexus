@@ -62,3 +62,77 @@ def test_camera_observation_rejected():
     config = ReachConfig(observations=[JointPositions(), WristCamera()])
     with pytest.raises(NotImplementedError):
         WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
+
+
+def test_step_shapes_and_finiteness():
+    import torch
+
+    env = _make_env(num_envs=8)
+    env.reset(seed=0)
+    obs, reward, terminated, truncated, info = env.step(torch.zeros((8, 6)))
+    assert obs.shape == (8, 9)
+    assert reward.shape == (8,)
+    assert terminated.shape == (8,)
+    assert truncated.shape == (8,)
+    assert reward.dtype == torch.float32
+    assert torch.isfinite(reward).all()
+    assert terminated.dtype == torch.bool
+
+
+def test_reward_matches_scalar_core_per_world():
+    import numpy as np
+    import torch
+
+    from so101_nexus.rewards import reach_progress, simple_reward
+
+    env = _make_env(num_envs=16, seed=7)
+    env.reset(seed=7)
+    _, reward, _, _, info = env.step(torch.zeros((16, 6)))
+    dist = info["tcp_to_target_dist"].numpy()
+    cb = env.config.reward.completion_bonus
+    scale = env.config.reward.tanh_shaping_scale
+    thr = env.config.success_threshold
+    expected = np.array(
+        [
+            simple_reward(
+                progress=reach_progress(float(d), scale=scale),
+                completion_bonus=cb,
+                success=bool(d < thr),
+            )
+            for d in dist
+        ]
+    )
+    np.testing.assert_allclose(reward.numpy(), expected, rtol=1e-5, atol=1e-6)
+
+
+def test_step_trajectory_is_seeded_deterministic():
+    import torch
+
+    a = _make_env(num_envs=8, seed=42)
+    b = _make_env(num_envs=8, seed=42)
+    a.reset(seed=42)
+    b.reset(seed=42)
+    action_rng = torch.Generator().manual_seed(0)
+    for _ in range(10):
+        action = torch.rand((8, 6), generator=action_rng) * 2.0 - 1.0
+        oa, ra, ta, _, _ = a.step(action)
+        ob, rb, tb, _, _ = b.step(action)
+        assert torch.allclose(oa, ob)
+        assert torch.allclose(ra, rb)
+        assert torch.equal(ta, tb)
+
+
+def test_truncation_autoresets_world():
+    import torch
+
+    env = _make_env(num_envs=4, seed=1)
+    env.max_episode_steps = 3
+    env.reset(seed=1)
+    for _ in range(2):
+        _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
+        assert not truncated.any()
+    targets_before = env._targets.clone()
+    _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
+    assert truncated.all()
+    assert (env._elapsed == 0).all()  # reset counters
+    assert not torch.allclose(env._targets, targets_before)  # resampled targets
