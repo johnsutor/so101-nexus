@@ -3,14 +3,29 @@ title: Overview
 description: The SO101-Nexus library and how it fits together.
 ---
 
-SO101-Nexus is a single installable library, `so101-nexus`. Install it with `pip install so101-nexus`.
+SO101-Nexus is a single installable library, `so101-nexus`, for the SO-101 robot learning workflow: record demonstrations, save LeRobot-compatible datasets, run Gymnasium environments, and train or evaluate policies.
 
-The shared API (configuration, rewards, observations, scene objects, teleop, and the LeRobot adapter) lives at the top level under `so101_nexus`. The MuJoCo backend lives at `so101_nexus.mujoco`.
+Install it with:
+
+```bash
+pip install so101-nexus
+```
+
+## How it fits together
+
+1. **Teleoperate.** Drive a simulated follower with a physical SO-100 or SO-101 leader arm.
+2. **Record.** Save demonstrations as LeRobot datasets with SO follower state/action units and camera fields.
+3. **Evaluate and train.** Use Gymnasium-compatible SO-101 tasks for policy evaluation, PPO baselines, and RL fine-tuning.
+4. **Customize.** Adjust objects, distractors, cameras, rewards, observations, and task descriptions as the curriculum grows.
+
+## Package layout
+
+The shared API for configuration, rewards, observations, scene objects, teleop, processors, policy adapters, and the LeRobot adapter lives at the top level under `so101_nexus`. The MuJoCo backend lives at `so101_nexus.mujoco`.
 
 Importing the MuJoCo backend registers its environments with Gymnasium:
 
 ```python
-import so101_nexus.mujoco   # registers MuJoCo envs
+import so101_nexus.mujoco  # registers MuJoCo envs
 ```
 
 After importing, create environments with `gymnasium.make()`.
@@ -22,4 +37,6 @@ MuJoCo is the current simulation backend. It provides all five tasks (PickLift, 
 ## Next Steps
 
 - [Installation](/docs/getting-started/installation) -- install the library
+- [Teleoperation](/docs/teleoperation/overview) -- record demonstrations with a physical leader arm
 - [MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco) -- run your first environment
+- [Training with PPO](/docs/guides/training-with-ppo) -- train a baseline policy
