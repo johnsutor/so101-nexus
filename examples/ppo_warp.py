@@ -74,7 +74,7 @@ def _make_envs(env_id, num_envs, device, seed):
 
 
 # Cohesive single-file CleanRL-style PPO training loop; kept as one function.
-def train(  # noqa: PLR0915
+def train(  # noqa: PLR0915, PLR0912, C901
     *,
     env_id="WarpReach-v1",
     num_envs=4096,
@@ -105,6 +105,17 @@ def train(  # noqa: PLR0915
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate, eps=1e-5)
 
     batch_size = num_envs * num_steps
+    if num_minibatches < 1 or num_minibatches > batch_size:
+        raise ValueError(f"num_minibatches must be in [1, {batch_size}], got {num_minibatches}")
+    if batch_size % num_minibatches != 0:
+        raise ValueError(
+            f"batch_size ({batch_size}) must be divisible by num_minibatches ({num_minibatches})"
+        )
+    if total_timesteps < batch_size:
+        raise ValueError(
+            f"total_timesteps ({total_timesteps}) must be >= batch_size "
+            f"({batch_size}) for at least one training iteration"
+        )
     minibatch_size = batch_size // num_minibatches
     num_iterations = total_timesteps // batch_size
 

@@ -48,7 +48,6 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         "pd_joint_target_delta_pos",
     }
 
-    # One-time sequential device/model/index/space setup; splitting obscures the wiring.
     def __init__(  # noqa: PLR0915
         self,
         *,
@@ -67,10 +66,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 f"control_mode must be one of {sorted(self._VALID_CONTROL_MODES)}, "
                 f"got {control_mode!r}"
             )
-        if config.observations is not None and any(
-            isinstance(c, CameraObservation) for c in config.observations
-        ):
-            raise NotImplementedError("Warp backend does not support camera observations")
+        if config.observations is not None:
+            self._validate_obs_components(config.observations)
 
         self.config = config
         self.control_mode = control_mode
@@ -86,8 +83,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         mujoco.mj_forward(mjm, mjd)
         with wp.ScopedDevice(self._wp_device):
             self.model = mjw.put_model(mjm)
-            # nconmax/njmax default to None (mujoco_warp auto-sizes per world).
-            # Step 5 verifies a rollout does not overflow; set explicitly if it does.
+            # nconmax/njmax default to None (mujoco_warp auto-sizes per world);
+            # tasks should pass generous explicit budgets (auto-size is too small
+            # under active control, which causes nefc overflow and physics drop).
             self.data = mjw.put_data(mjm, mjd, nworld=num_envs, nconmax=nconmax, njmax=njmax)
 
         # Zero-copy torch views. NEVER rebind these; mutate in place only.
@@ -146,6 +144,25 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._elapsed = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._prev_action: torch.Tensor | None = None
         self._prev_target = self._rest_qpos.expand(num_envs, n_joints).clone()
+
+    def _validate_obs_components(self, observations) -> None:
+        """Reject unsupported observation components at construction (fail fast).
+
+        The Warp backend routes ``JointPositions`` directly and delegates other
+        state components to ``_get_component_data``; subclasses declare which
+        components they support via ``_supported_obs_components``. Camera
+        components are unsupported on Warp. Anything else raises here rather than
+        at the first reset, so the error names the unsupported component upfront.
+        """
+        supported = {JointPositions, *self._supported_obs_components()}
+        for comp in observations:
+            if isinstance(comp, CameraObservation):
+                raise NotImplementedError("Warp backend does not support camera observations")
+            if not isinstance(comp, tuple(supported)):
+                raise NotImplementedError(
+                    f"{type(self).__name__} does not support observation "
+                    f"component {comp!r} on the Warp backend"
+                )
 
     def _obs_dim(self) -> int:
         if self.config.observations is None:
@@ -245,12 +262,16 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         done = terminated | truncated
         if bool(done.any()):
             with wp.ScopedDevice(self._wp_device):
-                # _prev_action is a single un-masked tensor, so a just-reset world's
-                # next-step action_delta_norm is measured against its pre-reset action.
-                # Benign at the default action_delta_penalty=0; enabling that penalty
-                # on Warp needs per-world _prev_action masking (deferred).
                 self._write_reset_state(done)
                 mjw.forward(self.model, self.data)
+            # Clear the previous action for reset worlds so a new episode's first
+            # action_delta_norm is zero, not measured against the prior episode's
+            # final action. Settling is intentionally NOT run here: mjw.step
+            # advances the whole batch, so settling only-done worlds would advance
+            # non-done worlds too. For contact-free reach the unsettle difference
+            # is negligible; per-world warmstart is not cleared (optimizer hint).
+            if self._prev_action is not None:
+                self._prev_action[done] = 0.0
         return self._compute_obs(), reward, terminated, truncated, info
 
     # Task seams (subclasses implement).
@@ -261,6 +282,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         raise NotImplementedError(
             f"{type(self).__name__} does not support observation component {component!r}"
         )
+
+    def _supported_obs_components(self) -> set[type]:
+        """State-component classes this task routes through ``_get_component_data``."""
+        return set()
 
     def _compute_reward_terminated(
         self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor

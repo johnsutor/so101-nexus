@@ -42,6 +42,11 @@ class WarpReachVectorEnv(SO101NexusWarpVectorEnv):
 
     task_description = "Move the robot's end-effector to the target position."
 
+    def _supported_obs_components(self) -> set[type]:
+        from so101_nexus.observations import TargetOffset
+
+        return {TargetOffset}
+
     def __init__(
         self,
         num_envs: int,

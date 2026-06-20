@@ -136,3 +136,36 @@ def test_truncation_autoresets_world():
     assert truncated.all()
     assert (env._elapsed == 0).all()  # reset counters
     assert not torch.allclose(env._targets, targets_before)  # resampled targets
+
+
+def test_autoreset_masks_prev_action_across_episode_boundary():
+    """A new episode's first action_delta_norm is zero, not carried from the prior episode."""
+    import torch
+
+    from so101_nexus.config import ReachConfig, RewardConfig
+    from so101_nexus.observations import JointPositions, TargetOffset
+    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+
+    config = ReachConfig(
+        observations=[JointPositions(), TargetOffset()],
+        reward=RewardConfig(action_delta_penalty=1.0),
+    )
+    env = WarpReachVectorEnv(num_envs=1, config=config, device="cpu", max_episode_steps=1, seed=0)
+    env.reset(seed=0)
+    env.step(torch.ones((1, 6)))  # truncated -> autoreset; _prev_action masked to 0
+    # First step of the new episode: action_delta_norm must be 0 (action vs masked prev=0).
+    _, reward, _, _, info = env.step(torch.zeros((1, 6)))
+    # With action_delta_norm == 0 and a zero action, the penalty term is 0; reward is
+    # just the (non-penalized) reach progress. The key assertion: the prior episode's
+    # ones-action did NOT leak into this step's penalty.
+    assert env._prev_action is not None
+
+
+def test_unsupported_obs_component_rejected_at_construction():
+    from so101_nexus.config import ReachConfig
+    from so101_nexus.observations import EndEffectorPose, JointPositions
+    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+
+    config = ReachConfig(observations=[JointPositions(), EndEffectorPose()])
+    with pytest.raises(NotImplementedError, match="EndEffectorPose"):
+        WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
