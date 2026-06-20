@@ -21,10 +21,10 @@ All five tasks run on the SO-101 arm:
 
 MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU.
 
-The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct it with `gym.make_vec("WarpReach-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`. Observations are state-only (camera observations are not supported on Warp), and the Warp physics diverges from CPU MuJoCo (implicit integrator, no noslip constraint), so policies may need re-tuning when moving between backends. Install it with the `warp` extra (`pip install "so101-nexus[warp]"`, which needs an NVIDIA GPU and CUDA >= 12.4).
+The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct it with `gym.make_vec("WarpReach-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`. Warp Reach currently supports state observations for `JointPositions` and `TargetOffset`; camera observations and the remaining state components are not implemented yet. The Warp physics diverges from CPU MuJoCo (implicit integrator, no noslip constraint), so policies may need re-tuning when moving between backends. Install it with the `warp` extra (`pip install "so101-nexus[warp]"`, which needs an NVIDIA GPU and CUDA >= 12.4).
 
 ## Objects
 
-MuJoCo supports `CubeObject`, `YCBObject`, and `MeshObject`. All environments use the same composable observation components (`observations` parameter). See [Observations](/docs/concepts/observations-and-camera-modes) for details.
+MuJoCo supports `CubeObject`, `YCBObject`, and `MeshObject`. MuJoCo environments use the same composable observation components (`observations` parameter). See [Observations](/docs/concepts/observations-and-camera-modes) for details.
 
 For details on object types, see the [Objects API reference](/docs/api/objects). For observation configuration, see [Observations](/docs/concepts/observations-and-camera-modes).

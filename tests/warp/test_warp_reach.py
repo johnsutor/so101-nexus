@@ -139,7 +139,8 @@ def test_truncation_autoresets_world():
 
 
 def test_autoreset_masks_prev_action_across_episode_boundary():
-    """A new episode's first action_delta_norm is zero, not carried from the prior episode."""
+    """A new episode's first action_delta_norm is zero for any first action."""
+    import pytest
     import torch
 
     from so101_nexus.config import ReachConfig, RewardConfig
@@ -152,13 +153,12 @@ def test_autoreset_masks_prev_action_across_episode_boundary():
     )
     env = WarpReachVectorEnv(num_envs=1, config=config, device="cpu", max_episode_steps=1, seed=0)
     env.reset(seed=0)
-    env.step(torch.ones((1, 6)))  # truncated -> autoreset; _prev_action masked to 0
-    # First step of the new episode: action_delta_norm must be 0 (action vs masked prev=0).
-    _, reward, _, _, info = env.step(torch.zeros((1, 6)))
-    # With action_delta_norm == 0 and a zero action, the penalty term is 0; reward is
-    # just the (non-penalized) reach progress. The key assertion: the prior episode's
-    # ones-action did NOT leak into this step's penalty.
-    assert env._prev_action is not None
+    env.step(torch.ones((1, 6)))  # truncated -> autoreset; next step starts a new episode
+
+    _, reward, _, _, info = env.step(torch.ones((1, 6)))
+
+    assert info["action_delta_norm"].item() == pytest.approx(0.0)
+    assert reward.item() > 0.0
 
 
 def test_unsupported_obs_component_rejected_at_construction():

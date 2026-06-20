@@ -143,6 +143,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             self._generator.manual_seed(seed)
         self._elapsed = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._prev_action: torch.Tensor | None = None
+        self._has_prev_action = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
         self._prev_target = self._rest_qpos.expand(num_envs, n_joints).clone()
 
     def _validate_obs_components(self, observations) -> None:
@@ -214,6 +215,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         if seed is not None:
             self._generator.manual_seed(seed)
         self._prev_action = None
+        self._has_prev_action.fill_(False)
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         with wp.ScopedDevice(self._wp_device):
             self._write_reset_state(mask)
@@ -246,8 +248,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         if self._prev_action is None:
             action_delta_norm = torch.zeros(self.num_envs, device=self.device)
         else:
-            action_delta_norm = torch.linalg.norm(public_action - self._prev_action, dim=1)
+            raw_delta = torch.linalg.norm(public_action - self._prev_action, dim=1)
+            action_delta_norm = torch.where(
+                self._has_prev_action, raw_delta, torch.zeros_like(raw_delta)
+            )
         self._prev_action = public_action.clone()
+        self._has_prev_action.fill_(True)
 
         clipped = torch.clamp(public_action, self._action_low, self._action_high)
         self.ctrl[:, self._act_ids] = self._action_to_ctrl(clipped)
@@ -257,6 +263,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._elapsed += 1
 
         reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
+        info["energy_norm"] = energy_norm
+        info["action_delta_norm"] = action_delta_norm
         terminated = success
         truncated = self._elapsed >= self.max_episode_steps
         done = terminated | truncated
@@ -264,14 +272,14 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             with wp.ScopedDevice(self._wp_device):
                 self._write_reset_state(done)
                 mjw.forward(self.model, self.data)
-            # Clear the previous action for reset worlds so a new episode's first
-            # action_delta_norm is zero, not measured against the prior episode's
-            # final action. Settling is intentionally NOT run here: mjw.step
-            # advances the whole batch, so settling only-done worlds would advance
-            # non-done worlds too. For contact-free reach the unsettle difference
-            # is negligible; per-world warmstart is not cleared (optimizer hint).
-            if self._prev_action is not None:
-                self._prev_action[done] = 0.0
+            # Clear previous-action state for reset worlds so a new episode's
+            # first action_delta_norm is zero for any first action, not measured
+            # against the prior episode's final action. Settling is intentionally
+            # NOT run here: mjw.step advances the whole batch, so settling
+            # only-done worlds would advance non-done worlds too. For
+            # contact-free reach the unsettle difference is negligible;
+            # per-world warmstart is not cleared (optimizer hint).
+            self._has_prev_action[done] = False
         return self._compute_obs(), reward, terminated, truncated, info
 
     # Task seams (subclasses implement).

@@ -95,15 +95,6 @@ def train(  # noqa: PLR0915, PLR0912, C901
     log=False,
 ):
     """Run PPO on the batched Warp env; return summary stats. Stays on `device`."""
-    torch.manual_seed(seed)
-    dev = torch.device(device)
-    envs = _make_envs(env_id, num_envs, device, seed)
-    obs_dim = int(np.prod(envs.single_observation_space.shape))
-    act_dim = int(np.prod(envs.single_action_space.shape))
-
-    agent = Agent(obs_dim, act_dim).to(dev)
-    optimizer = optim.Adam(agent.parameters(), lr=learning_rate, eps=1e-5)
-
     batch_size = num_envs * num_steps
     if num_minibatches < 1 or num_minibatches > batch_size:
         raise ValueError(f"num_minibatches must be in [1, {batch_size}], got {num_minibatches}")
@@ -118,6 +109,15 @@ def train(  # noqa: PLR0915, PLR0912, C901
         )
     minibatch_size = batch_size // num_minibatches
     num_iterations = total_timesteps // batch_size
+
+    torch.manual_seed(seed)
+    dev = torch.device(device)
+    envs = _make_envs(env_id, num_envs, device, seed)
+    obs_dim = int(np.prod(envs.single_observation_space.shape))
+    act_dim = int(np.prod(envs.single_action_space.shape))
+
+    agent = Agent(obs_dim, act_dim).to(dev)
+    optimizer = optim.Adam(agent.parameters(), lr=learning_rate, eps=1e-5)
 
     obs = torch.zeros((num_steps, num_envs, obs_dim), device=dev)
     actions = torch.zeros((num_steps, num_envs, act_dim), device=dev)
