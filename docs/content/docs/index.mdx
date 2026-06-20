@@ -1,23 +1,23 @@
 ---
 title: SO101-Nexus
-description: Record, clone, and reinforce policies for the SO-101 arm with Gymnasium-compatible MuJoCo and GPU-parallel MuJoCo Warp environments.
+description: End-to-end SO-101 robot learning, from teleop demonstrations to datasets, environments, and trained policies.
 ---
 
-SO101-Nexus is an end-to-end stack for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm: record demonstrations, behavior-clone a policy, and reinforce it with [Gymnasium](https://gymnasium.farama.org/)-compatible MuJoCo and GPU-parallel MuJoCo Warp environments.
+SO101-Nexus is an end-to-end Python library for taking an SO-101 robot from demonstrations to a trained policy. It connects physical leader-arm teleoperation, LeRobot-compatible dataset recording, Gymnasium/MuJoCo manipulation environments, and training/evaluation hooks in one installable package.
 
-There are very few standardized simulation environments available for the SO-101 arm. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded MuJoCo environments that drop directly into the LeRobot stack for teleoperation, dataset recording, and real-policy evaluation.
+The goal is a boring record -> clone -> reinforce workflow: collect demonstrations, replay and evaluate them in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
 
-SO101-Nexus also provides a foundation for training text-conditioned embodied policies via curriculum learning, with environments that expose primitives such as object localization and grasping.
+MuJoCo is the current backend for SO-101 tasks. MuJoCo Warp is planned for GPU-parallel throughput when large-scale RL is the bottleneck.
 
 ## Key Features
 
-- **Standard Gymnasium API** -- works with any RL library that supports Gymnasium
-- **MuJoCo and Warp backends** -- fast single-environment MuJoCo workflows, plus an available MuJoCo Warp backend for Reach that runs thousands of GPU-parallel environments for reinforcement learning
-- **Five manipulation tasks** -- pick-and-lift, pick-and-place, reach, look-at, and move
-- **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards
+- **End-to-end SO-101 workflow** -- record demonstrations, build LeRobot datasets, run environments, and train or evaluate policies
+- **[Built-in teleoperation](/docs/teleoperation/overview)** -- drive a simulated follower with a physical SO-100 or SO-101 leader arm
+- **LeRobot dataset conventions** -- save SO follower state/action units plus wrist and overhead camera fields
+- **Standard Gymnasium API** -- use the environments with RL libraries and existing Gymnasium tooling
+- **MuJoCo backend** -- five SO-101 manipulation tasks today, with a MuJoCo Warp backend planned for GPU-parallel throughput
+- **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards, and choose observation components
 - **YCB object support** -- use real-world object meshes from the YCB dataset
-- **Sim-to-real transfer** -- environments match the physical SO-101 arm
-- **[Built-in teleoperation](/docs/teleoperation/overview)** -- record LeRobot datasets with a physical SO-100 or SO-101 leader arm, capturing wrist and overhead cameras out of the box
 
 ## Quick Examples
 
@@ -85,8 +85,8 @@ All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp back
 
 ## Get Started
 
-- **[Installation](/docs/getting-started/installation)** -- install the library with pip or from source
-- **[MuJoCo Quickstart](/docs/getting-started/quickstart-mujoco)** -- run your first MuJoCo environment
-- **[Working with Objects](/docs/guides/working-with-objects)** -- use cubes, YCB objects, or custom meshes
-- **[Customizing Environments](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, and more
-- **[Teleoperation](/docs/teleoperation/overview)**: collect demonstrations with a physical leader arm and push them to the Hugging Face Hub
+- **[Install SO101-Nexus](/docs/getting-started/installation)** -- install the library with pip, uv, or from source
+- **[Record demonstrations](/docs/teleoperation/overview)** -- teleoperate a simulated follower and save LeRobot datasets
+- **[Run MuJoCo environments](/docs/getting-started/quickstart-mujoco)** -- create your first Gymnasium SO-101 task
+- **[Customize tasks and objects](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, colors, and observation components
+- **[Train with PPO](/docs/guides/training-with-ppo)** -- run the included baseline and adapt it for your experiments
