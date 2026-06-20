@@ -45,6 +45,10 @@ train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
 ]
+warp = [
+    "mujoco-warp>=3.9.0.1,<3.10",
+    "torch",
+]
 
 [project.scripts]
 so101-nexus = "so101_nexus.cli:main"
@@ -137,11 +141,15 @@ replace-imports-with-any = [
     "hatchling.metadata.plugin.interface",
     "mujoco",
     "mujoco.**",
+    "mujoco_warp",
+    "mujoco_warp.**",
     "plotly",
     "plotly.**",
     "transforms3d",
     "transforms3d.**",
     "tyro",
+    "warp",
+    "warp.**",
 ]
 
 [tool.ty.environment]
@@ -156,6 +164,7 @@ omit = [
     "**/__init__.py",
     "**/tests/*",
     "**/cli.py",
+    "**/warp/*.py",
 ]
 
 [tool.coverage.report]
@@ -179,4 +188,5 @@ testpaths = ["tests"]
 markers = [
     "slow: slower integration tests",
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
+    "warp: GPU/Warp backend tests (require mujoco_warp; run on the Warp CPU device)",
 ]
