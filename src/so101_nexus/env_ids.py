@@ -4,18 +4,24 @@ from __future__ import annotations
 
 from typing import Literal
 
-Backend = Literal["mujoco"]
+Backend = Literal["mujoco", "warp"]
 
 _BACKEND_PREFIXES: dict[Backend, str] = {
     "mujoco": "MuJoCo",
+    "warp": "Warp",
 }
 
 
 def _registered_so101_env_ids() -> list[str]:
-    """Return registered ``MuJoCo*`` env ids in registration order."""
+    """Return registered SO101-Nexus env ids in registration order.
+
+    Matches any known backend prefix so both ``MuJoCo*`` and ``Warp*`` ids are
+    discovered once their backend module has been imported.
+    """
     import gymnasium as gym
 
-    return [env_id for env_id in gym.envs.registry if env_id.startswith("MuJoCo")]
+    prefixes = tuple(_BACKEND_PREFIXES.values())
+    return [env_id for env_id in gym.envs.registry if env_id.startswith(prefixes)]
 
 
 def all_registered_env_ids() -> list[str]:
