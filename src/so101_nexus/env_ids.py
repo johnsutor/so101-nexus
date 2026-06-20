@@ -29,13 +29,14 @@ def all_registered_env_ids() -> list[str]:
 
     The list is sourced from ``gymnasium.envs.registry``, so the calling
     process must already have imported the backend it cares about
-    (``import so101_nexus.mujoco``) before calling this.
+    (``import so101_nexus.mujoco`` and/or ``import so101_nexus.warp``) before
+    calling this.
     """
     return _registered_so101_env_ids()
 
 
 def env_ids_for_backend(backend: Backend | None) -> list[str]:
-    """Return env ids for *backend* (``"mujoco"``), or all if ``None``."""
+    """Return env ids for *backend* (``"mujoco"`` or ``"warp"``), or all if ``None``."""
     ids = _registered_so101_env_ids()
     if backend is None:
         return ids
