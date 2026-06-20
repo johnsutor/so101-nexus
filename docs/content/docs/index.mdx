@@ -1,9 +1,9 @@
 ---
 title: SO101-Nexus
-description: Gymnasium-compatible MuJoCo simulation environments for the SO-101 robot arm.
+description: Record, clone, and reinforce policies for the SO-101 arm with Gymnasium-compatible MuJoCo and GPU-parallel MuJoCo Warp environments.
 ---
 
-SO101-Nexus provides [Gymnasium](https://gymnasium.farama.org/)-compatible MuJoCo simulation environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm.
+SO101-Nexus is an end-to-end stack for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm: record demonstrations, behavior-clone a policy, and reinforce it with [Gymnasium](https://gymnasium.farama.org/)-compatible MuJoCo and GPU-parallel MuJoCo Warp environments.
 
 There are very few standardized simulation environments available for the SO-101 arm. SO101-Nexus addresses this by providing fully customizable, vision-and-language-grounded MuJoCo environments that drop directly into the LeRobot stack for teleoperation, dataset recording, and real-policy evaluation.
 
@@ -12,7 +12,7 @@ SO101-Nexus also provides a foundation for training text-conditioned embodied po
 ## Key Features
 
 - **Standard Gymnasium API** -- works with any RL library that supports Gymnasium
-- **MuJoCo backend** -- fast single-environment workflows, with a MuJoCo Warp backend planned for GPU-parallel throughput
+- **MuJoCo and Warp backends** -- fast single-environment MuJoCo workflows, plus an available MuJoCo Warp backend for Reach that runs thousands of GPU-parallel environments for reinforcement learning
 - **Five manipulation tasks** -- pick-and-lift, pick-and-place, reach, look-at, and move
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards
 - **YCB object support** -- use real-world object meshes from the YCB dataset
@@ -81,7 +81,7 @@ SO101-Nexus ships five manipulation primitives that cover the fundamentals of ro
 - **LookAt** -- orient the end-effector to gaze at a target object
 - **Move** -- move the end-effector to a target position with tight tolerance
 
-All five tasks run on the MuJoCo backend on the SO-101 arm. A MuJoCo Warp backend for GPU-parallel simulation is planned.
+All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend adds GPU-parallel simulation for Reach today, with the remaining tasks in progress.
 
 ## Get Started
 

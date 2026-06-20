@@ -1,9 +1,9 @@
 ---
 title: Backend Support
-description: The MuJoCo backend, environment availability, and vectorization.
+description: The MuJoCo and MuJoCo Warp backends, environment availability, and vectorization.
 ---
 
-SO101-Nexus uses MuJoCo as its simulation backend. A MuJoCo Warp backend for GPU-parallel simulation is planned but not yet implemented.
+SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend is available for the Reach task, adding native GPU-parallel batching for reinforcement learning. Coverage of the remaining tasks is in progress.
 
 ## Task Availability
 
@@ -19,7 +19,9 @@ All five tasks run on the SO-101 arm:
 
 ## Vectorization
 
-MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU. The planned MuJoCo Warp backend will add GPU-parallel simulation.
+MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU.
+
+The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct it with `gym.make_vec("WarpReach-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`. Observations are state-only (camera observations are not supported on Warp), and the Warp physics diverges from CPU MuJoCo (implicit integrator, no noslip constraint), so policies may need re-tuning when moving between backends. Install it with the `warp` extra (`pip install "so101-nexus[warp]"`, which needs an NVIDIA GPU and CUDA >= 12.4).
 
 ## Objects
 
