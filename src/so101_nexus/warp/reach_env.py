@@ -22,6 +22,14 @@ _SO101_XML = get_so101_mujoco_model_path()
 # offset in [-half, +half], z clamped to >= 0.05.
 _WORKSPACE_CENTER = (0.15, 0.0, 0.15)
 
+# Per-world contact/constraint buffer budgets. mujoco_warp's auto-sizing (~10*nv)
+# is too small once an active policy drives the arm into the floor and joint
+# limits (observed nefc overflow requesting ~78), which silently drops
+# constraints and corrupts the batched physics. Size generously; override via the
+# constructor for a denser scene.
+_REACH_NCONMAX = 128
+_REACH_NJMAX = 256
+
 
 class WarpReachVectorEnv(SO101NexusWarpVectorEnv):
     """Batched reach primitive: move every world's TCP to its sampled 3-D target.
@@ -66,8 +74,8 @@ class WarpReachVectorEnv(SO101NexusWarpVectorEnv):
             device=device,
             max_episode_steps=max_episode_steps,
             seed=seed,
-            nconmax=nconmax,
-            njmax=njmax,
+            nconmax=_REACH_NCONMAX if nconmax is None else nconmax,
+            njmax=_REACH_NJMAX if njmax is None else njmax,
         )
         self._targets = torch.zeros((num_envs, 3), device=self.device)
         self._center = torch.as_tensor(_WORKSPACE_CENTER, device=self.device)
