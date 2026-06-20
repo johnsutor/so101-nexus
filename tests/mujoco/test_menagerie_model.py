@@ -29,8 +29,9 @@ from so101_nexus.config import (
     PickConfig,
     ReachConfig,
 )
-from so101_nexus.mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.observations import JointPositions, WristCamera
+from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 _JOINTS = (
     "shoulder_pan",
@@ -113,7 +114,7 @@ def test_wrapper_must_be_colocated_with_model(tmp_path):
     # the model loads; the same wrapper in a foreign dir fails to find meshes.
     xml = (
         f'<mujoco model="probe"><compiler angle="radian"/>'
-        f'<include file="{get_so101_mujoco_model_path()}"/>{SCENE_OPTION_XML}</mujoco>'
+        f'<include file="{get_so101_mujoco_model_path()}"/>{MUJOCO_SCENE_OPTION_XML}</mujoco>'
     )
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".xml", dir=get_so101_mujoco_model_dir(), delete=True

@@ -17,9 +17,10 @@ from so101_nexus.config import (
     PickAndPlaceConfig,
 )
 from so101_nexus.constants import COLOR_MAP, sample_color_name
-from so101_nexus.mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.mujoco.spawn_utils import random_yaw_quat
 from so101_nexus.rewards import reach_progress
+from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
@@ -43,7 +44,7 @@ def _build_scene_xml(
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
-  {SCENE_OPTION_XML}
+  {MUJOCO_SCENE_OPTION_XML}
 
   <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>

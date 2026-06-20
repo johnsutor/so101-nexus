@@ -11,38 +11,12 @@ import numpy as np
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, ReachConfig
 from so101_nexus.constants import sample_color
-from so101_nexus.mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.rewards import simple_reward
+from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, build_reach_scene_xml
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
-
-
-def _build_reach_scene_xml(ground_rgba: list[float], target_radius: float) -> str:
-    """Build the MuJoCo XML string for the reach scene (robot + floor + target site)."""
-    robot_path = str(_SO101_XML)
-    gr, gg, gb, ga = ground_rgba
-    return f"""\
-<mujoco model="reach_scene">
-  <compiler angle="radian"/>
-
-  <include file="{robot_path}"/>
-  {SCENE_OPTION_XML}
-
-  <visual>
-    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
-  </visual>
-
-  <worldbody>
-    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
-    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
-    <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
-          pos="0 0 0" contype="1" conaffinity="1"/>
-    <site name="reach_target" type="sphere" size="{target_radius}" rgba="1 0.5 0 0.7"
-          pos="0.15 0 0.1" group="1"/>
-  </worldbody>
-</mujoco>
-"""
 
 
 class ReachEnv(SO101NexusMuJoCoBaseEnv):
@@ -77,7 +51,12 @@ class ReachEnv(SO101NexusMuJoCoBaseEnv):
         )
 
         ground_rgba = sample_color(config.ground_colors)
-        xml_string = _build_reach_scene_xml(ground_rgba, config.target_radius)
+        xml_string = build_reach_scene_xml(
+            ground_rgba,
+            config.target_radius,
+            option_xml=MUJOCO_SCENE_OPTION_XML,
+            robot_xml_path=str(_SO101_XML),
+        )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
             f.flush()
