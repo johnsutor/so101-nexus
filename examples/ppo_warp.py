@@ -12,12 +12,13 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from torch import nn, optim
 from torch.distributions import Normal
 
+_LAYER_INIT_STD = float(np.sqrt(2))
 
-def layer_init(layer, std=float(np.sqrt(2)), bias_const=0.0):
+
+def layer_init(layer, std=_LAYER_INIT_STD, bias_const=0.0):
     """Orthogonal-initialize a linear layer."""
     nn.init.orthogonal_(layer.weight, std)
     nn.init.constant_(layer.bias, bias_const)
@@ -30,8 +31,10 @@ class Agent(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
         super().__init__()
         self.network = nn.Sequential(
-            layer_init(nn.Linear(obs_dim, 256)), nn.ReLU(),
-            layer_init(nn.Linear(256, 256)), nn.ReLU(),
+            layer_init(nn.Linear(obs_dim, 256)),
+            nn.ReLU(),
+            layer_init(nn.Linear(256, 256)),
+            nn.ReLU(),
         )
         self.actor_mean = layer_init(nn.Linear(256, act_dim), std=0.01)
         self.actor_logstd = nn.Parameter(torch.zeros(1, act_dim))
@@ -61,12 +64,17 @@ def _make_envs(env_id, num_envs, device, seed):
     # default is JointPositions only, matching MuJoCoReach).
     config = ReachConfig(observations=[JointPositions(), TargetOffset()])
     return gym.make_vec(
-        env_id, num_envs=num_envs, config=config, device=device, seed=seed,
+        env_id,
+        num_envs=num_envs,
+        config=config,
+        device=device,
+        seed=seed,
         vectorization_mode="vector_entry_point",
     )
 
 
-def train(
+# Cohesive single-file CleanRL-style PPO training loop; kept as one function.
+def train(  # noqa: PLR0915
     *,
     env_id="WarpReach-v1",
     num_envs=4096,

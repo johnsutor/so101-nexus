@@ -30,6 +30,8 @@ class WarpReachVectorEnv(SO101NexusWarpVectorEnv):
     ``TargetOffset`` in the config to make the target observable.
     """
 
+    config: ReachConfig
+
     task_description = "Move the robot's end-effector to the target position."
 
     def __init__(

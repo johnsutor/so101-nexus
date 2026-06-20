@@ -48,7 +48,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         "pd_joint_target_delta_pos",
     }
 
-    def __init__(
+    # One-time sequential device/model/index/space setup; splitting obscures the wiring.
+    def __init__(  # noqa: PLR0915
         self,
         *,
         num_envs: int,
@@ -104,9 +105,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._qpos_adr = torch.as_tensor(
             [mjm.jnt_qposadr[j] for j in joint_ids], device=self.device
         )
-        self._dof_adr = torch.as_tensor(
-            [mjm.jnt_dofadr[j] for j in joint_ids], device=self.device
-        )
+        self._dof_adr = torch.as_tensor([mjm.jnt_dofadr[j] for j in joint_ids], device=self.device)
         self._act_ids = torch.as_tensor(act_ids, device=self.device)
         self._tcp_site_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
 
@@ -160,6 +159,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         return self.site_xpos[:, self._tcp_site_id, :]
 
     def _compute_obs(self) -> torch.Tensor:
+        if self.config.observations is None:
+            raise RuntimeError("config.observations must be set")
         parts: list[torch.Tensor] = []
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
@@ -176,9 +177,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         if n == 0:
             return
         noise = (
-            torch.rand(
-                (n, len(SO101_JOINT_NAMES)), generator=self._generator, device=self.device
-            )
+            torch.rand((n, len(SO101_JOINT_NAMES)), generator=self._generator, device=self.device)
             * 2.0
             - 1.0
         ) * self.robot_init_qpos_noise
@@ -207,7 +206,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                     mjw.step(self.model, self.data)
         return self._compute_obs(), {}
 
-    def close(self) -> None:
+    def close(self, **kwargs: Any) -> None:
         """No-op: Warp device memory is released when the env is garbage-collected."""
 
     def _action_to_ctrl(self, action: torch.Tensor) -> torch.Tensor:
@@ -222,10 +221,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         return self._prev_target
 
     def step(
-        self, action: torch.Tensor
+        self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Apply actions to all worlds, advance physics, autoreset done worlds."""
-        public_action = torch.as_tensor(action, device=self.device, dtype=torch.float32)
+        public_action = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
         energy_norm = torch.linalg.norm(public_action, dim=1)
         if self._prev_action is None:
             action_delta_norm = torch.zeros(self.num_envs, device=self.device)

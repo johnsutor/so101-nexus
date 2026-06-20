@@ -21,8 +21,13 @@ def test_warp_option_drops_unsupported_features():
     assert "implicitfast" not in WARP_SCENE_OPTION_XML
     assert "noslip" not in WARP_SCENE_OPTION_XML
     assert 'integrator="implicit"' in WARP_SCENE_OPTION_XML
-    for token in ('timestep="0.005"', 'cone="elliptic"', 'impratio="10"',
-                  'iterations="10"', 'ls_iterations="20"'):
+    for token in (
+        'timestep="0.005"',
+        'cone="elliptic"',
+        'impratio="10"',
+        'iterations="10"',
+        'ls_iterations="20"',
+    ):
         assert token in WARP_SCENE_OPTION_XML
 
 
