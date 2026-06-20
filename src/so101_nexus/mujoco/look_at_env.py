@@ -12,8 +12,9 @@ import numpy as np
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
 from so101_nexus.constants import COLOR_MAP, sample_color
-from so101_nexus.mujoco.base_env import SCENE_OPTION_XML, SO101NexusMuJoCoBaseEnv
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.rewards import orientation_progress, simple_reward
+from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 if TYPE_CHECKING:
     from so101_nexus.objects import CubeObject
@@ -42,7 +43,7 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
   <compiler angle="radian"/>
 
   <include file="{robot_path}"/>
-  {SCENE_OPTION_XML}
+  {MUJOCO_SCENE_OPTION_XML}
 
   <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>

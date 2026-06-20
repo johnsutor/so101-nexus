@@ -4,18 +4,24 @@ from __future__ import annotations
 
 from typing import Literal
 
-Backend = Literal["mujoco"]
+Backend = Literal["mujoco", "warp"]
 
 _BACKEND_PREFIXES: dict[Backend, str] = {
     "mujoco": "MuJoCo",
+    "warp": "Warp",
 }
 
 
 def _registered_so101_env_ids() -> list[str]:
-    """Return registered ``MuJoCo*`` env ids in registration order."""
+    """Return registered SO101-Nexus env ids in registration order.
+
+    Matches any known backend prefix so both ``MuJoCo*`` and ``Warp*`` ids are
+    discovered once their backend module has been imported.
+    """
     import gymnasium as gym
 
-    return [env_id for env_id in gym.envs.registry if env_id.startswith("MuJoCo")]
+    prefixes = tuple(_BACKEND_PREFIXES.values())
+    return [env_id for env_id in gym.envs.registry if env_id.startswith(prefixes)]
 
 
 def all_registered_env_ids() -> list[str]:
@@ -23,13 +29,14 @@ def all_registered_env_ids() -> list[str]:
 
     The list is sourced from ``gymnasium.envs.registry``, so the calling
     process must already have imported the backend it cares about
-    (``import so101_nexus.mujoco``) before calling this.
+    (``import so101_nexus.mujoco`` and/or ``import so101_nexus.warp``) before
+    calling this.
     """
     return _registered_so101_env_ids()
 
 
 def env_ids_for_backend(backend: Backend | None) -> list[str]:
-    """Return env ids for *backend* (``"mujoco"``), or all if ``None``."""
+    """Return env ids for *backend* (``"mujoco"`` or ``"warp"``), or all if ``None``."""
     ids = _registered_so101_env_ids()
     if backend is None:
         return ids

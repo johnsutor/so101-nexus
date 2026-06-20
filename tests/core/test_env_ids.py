@@ -53,3 +53,27 @@ def test_filter_is_idempotent(backend):
     ids = env_ids_for_backend(backend)
     subset = [i for i in ids if i in all_registered_env_ids()]
     assert subset == ids
+
+
+def test_warp_backend_prefix_registered():
+    from so101_nexus.env_ids import _BACKEND_PREFIXES
+
+    assert _BACKEND_PREFIXES["warp"] == "Warp"
+
+
+def test_registered_ids_scan_covers_all_backend_prefixes(monkeypatch):
+    import gymnasium as gym
+
+    from so101_nexus import env_ids
+
+    fake = {}
+    for env_id in ("MuJoCoReach-v1", "WarpReach-v1", "CartPole-v1"):
+        fake[env_id] = object()
+    monkeypatch.setattr(gym.envs, "registry", fake)
+
+    ids = env_ids._registered_so101_env_ids()
+    assert "MuJoCoReach-v1" in ids
+    assert "WarpReach-v1" in ids
+    assert "CartPole-v1" not in ids
+    assert env_ids.env_ids_for_backend("warp") == ["WarpReach-v1"]
+    assert env_ids.env_ids_for_backend("mujoco") == ["MuJoCoReach-v1"]

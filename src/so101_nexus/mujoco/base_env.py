@@ -41,17 +41,6 @@ logger = logging.getLogger(__name__)
 # and +/-0.2 for the gripper. Reused by both delta control modes.
 _DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
 
-# Scene-wrapper <option> emitted AFTER the robot <include> so it overrides the
-# vendored menagerie model's option (MuJoCo: the last top-level option wins).
-# Adopts the menagerie's tuned manipulation physics plus scene-level
-# gravity/noslip. The wrapper <compiler> stays before the include so the
-# menagerie compiler's meshdir="assets" still wins for mesh resolution.
-SCENE_OPTION_XML = (
-    '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
-    'integrator="implicitfast" impratio="10" iterations="10" '
-    'ls_iterations="20" noslip_iterations="3"/>'
-)
-
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     """Shared MuJoCo base class for SO101-Nexus tasks.

@@ -20,7 +20,7 @@
 
 ## Overview
 
-SO101-Nexus is a simulation library providing [Gymnasium](https://gymnasium.farama.org/)-compatible [MuJoCo](https://mujoco.org/) environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It is built for imitation-learning and teleoperation dataset collection and evaluation, and integrates seamlessly with the [LeRobot](https://github.com/huggingface/lerobot) ecosystem.
+SO101-Nexus is a simulation and training stack built around [Gymnasium](https://gymnasium.farama.org/)-compatible [MuJoCo](https://mujoco.org/) environments for the [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot arm. It supports an end-to-end record, clone, reinforce workflow: teleoperate rollouts into [LeRobot](https://github.com/huggingface/lerobot) datasets, behavior-clone a policy, and reinforce it with the GPU-parallel MuJoCo Warp backend.
 
 For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/docs).
 
@@ -30,7 +30,7 @@ There are very few standardized simulation environments for the SO-101 robot arm
 
 The environments also expose primitives such as object localization and grasping, providing a foundation for training text-conditioned embodied policies via curriculum learning.
 
-A MuJoCo Warp backend is planned to add GPU-parallel throughput for large-scale training.
+The MuJoCo Warp backend is available for the Reach task today, running thousands of environments in parallel on a single NVIDIA GPU for the reinforcement-learning stage. Coverage of the remaining tasks is expanding.
 
 ## Installation
 
@@ -103,11 +103,26 @@ env.close()
 
 See the [docs](https://so101-nexus.com/docs) for the full list of environments, parallel environment usage, and training examples.
 
+### GPU-parallel RL with the Warp backend
+
+```python
+import gymnasium as gym
+import so101_nexus.warp  # noqa: F401
+
+envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda",
+                    vectorization_mode="vector_entry_point")
+obs, info = envs.reset(seed=0)          # obs is a torch CUDA tensor (4096, obs_dim)
+obs, reward, terminated, truncated, info = envs.step(envs.action_space.sample())
+```
+
+Install the backend with `pip install "so101-nexus[warp]"` (needs an NVIDIA GPU,
+CUDA >= 12.4). Train with `python examples/ppo_warp.py --env-id WarpReach-v1`.
+
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm (all five tasks)
 - [x] MuJoCo SO-101 tasks: Reach, LookAt, Move, PickLift, PickAndPlace
-- [ ] MuJoCo Warp backend for GPU-parallel throughput
+- [x] MuJoCo Warp backend (Reach; GPU-parallel RL), expanding to remaining tasks
 - [ ] TD-MPC baselines and exemplars for every environment
 - [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 

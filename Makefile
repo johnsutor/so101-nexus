@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test test-visual test-visual-qwen coverage docs-check
+.PHONY: format lint typecheck test test-warp test-visual test-visual-qwen coverage docs-check
 
 COV_FAIL_UNDER ?= 84
 export COV_FAIL_UNDER
@@ -15,6 +15,9 @@ typecheck:
 
 test:
 	uv run pytest --cov=so101_nexus --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
+
+test-warp:
+	uv run --extra warp pytest tests/warp tests/core/test_rewards_tensor.py -q
 
 coverage:
 	uv run pytest --cov=so101_nexus --cov-report=term-missing --cov-report=html --cov-fail-under=$(COV_FAIL_UNDER)
