@@ -13,10 +13,10 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import tempfile
 
 import gymnasium as gym
+import mujoco
 import numpy as np
 import pytest
 
-import mujoco
 import so101_nexus.mujoco  # noqa: F401 - registers envs
 from so101_nexus import (
     get_so101_mujoco_model_dir,
