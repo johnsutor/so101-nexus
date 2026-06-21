@@ -8,7 +8,7 @@ SO101-Nexus includes a PPO training script at `examples/ppo.py`. It is a CleanRL
 ## Quick start
 
 ```bash
-uv run python examples/ppo.py \
+uv run --extra train python examples/ppo.py \
     --env-id MuJoCoPickLift-v1 \
     --total-timesteps 200000
 ```
@@ -35,7 +35,7 @@ Environments are vectorized using Gymnasium's built-in `SyncVectorEnv`.
 A reasonable starting point for local training:
 
 ```bash
-uv run python examples/ppo.py \
+uv run --extra train python examples/ppo.py \
     --env-id MuJoCoPickLift-v1 \
     --num-envs 4 \
     --num-steps 128 \
@@ -47,7 +47,7 @@ uv run python examples/ppo.py \
 Pass `--track` to log training metrics to W&B:
 
 ```bash
-uv run python examples/ppo.py \
+uv run --extra train python examples/ppo.py \
     --env-id MuJoCoPickLift-v1 \
     --total-timesteps 1000000 \
     --track
@@ -58,10 +58,21 @@ uv run python examples/ppo.py \
 Pass `--capture-video` to save periodic evaluation rollouts:
 
 ```bash
-uv run python examples/ppo.py \
+uv run --extra train python examples/ppo.py \
     --env-id MuJoCoPickLift-v1 \
     --total-timesteps 500000 \
     --capture-video
+```
+
+## GPU-parallel training with Warp
+
+For large-scale RL, the Warp backend runs thousands of environments in parallel on the GPU. Install the `warp` extra and use `examples/ppo_warp.py`, which trains directly on the batched `Warp*-v1` vector environments:
+
+```bash
+uv run --extra warp python examples/ppo_warp.py \
+    --env-id WarpReach-v1 \
+    --num-envs 4096 \
+    --device cuda
 ```
 
 ## Notes

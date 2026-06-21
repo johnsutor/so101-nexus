@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Annotated
+
+import tyro
 
 from so101_nexus.teleop.leader import DEFAULT_WRIST_ROLL_OFFSET_DEG
 
@@ -13,24 +15,26 @@ if TYPE_CHECKING:
     from so101_nexus.env_ids import Backend
 
 
-def build_teleop_parser(prog: str) -> argparse.ArgumentParser:
-    """Construct the shared parser used by backend CLI modules."""
-    parser = argparse.ArgumentParser(prog=prog)
-    sub = parser.add_subparsers(dest="command", required=True)
+@dataclass
+class TeleopArgs:
+    """Parsed arguments for the ``teleop`` subcommand."""
 
-    teleop = sub.add_parser("teleop", help="Launch the Gradio teleop recorder")
-    teleop.add_argument("--leader-port", type=str, default="/dev/ttyACM0")
-    teleop.add_argument("--leader-id", type=str, default="so101_leader")
-    teleop.add_argument(
-        "--wrist-roll-offset-deg",
-        type=float,
-        default=DEFAULT_WRIST_ROLL_OFFSET_DEG,
-    )
-    teleop.add_argument("--env-config-profile", type=str, default=None)
-    teleop.add_argument("--env-config-factory", type=str, default=None)
-    teleop.add_argument("--env-module", action="append", default=[], dest="env_modules")
-    teleop.add_argument("--extra-env-id", action="append", default=[], dest="extra_env_ids")
-    return parser
+    leader_port: str = "/dev/ttyACM0"
+    leader_id: str = "so101_leader"
+    wrist_roll_offset_deg: float = DEFAULT_WRIST_ROLL_OFFSET_DEG
+    env_config_profile: str | None = None
+    env_config_factory: str | None = None
+    env_modules: Annotated[
+        list[str], tyro.conf.arg(name="env-module"), tyro.conf.UseAppendAction
+    ] = field(default_factory=list)
+    extra_env_ids: Annotated[
+        list[str], tyro.conf.arg(name="extra-env-id"), tyro.conf.UseAppendAction
+    ] = field(default_factory=list)
+
+
+def parse_teleop_args(argv: list[str] | None = None, *, prog: str = "so101-nexus") -> TeleopArgs:
+    """Parse the ``teleop`` subcommand from *argv* (defaults to ``sys.argv``)."""
+    return tyro.extras.subcommand_cli_from_dict({"teleop": TeleopArgs}, args=argv, prog=prog)
 
 
 def run_teleop(
@@ -39,14 +43,9 @@ def run_teleop(
     pre_dispatch: Callable[[], None] | None = None,
 ) -> None:
     """Parse argv, run backend setup, and launch the shared teleop app."""
-    parser = build_teleop_parser(prog="so101-nexus")
-    args = parser.parse_args()
+    args = parse_teleop_args()
+    if pre_dispatch is not None:
+        pre_dispatch()
+    from so101_nexus.teleop.app import main as teleop_main
 
-    if args.command == "teleop":
-        if pre_dispatch is not None:
-            pre_dispatch()
-        from so101_nexus.teleop.app import main as teleop_main
-
-        teleop_main(args, backend=backend)
-    else:  # pragma: no cover - argparse enforces valid commands
-        parser.error(f"unknown command: {args.command}")
+    teleop_main(args, backend=backend)

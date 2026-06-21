@@ -7,7 +7,6 @@ base install does not fail.
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import importlib
 import logging
@@ -37,7 +36,6 @@ from so101_nexus.teleop.dataset import (
     build_frame,
 )
 from so101_nexus.teleop.leader import (
-    DEFAULT_WRIST_ROLL_OFFSET_DEG,
     ROBOT_JOINT_NAMES,
     check_robot_env_mismatch,
     format_leader_connection_error,
@@ -59,6 +57,8 @@ from so101_nexus.teleop.session import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from so101_nexus.teleop.cli import TeleopArgs
 
 _OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY]
 _FOLLOWER_ROBOT_ID = "teleop_sim"
@@ -1421,7 +1421,7 @@ def _import_gradio():
 
 
 def main(
-    args: argparse.Namespace | None = None,
+    args: TeleopArgs | None = None,
     backend: Backend | None = None,
 ) -> None:
     """Launch the Gradio teleop recorder app.
@@ -1438,27 +1438,17 @@ def main(
     gr = _import_gradio()
 
     if args is None:
-        parser = argparse.ArgumentParser(description="Gradio-based teleop recorder")
-        parser.add_argument("--leader-port", type=str, default="/dev/ttyACM0")
-        parser.add_argument("--leader-id", type=str, default="so101_leader")
-        parser.add_argument(
-            "--wrist-roll-offset-deg",
-            type=float,
-            default=DEFAULT_WRIST_ROLL_OFFSET_DEG,
-        )
-        parser.add_argument("--env-config-profile", type=str, default=None)
-        parser.add_argument("--env-config-factory", type=str, default=None)
-        parser.add_argument("--env-module", action="append", default=[], dest="env_modules")
-        parser.add_argument("--extra-env-id", action="append", default=[], dest="extra_env_ids")
-        args = parser.parse_args()
+        from so101_nexus.teleop.cli import parse_teleop_args
 
-    leader_port: str = getattr(args, "leader_port", "/dev/ttyACM0")
-    leader_id_default: str = getattr(args, "leader_id", "so101_leader")
-    wrist_roll_offset: float = getattr(args, "wrist_roll_offset_deg", DEFAULT_WRIST_ROLL_OFFSET_DEG)
-    env_config_profile: str | None = getattr(args, "env_config_profile", None)
-    env_config_factory = load_config_factory(getattr(args, "env_config_factory", None))
-    env_modules: list[str] = list(getattr(args, "env_modules", []) or [])
-    extra_env_ids: list[str] = list(getattr(args, "extra_env_ids", []) or [])
+        args = parse_teleop_args()
+
+    leader_port = args.leader_port
+    leader_id_default = args.leader_id
+    wrist_roll_offset = args.wrist_roll_offset_deg
+    env_config_profile = args.env_config_profile
+    env_config_factory = load_config_factory(args.env_config_factory)
+    env_modules = list(args.env_modules)
+    extra_env_ids = list(args.extra_env_ids)
     _import_env_modules(env_modules)
 
     session: dict = {

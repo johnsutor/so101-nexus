@@ -10,6 +10,7 @@ dependencies = [
     "scipy",
     "mujoco>=3.1.3",
     "gymnasium>=1.0.0",
+    "tyro>=0.9.0",
 ]
 license = "Apache-2.0"
 classifiers = [
@@ -44,6 +45,7 @@ molmoact = [
 train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
+    "torch",
 ]
 warp = [
     "mujoco-warp>=3.9.0.1,<3.10",
@@ -64,6 +66,7 @@ exclude = ["src/so101_nexus/assets/**/*"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/so101_nexus/assets/SO101" = "so101_nexus/assets/SO101"
 "src/so101_nexus/assets/SO101_menagerie" = "so101_nexus/assets/SO101_menagerie"
+"src/so101_nexus/assets/SO-ARM100/Simulation/SO100" = "so101_nexus/assets/SO-ARM100/Simulation/SO100"
 
 [dependency-groups]
 dev = [{ include-group = "test" }, "ruff", "ty"]

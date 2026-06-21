@@ -6,15 +6,15 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
-from so101_nexus.teleop.cli import build_teleop_parser, run_teleop
+from so101_nexus.teleop.cli import parse_teleop_args, run_teleop
 
 if TYPE_CHECKING:
-    import argparse
+    from so101_nexus.teleop.cli import TeleopArgs
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    """Construct the top-level argparse parser for the CLI."""
-    return build_teleop_parser(prog="so101-nexus")
+def parse_args(argv: list[str] | None = None) -> TeleopArgs:
+    """Parse the so101-nexus CLI arguments (exposed for the CLI contract tests)."""
+    return parse_teleop_args(argv, prog="so101-nexus")
 
 
 def _setup_teleop_backend() -> None:

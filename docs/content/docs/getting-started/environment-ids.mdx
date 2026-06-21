@@ -3,10 +3,11 @@ title: Environment IDs
 description: Complete list of registered environment IDs in SO101-Nexus.
 ---
 
-SO101-Nexus environments are registered with Gymnasium when you import `so101_nexus.mujoco`. You must import it before calling `gymnasium.make()`.
+SO101-Nexus environments are registered with Gymnasium when you import a backend module. Import `so101_nexus.mujoco` for the single-environment MuJoCo tasks and `so101_nexus.warp` for the GPU-parallel batched tasks before calling `gymnasium.make()` or `gymnasium.make_vec()`.
 
 ```python
 import so101_nexus.mujoco  # registers MuJoCo envs
+import so101_nexus.warp    # registers Warp envs (requires so101-nexus[warp])
 ```
 
 ## Listing Environments
@@ -20,7 +21,7 @@ for env_id in all_registered_env_ids():
 
 ## All Registered Environment IDs
 
-`all_registered_env_ids()` returns the five MuJoCo environment IDs:
+`all_registered_env_ids()` returns the IDs for whichever backends you have imported. With the MuJoCo backend imported it returns the five MuJoCo IDs:
 
 | Environment ID | Task |
 |---------------|------|
@@ -29,3 +30,22 @@ for env_id in all_registered_env_ids():
 | `MuJoCoReach-v1` | Reach a target position |
 | `MuJoCoLookAt-v1` | Orient the end-effector toward a target |
 | `MuJoCoMove-v1` | Move the TCP in a cardinal direction |
+
+## Warp Environment IDs
+
+The Warp backend registers five batched vector environments. Import `so101_nexus.warp` (from `so101-nexus[warp]`) and create them with `gymnasium.make_vec()`:
+
+| Environment ID | Task |
+|---------------|------|
+| `WarpPickLift-v1` | Pick up and lift an object |
+| `WarpPickAndPlace-v1` | Pick up and place an object at a target |
+| `WarpReach-v1` | Reach a target position |
+| `WarpLookAt-v1` | Orient the end-effector toward a target |
+| `WarpMove-v1` | Move the TCP in a cardinal direction |
+
+```python
+import gymnasium as gym
+import so101_nexus.warp  # noqa: F401
+
+envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+```

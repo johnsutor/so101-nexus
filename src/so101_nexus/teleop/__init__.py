@@ -12,18 +12,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import argparse
+    from so101_nexus.teleop.cli import TeleopArgs
 
 __all__ = ["main", "run_app"]
 
 
-def main(args: argparse.Namespace | None = None) -> None:  # pragma: no cover - thin wrapper
+def main(args: TeleopArgs | None = None) -> None:  # pragma: no cover - thin wrapper
     """Launch the Gradio teleop recorder. Entry point for CLI subcommands."""
     from so101_nexus.teleop.app import main as _main
 
     _main(args)
 
 
-def run_app(args: argparse.Namespace | None = None) -> None:  # pragma: no cover - alias
+def run_app(args: TeleopArgs | None = None) -> None:  # pragma: no cover - alias
     """Alias for :func:`main` kept for explicit callers."""
     main(args)

@@ -7,7 +7,7 @@ SO101-Nexus is an end-to-end Python library for taking an SO-101 robot from demo
 
 The goal is a boring record -> clone -> reinforce workflow: collect demonstrations, replay and evaluate them in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
 
-MuJoCo is the current backend for SO-101 tasks. MuJoCo Warp is planned for GPU-parallel throughput when large-scale RL is the bottleneck.
+MuJoCo is the default backend for SO-101 tasks. An optional MuJoCo Warp backend adds GPU-parallel, batched environments for large-scale RL.
 
 ## Key Features
 
@@ -15,7 +15,7 @@ MuJoCo is the current backend for SO-101 tasks. MuJoCo Warp is planned for GPU-p
 - **[Built-in teleoperation](/docs/teleoperation/overview)** -- drive a simulated follower with a physical SO-100 or SO-101 leader arm
 - **LeRobot dataset conventions** -- save SO follower state/action units plus wrist and overhead camera fields
 - **Standard Gymnasium API** -- use the environments with RL libraries and existing Gymnasium tooling
-- **MuJoCo backend** -- five SO-101 manipulation tasks today, with a MuJoCo Warp backend planned for GPU-parallel throughput
+- **MuJoCo and MuJoCo Warp backends** -- five SO-101 manipulation tasks on MuJoCo, with an optional GPU-parallel MuJoCo Warp backend (`so101-nexus[warp]`) for batched RL
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards, and choose observation components
 - **YCB object support** -- use real-world object meshes from the YCB dataset
 

@@ -18,6 +18,7 @@ does not support ``implicitfast`` or ``noslip``, so the Warp scene uses the
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import mujoco
@@ -279,6 +280,45 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        self._step_graph = None
+        self._capture_step_graph()
+
+    def _capture_step_graph(self) -> None:
+        """Capture the per-step substep loop into a CUDA graph for replay.
+
+        ``mujoco_warp.step`` is a collection of small kernel launches; on CUDA,
+        replaying a captured graph removes per-launch overhead (the throughput
+        win Warp exists for). The graph references the persistent ``data``
+        buffers, so the in-place ``ctrl`` write before each replay is honored.
+        CPU has no graph support, so stepping falls back to the direct loop. The
+        warmup/capture advances physics from the construction state, which the
+        first ``reset()`` overwrites before any episode begins.
+        """
+        if self.device.type != "cuda":
+            return
+        try:
+            with wp.ScopedDevice(self._wp_device):
+                for _ in range(self._N_SUBSTEPS):
+                    mjw.step(self.model, self.data)
+                with wp.ScopedCapture() as capture:
+                    for _ in range(self._N_SUBSTEPS):
+                        mjw.step(self.model, self.data)
+            self._step_graph = capture.graph
+        except Exception as exc:  # capture is an optimization; never block construction
+            warnings.warn(
+                f"CUDA graph capture failed ({exc}); using direct stepping.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._step_graph = None
+
+    def _advance_physics(self) -> None:
+        """Advance ``_N_SUBSTEPS`` of physics via the captured graph or direct loop."""
+        if self._step_graph is not None:
+            wp.capture_launch(self._step_graph)
+        else:
+            for _ in range(self._N_SUBSTEPS):
+                mjw.step(self.model, self.data)
 
     def _validate_obs_components(self, observations) -> None:
         """Reject unsupported observation components at construction (fail fast).
@@ -360,10 +400,14 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         with wp.ScopedDevice(self._wp_device):
             self._write_reset_state(mask, init_qpos=init_qpos)
             mjw.forward(self.model, self.data)
+            # Capture the reset reference BEFORE settling so it is settle-independent
+            # and identical to the same-step autoreset path (which cannot settle a
+            # subset of worlds). Settling only warms up the robot for the returned
+            # observation; it must not move task reference state (targets, baselines).
+            self._refresh_reset_reference_state(mask)
             for _ in range(self.config.reset_settle_frames):
                 for _ in range(self._N_SUBSTEPS):
                     mjw.step(self.model, self.data)
-            self._refresh_reset_reference_state(mask)
         return self._compute_obs(), {}
 
     def close(self, **kwargs: Any) -> None:
@@ -399,8 +443,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         clipped = torch.clamp(public_action, self._action_low, self._action_high)
         self.ctrl[:, self._act_ids] = self._action_to_ctrl(clipped)
         with wp.ScopedDevice(self._wp_device):
-            for _ in range(self._N_SUBSTEPS):
-                mjw.step(self.model, self.data)
+            self._advance_physics()
         self._elapsed += 1
 
         reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
@@ -413,14 +456,17 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             with wp.ScopedDevice(self._wp_device):
                 self._write_reset_state(done)
                 mjw.forward(self.model, self.data)
+                # Settle-independent reset reference (matches reset()): done worlds
+                # get identical targets/baselines without settling.
                 self._refresh_reset_reference_state(done)
             # Clear previous-action state for reset worlds so a new episode's
             # first action_delta_norm is zero for any first action, not measured
-            # against the prior episode's final action. Settling is intentionally
-            # NOT run here: mjw.step advances the whole batch, so settling
-            # only-done worlds would advance non-done worlds too. For
-            # contact-free reach the unsettle difference is negligible;
-            # per-world warmstart is not cleared (optimizer hint).
+            # against the prior episode's final action. The robot settle that
+            # reset() applies is intentionally skipped here: mjw.step advances the
+            # whole batch, so settling only-done worlds would advance non-done
+            # worlds too. The reset reference above is settle-independent, so it
+            # matches reset() exactly; only the robot's first-frame settle transient
+            # differs (per-world warmstart left as an optimizer hint).
             self._has_prev_action[done] = False
         return self._compute_obs(), reward, terminated, truncated, info
 

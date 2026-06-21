@@ -24,9 +24,9 @@ For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/doc
 
 ## Why
 
-There are useful SO-101 tools, but few packages connect teleoperation, LeRobot datasets, simulation environments, and training loops in one workflow. SO101-Nexus is built around the record -> clone -> reinforce path: collect demonstrations, replay and evaluate in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
+There are useful SO-101 tools, but few packages connect teleoperation, LeRobot datasets, environments, and training loops in one workflow, all using simulations. SO101-Nexus is built around the record -> clone -> reinforce path: collect demonstrations, replay and evaluate in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
 
-MuJoCo is the current backend. MuJoCo Warp is planned for GPU-parallel throughput when large-scale RL is the bottleneck.
+MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[warp]`) adds GPU-parallel, batched environments for large-scale RL.
 
 ## What You Get
 
@@ -35,6 +35,7 @@ MuJoCo is the current backend. MuJoCo Warp is planned for GPU-parallel throughpu
 - **Gymnasium environments**: run SO-101 MuJoCo tasks for reach, look-at, move, pick-lift, and pick-and-place.
 - **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
 - **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
+- **GPU-parallel Warp backend** (optional): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
 
 ## Installation
 
@@ -81,6 +82,24 @@ env.close()
 
 See the [environment reference](https://so101-nexus.com/docs/environments) for all task IDs.
 
+### Run the GPU-parallel Warp backend
+
+Install the optional extra and create a batched vector environment:
+
+```bash
+pip install "so101-nexus[warp]"
+```
+
+```python
+import gymnasium as gym
+import so101_nexus.warp  # noqa: F401
+
+envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+obs, info = envs.reset(seed=0)
+obs, reward, terminated, truncated, info = envs.step(envs.action_space.sample())
+envs.close()
+```
+
 ### Train a baseline
 
 SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. See [Training with PPO](https://so101-nexus.com/docs/guides/training-with-ppo) for the command-line workflow and tuning notes.
@@ -90,7 +109,7 @@ SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. Se
 - [x] MuJoCo environments for the SO-101 arm
 - [x] SO-101 tasks: Reach, LookAt, Move, PickLift, PickAndPlace
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
-- [ ] MuJoCo Warp backend for GPU-parallel throughput
+- [x] MuJoCo Warp backend for GPU-parallel throughput
 - [ ] Stronger training baselines and exemplars for every environment
 - [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 

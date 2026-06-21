@@ -30,6 +30,10 @@ jobs:
             package: so101-nexus
             env_id: MuJoCoReach-v1
             apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
+          - backend: warp
+            package: "so101-nexus[warp]"
+            env_id: WarpReach-v1
+            apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
 
     steps:
       - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
@@ -78,6 +82,9 @@ jobs:
 
           echo "Failed to install ${SPEC} from PyPI after retries."
           exit 1
+
+      - name: Install smoke-check harness deps
+        run: python -m pip install tyro
 
       - name: Run backend smoke check
         env:
