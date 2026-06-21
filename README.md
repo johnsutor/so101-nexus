@@ -22,6 +22,24 @@ SO101-Nexus is an end-to-end Python library for taking an SO-101 robot from demo
 
 For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/docs).
 
+## Demo Rollouts
+
+<div align="center">
+  <video src="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift/resolve/main/videos/observation.images.overhead/chunk-000/file-000.mp4" controls muted playsinline width="720" aria-label="MuJoCo PickLift teleoperation rollout"></video>
+  <p>
+    <a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift">PickLift dataset</a>
+    ·
+    <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0">PickLift viewer</a>
+  </p>
+</div>
+
+Recorded MuJoCo teleoperation datasets are available on Hugging Face:
+
+| Task | Dataset | Episode viewer |
+| --- | --- | --- |
+| PickLift | [johnsutor/MuJoCoPickLift](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0) |
+| PickAndPlace | [johnsutor/MuJoCoPickAndPlace](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0) |
+
 ## Why
 
 There are useful SO-101 tools, but few packages connect teleoperation, LeRobot datasets, environments, and training loops in one workflow, all using simulations. SO101-Nexus is built around the record -> clone -> reinforce path: collect demonstrations, replay and evaluate in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
