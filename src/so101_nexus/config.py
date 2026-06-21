@@ -159,6 +159,19 @@ class Pose:
         """Return a concrete 6-tuple of joint angles in radians."""
         return tuple(float(np.radians(v)) for v in self.sample(rng))
 
+    def bounds_rad(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return per-joint ``(low, high)`` radian bounds for batched sampling.
+
+        Fixed joints yield ``low == high``; range joints yield their endpoints.
+        Lets a batched, seeded sampler draw ``low + u * (high - low)`` per world
+        from the same spec ``sample_rad`` uses for the scalar path.
+        """
+        low = np.array([s[0] if isinstance(s, tuple) else s for s in self._specs], dtype=np.float64)
+        high = np.array(
+            [s[1] if isinstance(s, tuple) else s for s in self._specs], dtype=np.float64
+        )
+        return np.radians(low), np.radians(high)
+
     def __repr__(self) -> str:  # noqa: D105
         return f"Pose(name={self.name!r})"
 
@@ -370,19 +383,27 @@ class RewardConfig:
 
     def compute(
         self,
-        reach_progress: float,
-        is_grasped: bool,
-        task_progress: float,
-        is_complete: bool,
-        action_delta_norm: float = 0.0,
-        energy_norm: float = 0.0,
-    ) -> float:
-        """Compute a normalized reward using this config's weights."""
+        reach_progress: Any,
+        is_grasped: Any,
+        task_progress: Any,
+        is_complete: Any,
+        action_delta_norm: Any = 0.0,
+        energy_norm: Any = 0.0,
+    ) -> Any:
+        """Compute a normalized reward using this config's weights.
+
+        Tensor-agnostic like ``apply_penalties``: ``reach_progress`` /
+        ``task_progress`` and the ``is_grasped`` / ``is_complete`` flags may be
+        Python scalars, NumPy arrays, or torch tensors. Plain multiplication
+        promotes Python/NumPy/torch booleans to numeric, so both simulation
+        backends call this one combiner instead of inlining the weighted sum.
+        The scalar path returns a plain ``float``.
+        """
         base = (
             self.reaching * reach_progress
-            + self.grasping * float(is_grasped)
+            + self.grasping * is_grasped
             + self.task_objective * task_progress
-            + self.completion_bonus * float(is_complete)
+            + self.completion_bonus * is_complete
         )
         return self.apply_penalties(
             base, action_delta_norm=action_delta_norm, energy_norm=energy_norm

@@ -30,11 +30,122 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 from so101_nexus.config import SO101_JOINT_NAMES, ControlMode, EnvironmentConfig
-from so101_nexus.observations import CameraObservation, JointPositions
+from so101_nexus.observations import (
+    CameraObservation,
+    EndEffectorPose,
+    GraspState,
+    JointPositions,
+)
 
 # Normalized-delta physical scale (radians), shared with the MuJoCo backend's
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
 _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
+
+
+def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
+    """Batched rotation matrix ``(..., 3, 3)`` -> ``wxyz`` quaternion ``(..., 4)``.
+
+    Shepperd's method, computed in float64 for stability and returned in the
+    input dtype. Matches ``mujoco.mju_mat2Quat`` up to sign (validated to 1e-9 in
+    float64); the result is canonicalized to ``w >= 0``.
+    """
+    m = mat.to(torch.float64)
+    m00, m11, m22 = m[..., 0, 0], m[..., 1, 1], m[..., 2, 2]
+    trace = m00 + m11 + m22
+
+    def _safe(x: torch.Tensor) -> torch.Tensor:
+        return torch.where(x.abs() < 1e-12, torch.ones_like(x), x)
+
+    s0 = torch.sqrt(torch.clamp(trace, min=0.0) + 1.0) * 2.0
+    q0 = torch.stack(
+        [
+            0.25 * s0,
+            (m[..., 2, 1] - m[..., 1, 2]) / _safe(s0),
+            (m[..., 0, 2] - m[..., 2, 0]) / _safe(s0),
+            (m[..., 1, 0] - m[..., 0, 1]) / _safe(s0),
+        ],
+        dim=-1,
+    )
+    s1 = torch.sqrt(torch.clamp(1.0 + m00 - m11 - m22, min=0.0)) * 2.0
+    q1 = torch.stack(
+        [
+            (m[..., 2, 1] - m[..., 1, 2]) / _safe(s1),
+            0.25 * s1,
+            (m[..., 0, 1] + m[..., 1, 0]) / _safe(s1),
+            (m[..., 0, 2] + m[..., 2, 0]) / _safe(s1),
+        ],
+        dim=-1,
+    )
+    s2 = torch.sqrt(torch.clamp(1.0 - m00 + m11 - m22, min=0.0)) * 2.0
+    q2 = torch.stack(
+        [
+            (m[..., 0, 2] - m[..., 2, 0]) / _safe(s2),
+            (m[..., 0, 1] + m[..., 1, 0]) / _safe(s2),
+            0.25 * s2,
+            (m[..., 1, 2] + m[..., 2, 1]) / _safe(s2),
+        ],
+        dim=-1,
+    )
+    s3 = torch.sqrt(torch.clamp(1.0 - m00 - m11 + m22, min=0.0)) * 2.0
+    q3 = torch.stack(
+        [
+            (m[..., 1, 0] - m[..., 0, 1]) / _safe(s3),
+            (m[..., 0, 2] + m[..., 2, 0]) / _safe(s3),
+            (m[..., 1, 2] + m[..., 2, 1]) / _safe(s3),
+            0.25 * s3,
+        ],
+        dim=-1,
+    )
+    cond0 = trace > 0.0
+    cond1 = (m00 >= m11) & (m00 >= m22)
+    cond2 = m11 >= m22
+    quat = torch.where(
+        cond0[..., None],
+        q0,
+        torch.where(cond1[..., None], q1, torch.where(cond2[..., None], q2, q3)),
+    )
+    quat = quat / _safe(torch.linalg.norm(quat, dim=-1, keepdim=True))
+    quat = torch.where(quat[..., 0:1] < 0.0, -quat, quat)
+    return quat.to(mat.dtype)
+
+
+def _grasp_from_contacts(
+    *,
+    contact_geom: torch.Tensor,
+    contact_world: torch.Tensor,
+    normal_force: torch.Tensor,
+    nacon: int,
+    obj_geom: torch.Tensor,
+    gripper_mask: torch.Tensor,
+    jaw_mask: torch.Tensor,
+    threshold: float,
+    num_envs: int,
+) -> torch.Tensor:
+    """Reduce flat contacts to a ``(num_envs,)`` two-sided grasp signal in {0, 1}.
+
+    A world grasps when its target geom (``obj_geom[world]``) contacts both a
+    gripper finger geom and a moving-jaw finger geom, each with normal force at or
+    above ``threshold``. Pure tensor reduction over the packed ``[0, nacon)``
+    contact slots, so it is unit-testable with synthetic arrays. Mirrors the
+    MuJoCo base's ``_is_grasping``.
+    """
+    if nacon == 0:
+        return torch.zeros(num_envs, device=obj_geom.device)
+    geom = contact_geom[:nacon].long()
+    world = contact_world[:nacon].long().clamp(0, num_envs - 1)
+    g1, g2 = geom[:, 0], geom[:, 1]
+    obj = obj_geom[world]
+    obj_is_g1 = g1 == obj
+    involved = obj_is_g1 | (g2 == obj)
+    other = torch.where(obj_is_g1, g2, g1).clamp(min=0)
+    strong = involved & (normal_force[:nacon] >= threshold)
+    grip_hit = (gripper_mask[other] & strong).to(torch.float32)
+    jaw_hit = (jaw_mask[other] & strong).to(torch.float32)
+    grip_w = torch.zeros(num_envs, device=obj_geom.device)
+    jaw_w = torch.zeros(num_envs, device=obj_geom.device)
+    grip_w.scatter_reduce_(0, world, grip_hit, reduce="amax")
+    jaw_w.scatter_reduce_(0, world, jaw_hit, reduce="amax")
+    return (grip_w.bool() & jaw_w.bool()).to(torch.float32)
 
 
 class SO101NexusWarpVectorEnv(VectorEnv):
@@ -93,6 +204,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.qvel = wp.to_torch(self.data.qvel)  # (N, nv)
         self.ctrl = wp.to_torch(self.data.ctrl)  # (N, nu)
         self.site_xpos = wp.to_torch(self.data.site_xpos)  # (N, nsite, 3)
+        self.site_xmat = wp.to_torch(self.data.site_xmat)  # (N, nsite, 3, 3)
 
         joint_ids = [
             mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_JOINT, n) for n in SO101_JOINT_NAMES
@@ -146,16 +258,44 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._has_prev_action = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
         self._prev_target = self._rest_qpos.expand(num_envs, n_joints).clone()
 
+        # Arm DOF addresses (first five joints; the gripper is excluded), mirroring
+        # the MuJoCo base's _arm_qvel_addrs for the static-robot check.
+        self._arm_dof_adr = self._dof_adr[:-1]
+        # Finger contact geoms for grasp detection (condim==6 surfaces on the
+        # gripper and moving-jaw bodies) as boolean per-geom masks.
+        ngeom = mjm.ngeom
+        gripper_bid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_BODY, "gripper")
+        jaw_bid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_BODY, "moving_jaw_so101_v1")
+        self._gripper_mask = self._finger_geom_mask(mjm, gripper_bid, ngeom)
+        self._jaw_mask = self._finger_geom_mask(mjm, jaw_bid, ngeom)
+        # Per-world target geom for grasp detection; manipulation tasks set this to
+        # a (num_envs,) long tensor. None means no graspable object (primitives).
+        self._obj_geom: torch.Tensor | None = None
+        # Zero-copy contact views; the force buffer is allocated lazily on first
+        # grasp query so primitive envs pay nothing.
+        self._contact_geom_view = wp.to_torch(self.data.contact.geom)  # (naconmax, 2)
+        self._contact_world_view = wp.to_torch(self.data.contact.worldid)  # (naconmax,)
+        self._nacon_view = wp.to_torch(self.data.nacon)  # (1,)
+        self._contact_ids: wp.array | None = None
+        self._force_buf: wp.array | None = None
+        self._force_view: torch.Tensor | None = None
+
     def _validate_obs_components(self, observations) -> None:
         """Reject unsupported observation components at construction (fail fast).
 
-        The Warp backend routes ``JointPositions`` directly and delegates other
-        state components to ``_get_component_data``; subclasses declare which
-        components they support via ``_supported_obs_components``. Camera
+        The Warp base routes the robot-generic components (``JointPositions``,
+        ``EndEffectorPose``, ``GraspState``) centrally, mirroring the MuJoCo base,
+        and delegates task-specific components to ``_get_component_data`` (a
+        subclass declares those via ``_supported_obs_components``). Camera
         components are unsupported on Warp. Anything else raises here rather than
         at the first reset, so the error names the unsupported component upfront.
         """
-        supported = {JointPositions, *self._supported_obs_components()}
+        supported = {
+            JointPositions,
+            EndEffectorPose,
+            GraspState,
+            *self._supported_obs_components(),
+        }
         for comp in observations:
             if isinstance(comp, CameraObservation):
                 raise NotImplementedError("Warp backend does not support camera observations")
@@ -183,23 +323,22 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._joint_qpos())
+            elif isinstance(comp, EndEffectorPose):
+                parts.append(self._get_tcp_pose7())
+            elif isinstance(comp, GraspState):
+                parts.append(self._is_grasping().unsqueeze(1))
             elif isinstance(comp, CameraObservation):
                 raise NotImplementedError("Warp backend does not support camera observations")
             else:
                 parts.append(self._get_component_data(comp))
         return torch.cat(parts, dim=1).to(torch.float32)
 
-    def _write_reset_state(self, mask: torch.Tensor) -> None:
+    def _write_reset_state(self, mask: torch.Tensor, init_qpos: torch.Tensor | None = None) -> None:
         idx = mask.nonzero(as_tuple=True)[0]
         n = int(idx.numel())
         if n == 0:
             return
-        noise = (
-            torch.rand((n, len(SO101_JOINT_NAMES)), generator=self._generator, device=self.device)
-            * 2.0
-            - 1.0
-        ) * self.robot_init_qpos_noise
-        target = torch.clamp(self._rest_qpos + noise, self._target_low, self._target_high)
+        target = self._sample_reset_qpos(n, init_qpos)
         rows = idx[:, None]
         self.qpos[rows, self._qpos_adr] = target
         self.qvel[rows, self._dof_adr] = 0.0
@@ -214,15 +353,17 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """Reset all worlds and return the initial batched observation and info."""
         if seed is not None:
             self._generator.manual_seed(seed)
+        init_qpos = self._parse_init_qpos(options)
         self._prev_action = None
         self._has_prev_action.fill_(False)
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         with wp.ScopedDevice(self._wp_device):
-            self._write_reset_state(mask)
+            self._write_reset_state(mask, init_qpos=init_qpos)
             mjw.forward(self.model, self.data)
             for _ in range(self.config.reset_settle_frames):
                 for _ in range(self._N_SUBSTEPS):
                     mjw.step(self.model, self.data)
+            self._refresh_reset_reference_state(mask)
         return self._compute_obs(), {}
 
     def close(self, **kwargs: Any) -> None:
@@ -272,6 +413,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             with wp.ScopedDevice(self._wp_device):
                 self._write_reset_state(done)
                 mjw.forward(self.model, self.data)
+                self._refresh_reset_reference_state(done)
             # Clear previous-action state for reset worlds so a new episode's
             # first action_delta_norm is zero for any first action, not measured
             # against the prior episode's final action. Settling is intentionally
@@ -281,6 +423,104 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             # per-world warmstart is not cleared (optimizer hint).
             self._has_prev_action[done] = False
         return self._compute_obs(), reward, terminated, truncated, info
+
+    def _finger_geom_mask(self, mjm: mujoco.MjModel, body_id: int, ngeom: int) -> torch.Tensor:
+        """Boolean per-geom mask of ``condim==6`` contact geoms on a finger body."""
+        mask = torch.zeros(ngeom, dtype=torch.bool, device=self.device)
+        for g in range(ngeom):
+            if (
+                mjm.geom_bodyid[g] == body_id
+                and mjm.geom_contype[g] != 0
+                and mjm.geom_condim[g] == 6
+            ):
+                mask[g] = True
+        return mask
+
+    def _get_tcp_pose7(self) -> torch.Tensor:
+        """Return ``(N, 7)`` TCP pose ``[xyz, wxyz]`` from site position + orientation."""
+        pos = self.site_xpos[:, self._tcp_site_id, :]
+        quat = _mat_to_quat(self.site_xmat[:, self._tcp_site_id])
+        return torch.cat([pos, quat], dim=1)
+
+    def _is_robot_static(self) -> torch.Tensor:
+        """Return ``(N,)`` bool: all arm joints below ``static_vel_threshold``."""
+        arm_vel = self.qvel.index_select(1, self._arm_dof_adr)
+        return (arm_vel.abs() < self.config.robot.static_vel_threshold).all(dim=1)
+
+    def _ensure_grasp_buffers(self) -> None:
+        if self._force_buf is not None:
+            return
+        naconmax = self.data.naconmax
+        self._contact_ids = wp.array(
+            np.arange(naconmax, dtype=np.int32), dtype=wp.int32, device=self._wp_device
+        )
+        self._force_buf = wp.zeros(naconmax, dtype=wp.spatial_vector, device=self._wp_device)
+        self._force_view = wp.to_torch(self._force_buf)  # (naconmax, 6)
+
+    def _is_grasping(self) -> torch.Tensor:
+        """Return ``(N,)`` float in {0, 1}: two-sided finger grasp of the target geom.
+
+        Zero everywhere when no graspable object is registered (``_obj_geom``
+        unset), so primitive tasks never trigger grasp logic.
+        """
+        if self._obj_geom is None:
+            return torch.zeros(self.num_envs, device=self.device)
+        self._ensure_grasp_buffers()
+        force_view = self._force_view
+        assert force_view is not None
+        with wp.ScopedDevice(self._wp_device):
+            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
+        nacon = int(self._nacon_view[0])
+        return _grasp_from_contacts(
+            contact_geom=self._contact_geom_view,
+            contact_world=self._contact_world_view,
+            normal_force=force_view[:, 0].abs(),
+            nacon=nacon,
+            obj_geom=self._obj_geom,
+            gripper_mask=self._gripper_mask,
+            jaw_mask=self._jaw_mask,
+            threshold=self.config.robot.grasp_force_threshold,
+            num_envs=self.num_envs,
+        )
+
+    def _parse_init_qpos(self, options: dict[str, Any] | None) -> torch.Tensor | None:
+        """Validate and return the ``options['init_qpos']`` reset override, if any."""
+        if options is None or options.get("init_qpos") is None:
+            return None
+        n_joints = len(SO101_JOINT_NAMES)
+        arr = torch.as_tensor(options["init_qpos"], dtype=torch.float32, device=self.device)
+        if arr.shape not in {(n_joints,), (self.num_envs, n_joints)}:
+            raise ValueError(
+                f"init_qpos shape {tuple(arr.shape)} != expected ({n_joints},) "
+                f"or ({self.num_envs}, {n_joints})"
+            )
+        return arr
+
+    def _sample_reset_qpos(self, n: int, init_qpos: torch.Tensor | None) -> torch.Tensor:
+        """Return ``(n, 6)`` reset joint targets per the reset contract.
+
+        Priority: explicit ``init_qpos`` (clamped, no noise); else
+        ``config.robot.init_pose`` sampled per world with the seeded generator;
+        else the rest pose plus per-world uniform ``robot_init_qpos_noise``.
+        """
+        n_joints = len(SO101_JOINT_NAMES)
+        if init_qpos is not None:
+            target = init_qpos.expand(n, n_joints) if init_qpos.ndim == 1 else init_qpos
+            return torch.clamp(target, self._target_low, self._target_high)
+        pose = self.config.robot.resolve_pose()
+        if pose is not None:
+            low_np, high_np = pose.bounds_rad()
+            low = torch.as_tensor(low_np, dtype=torch.float32, device=self.device)
+            high = torch.as_tensor(high_np, dtype=torch.float32, device=self.device)
+            u = torch.rand((n, n_joints), generator=self._generator, device=self.device)
+            return torch.clamp(low + u * (high - low), self._target_low, self._target_high)
+        noise = (
+            torch.rand((n, n_joints), generator=self._generator, device=self.device) * 2.0 - 1.0
+        ) * self.robot_init_qpos_noise
+        return torch.clamp(self._rest_qpos + noise, self._target_low, self._target_high)
+
+    def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:
+        """Post-settle hook to refresh task reference state (default no-op)."""
 
     # Task seams (subclasses implement).
     def _task_reset(self, mask: torch.Tensor) -> None:

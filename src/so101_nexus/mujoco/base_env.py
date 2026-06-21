@@ -29,7 +29,7 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus.rewards import orientation_progress, reach_progress
+from so101_nexus.rewards import lift_progress, orientation_progress, reach_progress
 
 logger = logging.getLogger(__name__)
 
@@ -605,9 +605,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
-        # Lift progress is tanh(scale * max(height, 0)) when grasped, 0 otherwise.
-        # This is NOT the same as reach_progress (which is 1 - tanh), so use np.tanh directly.
-        lift_prog = float(np.tanh(scale * max(info["lift_height"], 0.0))) if is_grasped else 0.0
+        lift_prog = lift_progress(info["lift_height"], scale=scale, grasped=is_grasped)
         return self.config.reward.compute(
             reach_progress=rp,
             is_grasped=is_grasped,

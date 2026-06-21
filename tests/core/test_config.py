@@ -662,3 +662,50 @@ class TestConfigValidation:
             observations=[OverheadCamera(width=64, height=48)],
         )
         assert cfg.obs_mode == "visual"
+
+
+def test_pose_bounds_rad_matches_specs():
+    p = Pose(
+        name="t",
+        shoulder_pan_deg=10.0,
+        shoulder_lift_deg=(-20.0, 30.0),
+        elbow_flex_deg=0.0,
+        wrist_flex_deg=0.0,
+        wrist_roll_deg=0.0,
+        gripper_deg=(0.0, 90.0),
+    )
+    lo, hi = p.bounds_rad()
+    np.testing.assert_allclose(lo, np.radians([10.0, -20.0, 0.0, 0.0, 0.0, 0.0]))
+    np.testing.assert_allclose(hi, np.radians([10.0, 30.0, 0.0, 0.0, 0.0, 90.0]))
+    assert lo[0] == hi[0]  # fixed joint
+
+
+def test_reward_config_compute_tensor_matches_scalar():
+    torch = pytest.importorskip("torch")
+    rc = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+    rp = [0.5, 1.0]
+    tg = [0.2, 0.8]
+    grasped = [False, True]
+    complete = [False, True]
+    adn = [0.3, 0.4]
+    en = [1.0, 2.0]
+    scalar = [
+        rc.compute(
+            reach_progress=rp[i],
+            is_grasped=grasped[i],
+            task_progress=tg[i],
+            is_complete=complete[i],
+            action_delta_norm=adn[i],
+            energy_norm=en[i],
+        )
+        for i in range(2)
+    ]
+    out = rc.compute(
+        reach_progress=torch.tensor(rp),
+        is_grasped=torch.tensor(grasped),
+        task_progress=torch.tensor(tg),
+        is_complete=torch.tensor(complete),
+        action_delta_norm=torch.tensor(adn),
+        energy_norm=torch.tensor(en),
+    )
+    np.testing.assert_allclose(out.numpy(), scalar, rtol=1e-6)

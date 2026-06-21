@@ -46,3 +46,23 @@ def test_builder_compiles_with_both_options():
             f.flush()
             model = mujoco.MjModel.from_xml_path(f.name)
         assert model.nq > 0
+
+
+def test_robot_floor_builder_compiles_with_both_options():
+    from so101_nexus.scene import build_robot_floor_scene_xml
+
+    for option in (MUJOCO_SCENE_OPTION_XML, WARP_SCENE_OPTION_XML):
+        xml = build_robot_floor_scene_xml(
+            [0.5, 0.5, 0.5, 1.0],
+            option_xml=option,
+            robot_xml_path=str(get_so101_mujoco_model_path()),
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".xml", dir=get_so101_mujoco_model_dir(), delete=True
+        ) as f:
+            f.write(xml)
+            f.flush()
+            model = mujoco.MjModel.from_xml_path(f.name)
+        assert model.nq > 0
+        # No target site/body: robot + floor only.
+        assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "reach_target") == -1

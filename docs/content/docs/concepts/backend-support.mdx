@@ -3,7 +3,7 @@ title: Backend Support
 description: The MuJoCo and MuJoCo Warp backends, environment availability, and vectorization.
 ---
 
-SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend is available for the Reach task, adding native GPU-parallel batching for reinforcement learning. Coverage of the remaining tasks is in progress.
+SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend adds native GPU-parallel batching for reinforcement learning, and covers all five tasks (Reach, LookAt, Move, PickLift, PickAndPlace).
 
 ## Task Availability
 
@@ -21,7 +21,7 @@ All five tasks run on the SO-101 arm:
 
 MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU.
 
-The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct it with `gym.make_vec("WarpReach-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`. Warp Reach currently supports state observations for `JointPositions` and `TargetOffset`; camera observations and the remaining state components are not implemented yet. The Warp physics diverges from CPU MuJoCo (implicit integrator, no noslip constraint), so policies may need re-tuning when moving between backends. Install it with the `warp` extra (`pip install "so101-nexus[warp]"`, which needs an NVIDIA GPU and CUDA >= 12.4).
+The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")` (env IDs `WarpReach-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`); reset and step return torch CUDA tensors of shape `(num_envs, ...)`. The Warp envs route the same composable state observation components as MuJoCo (joint positions, end-effector pose, grasp state, object and target offsets, gaze direction); camera observations are not supported. Because all worlds share one model, two behaviors diverge from CPU MuJoCo by design: per-episode cube and target colors are fixed to the first configured color (the model's `geom_rgba` is global), and `WarpPickLift` supports a single `CubeObject` target (no distractors, YCB, or mesh objects). The physics also diverges (implicit integrator, no noslip constraint), so policies may need re-tuning when moving between backends. Install the backend with the `warp` extra (`pip install "so101-nexus[warp]"`, which needs an NVIDIA GPU and CUDA >= 12.4).
 
 ## Objects
 

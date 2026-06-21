@@ -163,9 +163,10 @@ def test_autoreset_masks_prev_action_across_episode_boundary():
 
 def test_unsupported_obs_component_rejected_at_construction():
     from so101_nexus.config import ReachConfig
-    from so101_nexus.observations import EndEffectorPose, JointPositions
+    from so101_nexus.observations import GazeDirection, JointPositions
     from so101_nexus.warp.reach_env import WarpReachVectorEnv
 
-    config = ReachConfig(observations=[JointPositions(), EndEffectorPose()])
-    with pytest.raises(NotImplementedError, match="EndEffectorPose"):
+    # GazeDirection is a look-at task-specific component, unsupported by reach.
+    config = ReachConfig(observations=[JointPositions(), GazeDirection()])
+    with pytest.raises(NotImplementedError, match="GazeDirection"):
         WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
