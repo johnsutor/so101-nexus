@@ -89,8 +89,10 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         return {TargetOffset}
 
     def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:
-        # Place each reset world's target target_distance from the post-settle TCP
-        # along the move direction, z clamped above the floor (cross-backend).
+        # Place each reset world's target target_distance from the post-forward
+        # (settle-independent) TCP along the move direction, z clamped above the
+        # floor (cross-backend). Captured pre-settle so reset() and same-step
+        # autoreset place identical targets.
         idx = mask.nonzero(as_tuple=True)[0]
         if idx.numel() == 0:
             return
@@ -100,7 +102,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         self._targets[idx] = target
 
     def _task_reset(self, mask: torch.Tensor) -> None:
-        # Target depends on the settled TCP; placed in _refresh_reset_reference_state.
+        # Target depends on the post-forward TCP; placed in _refresh_reset_reference_state.
         pass
 
     def _get_component_data(self, component: object) -> torch.Tensor:

@@ -170,3 +170,52 @@ def test_unsupported_obs_component_rejected_at_construction():
     config = ReachConfig(observations=[JointPositions(), GazeDirection()])
     with pytest.raises(NotImplementedError, match="GazeDirection"):
         WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
+
+
+def test_cpu_step_uses_direct_loop_not_graph_capture():
+    """On CPU there is no CUDA graph; stepping falls back to the direct substep loop."""
+    env = _make_env(num_envs=2)
+    assert env._step_graph is None
+    env.reset(seed=0)
+    env.step(env.action_space.sample())  # exercises _advance_physics direct path
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+    return torch.cuda.is_available()
+
+
+@pytest.mark.skipif(not _cuda_available(), reason="requires CUDA for graph capture")
+def test_cuda_graph_capture_matches_direct_stepping():
+    """On CUDA the per-step substep loop is graph-captured; replay matches direct stepping."""
+    import torch
+
+    from so101_nexus.config import ReachConfig
+    from so101_nexus.observations import JointPositions, TargetOffset
+    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+
+    def make():
+        cfg = ReachConfig(observations=[JointPositions(), TargetOffset()])
+        return WarpReachVectorEnv(num_envs=8, config=cfg, device="cuda", seed=0)
+
+    env_g = make()
+    env_d = make()
+    assert env_g._step_graph is not None  # capture succeeded on CUDA
+    env_d._step_graph = None  # force the direct substep loop
+
+    og, _ = env_g.reset(seed=0)
+    od, _ = env_d.reset(seed=0)
+    assert torch.isfinite(og).all()
+
+    actions = torch.zeros(8, 6, device="cuda")
+    for _ in range(20):
+        og, rg, *_ = env_g.step(actions)
+        od, rd, *_ = env_d.step(actions)
+    assert torch.isfinite(og).all()
+    assert torch.isfinite(rg).all()
+    # Captured replay matches direct stepping within float32 kernel-ordering noise.
+    assert torch.allclose(og, od, atol=1e-3)
+    assert torch.allclose(rg, rd, atol=1e-3)

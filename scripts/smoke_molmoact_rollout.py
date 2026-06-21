@@ -1,43 +1,35 @@
 #!/usr/bin/env python3
 """Manual MolmoAct2 rollout smoke test for SO101-Nexus environments."""
 
-from __future__ import annotations
-
-import argparse
 import importlib
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Literal
+
+import tyro
 
 
-def _dtype_from_name(name: str) -> Any | None:
+@dataclass
+class Args:
+    """Command-line arguments for the MolmoAct2 rollout smoke test."""
+
+    env_id: str = "MuJoCoPickLift-v1"
+    env_module: str | None = None
+    repo_id: str = "allenai/MolmoAct2-SO100_101"
+    episodes: int = 1
+    max_steps: int = 160
+    seed: int = 0
+    device_map: str | None = None
+    dtype: Literal["none", "float32", "float16", "bfloat16"] = "bfloat16"
+    chunk_size: int = 8
+    camera_keys: list[str] = field(default_factory=lambda: ["overhead_camera", "wrist_camera"])
+
+
+def _dtype_from_name(name: str):
     if name == "none":
         return None
     import torch
 
     return getattr(torch, name)
-
-
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-id", default="MuJoCoPickLift-v1")
-    parser.add_argument("--env-module", default=None, help="Optional module that registers env-id.")
-    parser.add_argument("--repo-id", default="allenai/MolmoAct2-SO100_101")
-    parser.add_argument("--episodes", type=int, default=1)
-    parser.add_argument("--max-steps", type=int, default=160)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--device-map", default=None)
-    parser.add_argument(
-        "--dtype",
-        choices=("none", "float32", "float16", "bfloat16"),
-        default="bfloat16",
-    )
-    parser.add_argument("--chunk-size", type=int, default=8)
-    parser.add_argument(
-        "--camera-keys",
-        nargs="+",
-        default=["overhead_camera", "wrist_camera"],
-        help="Env camera keys in the order the policy expects.",
-    )
-    return parser.parse_args()
 
 
 def _import_env_backend(env_id: str, env_module: str | None) -> None:
@@ -50,9 +42,8 @@ def _import_env_backend(env_id: str, env_module: str | None) -> None:
     import_backend_for_env_id(env_id)
 
 
-def main() -> None:
+def main(args: Args) -> None:
     """Run a real-model MolmoAct2 rollout smoke test."""
-    args = _parse_args()
     _import_env_backend(args.env_id, args.env_module)
 
     import gymnasium as gym
@@ -85,4 +76,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(tyro.cli(Args))

@@ -75,7 +75,7 @@ Basic PPO baselines for all SO101-Nexus registered environments, using CleanRL's
 ### Run one environment
 
 ```bash
-uv run python examples/ppo.py --env-id MuJoCoPickLift-v1 --total-timesteps 200000
+uv run --extra train python examples/ppo.py --env-id MuJoCoPickLift-v1 --total-timesteps 200000
 ```
 
 This PPO script vectorizes the MuJoCo environments through Gymnasium's `SyncVectorEnv` wrapper, controlled by `--num-envs`.
@@ -91,8 +91,16 @@ uv run python examples/list_envs.py
 ```bash
 for env_id in $(uv run python examples/list_envs.py); do
   echo "Running $env_id"
-  uv run python examples/ppo.py --env-id "$env_id" --total-timesteps 200000
+  uv run --extra train python examples/ppo.py --env-id "$env_id" --total-timesteps 200000
 done
+```
+
+### Run the Warp (GPU-parallel) backend
+
+`examples/ppo_warp.py` trains on the batched `Warp*-v1` vector environments. Install the `warp` extra:
+
+```bash
+uv run --extra warp python examples/ppo_warp.py --env-id WarpReach-v1 --num-envs 4096 --device cuda
 ```
 
 ### Results template

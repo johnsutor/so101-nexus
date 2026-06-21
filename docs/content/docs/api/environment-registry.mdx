@@ -5,7 +5,7 @@ description: How environment registration and discovery works.
 
 # Environment Registry
 
-SO101-Nexus environments are registered with Gymnasium at import time. Importing `so101_nexus.mujoco` registers the MuJoCo environment IDs.
+SO101-Nexus environments are registered with Gymnasium at import time. Importing `so101_nexus.mujoco` registers the single-environment MuJoCo IDs; importing `so101_nexus.warp` registers the GPU-parallel batched `Warp*-v1` IDs (requires `so101-nexus[warp]`).
 
 ## How Registration Works
 
@@ -13,6 +13,7 @@ Importing the MuJoCo backend triggers registration:
 
 ```python
 import so101_nexus.mujoco      # registers MuJoCo environments
+import so101_nexus.warp        # registers Warp environments (so101-nexus[warp])
 ```
 
 After importing, create environments with `gym.make()`:
@@ -40,7 +41,7 @@ ids = all_registered_env_ids()
 def all_registered_env_ids() -> list[str]
 ```
 
-Returns a list of all SO101-Nexus environment IDs. With the MuJoCo backend imported, the function returns the five MuJoCo environment IDs, including the pick-and-place tasks.
+Returns a list of all SO101-Nexus environment IDs for whichever backends are imported. With the MuJoCo backend imported, it returns the five MuJoCo IDs; with the Warp backend imported, it also returns the five `Warp*-v1` IDs.
 
 ## Required Imports
 
@@ -49,6 +50,7 @@ You must import `so101_nexus.mujoco` before its environments can be used. Import
 | Package | Import Statement | Registers |
 |---------|-----------------|-----------|
 | `so101-nexus` | `import so101_nexus.mujoco` | MuJoCo environments |
+| `so101-nexus[warp]` | `import so101_nexus.warp` | Warp (batched, GPU-parallel) environments |
 
 ## Passing Configuration
 
@@ -68,3 +70,17 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 ```
 
 See [Configuration Classes](/docs/api/configs) for all available options.
+
+## Batched Warp Environments
+
+Warp environments are natively batched vector environments. Create them with `gym.make_vec()` after importing `so101_nexus.warp`:
+
+```python
+import gymnasium as gym
+import so101_nexus.warp
+
+envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+obs, info = envs.reset(seed=0)
+```
+
+Observations, actions, and rewards are torch tensors on `device`. Autoreset is same-step (the done step returns the post-reset observation). See [Environment IDs](/docs/getting-started/environment-ids) for the full list of `Warp*-v1` IDs.

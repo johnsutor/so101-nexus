@@ -37,7 +37,7 @@ Default observation includes only joint positions (configurable via `observation
 
 ## Objects
 
-No objects are present. The goal position is computed at episode start from the initial TCP position offset by `direction * target_distance`.
+No objects are present. The goal position is computed at episode start from the initial TCP position offset by `direction * target_distance`. On the Warp backend (`WarpMove-v1`) the target is captured from the pre-settle TCP, so it is identical across `reset()` and same-step autoreset; with `reset_settle_frames > 0` the first observed TCP-to-target distance can therefore differ slightly from `target_distance`.
 
 ## Success Condition
 
