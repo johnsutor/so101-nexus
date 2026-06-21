@@ -1,6 +1,6 @@
 """Consolidated Gymnasium tests for every MuJoCo SO101-Nexus environment.
 
-Replaces the per-task test files (test_pick_env.py, test_reach_env.py, ...)
+Replaces the per-task test files (test_pick_env.py, test_touch_env.py, ...)
 with a single parametric suite backed by the shared
 ``so101_nexus.testing.run_env_contract`` helper. Backend-specific
 assertions that aren't part of the shared contract live at the bottom
@@ -23,7 +23,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
-    ReachConfig,
+    TouchConfig,
 )
 from so101_nexus.constants import CUBE_COLOR_MAP, YCB_OBJECTS
 from so101_nexus.objects import CubeObject, MeshObject, YCBObject
@@ -42,7 +42,7 @@ from so101_nexus.observations import (
 from so101_nexus.testing import run_env_contract
 
 ENV_MATRIX: list[tuple[str, type]] = [
-    ("MuJoCoReach-v1", ReachConfig),
+    ("MuJoCoTouch-v1", TouchConfig),
     ("MuJoCoLookAt-v1", LookAtConfig),
     ("MuJoCoMove-v1", MoveConfig),
     ("MuJoCoPickLift-v1", PickConfig),
@@ -89,7 +89,7 @@ def test_gymnasium_contract(env_id: str, config_cls: type):
 
 
 _ENV_OBS_MAP: dict[str, list[type]] = {
-    "MuJoCoReach-v1": [JointPositions, EndEffectorPose, TargetOffset],
+    "MuJoCoTouch-v1": [JointPositions, EndEffectorPose, ObjectOffset],
     "MuJoCoLookAt-v1": [JointPositions, EndEffectorPose, GazeDirection],
     "MuJoCoMove-v1": [JointPositions, EndEffectorPose, TargetOffset],
     "MuJoCoPickLift-v1": [
@@ -150,7 +150,7 @@ def test_all_observation_components_combined(env_id, config_cls):
 @pytest.mark.parametrize(
     "env_id,extra_key",
     [
-        ("MuJoCoReach-v1", "tcp_to_target_dist"),
+        ("MuJoCoTouch-v1", "tcp_to_obj_dist"),
         ("MuJoCoMove-v1", "tcp_to_target_dist"),
         ("MuJoCoLookAt-v1", "orientation_error"),
         ("MuJoCoPickLift-v1", "lift_height"),
@@ -441,7 +441,7 @@ _EXPECTED_DELTA_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.f
 def test_delta_action_space_is_normalized(control_mode):
     """Both delta modes expose a normalized [-1, 1] action space (six joints),
     matching the normalized delta action contract."""
-    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
     try:
         space = env.action_space
         assert space.shape == (6,)
@@ -456,7 +456,7 @@ def test_normalized_plus_one_matches_physical_max_delta(control_mode):
     """An all +1 normalized action moves joint targets by exactly the physical
     delta scale, i.e. the internal scaling reproduces the old physical-max
     behavior."""
-    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
     try:
         env.reset(seed=0)
         unwrapped = env.unwrapped
@@ -487,7 +487,7 @@ def test_normalized_plus_one_matches_physical_max_delta(control_mode):
 def test_delta_penalty_norms_use_normalized_action(control_mode):
     """Penalty norms (energy_norm) are computed on the normalized public action,
     so an all +1 action yields energy_norm == sqrt(6)."""
-    env = gym.make("MuJoCoReach-v1", control_mode=control_mode)
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
     try:
         env.reset(seed=0)
         action = np.ones(6, dtype=np.float32)
@@ -567,8 +567,8 @@ def test_pick_and_place_reward_in_unit_range():
 
 
 def test_reset_settle_zero_keeps_mujoco_time_at_reset():
-    config = ReachConfig(reset_settle_frames=0)
-    env = gym.make("MuJoCoReach-v1", config=config)
+    config = TouchConfig(reset_settle_frames=0)
+    env = gym.make("MuJoCoTouch-v1", config=config)
     try:
         env.reset()
         assert env.unwrapped.data.time == pytest.approx(0.0)  # type: ignore[attr-defined]
@@ -577,8 +577,8 @@ def test_reset_settle_zero_keeps_mujoco_time_at_reset():
 
 
 def test_reset_settle_frames_advance_mujoco_time_by_environment_frames():
-    config = ReachConfig(reset_settle_frames=2)
-    env = gym.make("MuJoCoReach-v1", config=config)
+    config = TouchConfig(reset_settle_frames=2)
+    env = gym.make("MuJoCoTouch-v1", config=config)
     try:
         env.reset()
         inner = env.unwrapped
@@ -661,51 +661,55 @@ def test_spawn_center_offsets_pick_and_place_cube_and_target():
     assert np.mean(cube_xs) > 0.10
 
 
-def test_reach_target_in_3d_workspace():
-    """Reach target occupies the 3-D cubic workspace.
+def test_touch_object_grounded_on_table():
+    """The touch target rests on the table (z ~ object half-size) within the spawn arc.
 
-    Mirrors the cross-backend contract: center = [0.15, 0.0, 0.15], per-axis offset in
-    [-half, +half] with half = target_workspace_half_extent, and z clamped to >= 0.05.
+    Unlike the old reach marker that floated in a 3-D cube, the touch target is a
+    real object grounded on the table, so its depth is unambiguous in the camera.
     """
-    env = gym.make("MuJoCoReach-v1")
-    half = env.unwrapped.config.target_workspace_half_extent  # type: ignore[attr-defined]
-    center = np.array([0.15, 0.0, 0.15])
-    zs: list[float] = []
+    env = gym.make("MuJoCoTouch-v1")
+    u = env.unwrapped
+    cx, cy = u.config.spawn_center
+    min_r, max_r = u.config.spawn_min_radius, u.config.spawn_max_radius
     try:
         for seed in range(20):
             env.reset(seed=seed)
-            target_pos = env.unwrapped._target_pos  # type: ignore[attr-defined]
-            assert center[0] - half - 1e-6 <= target_pos[0] <= center[0] + half + 1e-6
-            assert center[1] - half - 1e-6 <= target_pos[1] <= center[1] + half + 1e-6
-            assert target_pos[2] >= 0.05 - 1e-6, (
-                f"Target z={target_pos[2]} below floor (seed={seed})"
+            obj = u._get_target_pose()[:3]
+            cube_half = u._slots[u._target_slot_idx].obj.half_size
+            assert obj[2] == pytest.approx(cube_half, abs=5e-3), (
+                f"object not grounded on the table (seed={seed}, z={obj[2]})"
             )
-            zs.append(float(target_pos[2]))
+            r = float(np.hypot(obj[0] - cx, obj[1] - cy))
+            assert min_r - 1e-2 <= r <= max_r + 1e-2, (
+                f"object outside spawn arc (seed={seed}, r={r})"
+            )
     finally:
         env.close()
-    # With the default half-extent the target distribution must span above the floor,
-    # confirming we sample a 3-D cube and not a floor-only ring.
-    assert max(zs) > 0.05 + 1e-3
 
 
-def test_reach_target_workspace_half_extent_affects_sampling():
-    """Increasing target_workspace_half_extent widens the x/y sampling range."""
-    half_small, half_large = 0.05, 0.25
-    center_x = 0.15
+def test_touch_margin_affects_success():
+    """A larger touch_margin flips a borderline TCP-object distance to success.
 
-    def _x_spread(half: float) -> float:
-        cfg = ReachConfig(target_workspace_half_extent=half)
-        env = gym.make("MuJoCoReach-v1", config=cfg)
-        xs: list[float] = []
+    Guards that the public touch_margin knob changes runtime behavior.
+    """
+
+    def _success(margin: float) -> bool:
+        env = gym.make("MuJoCoTouch-v1", config=TouchConfig(touch_margin=margin)).unwrapped
         try:
-            for seed in range(30):
-                env.reset(seed=seed)
-                xs.append(float(env.unwrapped._target_pos[0]))  # type: ignore[attr-defined]
+            env.reset(seed=0)
+            slot = env._slots[env._target_slot_idx]
+            r = env._target_bounding_radius()
+            tcp = env._get_tcp_pose()[:3]
+            # Place the cube center a fixed distance (r + 0.04) from the TCP.
+            env.data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = tcp + np.array(
+                [r + 0.04, 0.0, 0.0]
+            )
+            return bool(env._get_info()["success"])
         finally:
             env.close()
-        return max(abs(x - center_x) for x in xs)
 
-    assert _x_spread(half_large) > _x_spread(half_small)
+    assert not _success(0.02)  # threshold r+0.02 < distance r+0.04 -> no touch
+    assert _success(0.06)  # threshold r+0.06 > distance r+0.04 -> touch
 
 
 def test_move_initial_distance_equals_target_distance():
@@ -742,6 +746,107 @@ def test_lookat_target_pose_is_dynamics_immune():
             env.step(action)
         pos_after = env.unwrapped._get_target_pos().copy()  # type: ignore[attr-defined]
         np.testing.assert_allclose(pos_after, pos_before, atol=1e-9)
+    finally:
+        env.close()
+
+
+def test_lookat_success_means_object_in_camera_fov():
+    """LookAt succeeds when the object is within the wrist camera's field of view."""
+
+    def _success(fov_deg, aligned: bool) -> bool:
+        import mujoco
+
+        env = gym.make("MuJoCoLookAt-v1", config=LookAtConfig(fov_deg=fov_deg)).unwrapped
+        try:
+            env.reset(seed=0)
+            axis = env._gaze_axis()
+            tcp = env._get_tcp_pose()[:3]
+            mid = env._look_target_mocap_id
+            # Place the target along the camera optical axis (in frame) or opposite
+            # (behind the camera, out of frame).
+            pos = tcp + axis * 0.10 if aligned else tcp - axis * 0.10
+            env.data.mocap_pos[mid] = pos
+            mujoco.mj_forward(env.model, env.data)
+            return bool(env._get_info()["success"])
+        finally:
+            env.close()
+
+    assert _success(48.5, aligned=True) is True  # on-axis -> within FOV
+    assert _success(48.5, aligned=False) is False  # behind camera -> out of FOV
+
+
+def test_lookat_fov_deg_is_a_live_knob():
+    """A borderline gaze angle flips with the FOV (success = angle <= fov_deg/2)."""
+
+    def _success(fov_deg: float) -> bool:
+        import mujoco
+
+        env = gym.make("MuJoCoLookAt-v1", config=LookAtConfig(fov_deg=fov_deg)).unwrapped
+        try:
+            env.reset(seed=0)
+            axis = env._gaze_axis()
+            tcp = env._get_tcp_pose()[:3]
+            perp = np.array([axis[1], -axis[0], 0.0])
+            perp = perp / (np.linalg.norm(perp) + 1e-9)
+            angle = float(np.deg2rad(18.0))
+            env.data.mocap_pos[env._look_target_mocap_id] = (
+                tcp + (np.cos(angle) * axis + np.sin(angle) * perp) * 0.10
+            )
+            mujoco.mj_forward(env.model, env.data)
+            return bool(env._get_info()["success"])
+        finally:
+            env.close()
+
+    assert not _success(10.0)  # half-FOV 5 deg < achieved 18 deg angle -> out of frame
+    assert _success(50.0)  # half-FOV 25 deg > achieved 18 deg angle -> in frame
+
+
+def test_lookat_success_threshold_defaults_to_live_camera_fov():
+    """With fov_deg=None the threshold reads the actual wrist camera FOV."""
+    env = gym.make("MuJoCoLookAt-v1").unwrapped
+    try:
+        env.reset(seed=0)
+        expected = float(np.radians(env.model.cam_fovy[env._wrist_cam_id].item()) / 2.0)
+        assert env._success_half_fov_rad() == pytest.approx(expected)
+    finally:
+        env.close()
+
+
+def test_move_success_is_directional_displacement():
+    """Move succeeds on forward travel along the move direction, ignoring sideways drift."""
+    env = gym.make("MuJoCoMove-v1", config=MoveConfig(direction="left", target_distance=0.10))
+    u = env.unwrapped  # type: ignore[attr-defined]
+    try:
+        env.reset(seed=0)
+        tcp = u._get_tcp_pose()[:3]
+        # Travel exactly target_distance left, plus a large sideways drift.
+        u._start_pos = tcp.copy()
+        u.data.site_xpos[u._tcp_site_id] = tcp + u._dir_vec * u.config.target_distance
+        assert bool(u._get_info()["success"]) is True
+        # Short of target_distance: no success.
+        u.data.site_xpos[u._tcp_site_id] = tcp + u._dir_vec * (
+            u.config.target_distance - u.config.success_threshold - 0.005
+        )
+        assert bool(u._get_info()["success"]) is False
+    finally:
+        env.close()
+
+
+def test_move_clamped_downward_target_can_succeed():
+    """A downward move whose target is clamped above the floor can still succeed.
+
+    Regression: success must compare against the clamped (reachable) target
+    displacement, not the raw configured target_distance.
+    """
+    env = gym.make("MuJoCoMove-v1", config=MoveConfig(direction="down", target_distance=1.0))
+    u = env.unwrapped  # type: ignore[attr-defined]
+    try:
+        env.reset(seed=0)
+        # The clamped target sits above the floor, so the reachable displacement
+        # is less than target_distance. Reaching the clamped target must succeed.
+        u.data.site_xpos[u._tcp_site_id] = u._target_pos.copy()
+        assert bool(u._get_info()["success"]) is True
+        assert u._target_displacement < u.config.target_distance  # confirm it was clamped
     finally:
         env.close()
 
@@ -788,7 +893,7 @@ def test_lookat_reward_uses_orientation_error_info(monkeypatch):
         def fail_if_recomputed(*args, **kwargs):
             raise AssertionError("reward recomputed orientation vectors")
 
-        monkeypatch.setattr(inner, "_get_tcp_forward", fail_if_recomputed)
+        monkeypatch.setattr(inner, "_gaze_axis", fail_if_recomputed)
         monkeypatch.setattr(inner, "_get_target_pos", fail_if_recomputed)
         monkeypatch.setattr(inner, "_get_tcp_pose", fail_if_recomputed)
 
@@ -796,31 +901,6 @@ def test_lookat_reward_uses_orientation_error_info(monkeypatch):
 
         expected = 1.0 - inner.config.reward.completion_bonus
         assert reward == pytest.approx(expected)
-    finally:
-        env.close()
-
-
-def test_lookat_tcp_forward_matches_gripper_direction():
-    """Regression guard: TCP forward must equal -Z of gripper's parent body.
-
-    The gripperframe site has a 180° Y rotation so its local Z points from
-    the wrist toward the fingertips. An earlier bug used a 90° Y rotation,
-    which made the look-at reward peak when the arm pointed away from the
-    target.
-    """
-    env = gym.make("MuJoCoLookAt-v1")
-    try:
-        inner = env.unwrapped
-        inner.reset()
-        tcp_forward = inner._get_tcp_forward()  # type: ignore[attr-defined]
-        body_id = inner.model.site_bodyid[inner._tcp_site_id]  # type: ignore[attr-defined]
-        body_z = inner.data.xmat[body_id].reshape(3, 3)[:, 2]  # type: ignore[attr-defined]
-        np.testing.assert_allclose(
-            tcp_forward,
-            -body_z,
-            atol=1e-6,
-            err_msg="TCP forward should equal -Z of parent body (gripper direction).",
-        )
     finally:
         env.close()
 
@@ -918,7 +998,7 @@ def test_visual_obs_mode(env_id, config_cls):
 
 @pytest.mark.parametrize(
     "env_id,config_cls",
-    [("MuJoCoReach-v1", ReachConfig), ("MuJoCoPickLift-v1", PickConfig)],
+    [("MuJoCoTouch-v1", TouchConfig), ("MuJoCoPickLift-v1", PickConfig)],
 )
 def test_visual_obs_mode_with_both_cameras(env_id, config_cls):
     cfg = config_cls(
@@ -942,8 +1022,8 @@ def test_visual_obs_mode_with_both_cameras(env_id, config_cls):
 
 def test_render_independent_of_overhead_obs():
     """Render should work even when OverheadCamera is also used as an obs component."""
-    cfg = ReachConfig(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
-    env = gym.make("MuJoCoReach-v1", config=cfg, render_mode="rgb_array")
+    cfg = TouchConfig(observations=[JointPositions(), OverheadCamera(width=64, height=48)])
+    env = gym.make("MuJoCoTouch-v1", config=cfg, render_mode="rgb_array")
     try:
         env.reset()
         frame = env.render()

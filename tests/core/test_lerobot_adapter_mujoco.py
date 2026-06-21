@@ -47,7 +47,7 @@ def test_sim_follower_connects_to_mujoco_reach(tmp_path: Path) -> None:
         SimSOFollowerConfig(
             id="sim_test",
             calibration_dir=tmp_path,
-            env_id="MuJoCoReach-v1",
+            env_id="MuJoCoTouch-v1",
             env_kwargs={"robot_init_qpos_noise": 0.0},
         )
     )
@@ -73,7 +73,7 @@ def test_mujoco_env_clipping_is_reflected_in_returned_action(tmp_path: Path) -> 
         SimSOFollowerConfig(
             id="sim_test",
             calibration_dir=tmp_path,
-            env_id="MuJoCoReach-v1",
+            env_id="MuJoCoTouch-v1",
             env_kwargs={"robot_init_qpos_noise": 0.0},
         )
     )

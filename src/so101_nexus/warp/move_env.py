@@ -18,9 +18,8 @@ from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
 
-# Contact-free scene (robot + floor), so reach's budgets apply: mujoco_warp
-# auto-sizing overflows once an active policy drives the arm into the floor and
-# joint limits. See WarpReachVectorEnv for the rationale.
+# Contact-free scene (robot + floor); mujoco_warp auto-sizing overflows once an
+# active policy drives the arm into the floor and joint limits, so size generously.
 _MOVE_NCONMAX = 128
 _MOVE_NJMAX = 256
 
@@ -76,6 +75,8 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
             njmax=_MOVE_NJMAX if njmax is None else njmax,
         )
         self._targets = torch.zeros((num_envs, 3), device=self.device)
+        self._start_pos = torch.zeros((num_envs, 3), device=self.device)
+        self._target_displacement = torch.zeros(num_envs, device=self.device)
         self._dir_vec = torch.as_tensor(
             DIRECTION_VECTORS[config.direction], dtype=torch.float32, device=self.device
         )
@@ -97,9 +98,14 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         if idx.numel() == 0:
             return
         tcp = self._tcp_pos()[idx]
+        self._start_pos[idx] = tcp
         target = tcp + self._dir_vec * self.config.target_distance
         target[:, 2] = torch.clamp(target[:, 2], min=_TARGET_MIN_Z)
         self._targets[idx] = target
+        # Compare success against the clamped (reachable) displacement along the
+        # move direction, not the raw configured distance: a downward move clamped
+        # above the floor cannot reach the full target_distance.
+        self._target_displacement[idx] = ((target - tcp) * self._dir_vec).sum(dim=1)
 
     def _task_reset(self, mask: torch.Tensor) -> None:
         # Target depends on the post-forward TCP; placed in _refresh_reset_reference_state.
@@ -116,7 +122,8 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         dist = torch.linalg.norm(self._targets - self._tcp_pos(), dim=1)
         # Tensor path of so101_nexus.rewards.reach_progress / simple_reward.
         progress = reach_progress(dist, scale=self.config.reward.tanh_shaping_scale)
-        success = dist < self.config.success_threshold
+        displacement = ((self._tcp_pos() - self._start_pos) * self._dir_vec).sum(dim=1)
+        success = displacement >= self._target_displacement - self.config.success_threshold
         base = simple_reward(
             progress=progress,
             completion_bonus=self.config.reward.completion_bonus,
@@ -125,5 +132,9 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         reward = self.config.reward.apply_penalties(
             base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
         )
-        info = {"tcp_to_target_dist": dist, "success": success}
+        info = {
+            "tcp_to_target_dist": dist,
+            "move_displacement": displacement,
+            "success": success,
+        }
         return reward.to(torch.float32), success, info

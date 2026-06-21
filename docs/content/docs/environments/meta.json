@@ -5,7 +5,7 @@
     "---MuJoCo---",
     "mujoco-pick-lift",
     "mujoco-pick-and-place",
-    "mujoco-reach",
+    "mujoco-touch",
     "mujoco-look-at",
     "mujoco-move"
   ]

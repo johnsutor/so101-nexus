@@ -78,7 +78,7 @@ def test_write_synthetic_calibration_is_loadable_by_lerobot_robot(tmp_path: Path
         SimSOFollowerConfig(
             id="synthetic_sim",
             calibration_dir=tmp_path,
-            env_id="MuJoCoReach-v1",
+            env_id="MuJoCoTouch-v1",
         )
     )
 

@@ -8,13 +8,13 @@ def test_make_vec_constructs_native_batched_env():
     import torch
 
     import so101_nexus.warp  # noqa: F401
-    from so101_nexus.config import ReachConfig
-    from so101_nexus.observations import JointPositions, TargetOffset
+    from so101_nexus.config import TouchConfig
+    from so101_nexus.observations import JointPositions, ObjectOffset
 
     envs = gym.make_vec(
-        "WarpReach-v1",
+        "WarpTouch-v1",
         num_envs=4,
-        config=ReachConfig(observations=[JointPositions(), TargetOffset()]),
+        config=TouchConfig(observations=[JointPositions(), ObjectOffset()]),
         device="cpu",
         vectorization_mode="vector_entry_point",
     )

@@ -89,6 +89,8 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
             self.model, mujoco.mjtObj.mjOBJ_SITE, "move_target"
         )
         self._target_pos: np.ndarray = np.zeros(3)
+        self._target_displacement: float = 0.0
+        self._start_pos: np.ndarray = np.zeros(3)
         self._dir_vec: np.ndarray = np.array(DIRECTION_VECTORS[config.direction], dtype=np.float64)
 
         self._finish_model_setup()
@@ -115,12 +117,14 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _place_target_from_tcp(self) -> None:
         """Place the move target target_distance from the current TCP along the move direction."""
         tcp_pos = self.data.site_xpos[self._tcp_site_id].copy()
+        self._start_pos = tcp_pos.copy()
         self._target_pos = tcp_pos + self._dir_vec * self.config.target_distance
         # Keep target above floor. For downward move directions this clamp can
-        # shorten the achievable distance, so the initial tcp_to_target_dist may be
-        # less than config.target_distance. The clamp is part of the cross-backend
-        # contract (consistent across backends).
+        # shorten the achievable distance along the move direction; success must
+        # compare against the clamped (reachable) displacement, not the raw
+        # configured distance, or a clamped target could never succeed.
         self._target_pos[2] = max(self._target_pos[2], 0.02)
+        self._target_displacement = float(np.dot(self._target_pos - self._start_pos, self._dir_vec))
         self.model.site_pos[self._move_target_site_id] = self._target_pos
 
     def _get_component_data(self, component: object) -> np.ndarray:
@@ -133,9 +137,14 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
         dist = float(np.linalg.norm(self._target_pos - tcp_pos))
+        # Directional progress: signed displacement along the move direction since
+        # reset. Success when the TCP travels at least target_distance that way,
+        # regardless of perpendicular drift (a legible "move <dir>" goal).
+        displacement = float(np.dot(tcp_pos - self._start_pos, self._dir_vec))
         info = {
             "tcp_to_target_dist": dist,
-            "success": dist < self.config.success_threshold,
+            "move_displacement": displacement,
+            "success": displacement >= self._target_displacement - self.config.success_threshold,
         }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state

@@ -113,6 +113,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         # The target is a mocap body (kinematic): its pose is driven via the
         # data.mocap_pos / mocap_quat arrays indexed by body_mocapid, not qpos.
         self._look_target_mocap_id = int(self.model.body_mocapid[self._target_body_id])
+        self._wrist_cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
 
         self._finish_model_setup()
 
@@ -139,11 +140,22 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         """Return the current world position of the look-at target body."""
         return self.data.xpos[self._target_body_id].copy()
 
-    def _get_tcp_forward(self) -> np.ndarray:
-        """Return the TCP z-axis (forward / gaze direction) in world frame."""
-        mat = self.data.site_xmat[self._tcp_site_id].reshape(3, 3)
-        # Third column of the rotation matrix = local z-axis in world frame.
-        return mat[:, 2].copy()
+    def _gaze_axis(self) -> np.ndarray:
+        """Return the wrist-camera optical axis in world frame (where it points)."""
+        # MuJoCo cameras look along their local -z axis; the optical axis is the
+        # negative third column of the camera rotation matrix. Using the real
+        # camera axis (not the gripperframe proxy) keeps success tied to what the
+        # camera actually sees, and tracks any mount/FOV change automatically.
+        mat = self.data.cam_xmat[self._wrist_cam_id].reshape(3, 3)
+        return -mat[:, 2].copy()
+
+    def _success_half_fov_rad(self) -> float:
+        """Half the wrist-camera vertical FOV (radians): the in-frame boundary."""
+        if self.config.fov_deg is not None:
+            fovy = self.config.fov_deg
+        else:
+            fovy = float(self.model.cam_fovy[self._wrist_cam_id].item())
+        return float(np.radians(fovy) / 2.0)
 
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus.observations import GazeDirection
@@ -159,21 +171,21 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         return super()._get_component_data(component)
 
     def _get_info(self) -> dict:
-        tcp_forward = self._get_tcp_forward()
+        gaze = self._gaze_axis()
         target_pos = self._get_target_pos()
         tcp_pos = self._get_tcp_pose()[:3]
         to_target = target_pos - tcp_pos
         norm = float(np.linalg.norm(to_target))
         if norm > 1e-8:
             to_target = to_target / norm
-        # Angular error in [0, pi]
-        cos_sim = float(np.dot(tcp_forward, to_target) / (np.linalg.norm(tcp_forward) + 1e-8))
+        # Angle between the wrist-camera optical axis and the direction to the
+        # object. Success when the object is within the camera's field of view.
+        cos_sim = float(np.dot(gaze, to_target) / (np.linalg.norm(gaze) + 1e-8))
         cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
         orientation_error = float(np.arccos(cos_sim))
-        threshold_rad: float = self.config._orientation_success_threshold_rad
         info = {
             "orientation_error": orientation_error,
-            "success": orientation_error < threshold_rad,
+            "success": orientation_error <= self._success_half_fov_rad(),
         }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state

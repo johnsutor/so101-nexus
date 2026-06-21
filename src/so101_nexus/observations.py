@@ -11,9 +11,9 @@ observation space.
 
 Typical usage::
 
-    from so101_nexus.observations import JointPositions, TargetOffset
+    from so101_nexus.observations import JointPositions, ObjectOffset
 
-    config = ReachConfig(observations=[JointPositions(), TargetOffset()])
+    config = TouchConfig(observations=[JointPositions(), ObjectOffset()])
 """
 
 from __future__ import annotations

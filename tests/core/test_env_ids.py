@@ -17,7 +17,7 @@ def _register_backend(monkeypatch):
     import gymnasium as gym
 
     fake_ids = [
-        "MuJoCoReach-v1",
+        "MuJoCoTouch-v1",
         "MuJoCoPickLift-v1",
         "CartPole-v1",  # unrelated; must be filtered out
     ]
@@ -31,14 +31,14 @@ def _register_backend(monkeypatch):
 
 def test_all_registered_lists_mujoco_prefix():
     ids = all_registered_env_ids()
-    assert "MuJoCoReach-v1" in ids
+    assert "MuJoCoTouch-v1" in ids
     assert "MuJoCoPickLift-v1" in ids
     assert "CartPole-v1" not in ids
 
 
 def test_env_ids_for_backend_mujoco():
     assert env_ids_for_backend("mujoco") == [
-        "MuJoCoReach-v1",
+        "MuJoCoTouch-v1",
         "MuJoCoPickLift-v1",
     ]
 
@@ -67,13 +67,13 @@ def test_registered_ids_scan_covers_all_backend_prefixes(monkeypatch):
     from so101_nexus import env_ids
 
     fake = {}
-    for env_id in ("MuJoCoReach-v1", "WarpReach-v1", "CartPole-v1"):
+    for env_id in ("MuJoCoTouch-v1", "WarpTouch-v1", "CartPole-v1"):
         fake[env_id] = object()
     monkeypatch.setattr(gym.envs, "registry", fake)
 
     ids = env_ids._registered_so101_env_ids()
-    assert "MuJoCoReach-v1" in ids
-    assert "WarpReach-v1" in ids
+    assert "MuJoCoTouch-v1" in ids
+    assert "WarpTouch-v1" in ids
     assert "CartPole-v1" not in ids
-    assert env_ids.env_ids_for_backend("warp") == ["WarpReach-v1"]
-    assert env_ids.env_ids_for_backend("mujoco") == ["MuJoCoReach-v1"]
+    assert env_ids.env_ids_for_backend("warp") == ["WarpTouch-v1"]
+    assert env_ids.env_ids_for_backend("mujoco") == ["MuJoCoTouch-v1"]

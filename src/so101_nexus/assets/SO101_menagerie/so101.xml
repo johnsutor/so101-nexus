@@ -4,9 +4,10 @@
     1. Wrist camera physical intrinsics (sensorsize/focal) removed and an explicit
        fovy added, so the simulator's fovy-based FOV randomization is honored
        (MuJoCo ignores fovy when physical intrinsics are present).
-    2. gripperframe site quat changed from "1 0 1 0" to "0 0 1 0" so its local z
-       points along the gripper "forward"/gaze direction (the library convention
-       used by the look-at task and TCP-orientation observations).
+   2. gripperframe site quat changed from "1 0 1 0" to "0 0 1 0" so its local z
+      points along the gripper "forward" direction (the library convention used
+      by TCP-orientation observations). The look-at task uses the wrist camera
+      optical axis instead. See PROVENANCE.md.
     See PROVENANCE.md.
   -->
   <option integrator="implicitfast" timestep="0.005" cone="elliptic" iterations="10" ls_iterations="20" impratio="10"/>
@@ -208,9 +209,10 @@
                 <geom name="fixed_jaw_box7" class="collision_gripper" type="box" size="0.001 0.01 0.008"
                   pos="-0.0143 0 -0.053"/>
                 <!-- Frame gripperframe: quat set to the library convention (local
-                     z = gripper "forward"/gaze, wrist->fingertips) so the look-at
-                     task and TCP-orientation observations match the prior model.
-                     Upstream used quat="1 0 1 0". See PROVENANCE.md. -->
+                     z = gripper "forward", wrist->fingertips) so TCP-orientation
+                     observations match the prior model. The look-at task uses the
+                     wrist camera optical axis, not this site. Upstream used
+                     quat="1 0 1 0". See PROVENANCE.md. -->
                 <site group="3" name="gripperframe" pos="0.012 -0.000218 -0.098127" quat="0 0 1 0"/>
                 <!-- Camera mount -->
                 <body name="camera_mount">

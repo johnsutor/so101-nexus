@@ -4,13 +4,13 @@ pytestmark = pytest.mark.warp
 
 
 def _make_env(num_envs=8, observations=None, seed=0):
-    from so101_nexus.config import ReachConfig
-    from so101_nexus.observations import JointPositions, TargetOffset
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.config import TouchConfig
+    from so101_nexus.observations import JointPositions, ObjectOffset
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    obs = observations if observations is not None else [JointPositions(), TargetOffset()]
-    config = ReachConfig(observations=obs)
-    return WarpReachVectorEnv(num_envs=num_envs, config=config, device="cpu", seed=seed)
+    obs = observations if observations is not None else [JointPositions(), ObjectOffset()]
+    config = TouchConfig(observations=obs)
+    return WarpTouchVectorEnv(num_envs=num_envs, config=config, device="cpu", seed=seed)
 
 
 def test_construction_spaces_and_obs_shape():
@@ -19,7 +19,7 @@ def test_construction_spaces_and_obs_shape():
     env = _make_env(num_envs=8)
     assert env.num_envs == 8
     assert env.single_action_space.shape == (6,)
-    assert env.single_observation_space.shape == (9,)  # JointPositions(6) + TargetOffset(3)
+    assert env.single_observation_space.shape == (9,)  # JointPositions(6) + ObjectOffset(3)
     obs, info = env.reset(seed=0)
     assert isinstance(obs, torch.Tensor)
     assert obs.shape == (8, 9)
@@ -27,7 +27,7 @@ def test_construction_spaces_and_obs_shape():
     assert torch.isfinite(obs).all()
 
 
-def test_default_reach_obs_is_six_dim():
+def test_joint_only_obs_is_six_dim():
     from so101_nexus.observations import JointPositions
 
     env = _make_env(num_envs=4, observations=[JointPositions()])
@@ -45,23 +45,23 @@ def test_reset_is_seeded_deterministic():
 
 
 def test_robot_init_qpos_noise_config_is_honored():
-    from so101_nexus.config import ReachConfig
+    from so101_nexus.config import TouchConfig
     from so101_nexus.observations import JointPositions
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    config = ReachConfig(observations=[JointPositions()], robot_init_qpos_noise=0.0)
-    env = WarpReachVectorEnv(num_envs=4, config=config, device="cpu", seed=0)
+    config = TouchConfig(observations=[JointPositions()], robot_init_qpos_noise=0.0)
+    env = WarpTouchVectorEnv(num_envs=4, config=config, device="cpu", seed=0)
     assert env.robot_init_qpos_noise == 0.0
 
 
 def test_camera_observation_rejected():
-    from so101_nexus.config import ReachConfig
+    from so101_nexus.config import TouchConfig
     from so101_nexus.observations import JointPositions, WristCamera
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    config = ReachConfig(observations=[JointPositions(), WristCamera()])
+    config = TouchConfig(observations=[JointPositions(), WristCamera()])
     with pytest.raises(NotImplementedError):
-        WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
+        WarpTouchVectorEnv(num_envs=2, config=config, device="cpu")
 
 
 def test_step_shapes_and_finiteness():
@@ -88,10 +88,10 @@ def test_reward_matches_scalar_core_per_world():
     env = _make_env(num_envs=16, seed=7)
     env.reset(seed=7)
     _, reward, _, _, info = env.step(torch.zeros((16, 6)))
-    dist = info["tcp_to_target_dist"].numpy()
+    dist = info["tcp_to_obj_dist"].numpy()
     cb = env.config.reward.completion_bonus
     scale = env.config.reward.tanh_shaping_scale
-    thr = env.config.success_threshold
+    thr = env._touch_threshold
     expected = np.array(
         [
             simple_reward(
@@ -131,11 +131,11 @@ def test_truncation_autoresets_world():
     for _ in range(2):
         _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
         assert not truncated.any()
-    targets_before = env._targets.clone()
+    cube_before = env._cube_pos().clone()
     _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
     assert truncated.all()
     assert (env._elapsed == 0).all()  # reset counters
-    assert not torch.allclose(env._targets, targets_before)  # resampled targets
+    assert not torch.allclose(env._cube_pos(), cube_before)  # respawned cube
 
 
 def test_autoreset_masks_prev_action_across_episode_boundary():
@@ -143,15 +143,15 @@ def test_autoreset_masks_prev_action_across_episode_boundary():
     import pytest
     import torch
 
-    from so101_nexus.config import ReachConfig, RewardConfig
-    from so101_nexus.observations import JointPositions, TargetOffset
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.config import RewardConfig, TouchConfig
+    from so101_nexus.observations import JointPositions, ObjectOffset
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    config = ReachConfig(
-        observations=[JointPositions(), TargetOffset()],
+    config = TouchConfig(
+        observations=[JointPositions(), ObjectOffset()],
         reward=RewardConfig(action_delta_penalty=1.0),
     )
-    env = WarpReachVectorEnv(num_envs=1, config=config, device="cpu", max_episode_steps=1, seed=0)
+    env = WarpTouchVectorEnv(num_envs=1, config=config, device="cpu", max_episode_steps=1, seed=0)
     env.reset(seed=0)
     env.step(torch.ones((1, 6)))  # truncated -> autoreset; next step starts a new episode
 
@@ -162,14 +162,14 @@ def test_autoreset_masks_prev_action_across_episode_boundary():
 
 
 def test_unsupported_obs_component_rejected_at_construction():
-    from so101_nexus.config import ReachConfig
+    from so101_nexus.config import TouchConfig
     from so101_nexus.observations import GazeDirection, JointPositions
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    # GazeDirection is a look-at task-specific component, unsupported by reach.
-    config = ReachConfig(observations=[JointPositions(), GazeDirection()])
+    # GazeDirection is a look-at task-specific component, unsupported by touch.
+    config = TouchConfig(observations=[JointPositions(), GazeDirection()])
     with pytest.raises(NotImplementedError, match="GazeDirection"):
-        WarpReachVectorEnv(num_envs=2, config=config, device="cpu")
+        WarpTouchVectorEnv(num_envs=2, config=config, device="cpu")
 
 
 def test_cpu_step_uses_direct_loop_not_graph_capture():
@@ -193,13 +193,13 @@ def test_cuda_graph_capture_matches_direct_stepping():
     """On CUDA the per-step substep loop is graph-captured; replay matches direct stepping."""
     import torch
 
-    from so101_nexus.config import ReachConfig
-    from so101_nexus.observations import JointPositions, TargetOffset
-    from so101_nexus.warp.reach_env import WarpReachVectorEnv
+    from so101_nexus.config import TouchConfig
+    from so101_nexus.observations import JointPositions, ObjectOffset
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
     def make():
-        cfg = ReachConfig(observations=[JointPositions(), TargetOffset()])
-        return WarpReachVectorEnv(num_envs=8, config=cfg, device="cuda", seed=0)
+        cfg = TouchConfig(observations=[JointPositions(), ObjectOffset()])
+        return WarpTouchVectorEnv(num_envs=8, config=cfg, device="cuda", seed=0)
 
     env_g = make()
     env_d = make()

@@ -244,7 +244,7 @@ def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -
         target=recording_thread,
         kwargs={
             "state": state,
-            "env_id": "MuJoCoReach-v1",
+            "env_id": "MuJoCoTouch-v1",
             "leader": leader,
             "joint_names": SO101_JOINT_NAMES,
             "fps": 30,
@@ -294,7 +294,7 @@ def test_recording_thread_records_error_on_leader_failure(tmp_path) -> None:
         target=recording_thread,
         kwargs={
             "state": state,
-            "env_id": "MuJoCoReach-v1",
+            "env_id": "MuJoCoTouch-v1",
             "leader": leader,
             "joint_names": SO101_JOINT_NAMES,
             "fps": 30,

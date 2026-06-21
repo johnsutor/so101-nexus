@@ -19,12 +19,12 @@ import so101_nexus.mujoco  # noqa: F401 - registers envs
 from so101_nexus.config import (
     LookAtConfig,
     MoveConfig,
-    ReachConfig,
     RewardConfig,
+    TouchConfig,
 )
 
 _PRIMITIVES = [
-    ("MuJoCoReach-v1", ReachConfig),
+    ("MuJoCoTouch-v1", TouchConfig),
     ("MuJoCoMove-v1", MoveConfig),
     ("MuJoCoLookAt-v1", LookAtConfig),
 ]

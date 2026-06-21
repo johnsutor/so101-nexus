@@ -1,4 +1,4 @@
-"""Train PPO on the GPU-batched WarpReach environment, entirely on-device.
+"""Train PPO on the GPU-batched WarpTouch environment, entirely on-device.
 
 Unlike ``examples/ppo.py`` (CPU MuJoCo + SyncVectorEnv with numpy round-trips),
 this consumes the native batched Warp env whose reset/step return torch tensors
@@ -57,12 +57,12 @@ def _make_envs(env_id, num_envs, device, seed):
     import gymnasium as gym
 
     import so101_nexus.warp  # noqa: F401
-    from so101_nexus.config import ReachConfig
-    from so101_nexus.observations import JointPositions, TargetOffset
+    from so101_nexus.config import TouchConfig
+    from so101_nexus.observations import JointPositions, ObjectOffset
 
-    # TargetOffset makes the target observable so the policy can learn (the env
-    # default is JointPositions only, matching MuJoCoReach).
-    config = ReachConfig(observations=[JointPositions(), TargetOffset()])
+    # ObjectOffset makes the target object observable so the policy can learn
+    # (the touch task is object-centric; add it explicitly for a compact obs).
+    config = TouchConfig(observations=[JointPositions(), ObjectOffset()])
     return gym.make_vec(
         env_id,
         num_envs=num_envs,
@@ -76,7 +76,7 @@ def _make_envs(env_id, num_envs, device, seed):
 # Cohesive single-file CleanRL-style PPO training loop; kept as one function.
 def train(  # noqa: PLR0915, PLR0912, C901
     *,
-    env_id="WarpReach-v1",
+    env_id="WarpTouch-v1",
     num_envs=4096,
     num_steps=16,
     total_timesteps=5_000_000,
@@ -221,7 +221,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
 
 @dataclass
 class Args:
-    env_id: str = "WarpReach-v1"
+    env_id: str = "WarpTouch-v1"
     num_envs: int = 4096
     num_steps: int = 16
     total_timesteps: int = 5_000_000

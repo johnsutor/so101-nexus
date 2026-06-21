@@ -326,29 +326,27 @@ When `observations` is not specified: `[EndEffectorPose(), GraspState(), TargetP
 
 ---
 
-## ReachConfig
+## TouchConfig
 
-Extends `EnvironmentConfig` with parameters for the reach-to-target primitive task.
+Extends `PickConfig` with the touch task. The touch target can be any cube, YCB object, or mesh from the object pool.
 
 ```python
-from so101_nexus import ReachConfig
+from so101_nexus import TouchConfig
 
-config = ReachConfig(target_radius=0.03, success_threshold=0.02)
+config = TouchConfig(touch_margin=0.03)
 ```
 
 ### Additional Parameters
 
+This is in addition to all `PickConfig` object-pool parameters (`objects`, `n_distractors`, `min_object_separation`) and the inherited `EnvironmentConfig` parameters.
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `target_radius` | `float` | `0.02` | Visual radius of the target site sphere (meters) |
-| `target_workspace_half_extent` | `float` | `0.15` | Half-width of the cubic workspace for target sampling (meters) |
-| `success_threshold` | `float` | `0.02` | TCP-to-target distance (m) that counts as success |
-
-Defaults `max_episode_steps` to 512.
+| `touch_margin` | `float` | `0.03` | Clearance added to the target object bounding radius; success fires when the TCP is within bounding_radius + touch_margin of the object center |
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions()]` (6 dimensions).
+When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (18 dimensions).
 
 ---
 
@@ -361,7 +359,7 @@ from so101_nexus import LookAtConfig, CubeObject
 
 config = LookAtConfig(
     objects=CubeObject(color="blue"),
-    orientation_success_threshold_deg=5.0,
+    fov_deg=60.0,
 )
 ```
 
@@ -370,7 +368,7 @@ config = LookAtConfig(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Target object(s). Only `CubeObject` is supported. Defaults to `[CubeObject()]`. |
-| `orientation_success_threshold_deg` | `float` | `5.73` | Max angular error in degrees for success |
+| `fov_deg` | `float \| None` | `None` | Wrist-camera vertical FOV in degrees; success = target within `fov_deg / 2` of the optical axis. `None` reads the live camera FOV. |
 
 Defaults `max_episode_steps` to 256.
 

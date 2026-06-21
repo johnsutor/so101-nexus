@@ -28,11 +28,11 @@ jobs:
         include:
           - backend: mujoco
             package: so101-nexus
-            env_id: MuJoCoReach-v1
+            env_id: MuJoCoTouch-v1
             apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
           - backend: warp
             package: "so101-nexus[warp]"
-            env_id: WarpReach-v1
+            env_id: WarpTouch-v1
             apt_packages: "xvfb libgl1 libglx-mesa0 libegl1-mesa-dev libosmesa6-dev"
 
     steps:

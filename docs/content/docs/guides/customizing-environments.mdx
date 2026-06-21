@@ -12,10 +12,10 @@ Shorter episodes speed up training on simple tasks. Longer episodes give the age
 ```python
 import gymnasium as gym
 import so101_nexus.mujoco
-from so101_nexus import ReachConfig
+from so101_nexus import TouchConfig
 
-config = ReachConfig(max_episode_steps=256)
-env = gym.make("MuJoCoReach-v1", config=config)
+config = TouchConfig(max_episode_steps=256)
+env = gym.make("MuJoCoTouch-v1", config=config)
 ```
 
 ## Add Camera Observations
@@ -170,4 +170,4 @@ env = gym.make("MuJoCoPickAndPlace-v1", config=config, render_mode="human")
 
 ## All Parameters
 
-See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `ReachConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and `RobotConfig`.
+See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `TouchConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and `RobotConfig`.

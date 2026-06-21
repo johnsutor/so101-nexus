@@ -24,7 +24,7 @@ Orient the robot's end-effector so that it points at a target object.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `objects` | `list` | -- | List of objects to look at (supports `CubeObject`) |
-| `orientation_success_threshold_deg` | `float` | 5.73 | Maximum angular error in degrees for success |
+| `fov_deg` | `float \| None` | `None` | Vertical field of view (degrees) of the wrist camera. Succeeds when the target lies within the camera's field of view (angle between the wrist-camera optical axis and the direction to the object is at most `fov_deg / 2`). When `None`, the FOV is read from the actual wrist camera at runtime, so the success band adapts to any camera configuration or a wider FOV. |
 
 ## Observation Space
 
@@ -40,7 +40,7 @@ The environment uses `CubeObject` instances as gaze targets.
 
 ## Success Condition
 
-The episode succeeds when the angular error between the TCP's gaze direction and the direction to the target is less than `orientation_success_threshold_deg` (default 5.73 degrees).
+Succeeds when the target is within the wrist camera's field of view: the angle between the wrist-camera optical axis and the direction to the object is at most half the camera FOV (`fov_deg / 2`, or the live `cam_fovy / 2` when `fov_deg` is `None`). The dense reward shapes toward dead-center (1.0 when perfectly aligned), rewarding the object being centered in the frame.
 
 ## Example
 

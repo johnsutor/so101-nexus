@@ -35,7 +35,7 @@ def test_sim_follower_defaults_to_degree_body_joints(tmp_path) -> None:
     config = SimSOFollowerConfig(
         id="sim_default_units",
         calibration_dir=tmp_path,
-        env_id="MuJoCoReach-v1",
+        env_id="MuJoCoTouch-v1",
     )
 
     assert config.use_degrees is True

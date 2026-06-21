@@ -1,0 +1,81 @@
+---
+title: MuJoCoTouch-v1
+description: Bring the gripper to an object resting on the table using the MuJoCo backend.
+---
+
+# MuJoCoTouch-v1
+
+Bring the gripper to an object resting on the table (touch it).
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoTouch-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 512 |
+| Config class | `TouchConfig` (extends `PickConfig`) |
+| Task description | "Touch the \{object repr\}." |
+
+## Configuration
+
+`TouchConfig` extends `PickConfig`, so it reuses the object-pool fields and adds a touch clearance:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Object pool for the touch target (`CubeObject`, `YCBObject`, or `MeshObject`); a single object is auto-wrapped and `None` defaults to `[CubeObject()]` |
+| `n_distractors` | `int` | `0` | Number of distractor objects to spawn alongside the target |
+| `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+| `touch_margin` | `float` | `0.03` | Clearance added to the target object bounding radius; success fires when the TCP is within bounding_radius + touch_margin of the object center |
+
+## Observation Space
+
+Default observation is the pick state vector (configurable via the `observations` parameter on `TouchConfig`):
+
+| Component | Class | Dimensions | Description |
+|-----------|-------|------------|-------------|
+| End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
+| Grasp state | `GraspState` | 1 | Whether the gripper is grasping |
+| Object pose | `ObjectPose` | 7 | Target object position and orientation |
+| Object offset | `ObjectOffset` | 3 | TCP-to-object position offset |
+
+## Objects
+
+Any `CubeObject`, `YCBObject` (e.g. a spoon), or `MeshObject` can be the touch target, optionally among distractors.
+
+## Success Condition
+
+Succeeds when the TCP reaches within the target object bounding radius plus `touch_margin`.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco
+
+from so101_nexus import TouchConfig
+
+env = gym.make(
+    "MuJoCoTouch-v1",
+    render_mode="human",
+    config=TouchConfig(),
+)
+
+obs, info = env.reset()
+for _ in range(512):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+To touch a specific YCB object, such as a spoon, pass it through the object pool:
+
+```python
+from so101_nexus import TouchConfig, YCBObject
+
+config = TouchConfig(objects=[YCBObject("031_spoon")])
+env = gym.make("MuJoCoTouch-v1", config=config)
+```

@@ -79,7 +79,7 @@ Warp environments are natively batched vector environments. Create them with `gy
 import gymnasium as gym
 import so101_nexus.warp
 
-envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+envs = gym.make_vec("WarpTouch-v1", num_envs=4096, device="cuda")
 obs, info = envs.reset(seed=0)
 ```
 

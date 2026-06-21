@@ -13,10 +13,10 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import tempfile
 
 import gymnasium as gym
+import mujoco
 import numpy as np
 import pytest
 
-import mujoco
 import so101_nexus.mujoco  # noqa: F401 - registers envs
 from so101_nexus import (
     get_so101_mujoco_model_dir,
@@ -27,7 +27,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
-    ReachConfig,
+    TouchConfig,
 )
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.observations import JointPositions, WristCamera
@@ -43,7 +43,7 @@ _JOINTS = (
 )
 
 _ENVS = [
-    ("MuJoCoReach-v1", ReachConfig),
+    ("MuJoCoTouch-v1", TouchConfig),
     ("MuJoCoMove-v1", MoveConfig),
     ("MuJoCoLookAt-v1", LookAtConfig),
     ("MuJoCoPickLift-v1", PickConfig),
@@ -97,7 +97,7 @@ def test_env_builds_and_binds_menagerie(env_id, cfg_cls):
 
 
 def test_control_step_invariant():
-    env = gym.make("MuJoCoReach-v1", config=ReachConfig()).unwrapped
+    env = gym.make("MuJoCoTouch-v1", config=TouchConfig()).unwrapped
     try:
         # Wrapper option (after include) wins: timestep is the menagerie 0.005.
         assert abs(env.model.opt.timestep - 0.005) < 1e-9
@@ -151,7 +151,7 @@ def test_grasp_geom_sets_select_condim6_fingers():
 
 
 def test_rest_tcp_pose_matches_menagerie():
-    env = gym.make("MuJoCoReach-v1", config=ReachConfig(), robot_init_qpos_noise=0.0).unwrapped
+    env = gym.make("MuJoCoTouch-v1", config=TouchConfig(), robot_init_qpos_noise=0.0).unwrapped
     try:
         env.reset(seed=0, options={"init_qpos": np.zeros(6)})
         tcp = env._get_tcp_pose()
@@ -176,7 +176,7 @@ def test_wrist_camera_pose_tracks_component():
     """
 
     def cam_pose(pos_y_center: float, pitch_deg: float):
-        cfg = ReachConfig(
+        cfg = TouchConfig(
             observations=[
                 JointPositions(),
                 WristCamera(
@@ -191,7 +191,7 @@ def test_wrist_camera_pose_tracks_component():
                 ),
             ]
         )
-        env = gym.make("MuJoCoReach-v1", config=cfg, robot_init_qpos_noise=0.0).unwrapped
+        env = gym.make("MuJoCoTouch-v1", config=cfg, robot_init_qpos_noise=0.0).unwrapped
         try:
             env.reset(seed=0, options={"init_qpos": np.zeros(6)})
             cid = env._wrist_cam_id
@@ -207,13 +207,13 @@ def test_wrist_camera_pose_tracks_component():
 
 
 def test_wrist_fov_randomization_changes_projection():
-    cfg = ReachConfig(
+    cfg = TouchConfig(
         observations=[
             JointPositions(),
             WristCamera(width=64, height=64, fov_deg_range=(40.0, 90.0)),
         ]
     )
-    env = gym.make("MuJoCoReach-v1", config=cfg).unwrapped
+    env = gym.make("MuJoCoTouch-v1", config=cfg).unwrapped
     try:
         env.reset(seed=1)
         fov_a = float(env.model.cam_fovy[env._wrist_cam_id])

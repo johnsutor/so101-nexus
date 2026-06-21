@@ -125,7 +125,7 @@ def test_check_robot_env_mismatch_so100_with_so101_env():
 
 
 def test_check_robot_env_mismatch_matching_pair():
-    assert check_robot_env_mismatch("MuJoCoReach-v1", "so101") is None
+    assert check_robot_env_mismatch("MuJoCoTouch-v1", "so101") is None
 
 
 def test_check_robot_env_mismatch_so101_with_so100_env():
@@ -134,7 +134,7 @@ def test_check_robot_env_mismatch_so101_with_so100_env():
 
 def test_import_backend_for_env_id_mujoco():
     pytest.importorskip("so101_nexus.mujoco")
-    import_backend_for_env_id("MuJoCoReach-v1")
+    import_backend_for_env_id("MuJoCoTouch-v1")
     assert "so101_nexus.mujoco" in sys.modules
 
 

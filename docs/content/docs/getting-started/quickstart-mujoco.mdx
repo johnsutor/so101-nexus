@@ -28,8 +28,8 @@ Import `so101_nexus.mujoco` before calling `gym.make()` -- the import registers 
 Every MuJoCo environment follows the same Gymnasium API. Swap the environment ID to try a different task:
 
 ```python
-# Reach a target position
-env = gym.make("MuJoCoReach-v1", render_mode="human")
+# Touch an object on the table
+env = gym.make("MuJoCoTouch-v1", render_mode="human")
 
 # Orient the end-effector toward a target
 env = gym.make("MuJoCoLookAt-v1", render_mode="human")
