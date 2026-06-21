@@ -53,7 +53,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         target=recording_thread,
         kwargs={
             "state": state,
-            "env_id": "MuJoCoReach-v1",
+            "env_id": "MuJoCoTouch-v1",
             "leader": leader,
             "joint_names": SO101_JOINT_NAMES,
             "fps": 30,

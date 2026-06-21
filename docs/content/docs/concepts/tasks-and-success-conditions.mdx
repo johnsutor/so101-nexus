@@ -11,9 +11,9 @@ SO101-Nexus ships five task types that cover fundamental manipulation primitives
 | --- | --- | --- |
 | PickLift | Grasp an object and lift it above a height threshold | 1024 |
 | PickAndPlace | Pick up a cube and place it at a target location | 1024 |
-| Reach | Move the TCP to a target position | 512 |
+| Touch | Bring the gripper to an object resting on the table | 512 |
 | LookAt | Orient the end-effector to gaze at a target object | 256 |
-| Move | Move the TCP to a target position with tighter tolerance | 256 |
+| Move | Move the TCP a set distance in a cardinal direction | 256 |
 
 ## Success Conditions
 
@@ -23,11 +23,11 @@ Each task defines a binary success signal returned in the `info` dict.
 
 **PickAndPlace** succeeds when the cube's XY distance to the goal is below `goal_thresh`, the cube is on the ground, and the robot is static.
 
-**Reach** succeeds when the TCP-to-target distance is below `success_threshold` (default: 0.02 m).
+**Touch** succeeds when the TCP reaches within the target object's bounding radius plus `touch_margin` (default: 0.03 m), so it fires when the gripper reaches objects of any size.
 
-**LookAt** succeeds when the gaze orientation error is below threshold (default: 5.73 degrees).
+**LookAt** succeeds when the target is within the wrist camera's field of view: the angle between the wrist-camera optical axis and the direction to the object is at most half the camera FOV (`fov_deg / 2`, or the live `cam_fovy / 2` when `fov_deg` is `None`). The dense reward shapes toward dead-center, rewarding a centered view.
 
-**Move** succeeds when the TCP-to-target distance is below `success_threshold` (default: 0.01 m) -- tighter than Reach.
+**Move** succeeds when the TCP has traveled at least `target_distance` along the move direction (within `success_threshold`, default: 0.01 m), regardless of perpendicular drift.
 
 ## Reward Structure
 

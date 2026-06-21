@@ -26,7 +26,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
-    ReachConfig,
+    TouchConfig,
 )
 
 # Repo root: this file lives at <root>/tests/core/test_source_guardrails.py
@@ -177,7 +177,7 @@ def test_no_em_en_dashes_or_emoji_in_source_and_tests():
 
 _CONFIG_CLASSES = [
     EnvironmentConfig,
-    ReachConfig,
+    TouchConfig,
     LookAtConfig,
     MoveConfig,
     PickConfig,

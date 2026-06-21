@@ -50,7 +50,7 @@ MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[war
 
 - **Teleoperation recorder**: drive a simulated follower with a physical SO-100 or SO-101 leader arm.
 - **LeRobot dataset output**: save demonstrations with SO follower state/action units and wrist/overhead camera fields.
-- **Gymnasium environments**: run SO-101 MuJoCo tasks for reach, look-at, move, pick-lift, and pick-and-place.
+- **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, and pick-and-place.
 - **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
 - **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
 - **GPU-parallel Warp backend** (optional): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
@@ -112,7 +112,7 @@ pip install "so101-nexus[warp]"
 import gymnasium as gym
 import so101_nexus.warp  # noqa: F401
 
-envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+envs = gym.make_vec("WarpTouch-v1", num_envs=4096, device="cuda")
 obs, info = envs.reset(seed=0)
 obs, reward, terminated, truncated, info = envs.step(envs.action_space.sample())
 envs.close()
@@ -125,7 +125,7 @@ SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. Se
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm
-- [x] SO-101 tasks: Reach, LookAt, Move, PickLift, PickAndPlace
+- [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickAndPlace
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
 - [x] MuJoCo Warp backend for GPU-parallel throughput
 - [ ] Stronger training baselines and exemplars for every environment

@@ -27,7 +27,7 @@ for env_id in all_registered_env_ids():
 |---------------|------|
 | `MuJoCoPickLift-v1` | Pick up and lift an object |
 | `MuJoCoPickAndPlace-v1` | Pick up and place an object at a target |
-| `MuJoCoReach-v1` | Reach a target position |
+| `MuJoCoTouch-v1` | Touch an object on the table |
 | `MuJoCoLookAt-v1` | Orient the end-effector toward a target |
 | `MuJoCoMove-v1` | Move the TCP in a cardinal direction |
 
@@ -39,7 +39,7 @@ The Warp backend registers five batched vector environments. Import `so101_nexus
 |---------------|------|
 | `WarpPickLift-v1` | Pick up and lift an object |
 | `WarpPickAndPlace-v1` | Pick up and place an object at a target |
-| `WarpReach-v1` | Reach a target position |
+| `WarpTouch-v1` | Touch an object on the table |
 | `WarpLookAt-v1` | Orient the end-effector toward a target |
 | `WarpMove-v1` | Move the TCP in a cardinal direction |
 
@@ -47,5 +47,5 @@ The Warp backend registers five batched vector environments. Import `so101_nexus
 import gymnasium as gym
 import so101_nexus.warp  # noqa: F401
 
-envs = gym.make_vec("WarpReach-v1", num_envs=4096, device="cuda")
+envs = gym.make_vec("WarpTouch-v1", num_envs=4096, device="cuda")
 ```

@@ -177,7 +177,7 @@ def test_run_init_worker_creates_canonical_lerobot_features(monkeypatch) -> None
         session,
         init_state,
         "/dev/ttyACM0",
-        "MuJoCoReach-v1",
+        "MuJoCoTouch-v1",
         "so101",
         "leader",
         30,
@@ -223,7 +223,7 @@ def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fa
     state = RecordingState(num_episodes=1)
     session = {
         "state": state,
-        "env_id": "MuJoCoReach-v1",
+        "env_id": "MuJoCoTouch-v1",
         "leader": object(),
         "joint_names": ("a", "b"),
         "fps": 30,
@@ -297,7 +297,7 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
         lambda _env_id: teleop_app.CustomizationUIState(),
     )
 
-    _build_setup_screen(fake_gr, ["MuJoCoReach-v1"], "leader", -90.0)
+    _build_setup_screen(fake_gr, ["MuJoCoTouch-v1"], "leader", -90.0)
 
     action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
     assert action_space_radio.value == "joint_pos"
@@ -318,7 +318,7 @@ def test_update_customization_for_env_updates_success_hold_seconds(
         lambda _env_id: teleop_app.CustomizationUIState(success_hold_seconds=1.2),
     )
 
-    outputs = teleop_app._cb_update_customization_for_env("MuJoCoReach-v1")
+    outputs = teleop_app._cb_update_customization_for_env("MuJoCoTouch-v1")
 
     assert len(outputs) == 15
     assert outputs[11]["value"] == 1.2

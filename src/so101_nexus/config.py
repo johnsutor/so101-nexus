@@ -591,6 +591,11 @@ def describe_pick_target(target: object) -> str:
     return f"Pick up the {target!r}."
 
 
+def describe_touch_target(target: object) -> str:
+    """Return the canonical task description for a touch target."""
+    return f"Touch the {target!r}."
+
+
 class PickConfig(EnvironmentConfig):
     """Config for the unified pick environment.
 
@@ -754,34 +759,37 @@ class PickAndPlaceConfig(EnvironmentConfig):
         return self.describe(cube_name, target_name)
 
 
-class ReachConfig(EnvironmentConfig):
-    """Config for the reach-to-target primitive task.
+class TouchConfig(PickConfig):
+    """Config for the touch-an-object primitive task.
+
+    Reuses PickConfig's object pool (``objects``, ``n_distractors``,
+    ``min_object_separation``), so the touch target can be any cube, YCB object
+    (for example a spoon), or mesh, optionally among distractors, and the teleop
+    UI exposes the same object customization. The inherited ``lift_threshold`` and
+    ``max_goal_height`` are unused by the touch task.
 
     Parameters
     ----------
-    target_radius : float
-        Visual radius of the target site sphere (metres).
-    target_workspace_half_extent : float
-        Half-width of the cubic workspace to sample target positions from (metres).
-    success_threshold : float
-        TCP-to-target distance (m) that counts as success.
+    touch_margin : float
+        Clearance (m) added to the target object's bounding radius; the task
+        succeeds when the TCP is within ``bounding_radius + touch_margin`` of the
+        object centre, so success coincides with the gripper reaching objects of
+        any size.
     **kwargs
-        Forwarded to EnvironmentConfig.
+        Forwarded to PickConfig.
     """
 
-    def __init__(
-        self,
-        target_radius: float = 0.02,
-        target_workspace_half_extent: float = 0.15,
-        success_threshold: float = 0.02,
-        **kwargs,
-    ) -> None:
+    def __init__(self, touch_margin: float = 0.03, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.target_radius = target_radius
-        self.target_workspace_half_extent = target_workspace_half_extent
-        self.success_threshold = success_threshold
-        if self.observations is None:
-            self.observations = [JointPositions()]
+        self.touch_margin = touch_margin
+        if self.touch_margin < 0:
+            raise ValueError(f"touch_margin must be >= 0, got {self.touch_margin}")
+
+    def __repr__(self) -> str:  # noqa: D105
+        return (
+            f"TouchConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
+            f"touch_margin={self.touch_margin})"
+        )
 
 
 class LookAtConfig(EnvironmentConfig):
@@ -793,8 +801,15 @@ class LookAtConfig(EnvironmentConfig):
         Object(s) to sample as the look-at target. Accepts a single
         SceneObject, a list, or None (defaults to [CubeObject()]).
         Only CubeObject targets are currently supported.
-    orientation_success_threshold_deg : float
-        Max angular error in degrees for success.
+    fov_deg : float or None
+        Vertical field of view (degrees) of the wrist camera used for the gaze
+        axis. The task succeeds when the target lies within the camera's field
+        of view, i.e. the angle between the wrist-camera optical axis and the
+        direction to the object is at most ``fov_deg / 2``. When ``None``
+        (default), the FOV is read from the actual wrist camera at runtime
+        (``model.cam_fovy``), so the success band auto-adapts to any camera
+        configuration, a wider FOV, or per-episode FOV randomization. Pin it
+        only to override the live camera value.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -802,12 +817,14 @@ class LookAtConfig(EnvironmentConfig):
     def __init__(
         self,
         objects: list[SceneObject] | SceneObject | None = None,
-        orientation_success_threshold_deg: float = 5.73,
+        fov_deg: float | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.objects = _normalize_objects(objects, CubeObject())
-        self.orientation_success_threshold_deg = orientation_success_threshold_deg
+        self.fov_deg = fov_deg
+        if self.fov_deg is not None and self.fov_deg <= 0:
+            raise ValueError(f"fov_deg must be > 0 or None, got {self.fov_deg}")
         if self.observations is None:
             self.observations = [JointPositions()]
         for obj in self.objects:
@@ -815,11 +832,6 @@ class LookAtConfig(EnvironmentConfig):
                 raise TypeError(
                     f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
                 )
-
-    @property
-    def _orientation_success_threshold_rad(self) -> float:
-        """Orientation success threshold converted to radians (internal use only)."""
-        return float(np.radians(self.orientation_success_threshold_deg))
 
     @property
     def task_description(self) -> str:
@@ -837,7 +849,8 @@ class MoveConfig(EnvironmentConfig):
     target_distance : float
         Distance in metres to travel from the initial TCP position.
     success_threshold : float
-        Max residual distance (m) to count as success.
+        Projection shortfall tolerance (m): success when displacement along the
+        move direction is at least ``target_distance - success_threshold``.
     **kwargs
         Forwarded to EnvironmentConfig.
     """

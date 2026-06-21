@@ -8,7 +8,7 @@ from so101_nexus.mujoco.look_at_env import LookAtConfig, LookAtEnv
 from so101_nexus.mujoco.move_env import MoveConfig, MoveEnv
 from so101_nexus.mujoco.pick_and_place import PickAndPlaceEnv
 from so101_nexus.mujoco.pick_env import PickLiftEnv
-from so101_nexus.mujoco.reach_env import ReachConfig, ReachEnv
+from so101_nexus.mujoco.touch_env import TouchConfig, TouchEnv
 from so101_nexus.observations import (
     EndEffectorPose,
     GraspState,
@@ -31,11 +31,11 @@ _PICK_AND_PLACE_STATE_OBS = [
     ObjectOffset,
     TargetOffset,
 ]
-_REACH_STATE_OBS = [JointPositions, EndEffectorPose, TargetOffset]
+_TOUCH_STATE_OBS = [JointPositions, EndEffectorPose, ObjectOffset]
 
 _PICK_STATE_SIZE = 24
 _PICK_AND_PLACE_STATE_SIZE = 30
-_REACH_STATE_SIZE = 16
+_TOUCH_STATE_SIZE = 16
 
 
 class TestObsModeConfig:
@@ -126,30 +126,30 @@ class TestObsModeVisualPickAndPlace:
         env.close()
 
 
-class TestObsModeVisualReachEnv:
-    def _reach_obs_with_camera(self):
-        return [cls() for cls in _REACH_STATE_OBS] + [WristCamera(width=64, height=48)]
+class TestObsModeVisualTouchEnv:
+    def _touch_obs_with_camera(self):
+        return [cls() for cls in _TOUCH_STATE_OBS] + [WristCamera(width=64, height=48)]
 
     def test_visual_obs_state_is_6d(self):
-        cfg = ReachConfig(
+        cfg = TouchConfig(
             obs_mode="visual",
-            observations=self._reach_obs_with_camera(),
+            observations=self._touch_obs_with_camera(),
         )
-        env = ReachEnv(config=cfg)
+        env = TouchEnv(config=cfg)
         obs, info = env.reset()
         assert isinstance(obs, dict)
         assert obs["state"].shape == (6,)
         env.close()
 
     def test_visual_obs_privileged_state_in_info(self):
-        cfg = ReachConfig(
+        cfg = TouchConfig(
             obs_mode="visual",
-            observations=self._reach_obs_with_camera(),
+            observations=self._touch_obs_with_camera(),
         )
-        env = ReachEnv(config=cfg)
+        env = TouchEnv(config=cfg)
         obs, info = env.reset()
         assert "privileged_state" in info
-        assert info["privileged_state"].shape == (_REACH_STATE_SIZE,)
+        assert info["privileged_state"].shape == (_TOUCH_STATE_SIZE,)
         env.close()
 
 

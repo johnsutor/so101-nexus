@@ -22,8 +22,8 @@ gymnasium.register(
 )
 
 gymnasium.register(
-    id="MuJoCoReach-v1",
-    entry_point="so101_nexus.mujoco.reach_env:ReachEnv",
+    id="MuJoCoTouch-v1",
+    entry_point="so101_nexus.mujoco.touch_env:TouchEnv",
     max_episode_steps=512,
 )
 

@@ -19,8 +19,9 @@ Studio, developed by I2RT Robotics.
   intrinsics: `2 * atan(0.00324 / (2 * 0.0036)) ~= 48.5`.
 - `so101.xml`: changed the `gripperframe` site quaternion from `1 0 1 0` to
   `0 0 1 0` (upstream used `1 0 1 0`). The library's convention is that the TCP
-  site's local z axis is the gripper "forward"/gaze direction (wrist toward
-  fingertips); the look-at task and TCP-orientation observations depend on it.
+  site's local z axis is the gripper "forward" direction (wrist toward
+  fingertips); TCP-orientation observations depend on it. (The look-at task
+  uses the wrist camera optical axis, not this site.)
   The site position is unchanged from upstream.
 
 The vendored `scene.xml` / `scene_box.xml` are kept for provenance only; the

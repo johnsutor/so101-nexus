@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from so101_nexus.config import PickConfig, ReachConfig
+from so101_nexus.config import PickConfig, TouchConfig
 from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.observations import OverheadCamera, WristCamera
 from so101_nexus.teleop.config_customization import TeleopConfigOverrides
@@ -88,13 +88,13 @@ def test_validate_hub_repo_id_local_default_passes() -> None:
 
 
 class _ExplicitConfigEnv:
-    default_config_cls = ReachConfig
+    default_config_cls = TouchConfig
 
 
 def test_resolve_env_config_uses_default_config_cls() -> None:
     result = _resolve_env_config(_ExplicitConfigEnv)
 
-    assert isinstance(result, ReachConfig)
+    assert isinstance(result, TouchConfig)
 
 
 class _NoDefaultConfigEnv:
@@ -363,7 +363,7 @@ def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
     )
 
     config = build_sim_follower_config(
-        env_id="MuJoCoReach-v1",
+        env_id="MuJoCoTouch-v1",
         robot_id="teleop_sim",
         wrist_wh=(320, 240),
         overhead_wh=(640, 360),
@@ -373,7 +373,7 @@ def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
     )
 
     assert isinstance(config, SimSOFollowerConfig)
-    assert config.env_id == "MuJoCoReach-v1"
+    assert config.env_id == "MuJoCoTouch-v1"
     assert config.env_kwargs == {"custom": "kept"}
     assert config.use_degrees is True
     assert config.id == "teleop_sim"

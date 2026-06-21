@@ -100,7 +100,7 @@ done
 `examples/ppo_warp.py` trains on the batched `Warp*-v1` vector environments. Install the `warp` extra:
 
 ```bash
-uv run --extra warp python examples/ppo_warp.py --env-id WarpReach-v1 --num-envs 4096 --device cuda
+uv run --extra warp python examples/ppo_warp.py --env-id WarpTouch-v1 --num-envs 4096 --device cuda
 ```
 
 ### Results template

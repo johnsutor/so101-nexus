@@ -317,6 +317,14 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         addr = slot.qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
+    def _describe_target(self, target_obj: SceneObject) -> str:
+        """Return the task description for the chosen target (overridable per task)."""
+        return describe_pick_target(target_obj)
+
+    def _target_bounding_radius(self) -> float:
+        """Return the horizontal bounding radius of the current target object."""
+        return self._slots[self._target_slot_idx].bounding_radius
+
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus.observations import ObjectOffset as _ObjectOffset
         from so101_nexus.observations import ObjectPose as _ObjectPose
@@ -436,7 +444,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.data.qpos[addr : addr + 3] = [0.0, 0.0, -10.0]
             self.data.qpos[addr + 3 : addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
-        self._task_description = describe_pick_target(target_obj)
+        self._task_description = self._describe_target(target_obj)
 
 
 class PickLiftEnv(PickEnv):

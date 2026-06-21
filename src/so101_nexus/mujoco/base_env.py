@@ -48,8 +48,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     Notes
     -----
     ``_is_grasping()`` requires ``_obj_geom_id`` to be set by the subclass.
-    Primitive envs without a graspable object (``ReachEnv``, ``LookAtEnv``,
-    ``MoveEnv``) must **never** call ``_is_grasping()``.
+    Primitive envs without a graspable object (``LookAtEnv``, ``MoveEnv``)
+    must **never** call ``_is_grasping()``.
     """
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}

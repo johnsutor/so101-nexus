@@ -11,8 +11,8 @@ from __future__ import annotations
 import gymnasium
 
 gymnasium.register(
-    id="WarpReach-v1",
-    vector_entry_point="so101_nexus.warp.reach_env:WarpReachVectorEnv",
+    id="WarpTouch-v1",
+    vector_entry_point="so101_nexus.warp.touch_env:WarpTouchVectorEnv",
     max_episode_steps=512,
 )
 

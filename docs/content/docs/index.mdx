@@ -104,11 +104,11 @@ SO101-Nexus ships five manipulation primitives that cover the fundamentals of ro
 
 - **PickLift** -- grasp an object and lift it above a height threshold
 - **PickAndPlace** -- pick up a cube and place it at a marked target location
-- **Reach** -- move the end-effector to a target position in space
+- **Touch** -- bring the gripper to an object resting on the table
 - **LookAt** -- orient the end-effector to gaze at a target object
-- **Move** -- move the end-effector to a target position with tight tolerance
+- **Move** -- move the end-effector a set distance in a cardinal direction
 
-All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend covers all five (Reach, LookAt, Move, PickLift, PickAndPlace) with GPU-parallel simulation, subject to the documented batched-model limitations (fixed per-episode colors, single-cube PickLift).
+All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend covers all five (Touch, LookAt, Move, PickLift, PickAndPlace) with GPU-parallel simulation, subject to the documented batched-model limitations (fixed per-episode colors, single-cube PickLift and Touch).
 
 ## Get Started
 

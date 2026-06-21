@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from so101_nexus.config import PickAndPlaceConfig, PickConfig, ReachConfig
+from so101_nexus.config import MoveConfig, PickAndPlaceConfig, PickConfig
 from so101_nexus.objects import CubeObject, MeshObject, YCBObject
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
@@ -110,15 +110,15 @@ def test_apply_config_overrides_updates_reset_settle_frames() -> None:
     assert cfg.reset_settle_frames == 2
 
 
-def test_apply_config_overrides_ignores_pick_specific_options_for_reach() -> None:
-    base = ReachConfig()
+def test_apply_config_overrides_ignores_pick_specific_options_for_non_pick_config() -> None:
+    base = MoveConfig()
 
     cfg = apply_config_overrides(
         base,
         TeleopConfigOverrides(object_specs=("ycb:011_banana",), n_distractors=1),
     )
 
-    assert isinstance(cfg, ReachConfig)
+    assert isinstance(cfg, MoveConfig)
     assert vars(cfg) == vars(base)
 
 
@@ -190,7 +190,7 @@ def test_load_profile_accepts_uppercase_suffix(tmp_path) -> None:
     path = tmp_path / "profile.JSON"
     path.write_text('{"common":{"ground_colors":["white"]}}', encoding="utf-8")
 
-    overrides = load_profile_overrides(path, "MuJoCoReach-v1", ReachConfig())
+    overrides = load_profile_overrides(path, "MuJoCoMove-v1", MoveConfig())
 
     assert overrides.ground_colors == ("white",)
 

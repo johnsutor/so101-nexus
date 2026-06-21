@@ -18,7 +18,7 @@ from so101_nexus.testing.invariants import (
 )
 
 ENV_IDS = [
-    "MuJoCoReach-v1",
+    "MuJoCoTouch-v1",
     "MuJoCoLookAt-v1",
     "MuJoCoMove-v1",
     "MuJoCoPickLift-v1",

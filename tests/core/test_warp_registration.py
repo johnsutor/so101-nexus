@@ -3,7 +3,7 @@
 # Import-light: registration uses string vector_entry_points, so this never
 # imports torch or mujoco_warp.
 _EXPECTED = {
-    "WarpReach-v1": 512,
+    "WarpTouch-v1": 512,
     "WarpLookAt-v1": 256,
     "WarpMove-v1": 256,
     "WarpPickLift-v1": 1024,
