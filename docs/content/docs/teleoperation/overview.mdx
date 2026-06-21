@@ -285,10 +285,20 @@ a recording's environment by passing it back as
 contributions from a separate `--env-config-profile` used at record time are not
 merged in.
 
+
 On first recording, the app creates a simulator-only calibration file at
 `$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json` (or the
 LeRobot default calibration root when `HF_LEROBOT_CALIBRATION` is unset). No
 physical follower calibration is required for simulator teleop.
+
+## Example rollout datasets
+
+Recorded MuJoCo teleoperation rollouts are available on Hugging Face:
+
+| Task | Dataset | Episode viewer |
+| --- | --- | --- |
+| PickLift | [johnsutor/MuJoCoPickLift](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0) |
+| PickAndPlace | [johnsutor/MuJoCoPickAndPlace](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0) |
 
 ## Troubleshooting
 

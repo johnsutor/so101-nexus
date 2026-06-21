@@ -17,6 +17,53 @@ Pick up a colored cube and place it on a target disc.
 | Config class | `PickAndPlaceConfig` |
 | Task description | "Pick up the small \{cube_color\} cube and place it on the \{target_color\} circle." |
 
+## Demo Rollout
+
+Recorded PickAndPlace teleoperation rollout, shown from both stored camera streams.
+
+### Overhead camera
+
+<video
+  controls
+  muted
+  playsInline
+  width="100%"
+  aria-label="MuJoCo PickAndPlace overhead camera rollout"
+>
+  <source
+    src="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace/resolve/main/videos/observation.images.overhead/chunk-000/file-000.mp4"
+    type="video/mp4"
+  />
+  Open the
+  <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0">
+    PickAndPlace episode viewer
+  </a>
+  instead.
+</video>
+
+### Wrist camera
+
+<video
+  controls
+  muted
+  playsInline
+  width="100%"
+  aria-label="MuJoCo PickAndPlace wrist camera rollout"
+>
+  <source
+    src="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace/resolve/main/videos/observation.images.wrist/chunk-000/file-000.mp4"
+    type="video/mp4"
+  />
+  Open the
+  <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0">
+    PickAndPlace episode viewer
+  </a>
+  instead.
+</video>
+
+[Open the dataset](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace) or
+[inspect episode 0 in the LeRobot viewer](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0).
+
 ## Observation Space
 
 The observation is a 24-dimensional vector.
