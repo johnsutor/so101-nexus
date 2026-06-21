@@ -81,7 +81,7 @@ SO101-Nexus ships five manipulation primitives that cover the fundamentals of ro
 - **LookAt** -- orient the end-effector to gaze at a target object
 - **Move** -- move the end-effector to a target position with tight tolerance
 
-All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend adds GPU-parallel simulation for Reach today, with the remaining tasks in progress.
+All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend covers all five (Reach, LookAt, Move, PickLift, PickAndPlace) with GPU-parallel simulation, subject to the documented batched-model limitations (fixed per-episode colors, single-cube PickLift).
 
 ## Get Started
 

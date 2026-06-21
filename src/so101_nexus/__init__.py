@@ -56,6 +56,7 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.rewards import (
+    lift_progress,
     orientation_progress,
     reach_progress,
     simple_reward,
@@ -155,6 +156,7 @@ __all__ = [
     "get_ycb_mesh_dir",
     "get_ycb_texture_file",
     "get_ycb_visual_mesh",
+    "lift_progress",
     "orientation_progress",
     "reach_progress",
     "sample_color",

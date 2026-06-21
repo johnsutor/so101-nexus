@@ -44,3 +44,34 @@ def test_scalar_paths_still_return_plain_float():
     assert simple_reward(progress=0.4, completion_bonus=0.1, success=False) == pytest.approx(
         0.9 * 0.4
     )
+
+
+def test_orientation_progress_numpy_and_torch_match_scalar():
+    from so101_nexus.rewards import orientation_progress
+
+    vals = [-2.0, -1.0, -0.3, 0.0, 0.5, 1.0, 2.0]
+    scalar = [orientation_progress(v) for v in vals]
+    np.testing.assert_allclose(orientation_progress(np.array(vals)), scalar, rtol=1e-12)
+    assert isinstance(orientation_progress(0.3), float)
+    torch = pytest.importorskip("torch")
+    out = orientation_progress(torch.tensor(vals, dtype=torch.float64))
+    np.testing.assert_allclose(out.numpy(), scalar, rtol=1e-12)
+
+
+def test_lift_progress_numpy_and_torch_match_scalar():
+    from so101_nexus.rewards import lift_progress
+
+    heights = [-0.02, 0.0, 0.03, 0.1]
+    grasped = [True, True, False, True]
+    scalar = [lift_progress(h, scale=5.0, grasped=g) for h, g in zip(heights, grasped, strict=True)]
+    out_np = lift_progress(np.array(heights), scale=5.0, grasped=np.array(grasped))
+    np.testing.assert_allclose(out_np, scalar, rtol=1e-12)
+    assert isinstance(lift_progress(0.05, scale=5.0, grasped=True), float)
+    assert lift_progress(0.05, scale=5.0, grasped=False) == 0.0
+    torch = pytest.importorskip("torch")
+    out_t = lift_progress(
+        torch.tensor(heights, dtype=torch.float64),
+        scale=5.0,
+        grasped=torch.tensor(grasped),
+    )
+    np.testing.assert_allclose(out_t.numpy(), scalar, rtol=1e-6)
