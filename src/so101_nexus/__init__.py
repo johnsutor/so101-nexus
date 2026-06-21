@@ -71,7 +71,6 @@ from so101_nexus.ycb_assets import (
 from so101_nexus.ycb_geometry import get_mujoco_ycb_rest_pose
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-SO_ARM100_DIR = ASSETS_DIR / "SO-ARM100"
 SO101_DIR = ASSETS_DIR / "SO101"
 
 
@@ -95,11 +94,6 @@ def get_so101_mujoco_model_path() -> Path:
     return get_so101_mujoco_model_dir() / "so101.xml"
 
 
-def get_so100_simulation_dir() -> Path:
-    """Return the path to the SO100 simulation assets directory."""
-    return SO_ARM100_DIR / "Simulation" / "SO100"
-
-
 __all__ = [
     "ASSETS_DIR",
     "COLOR_MAP",
@@ -110,7 +104,6 @@ __all__ = [
     "ROBOT_CAMERA_PRESETS",
     "SO101_DIR",
     "SO101_JOINT_NAMES",
-    "SO_ARM100_DIR",
     "YCB_OBJECTS",
     "CameraObservation",
     "ColorConfig",
@@ -148,7 +141,6 @@ __all__ = [
     "describe_pick_target",
     "ensure_ycb_assets",
     "get_mujoco_ycb_rest_pose",
-    "get_so100_simulation_dir",
     "get_so101_mujoco_model_dir",
     "get_so101_mujoco_model_path",
     "get_so101_simulation_dir",
