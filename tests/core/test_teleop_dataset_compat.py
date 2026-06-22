@@ -43,6 +43,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         REWARD_KEY,
         WRIST_KEY,
         FieldSelection,
+        _make_reward_scalar_dataset_cls,
         build_features,
         build_frame,
     )
@@ -83,7 +84,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     features = build_features(selection, follower_features, action_features)
 
     dataset_root = tmp_path / "dataset"
-    dataset = LeRobotDataset.create(
+    dataset = _make_reward_scalar_dataset_cls().create(
         repo_id="local/teleop-smoke",
         fps=30,
         features=features,

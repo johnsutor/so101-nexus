@@ -93,11 +93,14 @@ def test_record_episode_writes_lerobot_frames_in_degrees() -> None:
     assert first_frame["reward"].shape == (1,)
     assert first_frame["reward"].dtype == np.float32
     np.testing.assert_allclose(first_frame["reward"], [0.0])
+    np.testing.assert_array_equal(first_frame["action"], action_deg)
     np.testing.assert_allclose(
         first_frame["observation.state"],
         [0, 90, -90, 180, 0, 0],
         atol=1e-5,
     )
+    assert first_frame[WRIST_KEY].dtype == np.uint8
+    assert first_frame[OVERHEAD_KEY].dtype == np.uint8
 
 
 def test_record_episode_omits_deselected_camera_frames() -> None:
