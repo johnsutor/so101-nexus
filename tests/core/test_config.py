@@ -764,3 +764,32 @@ class TestPickAndPlaceObjectPool:
         clone = PickAndPlaceConfig(**vars(cfg))
         assert [o.color for o in clone.object_pool()] == ["red", "green"]
         assert clone.min_object_target_separation == cfg.min_object_target_separation
+
+    def test_positional_colors_preserved(self):
+        # Legacy positional call: PickAndPlaceConfig(cube_colors, target_colors).
+        cfg = PickAndPlaceConfig("blue", "green")
+        assert cfg.cube_colors == "blue"
+        assert cfg.target_colors == "green"
+        assert cfg.object_pool()[0].color == "blue"
+
+    def test_objects_is_keyword_only(self):
+        import inspect
+
+        sig = inspect.signature(PickAndPlaceConfig.__init__)
+        assert sig.parameters["objects"].kind == inspect.Parameter.KEYWORD_ONLY
+
+    def test_non_scene_object_pool_raises(self):
+        with pytest.raises(TypeError, match="SceneObject"):
+            PickAndPlaceConfig(objects="blue")
+
+    def test_min_cube_target_separation_setter(self):
+        cfg = PickAndPlaceConfig()
+        cfg.min_cube_target_separation = 0.06
+        assert cfg.min_object_target_separation == 0.06
+        assert cfg.min_cube_target_separation == 0.06
+
+    def test_describe_static_method_compat(self):
+        assert (
+            PickAndPlaceConfig.describe("red", "blue")
+            == "Pick up the red cube and place it on the blue circle."
+        )

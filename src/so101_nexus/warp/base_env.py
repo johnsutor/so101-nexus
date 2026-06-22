@@ -471,6 +471,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         terminated = success
         truncated = self._elapsed >= self.max_episode_steps
         done = terminated | truncated
+        # The transition's task descriptions (matching reward/terminated) are
+        # snapshotted before autoreset reassigns done worlds to new episodes.
+        info["task_description"] = tuple(self.task_descriptions)
         if bool(done.any()):
             with wp.ScopedDevice(self._wp_device):
                 self._write_reset_state(done)
@@ -487,7 +490,6 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             # matches reset() exactly; only the robot's first-frame settle transient
             # differs (per-world warmstart left as an optimizer hint).
             self._has_prev_action[done] = False
-        info["task_description"] = tuple(self.task_descriptions)
         return self._compute_obs(), reward, terminated, truncated, info
 
     def _finger_geom_mask(self, mjm: mujoco.MjModel, body_id: int, ngeom: int) -> torch.Tensor:

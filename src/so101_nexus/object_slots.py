@@ -250,7 +250,13 @@ def extract_object_slots(
             vert_count = mjm.mesh_vertnum[mesh_id]
             verts = mjm.mesh_vert[vert_start : vert_start + vert_count]
             rest_quat, spawn_z = get_mujoco_ycb_rest_pose(verts)
-            xy_extent = np.ptp(verts[:, :2], axis=0)
+            # Footprint is measured in the resting orientation: the stable rest
+            # pose can rotate a thin X/Y axis up, changing the horizontal extent
+            # that the spawn separation samplers rely on.
+            rot = np.zeros(9)
+            mujoco.mju_quat2Mat(rot, rest_quat)
+            rotated_xy = (verts @ rot.reshape(3, 3).T)[:, :2]
+            xy_extent = np.ptp(rotated_xy, axis=0)
             bounding_radius = float(np.linalg.norm(xy_extent) / 2)
         elif isinstance(obj, CubeObject):
             rest_quat = np.array([1.0, 0.0, 0.0, 0.0])

@@ -579,6 +579,10 @@ def _normalize_objects(
     normalized = list(objects)
     if not normalized:
         raise ValueError("objects must not be empty")
+    non_objects = [o for o in normalized if not isinstance(o, SceneObject)]
+    if non_objects:
+        names = [type(o).__name__ for o in non_objects]
+        raise TypeError(f"objects must all be SceneObject instances, got {names}")
     return normalized
 
 
@@ -703,14 +707,15 @@ class PickAndPlaceConfig(EnvironmentConfig):
 
     def __init__(
         self,
-        objects: list[SceneObject] | SceneObject | None = None,
-        target_colors: ColorConfig = "blue",
-        target_disc_radius: float = 0.05,
-        min_object_target_separation: float | None = None,
         cube_colors: ColorConfig = "red",
+        target_colors: ColorConfig = "blue",
         cube_half_size: float = 0.0125,
         cube_mass: float = 0.01,
+        target_disc_radius: float = 0.05,
         min_cube_target_separation: float = 0.0375,
+        *,
+        objects: list[SceneObject] | SceneObject | None = None,
+        min_object_target_separation: float | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -730,7 +735,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
                 "CubeObject pool entries instead"
             )
 
-        self.objects = objects
+        self.objects = objects if objects is None else _normalize_objects(objects, CubeObject())
         self.cube_colors = cube_colors
         self.target_colors = target_colors
         self.cube_half_size = cube_half_size
@@ -795,6 +800,19 @@ class PickAndPlaceConfig(EnvironmentConfig):
     def min_cube_target_separation(self) -> float:
         """Deprecated alias for ``min_object_target_separation``."""
         return self.min_object_target_separation
+
+    @min_cube_target_separation.setter
+    def min_cube_target_separation(self, value: float) -> None:
+        self.min_object_target_separation = value
+
+    @staticmethod
+    def describe(cube_name: str, target_name: str) -> str:
+        """Build a cube task description (deprecated; use ``describe_place_target``).
+
+        Retained for backward compatibility; produces the object-generic template
+        for a cube of the given colour.
+        """
+        return f"Pick up the {cube_name} cube and place it on the {target_name} circle."
 
     def __repr__(self) -> str:  # noqa: D105
         return (

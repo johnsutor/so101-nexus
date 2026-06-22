@@ -178,3 +178,48 @@ class TestSlotExtraction:
         np.testing.assert_allclose(slots[0].rest_quat, [1.0, 0.0, 0.0, 0.0])
         for slot in slots:
             assert slot.geom_id >= 0
+
+    def test_mesh_bounding_radius_uses_rotated_footprint(self, tmp_path):
+        # A box thin in X: the stable rest pose rotates X up, so the horizontal
+        # footprint is the original Y and Z extents, not the original X and Y.
+        hx, hy, hz = 0.005, 0.03, 0.02
+        corners = [
+            (sx * hx, sy * hy, sz * hz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)
+        ]
+        faces = [
+            (1, 2, 4),
+            (1, 4, 3),
+            (5, 6, 8),
+            (5, 8, 7),
+            (1, 2, 6),
+            (1, 6, 5),
+            (3, 4, 8),
+            (3, 8, 7),
+            (1, 3, 7),
+            (1, 7, 5),
+            (2, 4, 8),
+            (2, 8, 6),
+        ]
+        obj_lines = [f"v {x} {y} {z}" for x, y, z in corners]
+        obj_lines += [f"f {a} {b} {c}" for a, b, c in faces]
+        mesh_path = tmp_path / "thin_box.obj"
+        mesh_path.write_text("\n".join(obj_lines) + "\n", encoding="utf-8")
+
+        mesh = MeshObject(
+            collision_mesh_path=str(mesh_path),
+            visual_mesh_path=str(mesh_path),
+            mass=0.02,
+            name="thin box",
+        )
+        xml, slot_names = _cube_scene([mesh])
+        so_dir = get_so101_mujoco_model_path().parent
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", dir=so_dir, delete=True) as f:
+            f.write(xml)
+            f.flush()
+            mjm = mujoco.MjModel.from_xml_path(f.name)
+        slot = extract_object_slots(mjm, slot_names, [mesh])[0]
+
+        rotated_radius = float(np.linalg.norm([2 * hy, 2 * hz]) / 2)
+        naive_radius = float(np.linalg.norm([2 * hx, 2 * hy]) / 2)
+        assert slot.bounding_radius == pytest.approx(rotated_radius, abs=1e-6)
+        assert slot.bounding_radius != pytest.approx(naive_radius, abs=1e-6)

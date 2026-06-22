@@ -46,11 +46,10 @@ _SO101_XML = get_so101_mujoco_model_path()
 _PICK_NCONMAX_BASE = 192
 _PICK_NCONMAX_PER_SLOT = 16
 
-# Deterministic far-off resting positions for inactive (hidden) slots. Each pool
-# slot gets a unique X offset so hidden bodies never overlap within a world.
-_HIDE_X = -2.0
-_HIDE_Y = -2.0
-_HIDE_SPACING = 0.5
+# Clearance (m) between the off-world parking band for inactive slots and the
+# reachable spawn annulus. Parking positions are derived from the configured
+# spawn bounds and object radii so hidden slots never overlap active samples.
+_HIDE_CLEARANCE = 0.1
 
 
 def _contact_budget(n_pool: int) -> tuple[int, int]:
@@ -165,9 +164,16 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._slot_rest_quat = torch.tensor(
             np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
         )
-        hide_x = _HIDE_X - _HIDE_SPACING * torch.arange(self._n_pool, device=self.device)
+        # Park inactive slots in a band beyond the reachable spawn annulus, spaced
+        # by object diameter so neither active samples nor adjacent hidden bodies
+        # overlap (Warp contact bits are global, so hidden slots stay collidable).
+        cx, cy = config.spawn_center
+        max_br = float(self._slot_bradius.max())
+        step = 2.0 * max_br + _HIDE_CLEARANCE
+        base = config.spawn_max_radius + 2.0 * max_br + _HIDE_CLEARANCE
+        hide_x = cx - base - step * torch.arange(self._n_pool, device=self.device)
         self._hide_xy = torch.stack(
-            [hide_x, torch.full((self._n_pool,), _HIDE_Y, device=self.device)], dim=1
+            [hide_x, torch.full((self._n_pool,), cy, device=self.device)], dim=1
         )
 
         # Per-world target tracking (set at reset). ``_obj_geom`` drives grasp

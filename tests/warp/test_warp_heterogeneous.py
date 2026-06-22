@@ -96,3 +96,43 @@ def test_uniform_pool_task_description_is_exact():
     env.reset(seed=0)
     assert env.task_description == "Pick up the red cube."
     assert all(d == "Pick up the red cube." for d in env.task_descriptions)
+
+
+def test_autoreset_task_description_describes_the_transition():
+    import torch
+
+    from so101_nexus.config import PickConfig
+    from so101_nexus.objects import CubeObject
+    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+
+    pool = [CubeObject(color=c) for c in ("red", "green", "blue", "yellow")]
+    env = WarpPickLiftVectorEnv(
+        num_envs=16, config=PickConfig(objects=pool), device="cpu", seed=0, max_episode_steps=1
+    )
+    env.reset(seed=0)
+    before = tuple(env.task_descriptions)
+    _, _, _, truncated, info = env.step(torch.zeros((16, 6)))
+    assert truncated.all()  # max_episode_steps=1 truncates every world
+    # info describes the just-finished transition (pre-autoreset), not the new episode.
+    assert info["task_description"] == before
+    # Autoreset did reassign the live descriptions to the next episode.
+    assert tuple(env.task_descriptions) != before
+
+
+def test_hidden_slots_parked_outside_custom_spawn_annulus():
+    from so101_nexus.config import PickConfig
+    from so101_nexus.objects import CubeObject
+    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+
+    pool = [CubeObject(half_size=0.04, color=c) for c in ("red", "green", "blue")]
+    config = PickConfig(objects=pool, spawn_center=(1.0, 1.0), spawn_max_radius=0.5)
+    env = WarpPickLiftVectorEnv(num_envs=2, config=config, device="cpu", seed=0)
+    cx, cy = config.spawn_center
+    center = env._hide_xy.new_tensor([cx, cy])
+    max_br = float(env._slot_bradius.max())
+    dists = (env._hide_xy - center).norm(dim=1)
+    # Every parked slot sits beyond the reachable annulus by at least an object radius.
+    assert (dists > config.spawn_max_radius + max_br).all()
+    # Adjacent hidden slots are separated by at least an object diameter.
+    gaps = (env._hide_xy[1:] - env._hide_xy[:-1]).norm(dim=1)
+    assert (gaps >= 2 * max_br).all()
