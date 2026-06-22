@@ -92,11 +92,12 @@ fields are persisted:
 - `observation.state` always saved (disabled checkbox)
 - `action` always saved (disabled checkbox)
 - `task` always saved by LeRobot v3 metadata
+- `reward` always saved from the same environment step as the frame's action
 - `observation.images.wrist` optional, on by default
 - `observation.images.overhead` optional, on by default
 
 Deselecting an optional field removes it from both the declared dataset
-feature schema and every recorded frame. `observation.state`, `action`, and
+feature schema and every recorded frame. `observation.state`, `action`, `reward`, and
 `task` stay forced on because LeRobot datasets require them for policy
 training and task indexing.
 
@@ -268,6 +269,7 @@ frames include:
 
 - `observation.state`: follower readback (6D), always present
 - `action`: commanded absolute joint positions (6D) by default, always present
+- `reward`: scalar transition reward from the same environment step as `action`, always present
 - `observation.images.wrist`: wrist camera frames, optional
 - `observation.images.overhead`: overhead camera frames, optional
 - `task`: language description, always present
