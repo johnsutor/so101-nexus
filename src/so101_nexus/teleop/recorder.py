@@ -66,6 +66,7 @@ class _InitialLeaderFollower(Protocol):
 
 class _StepInfoLike(Protocol):
     terminated: bool
+    reward: float
 
 
 @dataclass
