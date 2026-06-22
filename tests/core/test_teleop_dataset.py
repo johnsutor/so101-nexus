@@ -13,6 +13,7 @@ import pytest
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.teleop.dataset import (
     OVERHEAD_KEY,
+    REWARD_KEY,
     WRIST_KEY,
     FieldSelection,
     build_features,
@@ -53,6 +54,7 @@ def test_build_features_default_contains_all_keys() -> None:
     assert set(features) == {
         "observation.state",
         "action",
+        REWARD_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
     }
@@ -80,13 +82,10 @@ def test_build_features_omits_deselected_image_keys() -> None:
     assert OVERHEAD_KEY not in features
     assert features[WRIST_KEY]["shape"] == (240, 320, 3)
 
-
-def test_build_features_state_and_action_always_present() -> None:
-    sel = FieldSelection(wrist_image=False, overhead_image=False, task=False)
-    features = build_features(sel, _follower_features(), _motor_features())
-
     assert "observation.state" in features
     assert "action" in features
+    assert REWARD_KEY in features
+    assert features[REWARD_KEY] == {"dtype": "float32", "shape": (1,), "names": None}
 
 
 def test_build_features_requires_selected_camera_feature() -> None:
@@ -109,6 +108,7 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
         state=state,
         action=action,
         task="pick the cube",
+        reward=0.25,
         wrist_image=wrist,
         overhead_image=overhead,
     )
@@ -116,11 +116,15 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
     assert set(frame) == {
         "observation.state",
         "action",
+        REWARD_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
         "task",
     }
     assert frame["task"] == "pick the cube"
+    assert frame[REWARD_KEY].dtype == np.float32
+    assert frame[REWARD_KEY].shape == (1,)
+    np.testing.assert_allclose(frame[REWARD_KEY], [0.25])
 
 
 def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
@@ -137,8 +141,9 @@ def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
         overhead_image=None,
     )
 
-    assert set(frame) == {"observation.state", "action", "task"}
+    assert set(frame) == {"observation.state", "action", REWARD_KEY, "task"}
     assert frame["task"] == "required by LeRobotDataset.add_frame"
+    assert frame[REWARD_KEY].shape == (1,)
 
 
 def test_build_frame_raises_when_selected_image_missing() -> None:

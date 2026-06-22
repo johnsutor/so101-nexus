@@ -16,6 +16,10 @@ import numpy as np
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
+REWARD_KEY = "reward"
+# Canonical LeRobot reward feature (matches the `modify_features` docstring
+# example in lerobot.datasets.dataset_tools): a scalar float32 per frame.
+REWARD_FEATURE: dict[str, Any] = {"dtype": "float32", "shape": (1,), "names": None}
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,9 @@ def build_features(
             use_video=True,
         )
     )
+    # Reward is always available from `env.step` and is always recorded; it is
+    # not a user-toggleable field, so it is declared unconditionally.
+    features[REWARD_KEY] = dict(REWARD_FEATURE)
     return features
 
 
@@ -97,6 +104,7 @@ def build_frame(
     state: np.ndarray,
     action: np.ndarray,
     task: str,
+    reward: float = 0.0,
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
 ) -> dict[str, Any]:
@@ -104,6 +112,9 @@ def build_frame(
     frame: dict[str, Any] = {
         "observation.state": state.astype(np.float32),
         "action": action.astype(np.float32),
+        # Per-step transition reward, aligned with `action` on this frame
+        # (LeRobot `Transition` carries reward with (observation, action)).
+        REWARD_KEY: np.array([reward], dtype=np.float32),
     }
     # LeRobot v3 stores task text outside the regular feature schema, but
     # `LeRobotDataset.add_frame` requires it on every frame.

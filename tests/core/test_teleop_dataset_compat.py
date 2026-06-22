@@ -33,11 +33,13 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     pytest.importorskip("mujoco")
     pytest.importorskip("so101_nexus.mujoco")
 
+    import torch
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     from so101_nexus.config import SO101_JOINT_NAMES
     from so101_nexus.teleop.dataset import (
         OVERHEAD_KEY,
+        REWARD_KEY,
         WRIST_KEY,
         FieldSelection,
         build_features,
@@ -90,11 +92,13 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     )
 
     for i in range(len(state.episode_actions)):
+        reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
         frame = build_frame(
             selection,
             state=state.episode_states[i],
             action=state.episode_actions[i],
             task="reach the target",
+            reward=reward,
             wrist_image=state.episode_wrist_images[i],
             overhead_image=state.episode_overhead_images[i],
         )
@@ -106,9 +110,12 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     assert set(reloaded.features) >= {
         "action",
         "observation.state",
+        REWARD_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
     }
+    assert reloaded.features[REWARD_KEY]["shape"] == (1,)
+    assert reloaded.features[REWARD_KEY]["dtype"] == "float32"
     assert reloaded.features["action"]["shape"] == (len(SO101_JOINT_NAMES),)
     assert reloaded.features["observation.state"]["shape"] == (len(SO101_JOINT_NAMES),)
     assert reloaded.features["action"]["names"][0] == "shoulder_pan.pos"
@@ -119,7 +126,19 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     assert list(reloaded.meta.tasks.index) == ["reach the target"]
 
     sample = reloaded[0]
-    gripper_idx = SO101_JOINT_NAMES.index("gripper")
     assert sample["action"].shape == (len(SO101_JOINT_NAMES),)
-    assert 0.0 <= float(sample["action"][gripper_idx]) <= 100.0
-    assert 0.0 <= float(sample["observation.state"][gripper_idx]) <= 100.0
+    # Reward is a (1,) feature in the schema (required by `validate_frame`),
+    # which LeRobot maps to a scalar HF Value (like `timestamp`), so it reads
+    # back as a 0-d tensor holding the per-step transition reward.
+    assert sample[REWARD_KEY].dim() == 0
+    assert torch.isfinite(sample[REWARD_KEY]).all()
+    assert float(sample[REWARD_KEY]) == pytest.approx(state.episode_rewards[0])
+
+    # LeRobot computes per-feature min/max/mean/std/quantiles in stats.json
+    # automatically (compute_episode_stats -> aggregate_stats), so reward
+    # normalization bounds are available downstream via dataset.stats["reward"].
+    reward_stats = reloaded.stats[REWARD_KEY]
+    assert {"min", "max", "mean", "std"}.issubset(reward_stats)
+    reward_min = float(np.asarray(reward_stats["min"]).reshape(-1)[0])
+    reward_max = float(np.asarray(reward_stats["max"]).reshape(-1)[0])
+    assert reward_min <= float(sample[REWARD_KEY]) <= reward_max

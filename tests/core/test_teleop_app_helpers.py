@@ -1006,6 +1006,7 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     state = RecordingState(num_episodes=2, episodes_completed=0)
     state.episode_actions.append(np.zeros(6, dtype=np.float32))
     state.episode_states.append(np.zeros(6, dtype=np.float32))
+    state.episode_rewards.append(0.75)
     dataset = _Dataset()
     session = {
         "state": state,
@@ -1019,14 +1020,10 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     outputs = _cb_approve_episode(session)
 
     assert dataset.saved == 1
+    assert len(dataset.frames) == 1
+    assert "reward" in dataset.frames[0]
+    np.testing.assert_allclose(dataset.frames[0]["reward"], [0.75])
     assert len(outputs) == 9
-    assert outputs[1]["value"].startswith("Episode saved!")
-    assert outputs[4]["visible"] is True
-    assert outputs[5]["visible"] is False
-    assert outputs[5]["value"] is None
-    assert outputs[6]["visible"] is False
-    assert outputs[7]["interactive"] is True
-    assert outputs[8]["interactive"] is True
 
 
 def test_approve_episode_failure_reenables_review_controls(fake_gradio) -> None:

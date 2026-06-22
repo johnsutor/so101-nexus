@@ -119,9 +119,6 @@ class RolloutRecorder:
                     f"({len(self.joint_names)},); got {action_deg.shape}."
                 )
 
-            if self.dataset is not None:
-                self._add_frame(obs, action_deg, task)
-
             actions_deg.append(action_deg.astype(np.float32))
             states_deg.append(np.rad2deg(obs["state"]).astype(np.float32))
 
@@ -130,7 +127,15 @@ class RolloutRecorder:
                 self.env.action_space.low,
                 self.env.action_space.high,
             ).astype(np.float32)
-            obs, _, terminated, truncated, info = self.env.step(action_rad)
+            # Step before adding the frame so the transition reward r_t (from
+            # env.step(a_t)) is available for the frame holding (s_t, a_t). The
+            # frame keeps the pre-step `obs` (s_t); `next_obs` drives the loop.
+            next_obs, reward, terminated, truncated, info = self.env.step(action_rad)
+
+            if self.dataset is not None:
+                self._add_frame(obs, action_deg, task, float(reward))
+
+            obs = next_obs
             if terminated or truncated:
                 break
 
@@ -166,7 +171,13 @@ class RolloutRecorder:
             **images,
         }
 
-    def _add_frame(self, obs: dict[str, np.ndarray], action_deg: np.ndarray, task: str) -> None:
+    def _add_frame(
+        self,
+        obs: dict[str, np.ndarray],
+        action_deg: np.ndarray,
+        task: str,
+        reward: float,
+    ) -> None:
         """Append one frame to the configured dataset."""
         from so101_nexus.teleop.dataset import FieldSelection, build_frame
 
@@ -183,6 +194,7 @@ class RolloutRecorder:
             state=np.rad2deg(obs["state"]).astype(np.float32),
             action=action_deg.astype(np.float32),
             task=task,
+            reward=reward,
             wrist_image=obs.get("wrist_camera"),
             overhead_image=obs.get("overhead_camera"),
         )

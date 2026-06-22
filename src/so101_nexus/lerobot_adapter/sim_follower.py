@@ -44,6 +44,7 @@ class StepInfo:
     terminated: bool
     truncated: bool
     info: dict[str, Any] = field(default_factory=dict)
+    reward: float = 0.0
 
 
 def _coerce_termination_flag(value: object) -> bool:
@@ -249,6 +250,7 @@ class SimSOFollower(Robot):
             terminated=_coerce_termination_flag(terminated),
             truncated=_coerce_termination_flag(truncated),
             info=dict(info) if isinstance(info, dict) else {},
+            reward=float(_reward),
         )
 
         sent_ticks = sim_rad_to_motor_ticks(
