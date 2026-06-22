@@ -295,16 +295,18 @@ When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectP
 
 ## PickAndPlaceConfig
 
-Extends `EnvironmentConfig` with parameters for pick-and-place tasks.
+Extends `EnvironmentConfig` with parameters for pick-and-place tasks. The carried
+object is chosen per episode from an object pool: by default one cube per colour
+in `cube_colors`, or pass `objects` to carry `YCBObject` / `MeshObject` instead.
 
 ```python
-from so101_nexus import PickAndPlaceConfig
+from so101_nexus import PickAndPlaceConfig, YCBObject
 
-config = PickAndPlaceConfig(
-    cube_colors="blue",
-    target_colors="green",
-    min_cube_target_separation=0.05,
-)
+# Default cube path (carries a coloured cube onto the disc):
+config = PickAndPlaceConfig(cube_colors="blue", target_colors="green")
+
+# Object-pool path (carries a YCB object):
+config = PickAndPlaceConfig(objects=[YCBObject("011_banana")], target_colors="green")
 ```
 
 ### Additional Parameters
@@ -313,12 +315,14 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `cube_colors` | `ColorConfig` | `"red"` | Color(s) for the cube |
+| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Carried-object pool. `None` derives a cube pool from the cube sugar below. Passing this together with any non-default cube sugar raises `ValueError`. |
 | `target_colors` | `ColorConfig` | `"blue"` | Color(s) for the target disc |
-| `cube_half_size` | `float` | `0.0125` | Half-size of the cube (meters) |
-| `cube_mass` | `float` | `0.01` | Mass of the cube (kg) |
 | `target_disc_radius` | `float` | `0.05` | Radius of the target disc (meters) |
-| `min_cube_target_separation` | `float` | `0.0375` | Minimum distance between cube and target spawn positions (meters) |
+| `min_object_target_separation` | `float \| None` | `None` | Minimum object/disc spawn separation (meters); `None` falls back to `min_cube_target_separation` |
+| `cube_colors` | `ColorConfig` | `"red"` | Color(s) for the default cube pool (compatibility sugar) |
+| `cube_half_size` | `float` | `0.0125` | Half-size of the default cube(s) (meters) |
+| `cube_mass` | `float` | `0.01` | Mass of the default cube(s) (kg) |
+| `min_cube_target_separation` | `float` | `0.0375` | Deprecated alias for `min_object_target_separation` |
 
 ### Default Observations
 

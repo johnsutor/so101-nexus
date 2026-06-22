@@ -579,6 +579,10 @@ def _normalize_objects(
     normalized = list(objects)
     if not normalized:
         raise ValueError("objects must not be empty")
+    non_objects = [o for o in normalized if not isinstance(o, SceneObject)]
+    if non_objects:
+        names = [type(o).__name__ for o in non_objects]
+        raise TypeError(f"objects must all be SceneObject instances, got {names}")
     return normalized
 
 
@@ -594,6 +598,14 @@ def describe_pick_target(target: object) -> str:
 def describe_touch_target(target: object) -> str:
     """Return the canonical task description for a touch target."""
     return f"Touch the {target!r}."
+
+
+def describe_place_target(obj: object, target_name: str) -> str:
+    """Return the canonical task description for a pick-and-place target.
+
+    Shared by both backends so the object-generic template lives in one place.
+    """
+    return f"Pick up the {obj!r} and place it on the {target_name} circle."
 
 
 class PickConfig(EnvironmentConfig):
@@ -661,20 +673,34 @@ class PickConfig(EnvironmentConfig):
 class PickAndPlaceConfig(EnvironmentConfig):
     """Config for pick-and-place environments.
 
+    The carried object is chosen per episode from an object pool. By default the
+    pool is one cube per colour in ``cube_colors`` (so selecting the target slot
+    reproduces the legacy per-episode cube-colour variation); pass ``objects`` to
+    carry ``YCBObject`` / ``MeshObject`` instead. The goal disc colour is sampled
+    from ``target_colors``.
+
     Parameters
     ----------
-    cube_colors : ColorConfig
-        Cube color(s).
+    objects : list[SceneObject] or SceneObject, optional
+        Carried-object pool. ``None`` (default) derives a cube pool from
+        ``cube_colors`` / ``cube_half_size`` / ``cube_mass``. Providing this with
+        any non-default cube-sugar argument raises ``ValueError`` to avoid
+        ambiguous configs.
     target_colors : ColorConfig
-        Target disc color(s).
-    cube_half_size : float
-        Half-size of the cube in metres.
-    cube_mass : float
-        Mass of the cube in kg.
+        Goal disc color(s).
     target_disc_radius : float
-        Radius of the target disc.
+        Radius of the goal disc.
+    min_object_target_separation : float, optional
+        Minimum spawn separation between the object and the goal disc. ``None``
+        falls back to ``min_cube_target_separation``.
+    cube_colors : ColorConfig
+        Cube color(s) for the default cube pool (compatibility sugar).
+    cube_half_size : float
+        Half-size of the default cube(s) in metres (compatibility sugar).
+    cube_mass : float
+        Mass of the default cube(s) in kg (compatibility sugar).
     min_cube_target_separation : float
-        Minimum separation between cube and target.
+        Deprecated alias for ``min_object_target_separation``.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -687,15 +713,40 @@ class PickAndPlaceConfig(EnvironmentConfig):
         cube_mass: float = 0.01,
         target_disc_radius: float = 0.05,
         min_cube_target_separation: float = 0.0375,
+        *,
+        objects: list[SceneObject] | SceneObject | None = None,
+        min_object_target_separation: float | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        non_default_cube_sugar = [
+            name
+            for name, value, default in (
+                ("cube_colors", cube_colors, "red"),
+                ("cube_half_size", cube_half_size, 0.0125),
+                ("cube_mass", cube_mass, 0.01),
+            )
+            if value != default
+        ]
+        if objects is not None and non_default_cube_sugar:
+            raise ValueError(
+                "PickAndPlaceConfig got both an explicit object pool and non-default "
+                f"cube sugar {non_default_cube_sugar}; set colour/size/mass on the "
+                "CubeObject pool entries instead"
+            )
+
+        self.objects = objects if objects is None else _normalize_objects(objects, CubeObject())
         self.cube_colors = cube_colors
         self.target_colors = target_colors
         self.cube_half_size = cube_half_size
         self.cube_mass = cube_mass
         self.target_disc_radius = target_disc_radius
-        self.min_cube_target_separation = min_cube_target_separation
+        self.min_object_target_separation = (
+            min_object_target_separation
+            if min_object_target_separation is not None
+            else min_cube_target_separation
+        )
+
         _validate_color_config(self.cube_colors, "cube_colors")
         _validate_color_config(self.target_colors, "target_colors")
         cube_set = (
@@ -705,7 +756,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
             {self.target_colors} if isinstance(self.target_colors, str) else set(self.target_colors)
         )
         overlap = cube_set & target_set
-        if overlap:
+        if overlap and objects is None:
             warnings.warn(
                 f"cube_colors and target_colors overlap on {overlap}; "
                 "the cube and target may be the same color in some episodes",
@@ -715,9 +766,13 @@ class PickAndPlaceConfig(EnvironmentConfig):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
         if self.target_disc_radius <= 0:
             raise ValueError(f"target_disc_radius must be > 0, got {self.target_disc_radius}")
-        if self.min_cube_target_separation < 0:
+        if min_cube_target_separation < 0:
             raise ValueError(
-                f"min_cube_target_separation must be >= 0, got {self.min_cube_target_separation}"
+                f"min_cube_target_separation must be >= 0, got {min_cube_target_separation}"
+            )
+        if min_object_target_separation is not None and min_object_target_separation < 0:
+            raise ValueError(
+                f"min_object_target_separation must be >= 0, got {min_object_target_separation}"
             )
         if self.observations is None:
             self.observations = [
@@ -729,34 +784,49 @@ class PickAndPlaceConfig(EnvironmentConfig):
                 TargetOffset(),
             ]
 
-    def __repr__(self) -> str:  # noqa: D105
-        return (
-            f"PickAndPlaceConfig(cube_colors={self.cube_colors!r}, "
-            f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
-        )
+    def object_pool(self) -> list[SceneObject]:
+        """Return the resolved carried-object pool (cube pool when ``objects`` is None)."""
+        if self.objects is None:
+            colors = (
+                [self.cube_colors] if isinstance(self.cube_colors, str) else list(self.cube_colors)
+            )
+            return [
+                CubeObject(half_size=self.cube_half_size, mass=self.cube_mass, color=c)
+                for c in colors
+            ]
+        return _normalize_objects(self.objects, CubeObject())
+
+    @property
+    def min_cube_target_separation(self) -> float:
+        """Deprecated alias for ``min_object_target_separation``."""
+        return self.min_object_target_separation
+
+    @min_cube_target_separation.setter
+    def min_cube_target_separation(self, value: float) -> None:
+        self.min_object_target_separation = value
 
     @staticmethod
     def describe(cube_name: str, target_name: str) -> str:
-        """Build the task description for a specific cube and target color.
+        """Build a cube task description (deprecated; use ``describe_place_target``).
 
-        Backends call this with the per-episode sampled color names so the
-        rendered scene and the description always agree.
+        Retained for backward compatibility; produces the object-generic template
+        for a cube of the given colour.
         """
-        return f"Pick up the small {cube_name} cube and place it on the {target_name} circle"
+        return f"Pick up the {cube_name} cube and place it on the {target_name} circle."
+
+    def __repr__(self) -> str:  # noqa: D105
+        return (
+            f"PickAndPlaceConfig(objects={self.objects!r}, "
+            f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
+        )
 
     @property
     def task_description(self) -> str:
-        """Canonical task description derived from configured colors.
-
-        Uses the FIRST configured color for each of cube and target. Backends
-        that sample colors per episode override the stored description with
-        ``describe(...)`` so it reflects the actually rendered colors.
-        """
-        cube_name = self.cube_colors if isinstance(self.cube_colors, str) else self.cube_colors[0]
+        """Canonical task description for the first pool object and target colour."""
         target_name = (
             self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
         )
-        return self.describe(cube_name, target_name)
+        return describe_place_target(self.object_pool()[0], target_name)
 
 
 class TouchConfig(PickConfig):

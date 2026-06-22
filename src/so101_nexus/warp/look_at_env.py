@@ -90,11 +90,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             else float(mjm.cam_fovy[self._wrist_cam_id])
         )
         self._success_half_fov_rad = float(np.radians(fovy) / 2.0)
-
-    @property
-    def task_description(self) -> str:
-        """Return the current look-at task description."""
-        return self.config.task_description
+        self.task_descriptions = [config.task_description] * num_envs
 
     def _supported_obs_components(self) -> set[type]:
         return {GazeDirection}

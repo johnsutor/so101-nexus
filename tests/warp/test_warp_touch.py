@@ -91,15 +91,15 @@ def test_reward_matches_scalar_core_per_world():
     dist = info["tcp_to_obj_dist"].numpy()
     cb = env.config.reward.completion_bonus
     scale = env.config.reward.tanh_shaping_scale
-    thr = env._touch_threshold
+    thr = (env._target_bounding_radius() + env.config.touch_margin).numpy()
     expected = np.array(
         [
             simple_reward(
                 progress=reach_progress(float(d), scale=scale),
                 completion_bonus=cb,
-                success=bool(d < thr),
+                success=bool(d < thr[i]),
             )
-            for d in dist
+            for i, d in enumerate(dist)
         ]
     )
     np.testing.assert_allclose(reward.numpy(), expected, rtol=1e-5, atol=1e-6)
@@ -131,11 +131,11 @@ def test_truncation_autoresets_world():
     for _ in range(2):
         _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
         assert not truncated.any()
-    cube_before = env._cube_pos().clone()
+    cube_before = env._target_pos().clone()
     _, _, _, truncated, _ = env.step(torch.zeros((4, 6)))
     assert truncated.all()
     assert (env._elapsed == 0).all()  # reset counters
-    assert not torch.allclose(env._cube_pos(), cube_before)  # respawned cube
+    assert not torch.allclose(env._target_pos(), cube_before)  # respawned cube
 
 
 def test_autoreset_masks_prev_action_across_episode_boundary():

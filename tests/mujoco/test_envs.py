@@ -26,7 +26,7 @@ from so101_nexus.config import (
     TouchConfig,
 )
 from so101_nexus.constants import CUBE_COLOR_MAP, YCB_OBJECTS
-from so101_nexus.objects import CubeObject, MeshObject, YCBObject
+from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -259,108 +259,6 @@ def test_pick_ycb_collision_geom_starts_above_floor(model_id):
         env.close()
 
 
-def test_mesh_object_xml_uses_hidden_collision_and_visible_visual_groups():
-    from so101_nexus.mujoco.pick_env import _mesh_xml_body
-
-    xml = _mesh_xml_body("pick_slot_0", 0, 0.01)
-
-    assert 'name="pick_slot_0_collision"' in xml
-    assert 'mesh="pick_coll_0"' in xml
-    assert 'group="3"' in xml
-    assert 'name="pick_slot_0_visual"' in xml
-    assert 'mesh="pick_vis_0"' in xml
-    assert 'group="2"' in xml
-
-
-def test_ycb_scene_xml_binds_cached_texture(monkeypatch, tmp_path):
-    from so101_nexus.mujoco import pick_env
-
-    collision_path = tmp_path / "collision.obj"
-    visual_path = tmp_path / "visual.obj"
-    texture_path = tmp_path / "texture.png"
-    texture_path.write_text("texture", encoding="utf-8")
-    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
-    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
-    monkeypatch.setattr(
-        pick_env,
-        "get_ycb_texture_file",
-        lambda _model_id: texture_path,
-        raising=False,
-    )
-
-    xml = pick_env._build_scene_xml(
-        [YCBObject(model_id="011_banana")],
-        ["pick_slot_0"],
-        [0.1, 0.2, 0.3, 1.0],
-    )
-
-    assert f'<texture name="pick_tex_0" type="2d" file="{texture_path}"/>' in xml
-    assert '<material name="pick_mat_0" texture="pick_tex_0" texuniform="false"/>' in xml
-    assert 'name="pick_slot_0_visual"' in xml
-    assert 'material="pick_mat_0"' in xml
-
-
-def test_ycb_scene_xml_uses_posix_paths_for_cached_assets(monkeypatch):
-    from so101_nexus.mujoco import pick_env
-
-    class _FakePath:
-        def __init__(self, posix_path: str, native_path: str):
-            self._posix_path = posix_path
-            self._native_path = native_path
-
-        def __str__(self) -> str:
-            return self._native_path
-
-        def as_posix(self) -> str:
-            return self._posix_path
-
-        def exists(self) -> bool:
-            return True
-
-    collision_path = _FakePath("C:/cache/ycb/collision.obj", r"C:\cache\ycb\collision.obj")
-    visual_path = _FakePath("C:/cache/ycb/visual.obj", r"C:\cache\ycb\visual.obj")
-    texture_path = _FakePath("C:/cache/ycb/texture.png", r"C:\cache\ycb\texture.png")
-    monkeypatch.setattr(pick_env, "get_ycb_collision_mesh", lambda _model_id: collision_path)
-    monkeypatch.setattr(pick_env, "get_ycb_visual_mesh", lambda _model_id: visual_path)
-    monkeypatch.setattr(
-        pick_env,
-        "get_ycb_texture_file",
-        lambda _model_id: texture_path,
-        raising=False,
-    )
-
-    xml = pick_env._build_scene_xml(
-        [YCBObject(model_id="011_banana")],
-        ["pick_slot_0"],
-        [0.1, 0.2, 0.3, 1.0],
-    )
-
-    assert 'file="C:/cache/ycb/collision.obj"' in xml
-    assert 'file="C:/cache/ycb/visual.obj"' in xml
-    assert 'file="C:/cache/ycb/texture.png"' in xml
-    assert r"C:\cache\ycb" not in xml
-
-
-def test_scene_xml_leaves_cubes_and_mesh_objects_untextured(tmp_path):
-    from so101_nexus.mujoco import pick_env
-
-    mesh = MeshObject(
-        collision_mesh_path=str(tmp_path / "collision.obj"),
-        visual_mesh_path=str(tmp_path / "visual.obj"),
-        mass=0.02,
-        name="custom",
-    )
-
-    xml = pick_env._build_scene_xml(
-        [CubeObject(color="red"), mesh],
-        ["pick_slot_0", "pick_slot_1"],
-        [0.1, 0.2, 0.3, 1.0],
-    )
-
-    assert "<texture " not in xml
-    assert 'material="pick_mat_' not in xml
-
-
 @pytest.mark.parametrize("color", CUBE_COLORS)
 def test_look_at_cube_color(color):
     config = LookAtConfig(objects=[CubeObject(color=color)])  # type: ignore[arg-type]
@@ -525,7 +423,7 @@ def test_pick_and_place_cube_spawns_in_bounds():
     try:
         for _ in range(5):
             env.reset()
-            cube_xy = env.unwrapped._get_cube_pose()[:2]  # type: ignore[attr-defined]
+            cube_xy = env.unwrapped._get_object_pose()[:2]  # type: ignore[attr-defined]
             cx, cy = cfg.spawn_center
             r = float(np.sqrt((cube_xy[0] - cx) ** 2 + (cube_xy[1] - cy) ** 2))
             assert cfg.spawn_min_radius <= r <= cfg.spawn_max_radius
@@ -539,7 +437,7 @@ def test_pick_and_place_min_cube_target_separation():
     try:
         for _ in range(10):
             env.reset()
-            cube_xy = env.unwrapped._get_cube_pose()[:2]  # type: ignore[attr-defined]
+            cube_xy = env.unwrapped._get_object_pose()[:2]  # type: ignore[attr-defined]
             target_xy = env.unwrapped._get_target_pos()[:2]  # type: ignore[attr-defined]
             dist = float(np.linalg.norm(cube_xy - target_xy))
             assert dist >= cfg.min_cube_target_separation - 1e-6
@@ -654,7 +552,7 @@ def test_spawn_center_offsets_pick_and_place_cube_and_target():
     try:
         for seed in range(20):
             env.reset(seed=seed)
-            cube_pos = env.unwrapped._get_cube_pose()[:2]  # type: ignore[attr-defined]
+            cube_pos = env.unwrapped._get_object_pose()[:2]  # type: ignore[attr-defined]
             cube_xs.append(cube_pos[0])
     finally:
         env.close()
@@ -1188,5 +1086,54 @@ def test_pick_and_place_color_reproducible_by_seed():
         inner.reset(seed=42)
         second = (inner.cube_color_name, inner.target_color_name)
         assert first == second
+    finally:
+        env.close()
+
+
+def test_pick_and_place_ycb_object_task_description():
+    """An explicit object pool names the carried object in the task description."""
+    config = PickAndPlaceConfig(objects=[YCBObject(model_id="011_banana")])
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        env.reset(seed=0)
+        desc = env.unwrapped.task_description  # type: ignore[attr-defined]
+        assert "banana" in desc
+        assert "circle" in desc
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_object_pose_tracks_selected_slot():
+    """ObjectPose/TargetOffset route to the per-episode selected object slot."""
+    config = PickAndPlaceConfig(cube_colors=["red", "green", "yellow"])
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        inner = env.unwrapped
+        obs, _ = inner.reset(seed=3)
+        selected = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
+        obj_pose = inner.data.qpos[selected.qpos_addr : selected.qpos_addr + 7]  # type: ignore[attr-defined]
+        # Default obs layout: ee(7)+grasp(1)+target_pos(3)+obj_pose(7)+...
+        np.testing.assert_allclose(obs[11:18], obj_pose, atol=1e-6)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_info_keys_with_object_pool():
+    """Placement info keys stay stable for a non-cube carried object."""
+    config = PickAndPlaceConfig(objects=[YCBObject(model_id="011_banana")])
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    expected = {
+        "obj_to_target_dist",
+        "is_obj_placed",
+        "is_grasped",
+        "is_robot_static",
+        "lift_height",
+        "success",
+        "tcp_to_obj_dist",
+    }
+    try:
+        _, info = env.reset(seed=0)
+        assert set(info.keys()) == expected
     finally:
         env.close()

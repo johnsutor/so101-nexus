@@ -134,3 +134,40 @@ def align_freejoint_geom_to_floor(
     data.qpos[qpos_addr + 2] = spawn_z
     mujoco.mj_forward(model, data)
     return float(spawn_z)
+
+
+def place_freejoint_slot(
+    model, data, slot, rng: np.random.Generator, xy: tuple[float, float]
+) -> None:
+    """Place an active object slot at ``xy`` with random yaw, resting on the floor.
+
+    ``slot`` is an ``so101_nexus.object_slots.ObjectSlot``; cubes use the analytic
+    spawn height while mesh-backed objects clear the floor via their compiled
+    collision geom.
+    """
+    from so101_nexus.objects import CubeObject
+
+    x, y = xy
+    if isinstance(slot.obj, CubeObject):
+        data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = [x, y, slot.spawn_z]
+        data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = random_yaw_quat(rng)
+        return
+    import mujoco
+
+    obj_quat = np.zeros(4)
+    mujoco.mju_mulQuat(obj_quat, random_yaw_quat(rng), slot.rest_quat)
+    align_freejoint_geom_to_floor(
+        model, data, qpos_addr=slot.qpos_addr, geom_id=slot.geom_id, xy=(x, y), quat=obj_quat
+    )
+
+
+def hide_freejoint_slot(model, data, slot) -> None:
+    """Disable collisions and park an inactive object slot far below the floor.
+
+    Zeroing the contact bits keeps the constraint solver from exploding stacked
+    hidden bodies during the post-reset settle.
+    """
+    model.geom_contype[slot.geom_id] = 0
+    model.geom_conaffinity[slot.geom_id] = 0
+    data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = [0.0, 0.0, -10.0]
+    data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = [1.0, 0.0, 0.0, 0.0]
