@@ -285,12 +285,15 @@ def recording_thread(
             step_start = time.monotonic()
             if len(state.episode_actions) >= max_steps:
                 break
-
             leader_action = leader.get_action()
             action_dict = apply_wrist_roll_offset_deg(leader_action, wrist_roll_offset_deg)
+            # Read the pre-step observation (s_t) BEFORE send_action steps the
+            # env, so the recorded frame pairs (s_t, a_t, r_t), matching the
+            # rollout recorder and LeRobot's Transition convention. The reward
+            # r_t comes from env.step(a_t) inside send_action.
+            obs = follower.get_observation()
             sent_action = follower.send_action(action_dict)
             step_info = follower.last_step_info()
-            obs = follower.get_observation()
 
             _append_step_buffers(state, sent_action, obs, step_info, joint_names)
 

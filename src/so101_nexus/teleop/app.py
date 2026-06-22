@@ -275,10 +275,11 @@ def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
 
 def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict, leader):
     """Create and return a LeRobotDataset, disconnecting *leader* on failure."""
-    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+    from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
 
+    reward_dataset_cls = _make_reward_scalar_dataset_cls()
     try:
-        return LeRobotDataset.create(
+        return reward_dataset_cls.create(
             repo_id=repo_id,
             fps=fps,
             robot_type=robot_type,

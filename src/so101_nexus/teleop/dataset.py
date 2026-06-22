@@ -134,3 +134,34 @@ def build_frame(
             )
         frame[OVERHEAD_KEY] = overhead_image
     return frame
+
+
+def _make_reward_scalar_dataset_cls():
+    """Return a LeRobotDataset subclass that stores reward as HF scalars.
+
+    LeRobot validates (1,)-shaped features against ndarrays of shape (1,) in
+    ``validate_frame``, then maps them to HuggingFace scalar
+    ``Value("float32")`` in ``get_hf_features_from_features``. The buffer of
+    (1,) arrays that ``add_frame`` accumulates triggers a NumPy deprecation
+    warning when ``datasets`` coerces each element to ``float`` during
+    ``save_episode``. This subclass squeezes the reward buffer to Python
+    scalars before the parent's ``np.stack``, matching how LeRobot handles
+    its own ``DEFAULT_FEATURES`` (timestamp, frame_index, etc.).
+    """
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    class RewardRecordingDataset(LeRobotDataset):
+        """LeRobotDataset that records the reward feature without scalar coercion warnings."""
+
+        def save_episode(
+            self,
+            episode_data: dict | None = None,
+            parallel_encoding: bool = True,
+        ) -> None:
+            if episode_data is None and self.episode_buffer is not None:
+                buf = self.episode_buffer
+                if "reward" in buf and isinstance(buf["reward"], list):
+                    buf["reward"] = [float(np.asarray(v).reshape(-1)[0]) for v in buf["reward"]]
+            super().save_episode(episode_data, parallel_encoding)
+
+    return RewardRecordingDataset
