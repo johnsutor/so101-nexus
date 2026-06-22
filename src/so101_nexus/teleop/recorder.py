@@ -66,6 +66,7 @@ class _InitialLeaderFollower(Protocol):
 
 class _StepInfoLike(Protocol):
     terminated: bool
+    reward: float
 
 
 @dataclass
@@ -80,6 +81,7 @@ class RecordingState:
 
     episode_actions: list[np.ndarray] = field(default_factory=list)
     episode_states: list[np.ndarray] = field(default_factory=list)
+    episode_rewards: list[float] = field(default_factory=list)
     episode_wrist_images: list[np.ndarray] = field(default_factory=list)
     episode_overhead_images: list[np.ndarray] = field(default_factory=list)
     task_description: str = ""
@@ -96,6 +98,7 @@ class RecordingState:
         """Reset all per-episode buffers."""
         self.episode_actions.clear()
         self.episode_states.clear()
+        self.episode_rewards.clear()
         self.episode_wrist_images.clear()
         self.episode_overhead_images.clear()
         self.task_description = ""
@@ -282,19 +285,21 @@ def recording_thread(
             step_start = time.monotonic()
             if len(state.episode_actions) >= max_steps:
                 break
-
             leader_action = leader.get_action()
             action_dict = apply_wrist_roll_offset_deg(leader_action, wrist_roll_offset_deg)
-            sent_action = follower.send_action(action_dict)
+            # Read the pre-step observation (s_t) BEFORE send_action steps the
+            # env, so the recorded frame pairs (s_t, a_t, r_t), matching the
+            # rollout recorder and LeRobot's Transition convention. The reward
+            # r_t comes from env.step(a_t) inside send_action.
             obs = follower.get_observation()
+            sent_action = follower.send_action(action_dict)
+            step_info = follower.last_step_info()
 
-            state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
-            state.episode_states.append(_dict_to_vector(obs, joint_names))
-            _publish_camera_frames(state, obs)
+            _append_step_buffers(state, sent_action, obs, step_info, joint_names)
 
             if _should_stop_after_termination(
                 state,
-                follower.last_step_info(),
+                step_info,
                 fps=fps,
                 success_hold_seconds=success_hold_seconds,
             ):
@@ -325,3 +330,19 @@ def _dict_to_vector(
         [float(cast("float", motor_dict[f"{name}.pos"])) for name in joint_names],
         dtype=np.float32,
     )
+
+
+def _append_step_buffers(
+    state: RecordingState,
+    sent_action: Mapping[str, object],
+    obs: Mapping[str, object],
+    step_info: _StepInfoLike | None,
+    joint_names: tuple[str, ...],
+) -> None:
+    """Append one step's actions, states, reward, and camera frames to buffers."""
+    state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
+    state.episode_states.append(_dict_to_vector(obs, joint_names))
+    # Reward from `env.step(a_t)` (captured by `SimSOFollower.send_action`)
+    # aligns with this frame's action; default to 0.0 before the first step.
+    state.episode_rewards.append(step_info.reward if step_info is not None else 0.0)
+    _publish_camera_frames(state, obs)

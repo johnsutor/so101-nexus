@@ -16,6 +16,10 @@ import numpy as np
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
+REWARD_KEY = "reward"
+# Canonical LeRobot reward feature (matches the `modify_features` docstring
+# example in lerobot.datasets.dataset_tools): a scalar float32 per frame.
+REWARD_FEATURE: dict[str, Any] = {"dtype": "float32", "shape": (1,), "names": None}
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,9 @@ def build_features(
             use_video=True,
         )
     )
+    # Reward is always available from `env.step` and is always recorded; it is
+    # not a user-toggleable field, so it is declared unconditionally.
+    features[REWARD_KEY] = dict(REWARD_FEATURE)
     return features
 
 
@@ -97,6 +104,7 @@ def build_frame(
     state: np.ndarray,
     action: np.ndarray,
     task: str,
+    reward: float = 0.0,
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
 ) -> dict[str, Any]:
@@ -104,6 +112,9 @@ def build_frame(
     frame: dict[str, Any] = {
         "observation.state": state.astype(np.float32),
         "action": action.astype(np.float32),
+        # Per-step transition reward, aligned with `action` on this frame
+        # (LeRobot `Transition` carries reward with (observation, action)).
+        REWARD_KEY: np.array([reward], dtype=np.float32),
     }
     # LeRobot v3 stores task text outside the regular feature schema, but
     # `LeRobotDataset.add_frame` requires it on every frame.
@@ -123,3 +134,34 @@ def build_frame(
             )
         frame[OVERHEAD_KEY] = overhead_image
     return frame
+
+
+def _make_reward_scalar_dataset_cls():
+    """Return a LeRobotDataset subclass that stores reward as HF scalars.
+
+    LeRobot validates (1,)-shaped features against ndarrays of shape (1,) in
+    ``validate_frame``, then maps them to HuggingFace scalar
+    ``Value("float32")`` in ``get_hf_features_from_features``. The buffer of
+    (1,) arrays that ``add_frame`` accumulates triggers a NumPy deprecation
+    warning when ``datasets`` coerces each element to ``float`` during
+    ``save_episode``. This subclass squeezes the reward buffer to Python
+    scalars before the parent's ``np.stack``, matching how LeRobot handles
+    its own ``DEFAULT_FEATURES`` (timestamp, frame_index, etc.).
+    """
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    class RewardRecordingDataset(LeRobotDataset):
+        """LeRobotDataset that records the reward feature without scalar coercion warnings."""
+
+        def save_episode(
+            self,
+            episode_data: dict | None = None,
+            parallel_encoding: bool = True,
+        ) -> None:
+            if episode_data is None and self.episode_buffer is not None:
+                buf = self.episode_buffer
+                if "reward" in buf and isinstance(buf["reward"], list):
+                    buf["reward"] = [float(np.asarray(v).reshape(-1)[0]) for v in buf["reward"]]
+            super().save_episode(episode_data, parallel_encoding)
+
+    return RewardRecordingDataset

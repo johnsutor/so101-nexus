@@ -82,6 +82,7 @@ class _FakeRecordingFollower:
             terminated=terminated,
             truncated=False,
             info={"success": terminated},
+            reward=float(terminated),
         )
         return dict(action)
 
