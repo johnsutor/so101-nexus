@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -136,8 +137,8 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
 
     # LeRobot computes per-feature min/max/mean/std/quantiles in stats.json
     # automatically (compute_episode_stats -> aggregate_stats), so reward
-    # normalization bounds are available downstream via dataset.stats["reward"].
-    reward_stats = reloaded.stats[REWARD_KEY]
+    # normalization bounds are available downstream via dataset.meta.stats["reward"].
+    reward_stats = reloaded.meta.stats[REWARD_KEY]
     assert {"min", "max", "mean", "std"}.issubset(reward_stats)
     reward_min = float(np.asarray(reward_stats["min"]).reshape(-1)[0])
     reward_max = float(np.asarray(reward_stats["max"]).reshape(-1)[0])
