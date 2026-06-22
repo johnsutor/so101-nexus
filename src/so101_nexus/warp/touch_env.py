@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
 
 from so101_nexus.config import ControlMode, TouchConfig, describe_touch_target
 from so101_nexus.rewards import reach_progress, simple_reward
 from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
+if TYPE_CHECKING:
+    from so101_nexus.objects import SceneObject
+
 
 class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
-    """Batched touch primitive: bring every world's TCP to its cube.
+    """Batched touch primitive: bring every world's TCP to its target object.
 
-    Supports a single ``CubeObject`` target, matching the batched pick backend's
-    limitation; the YCB/mesh objects and distractors available on
-    ``MuJoCoTouch-v1`` are not supported here. Success fires when the TCP reaches
-    within the cube's bounding radius plus ``touch_margin``.
+    Uses the same compiled object-slot pool as the pick backend, so cubes, YCB
+    objects, and meshes (optionally among distractors) are valid targets. Success
+    fires when the TCP reaches within the per-world target bounding radius plus
+    ``touch_margin``.
     """
 
     config: TouchConfig
@@ -43,18 +48,23 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
             nconmax=nconmax,
             njmax=njmax,
         )
-        # Bounding radius mirrors the MuJoCo backend's _cube_bounding_radius
-        # (half_size * sqrt(2)); success coincides with reaching the cube.
-        self._touch_threshold = self._cube.half_size * 2.0**0.5 + config.touch_margin
-        self.task_description = describe_touch_target(self._cube)
+
+    def _describe_target(self, obj: SceneObject) -> str:
+        return describe_touch_target(obj)
+
+    def _generic_task_description(self) -> str:
+        return "Touch the selected object."
 
     def _compute_reward_terminated(
         self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, dict]:
-        dist = torch.linalg.norm(self._cube_pos() - self._tcp_pos(), dim=1)
+        dist = torch.linalg.norm(self._target_pos() - self._tcp_pos(), dim=1)
+        # Per-world threshold: reaching the object coincides with its bounding
+        # radius (matches the MuJoCo touch backend) plus the configured margin.
+        threshold = self._target_bounding_radius() + self.config.touch_margin
         # Tensor path of so101_nexus.rewards.reach_progress / simple_reward.
         progress = reach_progress(dist, scale=self.config.reward.tanh_shaping_scale)
-        success = dist < self._touch_threshold
+        success = dist < threshold
         base = simple_reward(
             progress=progress,
             completion_bonus=self.config.reward.completion_bonus,

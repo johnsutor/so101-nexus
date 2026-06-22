@@ -33,7 +33,7 @@ def test_pick_lift_baseline_settle_independent_across_autoreset():
     _force_autoreset_all(env)
     autoreset_baseline = env._initial_obj_z.clone()
 
-    half = env._cube.half_size
+    half = env.config.objects[0].half_size
     assert torch.allclose(reset_baseline, autoreset_baseline)
     assert torch.allclose(reset_baseline, torch.full((4,), half, dtype=reset_baseline.dtype))
 

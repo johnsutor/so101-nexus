@@ -359,11 +359,11 @@ class TestTaskDescriptions:
 
     def test_pick_and_place_config_task_description_str_colors(self):
         cfg = PickAndPlaceConfig(cube_colors="red", target_colors="blue")
-        assert cfg.task_description == "Pick up the small red cube and place it on the blue circle"
+        assert cfg.task_description == "Pick up the red cube and place it on the blue circle."
 
     def test_pick_and_place_config_task_description_list_colors(self):
         cfg = PickAndPlaceConfig(cube_colors=["red", "green"], target_colors=["blue"])
-        assert cfg.task_description == "Pick up the small red cube and place it on the blue circle"
+        assert cfg.task_description == "Pick up the red cube and place it on the blue circle."
 
     def test_describe_pick_target_cube(self):
         from so101_nexus.config import describe_pick_target
@@ -709,3 +709,58 @@ def test_reward_config_compute_tensor_matches_scalar():
         energy_norm=torch.tensor(en),
     )
     np.testing.assert_allclose(out.numpy(), scalar, rtol=1e-6)
+
+
+class TestPickAndPlaceObjectPool:
+    def test_default_pool_is_cube_per_color(self):
+        from so101_nexus.objects import CubeObject
+
+        pool = PickAndPlaceConfig(cube_colors=["red", "green"]).object_pool()
+        assert [o.color for o in pool] == ["red", "green"]
+        assert all(isinstance(o, CubeObject) for o in pool)
+
+    def test_default_pool_single_cube(self):
+        pool = PickAndPlaceConfig().object_pool()
+        assert len(pool) == 1
+        assert pool[0].color == "red"
+
+    def test_explicit_object_pool(self):
+        from so101_nexus.objects import YCBObject
+
+        cfg = PickAndPlaceConfig(objects=[YCBObject("011_banana")])
+        pool = cfg.object_pool()
+        assert len(pool) == 1
+        assert isinstance(pool[0], YCBObject)
+        assert cfg.task_description == "Pick up the banana and place it on the blue circle."
+
+    def test_objects_with_non_default_cube_sugar_raises(self):
+        from so101_nexus.objects import YCBObject
+
+        with pytest.raises(ValueError, match="object pool and non-default cube sugar"):
+            PickAndPlaceConfig(objects=[YCBObject("011_banana")], cube_colors="green")
+
+    def test_objects_with_default_cube_sugar_ok(self):
+        from so101_nexus.objects import YCBObject
+
+        cfg = PickAndPlaceConfig(objects=[YCBObject("011_banana")])
+        assert cfg.cube_colors == "red"
+
+    def test_min_object_target_separation_alias(self):
+        cfg = PickAndPlaceConfig(min_cube_target_separation=0.05)
+        assert cfg.min_object_target_separation == 0.05
+        assert cfg.min_cube_target_separation == 0.05
+
+    def test_min_object_target_separation_takes_precedence(self):
+        cfg = PickAndPlaceConfig(min_object_target_separation=0.06, min_cube_target_separation=0.05)
+        assert cfg.min_object_target_separation == 0.06
+        assert cfg.min_cube_target_separation == 0.06
+
+    def test_negative_min_object_target_separation_raises(self):
+        with pytest.raises(ValueError, match="min_object_target_separation must be >= 0"):
+            PickAndPlaceConfig(min_object_target_separation=-0.01)
+
+    def test_round_trips_via_vars(self):
+        cfg = PickAndPlaceConfig(cube_colors=["red", "green"], target_colors=["blue"])
+        clone = PickAndPlaceConfig(**vars(cfg))
+        assert [o.color for o in clone.object_pool()] == ["red", "green"]
+        assert clone.min_object_target_separation == cfg.min_object_target_separation

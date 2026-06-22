@@ -202,7 +202,7 @@ def test_pick_object_pose_obs_tracks_cube():
     )
     obs, _ = env.reset(seed=0)
     assert obs.shape == (4, 7)
-    assert torch.allclose(obs[:, :3], env._cube_pos(), atol=1e-5)
+    assert torch.allclose(obs[:, :3], env._target_pos(), atol=1e-5)
 
 
 def test_pick_contact_budget_headroom_and_grasp_range():
@@ -226,21 +226,34 @@ def test_pick_contact_budget_headroom_and_grasp_range():
     assert ((grasp == 0.0) | (grasp == 1.0)).all()
 
 
-def test_pick_rejects_unsupported_configs():
+def test_pick_supports_heterogeneous_pool():
+    import torch
+
     from so101_nexus.config import PickConfig
     from so101_nexus.objects import CubeObject, YCBObject
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
-    with pytest.raises(NotImplementedError):
-        WarpPickLiftVectorEnv(
-            num_envs=2, config=PickConfig(objects=YCBObject("011_banana")), device="cpu"
-        )
-    with pytest.raises(NotImplementedError):
-        WarpPickLiftVectorEnv(
-            num_envs=2,
-            config=PickConfig(objects=[CubeObject(), CubeObject(color="blue")], n_distractors=1),
-            device="cpu",
-        )
+    # Single YCB object: constructs, resets, steps with finite observations.
+    env = WarpPickLiftVectorEnv(
+        num_envs=2, config=PickConfig(objects=YCBObject("011_banana")), device="cpu", seed=0
+    )
+    obs, _ = env.reset(seed=0)
+    assert torch.isfinite(obs).all()
+    obs, reward, _, _, _ = env.step(torch.zeros((2, 6)))
+    assert torch.isfinite(obs).all()
+    assert torch.isfinite(reward).all()
+
+    # Mixed pool with distractors: per-world target geoms are valid pool geoms.
+    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("058_golf_ball")]
+    env2 = WarpPickLiftVectorEnv(
+        num_envs=8, config=PickConfig(objects=pool, n_distractors=1), device="cpu", seed=1
+    )
+    obs2, _ = env2.reset(seed=1)
+    assert torch.isfinite(obs2).all()
+    valid_geoms = set(env2._slot_geom.tolist())
+    assert all(int(g) in valid_geoms for g in env2._obj_geom.tolist())
+    # Target selection differs across worlds for a multi-object pool.
+    assert env2._target_slot.unique().numel() > 1
 
 
 def test_pnp_target_varies_per_world_and_respects_separation():
@@ -251,11 +264,11 @@ def test_pnp_target_varies_per_world_and_respects_separation():
 
     env = WarpPickAndPlaceVectorEnv(num_envs=8, config=PickAndPlaceConfig(), device="cpu", seed=0)
     env.reset(seed=0)
-    target = env._target_pos()
-    cube = env._cube_pos()
-    assert (target[:, :2].std(dim=0) > 1e-6).any()
-    sep = torch.linalg.norm(cube[:, :2] - target[:, :2], dim=1)
-    assert (sep >= env.config.min_cube_target_separation - 1e-6).all()
+    disc = env._target_disc_pos()
+    obj = env._target_pos()
+    assert (disc[:, :2].std(dim=0) > 1e-6).any()
+    sep = torch.linalg.norm(obj[:, :2] - disc[:, :2], dim=1)
+    assert (sep >= env.config.min_object_target_separation - 1e-6).all()
     _, _, _, _, info = env.step(torch.zeros((8, 6)))
     assert not info["success"].any()
 

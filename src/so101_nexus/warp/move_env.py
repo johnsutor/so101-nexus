@@ -81,10 +81,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
             DIRECTION_VECTORS[config.direction], dtype=torch.float32, device=self.device
         )
 
-    @property
-    def task_description(self) -> str:
-        """Return the current move task description."""
-        return self.config.task_description
+        self.task_descriptions = [config.task_description] * num_envs
 
     def _supported_obs_components(self) -> set[type]:
         return {TargetOffset}

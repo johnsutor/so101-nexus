@@ -250,6 +250,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.num_envs = num_envs
         self.action_space = batch_space(self.single_action_space, num_envs)
         self.observation_space = batch_space(self.single_observation_space, num_envs)
+        # Per-world task descriptions (decision 8): heterogeneous worlds may carry
+        # different tasks. Subclasses populate this; the scalar ``task_description``
+        # property reduces it. Default empty until a subclass sets descriptions.
+        self.task_descriptions: list[str] = [""] * num_envs
 
         self._generator = torch.Generator(device=self.device)
         if seed is not None:
@@ -408,10 +412,25 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             for _ in range(self.config.reset_settle_frames):
                 for _ in range(self._N_SUBSTEPS):
                     mjw.step(self.model, self.data)
-        return self._compute_obs(), {}
+        return self._compute_obs(), {"task_description": tuple(self.task_descriptions)}
 
     def close(self, **kwargs: Any) -> None:
         """No-op: Warp device memory is released when the env is garbage-collected."""
+
+    @property
+    def task_description(self) -> str:
+        """Scalar task description: the shared string when worlds agree, else generic."""
+        descs = self.task_descriptions
+        if not descs:
+            return ""
+        first = descs[0]
+        if all(d == first for d in descs):
+            return first
+        return self._generic_task_description()
+
+    def _generic_task_description(self) -> str:
+        """Family-level fallback when worlds carry heterogeneous task strings."""
+        return "Complete the task."
 
     def _action_to_ctrl(self, action: torch.Tensor) -> torch.Tensor:
         if self.control_mode == "pd_joint_pos":
@@ -468,6 +487,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             # matches reset() exactly; only the robot's first-frame settle transient
             # differs (per-world warmstart left as an optimizer hint).
             self._has_prev_action[done] = False
+        info["task_description"] = tuple(self.task_descriptions)
         return self._compute_obs(), reward, terminated, truncated, info
 
     def _finger_geom_mask(self, mjm: mujoco.MjModel, body_id: int, ngeom: int) -> torch.Tensor:
