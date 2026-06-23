@@ -235,3 +235,68 @@ def test_dataset_falls_back_to_lerobot_datasets_utils(monkeypatch) -> None:
 
         assert module._hw_to_dataset_features() is sentinel
     _reload_dataset_module()
+
+
+def _reward_buffer() -> dict:
+    return {"reward": [np.array([0.25], dtype=np.float32), np.array([1.5], dtype=np.float32)]}
+
+
+def _patch_parent_save_episode(monkeypatch) -> dict:
+    """Stub ``LeRobotDataset.save_episode`` so the override is tested in isolation."""
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    seen: dict = {}
+
+    def stub(self, episode_data=None, parallel_encoding=True):
+        seen["episode_data"] = episode_data
+
+    monkeypatch.setattr(LeRobotDataset, "save_episode", stub, raising=True)
+    return seen
+
+
+def _blank_recording_obj(cls):
+    """Construct a recording instance without LeRobot's heavy ``create()``.
+
+    ``_is_finalized`` and no-op writer hooks keep ``LeRobotDataset.__del__``
+    quiet at GC time across both 0.5.x layouts.
+    """
+    obj = cls.__new__(cls)
+    obj._is_finalized = True
+    obj.writer = None
+    return obj
+
+
+def test_reward_squeeze_finds_dataset_buffer_lerobot_050(monkeypatch) -> None:
+    """0.5.0 keeps the in-progress buffer on the dataset itself."""
+    pytest.importorskip("lerobot")
+    from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
+
+    seen = _patch_parent_save_episode(monkeypatch)
+    obj = _blank_recording_obj(_make_reward_scalar_dataset_cls())
+    buf = _reward_buffer()
+    obj.episode_buffer = buf
+
+    obj.save_episode()
+
+    assert seen["episode_data"] is None
+    assert buf["reward"] == [pytest.approx(0.25), pytest.approx(1.5)]
+    assert all(isinstance(v, float) for v in buf["reward"])
+
+
+def test_reward_squeeze_finds_writer_buffer_lerobot_051(monkeypatch) -> None:
+    """0.5.1 routes recording through a DatasetWriter; the dataset has no episode_buffer."""
+    pytest.importorskip("lerobot")
+    from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
+
+    seen = _patch_parent_save_episode(monkeypatch)
+    obj = _blank_recording_obj(_make_reward_scalar_dataset_cls())
+    buf = _reward_buffer()
+    obj.writer = types.SimpleNamespace(
+        episode_buffer=buf, close=lambda: None, finalize=lambda: None
+    )
+
+    obj.save_episode()
+
+    assert seen["episode_data"] is None
+    assert buf["reward"] == [pytest.approx(0.25), pytest.approx(1.5)]
+    assert all(isinstance(v, float) for v in buf["reward"])
