@@ -145,22 +145,36 @@ def _make_reward_scalar_dataset_cls():
     (1,) arrays that ``add_frame`` accumulates triggers a NumPy deprecation
     warning when ``datasets`` coerces each element to ``float`` during
     ``save_episode``. This subclass squeezes the reward buffer to Python
-    scalars before the parent's ``np.stack``, matching how LeRobot handles
-    its own ``DEFAULT_FEATURES`` (timestamp, frame_index, etc.).
+    scalars before the ``np.stack`` that backs ``save_episode``, matching how
+    LeRobot handles its own ``DEFAULT_FEATURES`` (timestamp, frame_index, etc.).
+
+    The in-progress buffer moved between supported 0.5.x layouts: 0.5.0 keeps
+    it on the dataset (``self.episode_buffer``), while 0.5.1 routes recording
+    through a ``DatasetWriter`` reached via ``self.writer.episode_buffer``.
+    Only ``save_episode`` needs overriding: ``add_frame`` and
+    ``clear_episode_buffer`` already act on the live buffer on both layouts
+    (native in 0.5.0, writer-delegated in 0.5.1) and never stack reward.
     """
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     class RewardRecordingDataset(LeRobotDataset):
         """LeRobotDataset that records the reward feature without scalar coercion warnings."""
 
+        def _active_episode_buffer(self) -> dict | None:
+            """Return the in-progress episode buffer across LeRobot 0.5.x layouts."""
+            buf = getattr(self, "episode_buffer", None)
+            if buf is None:
+                buf = getattr(getattr(self, "writer", None), "episode_buffer", None)
+            return buf
+
         def save_episode(
             self,
             episode_data: dict | None = None,
             parallel_encoding: bool = True,
         ) -> None:
-            if episode_data is None and self.episode_buffer is not None:
-                buf = self.episode_buffer
-                if "reward" in buf and isinstance(buf["reward"], list):
+            if episode_data is None:
+                buf = self._active_episode_buffer()
+                if buf is not None and isinstance(buf.get("reward"), list):
                     buf["reward"] = [float(np.asarray(v).reshape(-1)[0]) for v in buf["reward"]]
             super().save_episode(episode_data, parallel_encoding)
 
