@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 
 _OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY]
 _FOLLOWER_ROBOT_ID = "teleop_sim"
-_TASK_PENDING_TEXT = "_Task will appear after reset._"
+_TASK_PENDING_TEXT = "### Current task\n\n_Task will appear after reset._"
 logger = logging.getLogger(__name__)
 
 
@@ -692,7 +692,7 @@ def _cb_start_recording(session: dict):
 
 def _task_status_text(task_description: str) -> str:
     """Return the record-step task Markdown for the current episode."""
-    return f"**Task:** {task_description}" if task_description else _TASK_PENDING_TEXT
+    return f"### Current task\n\n# {task_description}" if task_description else _TASK_PENDING_TEXT
 
 
 def _cb_poll_recording(session: dict):
@@ -771,7 +771,9 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
 
     jn = session["joint_names"]
     video_path = make_review_video(s.episode_wrist_images, fps)
-    fig = make_state_plot(s.episode_states, jn, fps) if s.episode_states else None
+    fig = (
+        make_state_plot(s.episode_states, jn, fps, s.episode_rewards) if s.episode_states else None
+    )
     n = len(s.episode_actions)
     meta = (
         f"**Episode {s.episodes_completed + 1} / {s.num_episodes}**\n\n"
@@ -1250,7 +1252,7 @@ def _build_review_step(gr):
         with gr.Column(scale=2):
             review_video = gr.Video(label="Episode Video")
         with gr.Column(scale=1):
-            state_plot = gr.Plot(label="Joint States")
+            state_plot = gr.Plot(label="Joint States and Step Reward")
             episode_metadata = gr.Markdown()
     review_status = gr.Markdown("", visible=False)
     with gr.Row():

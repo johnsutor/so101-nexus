@@ -295,6 +295,22 @@ def test_make_state_plot_labels_lerobot_units() -> None:
     assert fig.layout.yaxis.title.text == "Position (deg / RANGE_0_100)"
 
 
+def test_make_state_plot_adds_per_step_reward_trace() -> None:
+    pytest.importorskip("plotly")
+
+    from so101_nexus.teleop.session import make_state_plot
+
+    states = [np.array([0.0], dtype=np.float32), np.array([1.0], dtype=np.float32)]
+
+    fig = make_state_plot(states, ("joint",), fps=10, rewards=[0.25, 0.75])
+
+    assert len(fig.data) == 2
+    assert fig.data[1].name == "step reward"
+    assert tuple(fig.data[1].y) == pytest.approx((0.25, 0.75))
+    assert fig.data[1].yaxis == "y2"
+    assert fig.layout.yaxis2.title.text == "Step reward"
+
+
 def test_prepare_follower_calibration_creates_file_when_missing(tmp_path: Path) -> None:
     from so101_nexus.teleop.session import prepare_follower_calibration
 
