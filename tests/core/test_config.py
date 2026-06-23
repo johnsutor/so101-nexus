@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from so101_nexus.config import (
     EXTENDED_POSE,
@@ -20,6 +22,34 @@ from so101_nexus.config import (
 from so101_nexus.constants import COLOR_MAP, sample_color
 from so101_nexus.objects import CubeObject
 from so101_nexus.observations import OverheadCamera, WristCamera
+
+unit_float = st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)
+norm_float = st.floats(min_value=0.0, max_value=10.0, allow_nan=False, allow_infinity=False)
+
+
+@st.composite
+def reward_configs(draw):
+    remaining = 1.0
+    reaching = draw(
+        st.floats(min_value=0.0, max_value=remaining, allow_nan=False, allow_infinity=False)
+    )
+    remaining -= reaching
+    grasping = draw(
+        st.floats(min_value=0.0, max_value=remaining, allow_nan=False, allow_infinity=False)
+    )
+    remaining -= grasping
+    task_objective = draw(
+        st.floats(min_value=0.0, max_value=remaining, allow_nan=False, allow_infinity=False)
+    )
+    completion_bonus = remaining - task_objective
+    return RewardConfig(
+        reaching=reaching,
+        grasping=grasping,
+        task_objective=task_objective,
+        completion_bonus=completion_bonus,
+        action_delta_penalty=draw(norm_float),
+        energy_penalty=draw(norm_float),
+    )
 
 
 class TestConfigInheritance:
@@ -89,41 +119,29 @@ class TestConfigConsistency:
 
 
 class TestApplyPenalties:
-    def test_default_config_is_identity(self):
+    @given(
+        cfg=reward_configs(), base=norm_float, action_delta_norm=norm_float, energy_norm=norm_float
+    )
+    @settings(max_examples=200)
+    def test_apply_penalties_matches_linear_formula(
+        self, cfg, base, action_delta_norm, energy_norm
+    ):
+        result = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+        )
+        expected = (
+            base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
+        )
+        assert result == pytest.approx(expected)
+
+    @given(base=norm_float, action_delta_norm=norm_float, energy_norm=norm_float)
+    @settings(max_examples=200)
+    def test_default_config_is_identity(self, base, action_delta_norm, energy_norm):
         cfg = RewardConfig()
-        base = 0.73
-        result = cfg.apply_penalties(base, action_delta_norm=2.0, energy_norm=3.0)
+        result = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+        )
         assert result == pytest.approx(base)
-
-    def test_nonzero_energy_penalty_lowers_reward(self):
-        cfg = RewardConfig(energy_penalty=0.1)
-        base = 1.0
-        result = cfg.apply_penalties(base, energy_norm=2.0)
-        assert result == pytest.approx(1.0 - 0.1 * 2.0)
-        assert result < base
-
-    def test_nonzero_action_delta_penalty_lowers_reward(self):
-        cfg = RewardConfig(action_delta_penalty=0.2)
-        base = 1.0
-        result = cfg.apply_penalties(base, action_delta_norm=0.5)
-        assert result == pytest.approx(1.0 - 0.2 * 0.5)
-        assert result < base
-
-    def test_compute_matches_apply_penalties(self):
-        cfg = RewardConfig(action_delta_penalty=0.05, energy_penalty=0.1)
-        computed = cfg.compute(
-            reach_progress=0.5,
-            is_grasped=False,
-            task_progress=0.0,
-            is_complete=False,
-            action_delta_norm=1.5,
-            energy_norm=2.5,
-        )
-        base = cfg.compute(
-            reach_progress=0.5, is_grasped=False, task_progress=0.0, is_complete=False
-        )
-        expected = cfg.apply_penalties(base, action_delta_norm=1.5, energy_norm=2.5)
-        assert computed == pytest.approx(expected)
 
     def test_apply_penalties_works_on_numpy_arrays(self):
         cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
@@ -222,40 +240,69 @@ class TestRewardWeights:
 
 
 class TestRewardCompute:
-    def test_zero_and_one_corners(self):
-        r = RewardConfig()
-        assert r.compute(0.0, False, 0.0, False) == pytest.approx(0.0)
-        assert r.compute(1.0, True, 1.0, True) == pytest.approx(1.0)
+    @given(
+        cfg=reward_configs(),
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+        is_complete=st.booleans(),
+        action_delta_norm=norm_float,
+        energy_norm=norm_float,
+    )
+    @settings(max_examples=200)
+    def test_compute_matches_weighted_sum_and_penalties(
+        self,
+        cfg,
+        reach_progress,
+        is_grasped,
+        task_progress,
+        is_complete,
+        action_delta_norm,
+        energy_norm,
+    ):
+        reward = cfg.compute(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        expected = (
+            cfg.reaching * reach_progress
+            + cfg.grasping * is_grasped
+            + cfg.task_objective * task_progress
+            + cfg.completion_bonus * is_complete
+            - cfg.action_delta_penalty * action_delta_norm
+            - cfg.energy_penalty * energy_norm
+        )
+        assert reward == pytest.approx(expected)
 
-    def test_reward_range(self):
+    @given(
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+        is_complete=st.booleans(),
+    )
+    @settings(max_examples=200)
+    def test_default_unpenalized_reward_range(
+        self, reach_progress, is_grasped, task_progress, is_complete
+    ):
         r = RewardConfig()
-        for rp in [0.0, 0.5, 1.0]:
-            for ig in [False, True]:
-                for tp in [0.0, 0.5, 1.0]:
-                    for ic in [False, True]:
-                        reward = r.compute(rp, ig, tp, ic)
-                        assert 0.0 <= reward <= 1.0
+        reward = r.compute(reach_progress, is_grasped, task_progress, is_complete)
+        assert 0.0 <= reward <= 1.0
 
-    def test_individual_component_isolation(self):
-        r = RewardConfig()
-        assert r.compute(1.0, False, 0.0, False) == pytest.approx(r.reaching)
-        assert r.compute(0.0, True, 0.0, False) == pytest.approx(r.grasping)
-        assert r.compute(0.0, False, 1.0, False) == pytest.approx(r.task_objective)
-        assert r.compute(0.0, False, 0.0, True) == pytest.approx(r.completion_bonus)
-
-    def test_action_delta_penalty_reduces_reward(self):
-        r = RewardConfig(action_delta_penalty=0.1)
+    @given(
+        penalty=st.floats(min_value=1e-6, max_value=10.0, allow_nan=False, allow_infinity=False),
+        norm=st.floats(min_value=1e-6, max_value=10.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=100)
+    def test_positive_action_delta_penalty_lowers_reward(self, penalty, norm):
+        r = RewardConfig(action_delta_penalty=penalty)
         base = r.compute(1.0, True, 1.0, True, action_delta_norm=0.0)
-        penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=1.0)
+        penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=norm)
         assert penalized < base
-        assert base - penalized == pytest.approx(0.1)
-
-    def test_default_action_delta_is_zero(self):
-        r = RewardConfig()
-        assert r.action_delta_penalty == 0.0
-        base = r.compute(1.0, True, 1.0, True)
-        with_delta = r.compute(1.0, True, 1.0, True, action_delta_norm=5.0)
-        assert base == pytest.approx(with_delta)
+        assert base - penalized == pytest.approx(penalty * norm)
 
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
