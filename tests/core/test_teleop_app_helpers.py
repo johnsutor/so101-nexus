@@ -885,7 +885,39 @@ def test_poll_recording_shows_current_task_during_recording(fake_gradio) -> None
     outputs = _cb_poll_recording(session)
 
     assert "Task:" not in outputs[0]["value"]
-    assert outputs[5]["value"] == "**Task:** Pick up the red cube."
+    assert outputs[5]["value"] == "### Current task\n\n# Pick up the red cube."
+
+
+def test_poll_recording_passes_step_rewards_to_review_plot(fake_gradio, monkeypatch) -> None:
+    import so101_nexus.teleop.app as app_mod
+
+    captured: dict[str, object] = {}
+
+    def _capture_state_plot(states, joint_names, fps, rewards):
+        captured["states"] = states
+        captured["joint_names"] = joint_names
+        captured["fps"] = fps
+        captured["rewards"] = rewards
+        return "reward-plot"
+
+    monkeypatch.setattr(app_mod, "make_state_plot", _capture_state_plot)
+    monkeypatch.setattr(app_mod, "make_review_video", lambda _images, _fps: None)
+
+    state = RecordingState(recording_finished=True, num_episodes=1)
+    state.episode_actions.append(np.zeros(2, dtype=np.float32))
+    state.episode_states.append(np.array([1.0, 2.0], dtype=np.float32))
+    state.episode_rewards.append(0.25)
+    session = {
+        "state": state,
+        "fps": 30,
+        "joint_names": ("joint_a", "joint_b"),
+    }
+
+    outputs = _cb_poll_recording(session)
+
+    assert outputs[8]["value"] == "reward-plot"
+    assert captured["rewards"] == [0.25]
+    assert captured["joint_names"] == ("joint_a", "joint_b")
 
 
 def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:

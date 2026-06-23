@@ -352,8 +352,13 @@ def make_review_video(images: list[np.ndarray], fps: int) -> str | None:
     return path
 
 
-def make_state_plot(states: list[np.ndarray], joint_names: tuple[str, ...], fps: int):
-    """Return a Plotly figure showing joint state trajectories over time."""
+def make_state_plot(
+    states: list[np.ndarray],
+    joint_names: tuple[str, ...],
+    fps: int,
+    rewards: list[float] | None = None,
+):
+    """Return a Plotly figure showing joint state and per-step reward trajectories."""
     import plotly.graph_objects as go
 
     arr = np.array(states)
@@ -361,10 +366,26 @@ def make_state_plot(states: list[np.ndarray], joint_names: tuple[str, ...], fps:
     fig = go.Figure()
     for j, name in enumerate(joint_names):
         fig.add_trace(go.Scatter(x=t, y=arr[:, j], mode="lines", name=name))
+    if rewards:
+        reward_arr = np.asarray(rewards[: arr.shape[0]], dtype=np.float32)
+        fig.add_trace(
+            go.Scatter(
+                x=t[: reward_arr.shape[0]],
+                y=reward_arr,
+                mode="lines+markers",
+                name="step reward",
+                yaxis="y2",
+            )
+        )
     fig.update_layout(
-        title="Joint States Over Time",
+        title="Joint States and Step Reward Over Time",
         xaxis_title="Time (s)",
         yaxis_title="Position (deg / RANGE_0_100)",
-        height=400,
+        yaxis2={
+            "title": "Step reward",
+            "overlaying": "y",
+            "side": "right",
+        },
+        height=440,
     )
     return fig
