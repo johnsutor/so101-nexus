@@ -2,6 +2,7 @@
 name = "so101-nexus"
 version = "0.4.0"
 description = "End-to-end simulation and training stack for the SO-101 arm: record demonstrations, clone behavior, and reinforce with GPU-parallel MuJoCo / MuJoCo Warp environments, built on LeRobot"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
