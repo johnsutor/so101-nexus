@@ -42,6 +42,13 @@ from so101_nexus.observations import (
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
 _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
 
+# Camera rendering is unsupported on the Warp backend (mujoco_warp has no batched
+# renderer). Point users at MuJoCo, which does render camera observations.
+_NO_CAMERA_MSG = (
+    "Warp backend does not support camera observations; use a MuJoCo env "
+    "(e.g. MuJoCoPickLift-v1) for visual or camera-based training."
+)
+
 
 def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
     """Batched rotation matrix ``(..., 3, 3)`` -> ``wxyz`` quaternion ``(..., 4)``.
@@ -342,7 +349,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         }
         for comp in observations:
             if isinstance(comp, CameraObservation):
-                raise NotImplementedError("Warp backend does not support camera observations")
+                raise NotImplementedError(_NO_CAMERA_MSG)
             if not isinstance(comp, tuple(supported)):
                 raise NotImplementedError(
                     f"{type(self).__name__} does not support observation "
@@ -372,7 +379,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             elif isinstance(comp, GraspState):
                 parts.append(self._is_grasping().unsqueeze(1))
             elif isinstance(comp, CameraObservation):
-                raise NotImplementedError("Warp backend does not support camera observations")
+                raise NotImplementedError(_NO_CAMERA_MSG)
             else:
                 parts.append(self._get_component_data(comp))
         return torch.cat(parts, dim=1).to(torch.float32)

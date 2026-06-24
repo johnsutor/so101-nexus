@@ -7,15 +7,21 @@ Every SO101-Nexus environment accepts a typed config object that controls its be
 
 ## Change Episode Length
 
-Shorter episodes speed up training on simple tasks. Longer episodes give the agent more time for multi-step tasks.
+Shorter episodes speed up training on simple tasks. Longer episodes give the agent more time for multi-step tasks. Episode length is `max_episode_steps`, passed at make time (not on the config), the same way for every env on both backends.
 
 ```python
 import gymnasium as gym
 import so101_nexus.mujoco
+import so101_nexus.warp
 from so101_nexus import TouchConfig
 
-config = TouchConfig(max_episode_steps=256)
-env = gym.make("MuJoCoTouch-v1", config=config)
+config = TouchConfig()
+
+# MuJoCo (single env): applied via the TimeLimit wrapper
+env = gym.make("MuJoCoTouch-v1", config=config, max_episode_steps=256)
+
+# Warp (batched): forwarded to the vector env, which truncates internally
+envs = gym.make_vec("WarpTouch-v1", num_envs=4, device="cuda", config=config, max_episode_steps=256)
 ```
 
 ## Add Camera Observations

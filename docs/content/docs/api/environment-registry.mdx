@@ -61,12 +61,9 @@ import gymnasium as gym
 import so101_nexus.mujoco
 from so101_nexus import PickConfig, CubeObject
 
-config = PickConfig(
-    objects=[CubeObject(color="blue")],
-    max_episode_steps=512,
-)
+config = PickConfig(objects=[CubeObject(color="blue")])
 
-env = gym.make("MuJoCoPickLift-v1", config=config)
+env = gym.make("MuJoCoPickLift-v1", config=config, max_episode_steps=512)
 ```
 
 See [Configuration Classes](/docs/api/configs) for all available options.

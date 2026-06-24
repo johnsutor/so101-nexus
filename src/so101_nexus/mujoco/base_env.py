@@ -217,13 +217,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         )
         if not has_any_camera:
             return spaces.Box(
-                low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float64
+                low=-np.inf, high=np.inf, shape=(self._state_obs_size(),), dtype=np.float32
             )
         state_size = (
             len(SO101_JOINT_NAMES) if self.config.obs_mode == "visual" else self._state_obs_size()
         )
         obs_dict: dict[str, spaces.Space] = {
-            "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float64),
+            "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float32),
         }
         if self._wrist_cam_component is not None:
             wc = self._wrist_cam_component
@@ -443,7 +443,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 continue  # camera images handled separately in _get_obs
             else:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
-        return np.concatenate(parts)
+        return np.concatenate(parts).astype(np.float32, copy=False)
 
     def _get_component_data(self, component: object) -> np.ndarray:
         """Return data for a task-specific observation component.
@@ -641,7 +641,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         obs: dict[str, np.ndarray] = {}
         if self.config.obs_mode == "visual":
             self._privileged_state = state
-            obs["state"] = self._get_current_qpos()
+            obs["state"] = self._get_current_qpos().astype(np.float32)
         else:
             obs["state"] = state
 

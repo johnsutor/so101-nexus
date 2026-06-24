@@ -74,3 +74,18 @@ def test_examples_readme_references_existing_example_scripts() -> None:
     referenced = re.findall(r"python (examples/[\w./-]+\.py)", text)
     missing = [path for path in referenced if not (ROOT / path).exists()]
     assert missing == [], f"examples/README.md references missing scripts: {missing}"
+
+
+def test_max_episode_steps_documented_as_make_kwarg_not_config_field() -> None:
+    """Episode length is a gym.make/make_vec keyword, never a config field or table row."""
+    offenders = []
+    for path in TEXT_DOCS:
+        for lineno, line in enumerate(_read(path).splitlines(), start=1):
+            if "max_episode_steps=" in line and "gym.make" not in line:
+                offenders.append((str(path.relative_to(ROOT)), lineno, line.strip()))
+            if re.match(r"\|\s*`?max_episode_steps", line):
+                offenders.append((str(path.relative_to(ROOT)), lineno, line.strip()))
+    assert offenders == [], (
+        "max_episode_steps must be documented as a gym.make/make_vec keyword, "
+        f"never as a config field: {offenders}"
+    )
