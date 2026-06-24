@@ -172,7 +172,7 @@ Base configuration for all environments. Task-specific configs extend this class
 ```python
 from so101_nexus import EnvironmentConfig
 
-config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
+config = EnvironmentConfig(obs_mode="state")
 ```
 
 ### Constructor Parameters
@@ -183,7 +183,6 @@ config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 | `reward` | `RewardConfig \| None` | `None` | Reward weights. Uses `RewardConfig()` defaults when `None`. |
 | `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
 | `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |
-| `max_episode_steps` | `int` | `1024` | Maximum steps before truncation |
 | `reset_settle_frames` | `int` | `5` | No-op environment frames advanced after reset before returning the first observation |
 | `goal_thresh` | `float` | `0.025` | Distance threshold for goal completion (meters) |
 | `spawn_half_size` | `float` | `0.05` | Half-size of object spawn region |
@@ -202,6 +201,22 @@ config = EnvironmentConfig(max_episode_steps=512, obs_mode="state")
 - `reset_settle_frames` must be a nonnegative integer
 - When `obs_mode="visual"`, `observations` must contain at least one camera component (`WristCamera` or `OverheadCamera`)
 - Duplicate camera component types are not allowed
+
+### Episode Length
+
+`max_episode_steps` is owned by the Gymnasium registration, not the config. Set it per env at construction, the same way for every task:
+
+```python
+import gymnasium as gym
+
+# MuJoCo (single env): applied via the TimeLimit wrapper
+env = gym.make("MuJoCoTouch-v1", config=config, max_episode_steps=256)
+
+# Warp (batched): forwarded to the vector env, which truncates internally
+envs = gym.make_vec("WarpTouch-v1", num_envs=4, device="cuda", config=config, max_episode_steps=256)
+```
+
+Registered defaults: PickLift and PickAndPlace 1024, Touch 512, LookAt and Move 256. They apply to both the `MuJoCo*-v1` and `Warp*-v1` ids.
 
 ---
 
@@ -374,7 +389,7 @@ config = LookAtConfig(
 | `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Target object(s). Only `CubeObject` is supported. Defaults to `[CubeObject()]`. |
 | `fov_deg` | `float \| None` | `None` | Wrist-camera vertical FOV in degrees; success = target within `fov_deg / 2` of the optical axis. `None` reads the live camera FOV. |
 
-Defaults `max_episode_steps` to 256.
+The `MuJoCoLookAt-v1` and `WarpLookAt-v1` registrations default `max_episode_steps` to 256; override it at construction via `gym.make(..., max_episode_steps=N)` (MuJoCo) or `gym.make_vec(..., max_episode_steps=N)` (Warp).
 
 ### Default Observations
 
@@ -400,7 +415,7 @@ config = MoveConfig(direction="up", target_distance=0.10)
 | `target_distance` | `float` | `0.10` | Distance in metres to travel from the initial TCP position |
 | `success_threshold` | `float` | `0.01` | Max residual distance (m) to count as success |
 
-Defaults `max_episode_steps` to 256.
+The `MuJoCoMove-v1` and `WarpMove-v1` registrations default `max_episode_steps` to 256; override it at construction via `gym.make(..., max_episode_steps=N)` (MuJoCo) or `gym.make_vec(..., max_episode_steps=N)` (Warp).
 
 ### Default Observations
 

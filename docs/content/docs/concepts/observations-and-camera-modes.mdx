@@ -33,6 +33,8 @@ Camera components add image tensors to a dict-style observation space. They have
 
 Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
 
+Camera observations are rendered by the MuJoCo backend only. The Warp backend is state-only: a `Warp*-v1` env raises `NotImplementedError` if its config includes a camera component, so use a `MuJoCo*-v1` env for visual or camera-based training. See [Backend Support](/docs/concepts/backend-support).
+
 ```python
 from so101_nexus import WristCamera, OverheadCamera
 

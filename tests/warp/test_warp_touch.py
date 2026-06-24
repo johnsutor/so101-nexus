@@ -60,7 +60,7 @@ def test_camera_observation_rejected():
     from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
     config = TouchConfig(observations=[JointPositions(), WristCamera()])
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError, match="MuJoCo"):
         WarpTouchVectorEnv(num_envs=2, config=config, device="cpu")
 
 

@@ -878,6 +878,51 @@ def test_no_camera_flat_obs(env_id, config_cls):
 
 
 @pytest.mark.parametrize("env_id,config_cls", _CAMERA_ENVS)
+def test_state_obs_is_float32(env_id, config_cls):
+    """State observations are float32, matching the Warp backend and torch models."""
+    cfg = config_cls(observations=[JointPositions()])
+    env = gym.make(env_id, config=cfg)
+    try:
+        assert env.observation_space.dtype == np.float32
+        obs, _ = env.reset()
+        assert obs.dtype == np.float32
+        obs2, _, _, _, _ = env.step(env.action_space.sample())
+        assert obs2.dtype == np.float32
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id,config_cls", _CAMERA_ENVS)
+def test_visual_state_and_privileged_state_are_float32(env_id, config_cls):
+    """Visual-mode flat 'state' key and the privileged_state info are float32."""
+    cfg = config_cls(
+        obs_mode="visual",
+        observations=[JointPositions(), OverheadCamera(width=64, height=48)],
+    )
+    env = gym.make(env_id, config=cfg)
+    try:
+        obs, info = env.reset()
+        assert obs["state"].dtype == np.float32
+        assert info["privileged_state"].dtype == np.float32
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", ENV_IDS)
+def test_max_episode_steps_override_truncates(env_id):
+    """gym.make max_episode_steps overrides the registered horizon for every env."""
+    n = 3
+    env = gym.make(env_id, max_episode_steps=n)
+    try:
+        env.reset(seed=0)
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+        truncations = [bool(env.step(action)[3]) for _ in range(n)]
+        assert truncations == [False, False, True]
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id,config_cls", _CAMERA_ENVS)
 def test_visual_obs_mode(env_id, config_cls):
     cfg = config_cls(
         obs_mode="visual",
