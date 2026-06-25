@@ -11,9 +11,9 @@ import warp as wp
 
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
-from so101_nexus.constants import sample_color
+from so101_nexus.constants import COLOR_MAP, sample_color
 from so101_nexus.objects import CubeObject
-from so101_nexus.observations import GazeDirection
+from so101_nexus.observations import CameraObservation, GazeDirection
 from so101_nexus.rewards import orientation_progress, simple_reward
 from so101_nexus.scene import WARP_SCENE_OPTION_XML, build_robot_floor_scene_xml
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
@@ -30,9 +30,10 @@ _LOOK_AT_NJMAX = 256
 class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
     """Batched look-at primitive: orient every world's TCP toward a target object.
 
-    The target is a position sampled in the spawn square and stored as a tensor
-    (the MuJoCo backend's kinematic cube is purely visual, and the Warp backend
-    does not render). Default obs (6,): joint_positions, matching
+    The target is a position sampled in the spawn square and stored as a tensor.
+    When a camera observation is configured, a visual-only marker geom is added to
+    the scene and tracked to the target so the rendered image shows it (matching
+    the MuJoCo backend). Default obs (6,): joint_positions, matching
     ``MuJoCoLookAt-v1``. Add ``GazeDirection`` to make the target observable.
     """
 
@@ -52,10 +53,22 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         if config is None:
             config = LookAtConfig()
         ground_rgba = sample_color(config.ground_colors)
+        target = config.objects[0]
+        assert isinstance(target, CubeObject)
+        marker_xml = ""
+        if any(isinstance(c, CameraObservation) for c in (config.observations or [])):
+            cr, cg, cb, ca = COLOR_MAP[target.color]
+            hs = target.half_size
+            marker_xml = (
+                f'    <geom name="look_target" type="box" size="{hs} {hs} {hs}" '
+                f'rgba="{cr} {cg} {cb} {ca}" contype="0" conaffinity="0"/>\n'
+            )
         xml_string = build_robot_floor_scene_xml(
             ground_rgba,
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
+            overhead_camera_xml=SO101NexusWarpVectorEnv._overhead_camera_xml(config),
+            extra_bodies=marker_xml,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
@@ -74,16 +87,15 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             njmax=_LOOK_AT_NJMAX if njmax is None else njmax,
         )
         self._targets = torch.zeros((num_envs, 3), device=self.device)
-        target = config.objects[0]
-        assert isinstance(target, CubeObject)
         self._spawn_z = float(target.half_size)
         cx, cy = config.spawn_center
         self._spawn_center = torch.as_tensor([cx, cy], device=self.device)
         # Zero-copy view of camera rotation matrices: (num_envs, ncam, 3, 3).
         self._cam_xmat = wp.to_torch(self.data.cam_xmat)
-        # In-frame boundary: half the wrist-camera vertical FOV. Warp does not
-        # render or randomize the camera, so the static model fovy is the live
-        # value; config.fov_deg overrides it when pinned.
+        # In-frame boundary: half the wrist-camera vertical FOV. When a WristCamera
+        # component randomizes fovy per world, the live per-world value is used in
+        # the reward (see _compute_reward_terminated); otherwise the static model
+        # fovy is the live value, and config.fov_deg overrides it when pinned.
         fovy = (
             config.fov_deg
             if config.fov_deg is not None
@@ -91,9 +103,15 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         )
         self._success_half_fov_rad = float(np.radians(fovy) / 2.0)
         self.task_descriptions = [config.task_description] * num_envs
+        if self._has_cameras:
+            self._marker_gid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, "look_target")
+            self._geom_xpos = wp.to_torch(self.data.geom_xpos)  # (N, ngeom, 3)
 
     def _supported_obs_components(self) -> set[type]:
         return {GazeDirection}
+
+    def _update_render_markers(self) -> None:
+        self._geom_xpos[:, self._marker_gid] = self._targets
 
     def _task_reset(self, mask: torch.Tensor) -> None:
         idx = mask.nonzero(as_tuple=True)[0]
@@ -130,7 +148,11 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
     ) -> tuple[torch.Tensor, torch.Tensor, dict]:
         cos_sim = (self._gaze_axis() * self._gaze_dir()).sum(dim=1)
         orientation_error = torch.arccos(cos_sim.clamp(-1.0, 1.0))
-        success = orientation_error <= self._success_half_fov_rad
+        if self._wrist_cam is not None and self.config.fov_deg is None:
+            half_fov = torch.deg2rad(self._cam_fovy[:, self._wrist_cam_id]) * 0.5
+        else:
+            half_fov = self._success_half_fov_rad
+        success = orientation_error <= half_fov
         # orientation_progress(cos(error)) == orientation_progress(cos_sim).
         progress = orientation_progress(cos_sim)
         base = simple_reward(

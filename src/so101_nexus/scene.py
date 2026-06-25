@@ -28,12 +28,14 @@ def build_robot_floor_scene_xml(
     *,
     option_xml: str,
     robot_xml_path: str,
+    overhead_camera_xml: str = "",
+    extra_bodies: str = "",
 ) -> str:
     """Build a robot + floor MJCF with no in-scene target marker.
 
     Shared by the Warp move and look-at envs, whose per-world targets live in
-    torch tensors rather than a placed site or body (the Warp backend does not
-    render). The floor keeps arm/floor contact consistent with the reach scene.
+    torch tensors rather than a placed site or body. The floor keeps arm/floor
+    contact consistent with the reach scene.
 
     Parameters
     ----------
@@ -43,6 +45,13 @@ def build_robot_floor_scene_xml(
         The ``<option>`` element controlling physics (a preset above).
     robot_xml_path : str
         Path to the vendored menagerie SO101 model to ``<include>``.
+    overhead_camera_xml : str
+        Optional ``<camera>`` element injected into the worldbody, used when an
+        ``OverheadCamera`` observation renders on the Warp backend. Empty by
+        default (no overhead camera).
+    extra_bodies : str
+        Optional extra ``<worldbody>`` XML (for example a visual-only target
+        marker geom rendered by the Warp camera path). Empty by default.
     """
     gr, gg, gb, ga = ground_rgba
     return f"""\
@@ -61,6 +70,6 @@ def build_robot_floor_scene_xml(
     <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
-  </worldbody>
+{extra_bodies}{overhead_camera_xml}  </worldbody>
 </mujoco>
 """

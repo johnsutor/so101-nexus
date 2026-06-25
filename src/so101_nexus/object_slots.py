@@ -102,6 +102,7 @@ def build_object_scene_xml(
     robot_xml_path: str,
     model_name: str = "object_scene",
     extra_bodies: str = "",
+    overhead_camera_xml: str = "",
 ) -> str:
     """Build a robot + floor MJCF with one freejoint body per pool object.
 
@@ -122,6 +123,9 @@ def build_object_scene_xml(
     extra_bodies:
         Additional ``<worldbody>`` XML appended after the object slots (for
         example a pick-and-place goal disc).
+    overhead_camera_xml:
+        Optional ``<camera>`` element injected into the worldbody, used when an
+        ``OverheadCamera`` observation renders on the Warp backend.
     """
     gr, gg, gb, ga = ground_color
     asset_entries = ""
@@ -182,7 +186,7 @@ def build_object_scene_xml(
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
 
-{body_entries}{extra_bodies}  </worldbody>
+{body_entries}{extra_bodies}{overhead_camera_xml}  </worldbody>
 </mujoco>
 """
 
