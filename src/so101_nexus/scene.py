@@ -22,6 +22,28 @@ WARP_SCENE_OPTION_XML = (
     'integrator="implicit" impratio="10" iterations="10" ls_iterations="20"/>'
 )
 
+# Shared ``<visual>`` block for every backend scene. ``shadowsize`` and
+# ``offsamples`` raise the shadow-map resolution and offscreen multisample count
+# above the MuJoCo defaults (4096 / 4), and ``shadowclip`` tightens the
+# directional-light shadow frustum (default 1.0) to concentrate shadow texels on
+# the workspace. Together they remove the blocky shadow-edge and silhouette
+# aliasing seen in rendered camera observations (overhead corners, distant floor
+# in the wrist view). Values match the vendored menagerie ``scene.xml``.
+SCENE_VISUAL_XML = """\
+  <visual>
+    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <quality shadowsize="8192" offsamples="8"/>
+    <map shadowclip="0.5"/>
+  </visual>"""
+
+# Two directional lights: an angled key light that casts the scene's single
+# shadow plus an overhead fill light with ``castshadow="false"``. Both lights
+# casting shadows previously produced a doubled robot shadow.
+SCENE_LIGHTS_XML = """\
+    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
+    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"
+           castshadow="false"/>"""
+
 
 def build_robot_floor_scene_xml(
     ground_rgba: list[float],
@@ -61,13 +83,10 @@ def build_robot_floor_scene_xml(
   <include file="{robot_xml_path}"/>
   {option_xml}
 
-  <visual>
-    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
-  </visual>
+{SCENE_VISUAL_XML}
 
   <worldbody>
-    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
-    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+{SCENE_LIGHTS_XML}
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
 {extra_bodies}{overhead_camera_xml}  </worldbody>

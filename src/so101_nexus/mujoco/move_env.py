@@ -13,7 +13,7 @@ from so101_nexus.config import DIRECTION_VECTORS, ControlMode, MoveConfig
 from so101_nexus.constants import sample_color
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.rewards import simple_reward
-from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
+from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
@@ -30,13 +30,10 @@ def _build_move_scene_xml(ground_rgba: list[float]) -> str:
   <include file="{robot_path}"/>
   {MUJOCO_SCENE_OPTION_XML}
 
-  <visual>
-    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
-  </visual>
+{SCENE_VISUAL_XML}
 
   <worldbody>
-    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
-    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+{SCENE_LIGHTS_XML}
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
     <site name="move_target" type="sphere" size="0.015" rgba="0 0.8 0.2 0.7"
