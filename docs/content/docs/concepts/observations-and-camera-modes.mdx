@@ -33,7 +33,7 @@ Camera components add image tensors to a dict-style observation space. They have
 
 Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
 
-Both backends render camera observations. The MuJoCo backend renders on CPU through per-env OpenGL renderers; the MuJoCo Warp backend renders all worlds in one batched ray-tracing pass on the simulation device, returning `uint8` image tensors of shape `(num_envs, height, width, 3)` (with per-world wrist-camera domain randomization). The two renderers differ (OpenGL rasterizer vs ray tracer), so pixel values are not identical across backends, but observation keys, shapes, and dtypes match. See [Backend Support](/docs/concepts/backend-support).
+Both backends render camera observations. The MuJoCo backend renders on CPU through per-env OpenGL renderers; the MuJoCo Warp backend renders all worlds in one batched ray-tracing pass on the simulation device, returning `uint8` image tensors of shape `(num_envs, height, width, 3)` (with per-world wrist-camera domain randomization). The two renderers differ (OpenGL rasterizer vs ray tracer), so pixel values are not identical across backends, but observation keys, shapes, and dtypes match. Warp camera observations are independent of Gymnasium `render_mode`; `render_mode` visualization is MuJoCo-only. See [Backend Support](/docs/concepts/backend-support).
 
 ```python
 from so101_nexus import WristCamera, OverheadCamera

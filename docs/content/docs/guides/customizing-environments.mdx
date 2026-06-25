@@ -48,6 +48,16 @@ print(obs["state"].shape)         # (18,): flat state vector
 print(obs["wrist_camera"].shape)  # (224, 224, 3): camera image
 ```
 
+For Warp, use the same observation config and create a batched vector env. Do not rely on `render_mode` for pixels; camera components are the image source.
+
+```python
+import so101_nexus.warp
+
+envs = gym.make_vec("WarpPickLift-v1", num_envs=1024, device="cuda", config=config)
+obs, _ = envs.reset()
+print(obs["wrist_camera"].shape)  # (1024, 224, 224, 3)
+```
+
 You can also add an overhead camera, or both:
 
 ```python

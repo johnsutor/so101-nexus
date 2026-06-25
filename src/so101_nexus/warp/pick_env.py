@@ -76,6 +76,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if config is None:
             config = PickConfig()
@@ -91,6 +92,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             nconmax=nconmax,
             njmax=njmax,
             model_name="pick_scene",
+            render_mode=render_mode,
         )
 
     def _build_slot_model(
@@ -108,6 +110,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         njmax: int | None,
         model_name: str,
         extra_bodies: str = "",
+        render_mode: str | None = None,
     ) -> None:
         """Compile the shared object-slot model and build per-slot tensors.
 
@@ -147,6 +150,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             seed=seed,
             nconmax=default_nconmax if nconmax is None else nconmax,
             njmax=default_njmax if njmax is None else njmax,
+            render_mode=render_mode,
         )
         self._mjm = mjm
 

@@ -49,6 +49,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if config is None:
             config = LookAtConfig()
@@ -85,6 +86,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             seed=seed,
             nconmax=_LOOK_AT_NCONMAX if nconmax is None else nconmax,
             njmax=_LOOK_AT_NJMAX if njmax is None else njmax,
+            render_mode=render_mode,
         )
         self._targets = torch.zeros((num_envs, 3), device=self.device)
         self._spawn_z = float(target.half_size)
