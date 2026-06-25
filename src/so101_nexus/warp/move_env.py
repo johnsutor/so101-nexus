@@ -34,7 +34,8 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
 
     The per-world target is the post-settle TCP plus the configured direction
     vector scaled by ``target_distance`` (settle-then-place contract), stored as
-    a tensor rather than a placed site since the Warp backend does not render.
+    a tensor rather than a placed site. Camera observations render a visual target
+    marker, but Gymnasium ``render_mode`` visualization is not implemented.
     Default obs (6,): joint_positions, matching ``MuJoCoMove-v1``. Add
     ``TargetOffset`` in the config to make the target observable.
     """
@@ -51,6 +52,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if config is None:
             config = MoveConfig()
@@ -82,6 +84,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
             seed=seed,
             nconmax=_MOVE_NCONMAX if nconmax is None else nconmax,
             njmax=_MOVE_NJMAX if njmax is None else njmax,
+            render_mode=render_mode,
         )
         self._targets = torch.zeros((num_envs, 3), device=self.device)
         self._start_pos = torch.zeros((num_envs, 3), device=self.device)

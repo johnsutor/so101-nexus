@@ -57,6 +57,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if config is None:
             config = PickAndPlaceConfig()
@@ -80,6 +81,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             njmax=njmax,
             model_name="pick_and_place_scene",
             extra_bodies=disc_xml,
+            render_mode=render_mode,
         )
         target_bid = mujoco.mj_name2id(self._mjm, mujoco.mjtObj.mjOBJ_BODY, "target")
         self._target_mocap_id = int(self._mjm.body_mocapid[target_bid])

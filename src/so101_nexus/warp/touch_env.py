@@ -35,6 +35,7 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if config is None:
             config = TouchConfig()
@@ -47,6 +48,7 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
             seed=seed,
             nconmax=nconmax,
             njmax=njmax,
+            render_mode=render_mode,
         )
 
     def _describe_target(self, obj: SceneObject) -> str:

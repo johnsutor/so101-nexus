@@ -13,7 +13,9 @@ post-reset obs), not Gymnasium 1.0's default ``AutoresetMode.NEXT_STEP``. The
 
 Physics diverges from the MuJoCo backend (see ``so101_nexus.scene``): mujoco_warp
 does not support ``implicitfast`` or ``noslip``, so the Warp scene uses the
-``implicit`` integrator with no noslip. Camera observations are not supported.
+``implicit`` integrator with no noslip. Camera observations are supported through
+``WristCamera`` and ``OverheadCamera`` components; Gymnasium ``render_mode`` is
+accepted only for compatibility and ignored with a warning.
 """
 
 from __future__ import annotations
@@ -176,17 +178,27 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         seed: int | None = None,
         nconmax: int | None = None,
         njmax: int | None = None,
+        render_mode: str | None = None,
     ) -> None:
         if control_mode not in self._VALID_CONTROL_MODES:
             raise ValueError(
                 f"control_mode must be one of {sorted(self._VALID_CONTROL_MODES)}, "
                 f"got {control_mode!r}"
             )
+        if render_mode is not None:
+            warnings.warn(
+                "render_mode is ignored by the Warp backend because Warp vector envs "
+                "do not implement render(); configure WristCamera or OverheadCamera "
+                "observations for image tensors instead.",
+                UserWarning,
+                stacklevel=2,
+            )
         if config.observations is not None:
             self._validate_obs_components(config.observations)
 
         self.config = config
         self.control_mode = control_mode
+        self.render_mode = None
         self.max_episode_steps = max_episode_steps
         self.robot_init_qpos_noise = config.robot_init_qpos_noise
         self.device = torch.device(device)
