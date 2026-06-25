@@ -23,6 +23,7 @@ import numpy as np
 
 from so101_nexus.constants import COLOR_MAP
 from so101_nexus.objects import CubeObject, MeshObject, SceneObject, YCBObject
+from so101_nexus.scene import SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 from so101_nexus.ycb_assets import (
     get_ycb_collision_mesh,
     get_ycb_texture_file,
@@ -176,13 +177,10 @@ def build_object_scene_xml(
   <include file="{robot_xml_path}"/>
   {option_xml}
 
-{asset_section}  <visual>
-    <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
-  </visual>
+{asset_section}{SCENE_VISUAL_XML}
 
   <worldbody>
-    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
-    <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+{SCENE_LIGHTS_XML}
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
 
