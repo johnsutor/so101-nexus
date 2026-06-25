@@ -25,7 +25,10 @@ For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/doc
 ## Demo Rollouts
 
 <div align="center">
-  <video src="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift/resolve/main/videos/observation.images.overhead/chunk-000/file-000.mp4" controls muted playsinline width="720" aria-label="MuJoCo PickLift teleoperation rollout"></video>
+  <video controls muted playsinline width="720" aria-label="MuJoCo PickLift teleoperation rollout">
+    <source src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/docs/public/videos/pick-lift-overhead.mp4" type="video/mp4">
+    Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0">PickLift episode viewer</a> instead.
+  </video>
   <p>
     <a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift">PickLift dataset</a>
     ·
