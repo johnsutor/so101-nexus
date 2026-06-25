@@ -54,16 +54,6 @@ def test_robot_init_qpos_noise_config_is_honored():
     assert env.robot_init_qpos_noise == 0.0
 
 
-def test_camera_observation_rejected():
-    from so101_nexus.config import TouchConfig
-    from so101_nexus.observations import JointPositions, WristCamera
-    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
-
-    config = TouchConfig(observations=[JointPositions(), WristCamera()])
-    with pytest.raises(NotImplementedError, match="MuJoCo"):
-        WarpTouchVectorEnv(num_envs=2, config=config, device="cpu")
-
-
 def test_step_shapes_and_finiteness():
     import torch
 

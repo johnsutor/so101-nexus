@@ -30,24 +30,21 @@ from gymnasium import spaces
 from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
+from so101_nexus.camera_utils import build_overhead_camera_mjcf
 from so101_nexus.config import SO101_JOINT_NAMES, ControlMode, EnvironmentConfig
 from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
     GraspState,
     JointPositions,
+    OverheadCamera,
+    WristCamera,
 )
+from so101_nexus.warp.render import unpack_rgb_uint8
 
 # Normalized-delta physical scale (radians), shared with the MuJoCo backend's
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
 _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
-
-# Camera rendering is unsupported on the Warp backend (mujoco_warp has no batched
-# renderer). Point users at MuJoCo, which does render camera observations.
-_NO_CAMERA_MSG = (
-    "Warp backend does not support camera observations; use a MuJoCo env "
-    "(e.g. MuJoCoPickLift-v1) for visual or camera-based training."
-)
 
 
 def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
@@ -291,8 +288,183 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        self._setup_cameras()
         self._step_graph = None
         self._capture_step_graph()
+
+    def _setup_cameras(self) -> None:
+        """Detect camera components and configure batched rendering (no-op if none).
+
+        State-only configs pay nothing. When a ``WristCamera``/``OverheadCamera``
+        component is present, builds a mujoco_warp ``RenderContext``, reallocates
+        per-world camera model arrays for wrist domain randomization, and rebuilds
+        the observation space as a ``Dict`` matching the MuJoCo backend. Runs
+        before CUDA-graph capture so the captured step binds the per-world arrays.
+        """
+        obs = self.config.observations or []
+        self._wrist_cam: WristCamera | None = next(
+            (c for c in obs if isinstance(c, WristCamera)), None
+        )
+        self._overhead_cam: OverheadCamera | None = next(
+            (c for c in obs if isinstance(c, OverheadCamera)), None
+        )
+        self._has_cameras = self._wrist_cam is not None or self._overhead_cam is not None
+        self._image_bufs: list = []
+        self._privileged_state: torch.Tensor | None = None
+        if not self._has_cameras:
+            return
+
+        mjm = self.mjm
+        # (component, mujoco camera id) in declaration order (wrist, then overhead).
+        self._cam_specs: list[tuple[CameraObservation, int]] = []
+        if self._wrist_cam is not None:
+            wid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
+            if wid < 0:
+                raise RuntimeError("WristCamera requested but 'wrist_cam' is not in the model")
+            self._cam_specs.append((self._wrist_cam, wid))
+            self._wrist_mjid = wid
+        if self._overhead_cam is not None:
+            oid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "overhead_cam")
+            if oid < 0:
+                raise RuntimeError(
+                    "OverheadCamera requested but 'overhead_cam' is not in the scene; "
+                    "the task must inject it via camera_utils.build_overhead_camera_mjcf"
+                )
+            self._cam_specs.append((self._overhead_cam, oid))
+
+        # Active render index = position within the ascending active-id list, the
+        # ordering mujoco_warp.create_render_context assigns from cam_active.
+        active_ids = sorted(cid for _, cid in self._cam_specs)
+        cam_active = [i in active_ids for i in range(mjm.ncam)]
+        spec_by_id = {cid: comp for comp, cid in self._cam_specs}
+        cam_res = [(spec_by_id[cid].width, spec_by_id[cid].height) for cid in active_ids]
+        self._render_index = {cid: active_ids.index(cid) for cid in active_ids}
+        # Per-world fovy randomization (wrist DR) requires rays recomputed per world.
+        use_precomputed_rays = self._wrist_cam is None
+        with wp.ScopedDevice(self._wp_device):
+            self._render_ctx = mjw.create_render_context(
+                mjm,
+                nworld=self.num_envs,
+                cam_res=cam_res,
+                render_rgb=True,
+                render_depth=False,
+                render_seg=False,
+                cam_active=cam_active,
+                use_precomputed_rays=use_precomputed_rays,
+            )
+            if self._wrist_cam is not None:
+                self._reallocate_per_world_cameras(mjm)
+        self._build_camera_observation_space()
+
+    def _reallocate_per_world_cameras(self, mjm: mujoco.MjModel) -> None:
+        """Give the model per-world camera pose/fovy arrays for wrist DR.
+
+        ``put_model`` shares these across worlds (leading dim 1); reallocating to
+        ``num_envs`` rows lets ``camlight`` and the renderer read per-world values
+        (kernels index ``worldid % shape[0]``). Quaternions stay in MuJoCo ``wxyz``
+        order (scalar first), matching ``put_model``.
+        """
+        ncam, n = mjm.ncam, self.num_envs
+        cam_pos = np.broadcast_to(mjm.cam_pos, (n, ncam, 3)).copy()
+        cam_quat = np.broadcast_to(mjm.cam_quat, (n, ncam, 4)).copy()
+        cam_fovy = np.broadcast_to(mjm.cam_fovy, (n, ncam)).copy()
+        self.model.cam_pos = wp.array(cam_pos, dtype=wp.vec3)
+        self.model.cam_quat = wp.array(cam_quat, dtype=wp.quat)
+        self.model.cam_fovy = wp.array(cam_fovy, dtype=wp.float32)
+        self._cam_pos = wp.to_torch(self.model.cam_pos)  # (N, ncam, 3)
+        self._cam_quat = wp.to_torch(self.model.cam_quat)  # (N, ncam, 4) wxyz
+        self._cam_fovy = wp.to_torch(self.model.cam_fovy)  # (N, ncam)
+
+    def _build_camera_observation_space(self) -> None:
+        state_size = len(SO101_JOINT_NAMES) if self.config.obs_mode == "visual" else self._obs_dim()
+        obs_spaces: dict[str, spaces.Space] = {
+            "state": spaces.Box(-np.inf, np.inf, shape=(state_size,), dtype=np.float32),
+        }
+        for comp, _ in self._cam_specs:
+            obs_spaces[comp.name] = spaces.Box(
+                low=0, high=255, shape=(comp.height, comp.width, 3), dtype=np.uint8
+            )
+        self.single_observation_space = spaces.Dict(obs_spaces)
+        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+
+    def _render_camera_images(self) -> dict[str, torch.Tensor]:
+        """Render all active cameras and return ``name -> (N, H, W, 3)`` uint8 tensors."""
+        self._image_bufs = []
+        images: dict[str, torch.Tensor] = {}
+        with wp.ScopedDevice(self._wp_device):
+            self._update_render_markers()
+            mjw.refit_bvh(self.model, self.data, self._render_ctx)
+            mjw.render(self.model, self.data, self._render_ctx)
+            for comp, cid in self._cam_specs:
+                buf = wp.empty((self.num_envs, comp.height, comp.width, 3), dtype=wp.uint8)
+                unpack_rgb_uint8(self._render_ctx, self._render_index[cid], buf)
+                self._image_bufs.append(buf)  # keep alive for the returned torch views
+                images[comp.name] = wp.to_torch(buf)
+        return images
+
+    def _update_render_markers(self) -> None:
+        """Refresh per-world visual-only marker geom poses before rendering (default no-op).
+
+        Default no-op. Tasks whose target has no physical body (LookAt, Move)
+        override this to write the marker geom's ``geom_xpos`` so the camera image
+        shows the goal, matching the MuJoCo backend. Runs after the step's physics
+        forward and immediately before ``refit_bvh``/``render``, so the override is
+        not clobbered by a later kinematics pass.
+        """
+
+    def _randomize_wrist_camera(self, idx: torch.Tensor) -> None:
+        """Per-world wrist camera DR (pitch, position, fovy) for the reset indices.
+
+        Mirrors ``SO101NexusMuJoCoBaseEnv._randomize_wrist_camera`` with the seeded
+        generator. Writes the per-world model arrays in place (``wxyz`` quaternions),
+        so the next ``camlight``/render reflects them.
+        """
+        n = int(idx.numel())
+        if n == 0 or self._wrist_cam is None:
+            return
+        wc = self._wrist_cam
+        cid = self._wrist_mjid
+        g = self._generator
+        pitch_lo, pitch_hi = wc.pitch_rad_range
+        pitch = torch.rand(n, generator=g, device=self.device) * (pitch_hi - pitch_lo) + pitch_lo
+        half = pitch * 0.5
+        quat = torch.zeros((n, 4), device=self.device)
+        quat[:, 0] = torch.cos(half)  # w
+        quat[:, 1] = torch.sin(half)  # x (rotation about camera X = pitch)
+        self._cam_quat[idx, cid] = quat
+        u = torch.rand((n, 3), generator=g, device=self.device) * 2.0 - 1.0
+        pos = torch.empty((n, 3), device=self.device)
+        pos[:, 0] = u[:, 0] * wc.pos_x_noise
+        pos[:, 1] = wc.pos_y_center + u[:, 1] * wc.pos_y_noise
+        pos[:, 2] = wc.pos_z_center + u[:, 2] * wc.pos_z_noise
+        self._cam_pos[idx, cid] = pos
+        fov_lo, fov_hi = wc.fov_deg_range
+        self._cam_fovy[idx, cid] = (
+            torch.rand(n, generator=g, device=self.device) * (fov_hi - fov_lo) + fov_lo
+        )
+
+    @staticmethod
+    def _overhead_camera_xml(config: EnvironmentConfig) -> str:
+        """Return the overhead ``<camera>`` MJCF for the scene, or '' if not requested.
+
+        Subclasses call this before ``super().__init__`` to inject a world-fixed
+        overhead camera into the scene worldbody when an ``OverheadCamera``
+        observation is configured (the Warp renderer rasterizes model cameras
+        only). Framing reuses ``camera_utils`` so both backends match.
+        """
+        cam = next(
+            (c for c in (config.observations or []) if isinstance(c, OverheadCamera)),
+            None,
+        )
+        if cam is None:
+            return ""
+        return build_overhead_camera_mjcf(
+            spawn_center=config.spawn_center,
+            spawn_max_radius=config.spawn_max_radius,
+            fov_deg=cam.fov_deg,
+            width=cam.width,
+            height=cam.height,
+        )
 
     def _capture_step_graph(self) -> None:
         """Capture the per-step substep loop into a CUDA graph for replay.
@@ -335,21 +507,22 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """Reject unsupported observation components at construction (fail fast).
 
         The Warp base routes the robot-generic components (``JointPositions``,
-        ``EndEffectorPose``, ``GraspState``) centrally, mirroring the MuJoCo base,
-        and delegates task-specific components to ``_get_component_data`` (a
-        subclass declares those via ``_supported_obs_components``). Camera
-        components are unsupported on Warp. Anything else raises here rather than
-        at the first reset, so the error names the unsupported component upfront.
+        ``EndEffectorPose``, ``GraspState``) and camera components
+        (``WristCamera``, ``OverheadCamera``) centrally, mirroring the MuJoCo
+        base, and delegates task-specific components to ``_get_component_data`` (a
+        subclass declares those via ``_supported_obs_components``). Anything else
+        raises here rather than at the first reset, so the error names the
+        unsupported component upfront.
         """
         supported = {
             JointPositions,
             EndEffectorPose,
             GraspState,
+            WristCamera,
+            OverheadCamera,
             *self._supported_obs_components(),
         }
         for comp in observations:
-            if isinstance(comp, CameraObservation):
-                raise NotImplementedError(_NO_CAMERA_MSG)
             if not isinstance(comp, tuple(supported)):
                 raise NotImplementedError(
                     f"{type(self).__name__} does not support observation "
@@ -367,7 +540,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def _tcp_pos(self) -> torch.Tensor:
         return self.site_xpos[:, self._tcp_site_id, :]
 
-    def _compute_obs(self) -> torch.Tensor:
+    def _compute_state_vector(self) -> torch.Tensor:
+        """Concatenate the flat state components (camera components are skipped)."""
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         parts: list[torch.Tensor] = []
@@ -379,10 +553,26 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             elif isinstance(comp, GraspState):
                 parts.append(self._is_grasping().unsqueeze(1))
             elif isinstance(comp, CameraObservation):
-                raise NotImplementedError(_NO_CAMERA_MSG)
+                continue
             else:
                 parts.append(self._get_component_data(comp))
+        if not parts:  # camera-only config: empty flat state
+            return torch.zeros((self.num_envs, 0), device=self.device)
         return torch.cat(parts, dim=1).to(torch.float32)
+
+    def _compute_obs(self) -> torch.Tensor | dict[str, torch.Tensor]:
+        """Return flat state, or a dict obs with batched images when cameras are active."""
+        state = self._compute_state_vector()
+        if not self._has_cameras:
+            return state
+        obs: dict[str, torch.Tensor] = {}
+        if self.config.obs_mode == "visual":
+            self._privileged_state = state
+            obs["state"] = self._joint_qpos()
+        else:
+            obs["state"] = state
+        obs.update(self._render_camera_images())
+        return obs
 
     def _write_reset_state(self, mask: torch.Tensor, init_qpos: torch.Tensor | None = None) -> None:
         idx = mask.nonzero(as_tuple=True)[0]
@@ -397,10 +587,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._prev_target[idx] = target
         self._elapsed[idx] = 0
         self._task_reset(mask)
+        if self._wrist_cam is not None:
+            self._randomize_wrist_camera(idx)
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> tuple[torch.Tensor, dict]:
+    ) -> tuple[torch.Tensor | dict[str, torch.Tensor], dict]:
         """Reset all worlds and return the initial batched observation and info."""
         if seed is not None:
             self._generator.manual_seed(seed)
@@ -419,7 +611,11 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             for _ in range(self.config.reset_settle_frames):
                 for _ in range(self._N_SUBSTEPS):
                     mjw.step(self.model, self.data)
-        return self._compute_obs(), {"task_description": tuple(self.task_descriptions)}
+        obs = self._compute_obs()
+        info: dict[str, Any] = {"task_description": tuple(self.task_descriptions)}
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return obs, info
 
     def close(self, **kwargs: Any) -> None:
         """No-op: Warp device memory is released when the env is garbage-collected."""
@@ -452,7 +648,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
     def step(
         self, actions: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[
+        torch.Tensor | dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor, dict
+    ]:
         """Apply actions to all worlds, advance physics, autoreset done worlds."""
         public_action = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
         energy_norm = torch.linalg.norm(public_action, dim=1)
@@ -497,7 +695,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             # matches reset() exactly; only the robot's first-frame settle transient
             # differs (per-world warmstart left as an optimizer hint).
             self._has_prev_action[done] = False
-        return self._compute_obs(), reward, terminated, truncated, info
+        obs = self._compute_obs()
+        if self._privileged_state is not None:
+            info["privileged_state"] = self._privileged_state
+        return obs, reward, terminated, truncated, info
 
     def _finger_geom_mask(self, mjm: mujoco.MjModel, body_id: int, ngeom: int) -> torch.Tensor:
         """Boolean per-geom mask of ``condim==6`` contact geoms on a finger body."""

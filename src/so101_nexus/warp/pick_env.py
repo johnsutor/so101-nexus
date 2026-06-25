@@ -129,6 +129,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             robot_xml_path=str(_SO101_XML),
             model_name=model_name,
             extra_bodies=extra_bodies,
+            overhead_camera_xml=self._overhead_camera_xml(config),
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)

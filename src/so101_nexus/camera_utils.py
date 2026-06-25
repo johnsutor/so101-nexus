@@ -180,3 +180,48 @@ def compute_angled_camera_params(
         "elevation": elevation,
         "azimuth": azimuth,
     }
+
+
+def build_overhead_camera_mjcf(
+    spawn_center: tuple[float, float],
+    spawn_max_radius: float,
+    fov_deg: float,
+    width: int,
+    height: int,
+    *,
+    margin: float = 0.10,
+    name: str = "overhead_cam",
+) -> str:
+    """Return a world-fixed overhead ``<camera>`` MJCF element string.
+
+    The Warp renderer rasterizes only model cameras, so the overhead observation
+    camera must be a compiled ``<camera>`` (unlike the MuJoCo backend, which uses
+    a free ``MjvCamera``). Pose and field of view reuse the same scene framing as
+    :func:`compute_overhead_eye_target`, so both backends frame the workspace
+    identically. ``xyaxes="0 -1 0 1 0 0"`` orients the camera straight down with
+    the robot's forward (+X) axis pointing up in the image.
+
+    Parameters
+    ----------
+    spawn_center, spawn_max_radius, margin:
+        Scene-bounds inputs shared with the overhead framing helpers.
+    fov_deg:
+        Vertical field of view in degrees.
+    width, height:
+        Observation resolution (sets the aspect used for framing; the render
+        resolution is set separately via the render context).
+    name:
+        Camera name used for ``mj_name2id`` lookup by the backend.
+    """
+    eye, _ = compute_overhead_eye_target(
+        spawn_center=spawn_center,
+        spawn_max_radius=spawn_max_radius,
+        margin=margin,
+        fov_deg=fov_deg,
+        aspect=width / height,
+    )
+    ex, ey, ez = eye
+    return (
+        f'    <camera name="{name}" mode="fixed" pos="{ex} {ey} {ez}" '
+        f'xyaxes="0 -1 0 1 0 0" fovy="{fov_deg}" resolution="{width} {height}"/>\n'
+    )

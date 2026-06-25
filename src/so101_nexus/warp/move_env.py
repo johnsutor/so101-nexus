@@ -6,11 +6,12 @@ import tempfile
 
 import mujoco
 import torch
+import warp as wp
 
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import DIRECTION_VECTORS, ControlMode, MoveConfig
 from so101_nexus.constants import sample_color
-from so101_nexus.observations import TargetOffset
+from so101_nexus.observations import CameraObservation, TargetOffset
 from so101_nexus.rewards import reach_progress, simple_reward
 from so101_nexus.scene import WARP_SCENE_OPTION_XML, build_robot_floor_scene_xml
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
@@ -54,10 +55,18 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         if config is None:
             config = MoveConfig()
         ground_rgba = sample_color(config.ground_colors)
+        marker_xml = ""
+        if any(isinstance(c, CameraObservation) for c in (config.observations or [])):
+            marker_xml = (
+                '    <geom name="move_target" type="sphere" size="0.015" '
+                'rgba="0 0.8 0.2 0.7" contype="0" conaffinity="0"/>\n'
+            )
         xml_string = build_robot_floor_scene_xml(
             ground_rgba,
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
+            overhead_camera_xml=SO101NexusWarpVectorEnv._overhead_camera_xml(config),
+            extra_bodies=marker_xml,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)
@@ -82,9 +91,15 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         )
 
         self.task_descriptions = [config.task_description] * num_envs
+        if self._has_cameras:
+            self._marker_gid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, "move_target")
+            self._geom_xpos = wp.to_torch(self.data.geom_xpos)  # (N, ngeom, 3)
 
     def _supported_obs_components(self) -> set[type]:
         return {TargetOffset}
+
+    def _update_render_markers(self) -> None:
+        self._geom_xpos[:, self._marker_gid] = self._targets
 
     def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:
         # Place each reset world's target target_distance from the post-forward
