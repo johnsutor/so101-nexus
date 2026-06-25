@@ -233,6 +233,7 @@ package-lock.json
 
 # Code
 docs/superpowers
+MJLAB-FEASIBILITY.md
 
 # Agent configs
 AGENTS.md
