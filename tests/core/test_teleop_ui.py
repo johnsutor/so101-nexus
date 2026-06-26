@@ -36,7 +36,7 @@ def test_app_builds_with_walkthrough() -> None:
 
     with gr.Blocks(), gr.Walkthrough(selected=0) as wt:
         with gr.Step("Configure", id=0):
-            _build_setup_screen(gr, all_env_ids, "test_leader", -90.0)
+            _build_setup_screen(gr, all_env_ids, "test_leader", -90.0, "/dev/null")
         with gr.Step("Initialize", id=1):
             _build_init_step(gr)
         with gr.Step("Record", id=2):

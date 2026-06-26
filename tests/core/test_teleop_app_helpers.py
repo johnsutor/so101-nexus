@@ -114,6 +114,61 @@ def test_cb_validate_repo_id_status_branches(fake_gradio) -> None:
     assert "alphanumeric" in invalid["value"]
 
 
+def test_format_port_status_ok_when_accessible(monkeypatch) -> None:
+    from so101_nexus.teleop.app import _format_port_status
+
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.path.exists", lambda _p: True)
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.access", lambda _p, _m: True)
+
+    text = _format_port_status("/dev/ttyACM0")
+
+    assert "/dev/ttyACM0" in text
+    assert "looks accessible" in text
+
+
+def test_format_port_status_not_ready_includes_recovery_hint(monkeypatch) -> None:
+    from so101_nexus.teleop.app import _format_port_status
+
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.path.exists", lambda _p: False)
+
+    text = _format_port_status("/dev/ttyACM9")
+
+    assert "/dev/ttyACM9" in text
+    assert "not ready" in text
+    assert "lerobot-find-port" in text
+
+
+def test_cb_recheck_port_refreshes_status(monkeypatch, fake_gradio) -> None:
+    from so101_nexus.teleop.app import _cb_recheck_port
+
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.path.exists", lambda _p: True)
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.access", lambda _p, _m: False)
+
+    update = _cb_recheck_port("/dev/ttyACM0")
+
+    assert "not ready" in update["value"]
+    assert "chmod" in update["value"]
+
+
+def test_require_port_ready_blocks_when_not_accessible(monkeypatch, fake_gradio) -> None:
+    from so101_nexus.teleop.app import _require_port_ready
+
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.path.exists", lambda _p: True)
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.access", lambda _p, _m: False)
+
+    with pytest.raises(fake_gradio.Error, match="chmod"):
+        _require_port_ready("/dev/ttyACM0")
+
+
+def test_require_port_ready_allows_accessible_port(monkeypatch, fake_gradio) -> None:
+    from so101_nexus.teleop.app import _require_port_ready
+
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.path.exists", lambda _p: True)
+    monkeypatch.setattr("so101_nexus.teleop.leader.os.access", lambda _p, _m: True)
+
+    assert _require_port_ready("/dev/ttyACM0") is None
+
+
 def test_build_field_selection_all_keys() -> None:
     selection = _build_field_selection([WRIST_KEY, OVERHEAD_KEY, "task"])
 
@@ -297,7 +352,7 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
         lambda _env_id: teleop_app.CustomizationUIState(),
     )
 
-    _build_setup_screen(fake_gr, ["MuJoCoTouch-v1"], "leader", -90.0)
+    _build_setup_screen(fake_gr, ["MuJoCoTouch-v1"], "leader", -90.0, "/dev/null")
 
     action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
     assert action_space_radio.value == "joint_pos"
