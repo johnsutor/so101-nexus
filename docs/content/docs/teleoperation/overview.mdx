@@ -49,9 +49,15 @@ sudo chmod 666 /dev/ttyACM0
 lerobot-find-port
 ```
 
-If the recorder starts before the port is writable, the Initialize step now
-stays open and shows exact recovery commands. Fix the port in another
-terminal, then click `Retry Initialization` in the same browser session.
+The Configure step shows a leader-port status banner up front: it reports
+whether the device exists and is readable and writable before you fill in
+the rest of the form. Click `Recheck Port` after fixing permissions to
+refresh it, and `Initialize Session` is blocked with the same guidance while
+the port is not ready. If the recorder still cannot open the arm at connect
+time, the Initialize step stays open and shows the connection error, with
+exact recovery commands when the port is missing or blocked by permissions.
+Fix the port in another terminal, then click `Retry Initialization` in the
+same browser session.
 
 ## Launching the recorder
 
@@ -249,7 +255,9 @@ selected recording fields. If the unwrapped environment exposes
 ## Session flow
 
 1. **Configure.** Pick the env, robot type, episode count, FPS, camera
-   resolutions, action space, countdown, and dataset fields.
+   resolutions, action space, countdown, and dataset fields. A leader-port
+   status banner reports up front whether the configured serial port is
+   reachable, with a `Recheck Port` button to refresh after fixing it.
 2. **Initialize.** The app connects to the leader arm and creates the
    dataset. If the port is unavailable or blocked by permissions, fix it
    and retry from the same page.

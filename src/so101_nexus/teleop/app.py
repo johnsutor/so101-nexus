@@ -38,6 +38,7 @@ from so101_nexus.teleop.dataset import (
 from so101_nexus.teleop.leader import (
     ROBOT_JOINT_NAMES,
     check_robot_env_mismatch,
+    diagnose_leader_port,
     format_leader_connection_error,
     get_leader,
     import_backend_for_env_id,
@@ -261,6 +262,46 @@ def _append_init_log(init_state: dict, message: str) -> None:
 def _current_init_log(init_state: dict) -> str:
     """Return the accumulated init log text."""
     return init_state.get("log_text", "")
+
+
+def _format_port_status(leader_port: str) -> str:
+    """Return Markdown describing whether *leader_port* looks ready to connect.
+
+    The check is best-effort: it confirms the serial device exists and is
+    readable/writable, but the arm is only truly verified when the session is
+    initialized. Surfacing it on the Configure step lets a user fix the port
+    before filling in the rest of the form.
+    """
+    diag = diagnose_leader_port(leader_port)
+    if diag.kind == "ok":
+        return (
+            f"**Leader port `{leader_port}` looks accessible.** "
+            "The arm connection is verified when you initialize the session."
+        )
+    text = f"**Leader port `{leader_port}` is not ready.** {diag.message}"
+    if diag.recovery_hint:
+        text += f"\n\n```\n{diag.recovery_hint}\n```"
+    return text
+
+
+def _cb_recheck_port(leader_port: str):
+    """Re-run the proactive leader-port check and refresh the status banner."""
+    import gradio as gr
+
+    return gr.update(value=_format_port_status(leader_port))
+
+
+def _require_port_ready(leader_port: str) -> None:
+    """Raise ``gr.Error`` if *leader_port* fails the proactive accessibility check."""
+    import gradio as gr
+
+    diag = diagnose_leader_port(leader_port)
+    if diag.kind == "ok":
+        return
+    message = diag.message
+    if diag.recovery_hint:
+        message += f"\n{diag.recovery_hint}"
+    raise gr.Error(message)
 
 
 def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
@@ -518,6 +559,8 @@ def _cb_start_init(
 ):
     """Validate inputs and launch the init worker thread."""
     import gradio as gr
+
+    _require_port_ready(leader_port)
 
     config = _normalized_init_config(
         leader_id_default,
@@ -1024,8 +1067,12 @@ def _build_setup_screen(
     all_env_ids: list[str],
     default_leader_id: str,
     wrist_roll_offset: float,
+    leader_port: str,
 ):
     """Build the Configure step contents and return all input components."""
+    gr.Markdown("### Leader Arm")
+    port_status = gr.Markdown(_format_port_status(leader_port))
+    recheck_port_btn = gr.Button("Recheck Port", variant="secondary")
     gr.Markdown("### Environment & Robot")
     default_robot_type = "so101"
     default_env = _default_env_id(all_env_ids, default_robot_type)
@@ -1215,6 +1262,8 @@ def _build_setup_screen(
         common_customization_group,
         pick_customization_group,
         pick_and_place_customization_group,
+        port_status,
+        recheck_port_btn,
     )
 
 
@@ -1281,6 +1330,8 @@ def _wire_events(
     env_id_input,
     repo_id_input,
     repo_id_warning,
+    port_status,
+    recheck_port_btn,
     customization_outputs,
     init_log,
     retry_btn,
@@ -1327,6 +1378,7 @@ def _wire_events(
         session["state"].should_stop = True
 
     retry_init = functools.partial(_cb_retry_init_with_session, session, init_state, leader_port)
+    recheck_port = functools.partial(_cb_recheck_port, leader_port)
 
     env_id_input.change(
         fn=_cb_update_customization_for_env,
@@ -1338,6 +1390,7 @@ def _wire_events(
         inputs=[repo_id_input],
         outputs=[repo_id_warning],
     )
+    recheck_port_btn.click(fn=recheck_port, outputs=[port_status])
     init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
     init_timer.tick(
         fn=poll_init,
@@ -1514,7 +1567,11 @@ def main(
                     common_customization_group,
                     pick_customization_group,
                     pick_and_place_customization_group,
-                ) = _build_setup_screen(gr, all_env_ids, leader_id_default, wrist_roll_offset)
+                    port_status,
+                    recheck_port_btn,
+                ) = _build_setup_screen(
+                    gr, all_env_ids, leader_id_default, wrist_roll_offset, leader_port
+                )
 
             with gr.Step("Initialize", id=1):
                 init_log, retry_btn, init_timer = _build_init_step(gr)
@@ -1586,6 +1643,8 @@ def main(
             env_id_input=env_id_input,
             repo_id_input=repo_id_input,
             repo_id_warning=repo_id_warning,
+            port_status=port_status,
+            recheck_port_btn=recheck_port_btn,
             customization_outputs=[
                 customize_env_input,
                 object_pool_input,
