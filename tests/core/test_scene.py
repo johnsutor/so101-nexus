@@ -3,6 +3,9 @@
 import tempfile
 
 import mujoco
+import numpy as np
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.scene import (
@@ -59,37 +62,58 @@ def _compile_scene(xml: str) -> mujoco.MjModel:
         return mujoco.MjModel.from_xml_path(f.name)
 
 
-def test_scenes_have_single_shadow_caster_and_antialiasing():
-    """Built scenes cast exactly one shadow and apply high-quality AA settings.
+_unit = st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False).map(
+    lambda v: round(v, 4)
+)
+_ground_rgba = st.tuples(
+    _unit,
+    _unit,
+    _unit,
+    st.floats(min_value=0.1, max_value=1.0, allow_nan=False).map(lambda v: round(v, 4)),
+).map(list)
 
-    Guards the rendering fixes: two shadow-casting lights produced a doubled
-    robot shadow, and the MuJoCo default offscreen quality (offsamples=4,
-    shadowsize=4096, shadowclip=1.0) left blocky shadow and silhouette aliasing
-    in camera observations.
+
+@given(
+    rgba=_ground_rgba,
+    with_object=st.booleans(),
+    half_size=st.floats(min_value=0.01, max_value=0.04, allow_nan=False),
+)
+@settings(max_examples=25, deadline=None)
+def test_scenes_use_spotlight_shadow_caster_and_edge_antialiasing(rgba, with_object, half_size):
+    """Every built scene casts exactly one spotlight shadow and keeps edge MSAA.
+
+    Property: regardless of ground colour or scene contents, the AA/shadow contract
+    holds. It guards the rendering fix: a *directional* light must shadow-map the
+    entire infinite floor, so its far grazing texels dither into a speckle moire on
+    the ground in wrist-camera views ("weird textures in the ground"). MSAA cannot
+    remove it (a per-fragment depth-test artifact, not an edge) and raising
+    ``shadowsize`` worsened it. The shadow caster is therefore a spotlight, whose
+    bounded cone frustum concentrates shadow texels on the workspace; the overhead
+    fill stays directional and non-casting (a single caster avoids a doubled
+    shadow). ``offsamples`` stays above the MuJoCo default (4) for edge AA.
     """
     from so101_nexus.object_slots import build_object_scene_xml
     from so101_nexus.objects import CubeObject
     from so101_nexus.scene import build_robot_floor_scene_xml
 
     robot_path = str(get_so101_mujoco_model_path())
-    scenes = [
-        build_robot_floor_scene_xml(
-            [0.5, 0.5, 0.5, 1.0],
-            option_xml=MUJOCO_SCENE_OPTION_XML,
-            robot_xml_path=robot_path,
-        ),
-        build_object_scene_xml(
-            [CubeObject()],
+    if with_object:
+        xml = build_object_scene_xml(
+            [CubeObject(half_size=half_size)],
             ["pick_slot_0"],
-            [0.5, 0.5, 0.5, 1.0],
+            rgba,
             option_xml=MUJOCO_SCENE_OPTION_XML,
             robot_xml_path=robot_path,
-        ),
-    ]
-    for xml in scenes:
-        model = _compile_scene(xml)
-        assert model.nlight == 2
-        assert int(model.light_castshadow.sum()) == 1
-        assert model.vis.quality.offsamples >= 8
-        assert model.vis.quality.shadowsize >= 8192
-        assert model.vis.map.shadowclip <= 0.5
+        )
+    else:
+        xml = build_robot_floor_scene_xml(
+            rgba, option_xml=MUJOCO_SCENE_OPTION_XML, robot_xml_path=robot_path
+        )
+
+    model = _compile_scene(xml)
+    assert model.nlight == 2
+    casters = np.flatnonzero(model.light_castshadow)
+    assert casters.size == 1, "exactly one shadow caster (a second caster doubles the robot shadow)"
+    assert model.light_type[casters[0]] == int(mujoco.mjtLightType.mjLIGHT_SPOT)
+    assert model.vis.quality.offsamples >= 8
+    assert model.vis.quality.shadowsize >= 8192

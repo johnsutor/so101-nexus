@@ -22,25 +22,30 @@ WARP_SCENE_OPTION_XML = (
     'integrator="implicit" impratio="10" iterations="10" ls_iterations="20"/>'
 )
 
-# Shared ``<visual>`` block for every backend scene. ``shadowsize`` and
-# ``offsamples`` raise the shadow-map resolution and offscreen multisample count
-# above the MuJoCo defaults (4096 / 4), and ``shadowclip`` tightens the
-# directional-light shadow frustum (default 1.0) to concentrate shadow texels on
-# the workspace. Together they remove the blocky shadow-edge and silhouette
-# aliasing seen in rendered camera observations (overhead corners, distant floor
-# in the wrist view). Values match the vendored menagerie ``scene.xml``.
+# Shared ``<visual>`` block for every backend scene. ``offsamples`` raises the
+# offscreen multisample count above the MuJoCo default (4) to anti-alias geometry
+# edges. ``shadowsize`` raises the shadow-map resolution. The shadow caster is a
+# spotlight (see ``SCENE_LIGHTS_XML``), so no ``shadowclip`` is needed: a spotlight
+# already has a bounded, perspective shadow frustum focused on its cone.
 SCENE_VISUAL_XML = """\
   <visual>
     <headlight diffuse="0.0 0.0 0.0" ambient="0.3 0.3 0.3" specular="0 0 0"/>
     <quality shadowsize="8192" offsamples="8"/>
-    <map shadowclip="0.5"/>
   </visual>"""
 
-# Two directional lights: an angled key light that casts the scene's single
-# shadow plus an overhead fill light with ``castshadow="false"``. Both lights
-# casting shadows previously produced a doubled robot shadow.
+# Key + fill lighting. The key is a SPOTLIGHT (not a directional light) aimed at
+# the workspace: a directional light must shadow-map the entire infinite floor, so
+# its far, grazing texels fail the depth test and dither into a speckle moire on
+# the ground in wrist-camera views ("weird textures in the ground"). A spotlight's
+# frustum is bounded to its cone, concentrating shadow-map texels on the workspace
+# and leaving the far floor unshadowed (and clean). The cutoff (~25 deg from 3.5 m
+# up) covers the whole workspace with margin; its falloff ring sits out of frame.
+# Position and aim reproduce the previous directional key's light direction, so
+# shading is unchanged. The overhead fill is directional with ``castshadow="false"``
+# (a single caster avoids a doubled robot shadow).
 SCENE_LIGHTS_XML = """\
-    <light pos="1 1 3.5" dir="-0.27 -0.27 -0.92" directional="true" diffuse="0.5 0.5 0.5"/>
+    <light pos="1 1 3.5" dir="-0.227 -0.268 -0.936" directional="false"
+           cutoff="25" exponent="1" diffuse="0.5 0.5 0.5"/>
     <light pos="0 0 3.5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"
            castshadow="false"/>"""
 
