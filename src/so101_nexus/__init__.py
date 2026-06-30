@@ -35,6 +35,11 @@ from so101_nexus.constants import (
     ColorName,
     sample_color,
 )
+from so101_nexus.lerobot_dataset import (
+    SO101_GRIPPER_LIMITS_RAD,
+    dataset_row_to_sim_qpos,
+    sim_qpos_to_dataset_row,
+)
 from so101_nexus.objects import (
     CubeObject,
     MeshObject,
@@ -103,6 +108,7 @@ __all__ = [
     "REST_POSE",
     "ROBOT_CAMERA_PRESETS",
     "SO101_DIR",
+    "SO101_GRIPPER_LIMITS_RAD",
     "SO101_JOINT_NAMES",
     "YCB_OBJECTS",
     "CameraObservation",
@@ -138,6 +144,7 @@ __all__ = [
     "WristCamera",
     "YCBObject",
     "YcbModelId",
+    "dataset_row_to_sim_qpos",
     "describe_pick_target",
     "ensure_ycb_assets",
     "get_mujoco_ycb_rest_pose",
@@ -152,5 +159,6 @@ __all__ = [
     "orientation_progress",
     "reach_progress",
     "sample_color",
+    "sim_qpos_to_dataset_row",
     "simple_reward",
 ]

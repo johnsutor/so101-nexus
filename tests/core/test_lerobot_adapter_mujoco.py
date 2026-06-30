@@ -99,10 +99,8 @@ def test_mujoco_env_clipping_is_reflected_in_returned_action(tmp_path: Path) -> 
 def test_default_gripper_limits_match_env() -> None:
     import gymnasium as gym
 
-    from so101_nexus.lerobot_adapter.normalization import (
-        SO101_GRIPPER_LIMITS_RAD,
-        read_gripper_limits_rad,
-    )
+    from so101_nexus import SO101_GRIPPER_LIMITS_RAD
+    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
 
     env = gym.make("MuJoCoPickLift-v1")
     try:

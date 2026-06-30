@@ -101,9 +101,8 @@ joint radians without needing a calibration file:
 
 ```python
 import numpy as np
-from so101_nexus.lerobot_adapter import (
+from so101_nexus import (
     dataset_row_to_sim_qpos,
-    read_gripper_limits_rad,
     sim_qpos_to_dataset_row,
 )
 
@@ -114,10 +113,11 @@ row_again = sim_qpos_to_dataset_row(qpos_rad)         # inverse, for replay
 
 Both helpers accept NumPy arrays, torch tensors, or sequences of shape `(..., 6)`
 and return the same type, so batched dataset or policy tensors decode directly.
-The gripper limits default to the SO101 jaw travel; pass
-`gripper_limits_rad=read_gripper_limits_rad(env)` for the exact bounds of a
-specific environment. The helpers assume the recording convention used by this
-library (synthetic calibration with `drive_mode=0`).
+They import without the `teleop` extra (no LeRobot dependency), so a training
+repo can use them directly. The gripper limits default to the SO101 jaw travel;
+pass `gripper_limits_rad=(float(env.action_space.low[-1]), float(env.action_space.high[-1]))`
+for the exact bounds of a specific environment. The helpers assume the recording
+convention used by this library (synthetic calibration with `drive_mode=0`).
 
 ## Using LeRobot processors with SO101-Nexus envs
 
