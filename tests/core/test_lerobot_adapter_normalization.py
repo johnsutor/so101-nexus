@@ -238,3 +238,81 @@ def test_read_sim_qpos_supports_tensor_shape() -> None:
             return torch.tensor([[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]])
 
     np.testing.assert_array_equal(read_sim_qpos(_Env()), np.arange(6, dtype=np.float32))
+
+
+def test_dataset_row_to_sim_qpos_inverts_recorder_pipeline() -> None:
+    from so101_nexus.lerobot_adapter.normalization import (
+        MOTOR_NAMES,
+        SO101_GRIPPER_LIMITS_RAD,
+        build_so101_motors,
+        dataset_row_to_sim_qpos,
+        normalize_ticks,
+        sim_rad_to_motor_ticks,
+    )
+    from so101_nexus.lerobot_adapter.synthetic_calibration import (
+        build_synthetic_calibration,
+    )
+
+    calibration = build_synthetic_calibration()
+    motors = build_so101_motors(use_degrees=True)
+    qpos = np.array([0.3, -0.4, 0.5, -0.2, 0.1, 0.113], dtype=np.float64)
+
+    ticks = sim_rad_to_motor_ticks(
+        qpos, calibration=calibration, gripper_limits_rad=SO101_GRIPPER_LIMITS_RAD
+    )
+    values = normalize_ticks(ticks, motors=motors, calibration=calibration)
+    row = np.array([values[name] for name in MOTOR_NAMES])
+
+    decoded = dataset_row_to_sim_qpos(row)
+    np.testing.assert_allclose(decoded, qpos, atol=2e-3)
+
+
+def test_dataset_row_gripper_decodes_as_range_0_100_not_degrees() -> None:
+    from so101_nexus.lerobot_adapter.normalization import (
+        SO101_GRIPPER_LIMITS_RAD,
+        dataset_row_to_sim_qpos,
+    )
+
+    low, high = SO101_GRIPPER_LIMITS_RAD
+    row = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 15.0])
+    decoded = dataset_row_to_sim_qpos(row)
+
+    assert decoded[5] == pytest.approx(low + (15.0 / 100.0) * (high - low))
+    # The naive deg2rad-the-whole-vector decode is the bug; it is far off here.
+    assert abs(decoded[5] - math.radians(15.0)) > 0.1
+
+
+def test_sim_qpos_to_dataset_row_round_trips_batched() -> None:
+    from so101_nexus.lerobot_adapter.normalization import (
+        SO101_GRIPPER_LIMITS_RAD,
+        dataset_row_to_sim_qpos,
+        sim_qpos_to_dataset_row,
+    )
+
+    rng = np.random.default_rng(0)
+    qpos = rng.uniform(-0.5, 0.5, size=(4, 6))
+    low, high = SO101_GRIPPER_LIMITS_RAD
+    qpos[:, 5] = rng.uniform(low, high, size=4)
+
+    row = sim_qpos_to_dataset_row(qpos)
+    np.testing.assert_allclose(dataset_row_to_sim_qpos(row), qpos, atol=1e-12)
+    np.testing.assert_allclose(row[:, :5], np.rad2deg(qpos[:, :5]), atol=1e-12)
+    assert np.all((row[:, 5] >= 0.0) & (row[:, 5] <= 100.0))
+
+
+def test_dataset_row_to_sim_qpos_supports_torch_tensor() -> None:
+    torch = pytest.importorskip("torch")
+    from so101_nexus.lerobot_adapter.normalization import dataset_row_to_sim_qpos
+
+    row_np = np.array([[10.0, -20.0, 30.0, -5.0, 1.0, 15.0], [0.0, 0.0, 0.0, 0.0, 0.0, 100.0]])
+    decoded_t = dataset_row_to_sim_qpos(torch.tensor(row_np))
+
+    assert isinstance(decoded_t, torch.Tensor)
+    np.testing.assert_allclose(decoded_t.numpy(), dataset_row_to_sim_qpos(row_np), atol=1e-12)
+
+
+def test_dataset_row_to_sim_qpos_rejects_wrong_width() -> None:
+    from so101_nexus.lerobot_adapter.normalization import dataset_row_to_sim_qpos
+
+    with pytest.raises(ValueError, match="6"):
+        dataset_row_to_sim_qpos(np.zeros(5))

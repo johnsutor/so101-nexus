@@ -21,6 +21,16 @@ MOTOR_MODEL = "sts3215"
 MOTOR_RESOLUTION = 4096
 TICKS_PER_RADIAN = (MOTOR_RESOLUTION - 1) / (2 * math.pi)
 GripperLimitsRad = tuple[float, float]
+_DEG2RAD = math.pi / 180.0
+_RAD2DEG = 180.0 / math.pi
+_GRIPPER_INDEX = MOTOR_NAMES.index(GRIPPER_NAME)
+SO101_GRIPPER_LIMITS_RAD: GripperLimitsRad = (math.radians(-10.0), math.radians(100.0))
+"""Default SO101 gripper jaw travel in radians (-10 deg .. +100 deg).
+
+Matches the gripper actuator control range across the vendored SO101 MuJoCo
+models. Pass ``read_gripper_limits_rad(env)`` for the exact runtime bounds of a
+specific environment.
+"""
 
 
 def build_so101_motors(*, use_degrees: bool) -> dict[str, Motor]:
@@ -161,6 +171,84 @@ def leader_action_to_sim_qpos(
         calibration=calibration,
         gripper_limits_rad=gripper_limits_rad,
     )
+
+
+def dataset_row_to_sim_qpos(
+    row,
+    *,
+    gripper_limits_rad: GripperLimitsRad = SO101_GRIPPER_LIMITS_RAD,
+):
+    """Decode a normalized LeRobot dataset row into simulator joint radians.
+
+    Recorded ``action`` and ``observation.state`` six-vectors mix units: body
+    joints ``shoulder_pan..wrist_roll`` use ``MotorNormMode.DEGREES`` while the
+    gripper uses ``MotorNormMode.RANGE_0_100`` (percent of jaw travel, not
+    degrees). This inverts that per-motor map, avoiding the silent corruption of
+    decoding the whole vector with ``np.deg2rad``.
+
+    Parameters
+    ----------
+    row:
+        NumPy array, torch tensor, or sequence of shape ``(..., 6)`` of recorded
+        values in SO101 joint order.
+    gripper_limits_rad:
+        Simulator gripper ``(low, high)`` control range in radians. Defaults to
+        the SO101 gripper travel; pass ``read_gripper_limits_rad(env)`` for the
+        exact bounds of a specific environment.
+
+    Returns
+    -------
+    Same array type as ``row`` with body joints converted via ``deg2rad`` and the
+    gripper mapped linearly from ``[0, 100]`` onto ``[low, high]``.
+
+    Notes
+    -----
+    Assumes the library recording convention (synthetic calibration,
+    ``drive_mode=0``). Datasets recorded against a physical follower calibration
+    with inverted body drive modes need :func:`leader_action_to_sim_qpos`. This
+    is a pure unit transform; clamping to the actuator range stays the caller's
+    job via :func:`action_for_env`.
+    """
+    values = row if hasattr(row, "shape") else np.asarray(row, dtype=np.float64)
+    if values.shape[-1] != len(MOTOR_NAMES):
+        raise ValueError(f"dataset row last dim {values.shape[-1]} != expected {len(MOTOR_NAMES)}")
+    lower, upper = _validate_gripper_limits(gripper_limits_rad)
+    qpos = values * _DEG2RAD
+    qpos[..., _GRIPPER_INDEX] = lower + values[..., _GRIPPER_INDEX] / 100.0 * (upper - lower)
+    return qpos
+
+
+def sim_qpos_to_dataset_row(
+    qpos,
+    *,
+    gripper_limits_rad: GripperLimitsRad = SO101_GRIPPER_LIMITS_RAD,
+):
+    """Encode simulator joint radians into a normalized LeRobot dataset row.
+
+    Inverse of :func:`dataset_row_to_sim_qpos`: body joints become degrees and
+    the gripper its ``RANGE_0_100`` percent. Useful for replaying a simulator
+    trajectory or policy output as LeRobot dataset rows.
+
+    Parameters
+    ----------
+    qpos:
+        NumPy array, torch tensor, or sequence of shape ``(..., 6)`` of simulator
+        joint radians in SO101 joint order.
+    gripper_limits_rad:
+        Simulator gripper ``(low, high)`` control range in radians.
+
+    Returns
+    -------
+    Same array type as ``qpos`` with body joints in degrees and the gripper as a
+    ``[0, 100]`` percent of ``[low, high]``.
+    """
+    values = qpos if hasattr(qpos, "shape") else np.asarray(qpos, dtype=np.float64)
+    if values.shape[-1] != len(MOTOR_NAMES):
+        raise ValueError(f"sim qpos last dim {values.shape[-1]} != expected {len(MOTOR_NAMES)}")
+    lower, upper = _validate_gripper_limits(gripper_limits_rad)
+    row = values * _RAD2DEG
+    row[..., _GRIPPER_INDEX] = (values[..., _GRIPPER_INDEX] - lower) / (upper - lower) * 100.0
+    return row
 
 
 def _unwrap_env(env: object) -> object:
