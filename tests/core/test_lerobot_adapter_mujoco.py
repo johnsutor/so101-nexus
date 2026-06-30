@@ -94,3 +94,19 @@ def test_mujoco_env_clipping_is_reflected_in_returned_action(tmp_path: Path) -> 
     finally:
         if robot.is_connected:
             robot.disconnect()
+
+
+def test_default_gripper_limits_match_env() -> None:
+    import gymnasium as gym
+
+    from so101_nexus import SO101_GRIPPER_LIMITS_RAD
+    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
+
+    env = gym.make("MuJoCoPickLift-v1")
+    try:
+        low, high = read_gripper_limits_rad(env)
+    finally:
+        env.close()
+
+    assert low == pytest.approx(SO101_GRIPPER_LIMITS_RAD[0], abs=1e-3)
+    assert high == pytest.approx(SO101_GRIPPER_LIMITS_RAD[1], abs=1e-3)

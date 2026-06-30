@@ -238,3 +238,29 @@ def test_read_sim_qpos_supports_tensor_shape() -> None:
             return torch.tensor([[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]])
 
     np.testing.assert_array_equal(read_sim_qpos(_Env()), np.arange(6, dtype=np.float32))
+
+
+def test_dataset_row_to_sim_qpos_inverts_recorder_pipeline() -> None:
+    from so101_nexus import SO101_GRIPPER_LIMITS_RAD, dataset_row_to_sim_qpos
+    from so101_nexus.lerobot_adapter.normalization import (
+        MOTOR_NAMES,
+        build_so101_motors,
+        normalize_ticks,
+        sim_rad_to_motor_ticks,
+    )
+    from so101_nexus.lerobot_adapter.synthetic_calibration import (
+        build_synthetic_calibration,
+    )
+
+    calibration = build_synthetic_calibration()
+    motors = build_so101_motors(use_degrees=True)
+    qpos = np.array([0.3, -0.4, 0.5, -0.2, 0.1, 0.113], dtype=np.float64)
+
+    ticks = sim_rad_to_motor_ticks(
+        qpos, calibration=calibration, gripper_limits_rad=SO101_GRIPPER_LIMITS_RAD
+    )
+    values = normalize_ticks(ticks, motors=motors, calibration=calibration)
+    row = np.array([values[name] for name in MOTOR_NAMES])
+
+    decoded = dataset_row_to_sim_qpos(row)
+    np.testing.assert_allclose(decoded, qpos, atol=2e-3)

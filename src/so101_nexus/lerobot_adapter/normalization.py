@@ -10,6 +10,7 @@ from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import FeetechMotorsBus
 
 from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.lerobot_dataset import GripperLimitsRad, _validate_gripper_limits
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -20,7 +21,6 @@ GRIPPER_NAME = "gripper"
 MOTOR_MODEL = "sts3215"
 MOTOR_RESOLUTION = 4096
 TICKS_PER_RADIAN = (MOTOR_RESOLUTION - 1) / (2 * math.pi)
-GripperLimitsRad = tuple[float, float]
 
 
 def build_so101_motors(*, use_degrees: bool) -> dict[str, Motor]:
@@ -68,13 +68,6 @@ def unnormalize_values(
     id_values = {motors[name].id: float(value) for name, value in values.items()}
     unnormalized = bus._unnormalize(id_values)
     return {name: int(unnormalized[motors[name].id]) for name in values}
-
-
-def _validate_gripper_limits(gripper_limits_rad: GripperLimitsRad) -> GripperLimitsRad:
-    lower, upper = (float(gripper_limits_rad[0]), float(gripper_limits_rad[1]))
-    if upper == lower:
-        raise ValueError("gripper_limits_rad lower and upper bounds must differ")
-    return lower, upper
 
 
 def _validate_calibration_range(name: str, calibration: MotorCalibration) -> None:
