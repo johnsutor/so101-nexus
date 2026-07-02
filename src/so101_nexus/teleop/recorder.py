@@ -66,7 +66,9 @@ class _InitialLeaderFollower(Protocol):
 
 class _StepInfoLike(Protocol):
     terminated: bool
+    truncated: bool
     reward: float
+    info: dict[str, Any]
 
 
 @dataclass
@@ -82,6 +84,9 @@ class RecordingState:
     episode_actions: list[np.ndarray] = field(default_factory=list)
     episode_states: list[np.ndarray] = field(default_factory=list)
     episode_rewards: list[float] = field(default_factory=list)
+    episode_env_states: list[np.ndarray] = field(default_factory=list)
+    episode_successes: list[float] = field(default_factory=list)
+    episode_dones: list[float] = field(default_factory=list)
     episode_wrist_images: list[np.ndarray] = field(default_factory=list)
     episode_overhead_images: list[np.ndarray] = field(default_factory=list)
     task_description: str = ""
@@ -99,6 +104,9 @@ class RecordingState:
         self.episode_actions.clear()
         self.episode_states.clear()
         self.episode_rewards.clear()
+        self.episode_env_states.clear()
+        self.episode_successes.clear()
+        self.episode_dones.clear()
         self.episode_wrist_images.clear()
         self.episode_overhead_images.clear()
         self.task_description = ""
@@ -339,10 +347,23 @@ def _append_step_buffers(
     step_info: _StepInfoLike | None,
     joint_names: tuple[str, ...],
 ) -> None:
-    """Append one step's actions, states, reward, and camera frames to buffers."""
+    """Append one step's actions, states, reward, success, done, env state, and cameras."""
     state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
     state.episode_states.append(_dict_to_vector(obs, joint_names))
-    # Reward from `env.step(a_t)` (captured by `SimSOFollower.send_action`)
-    # aligns with this frame's action; default to 0.0 before the first step.
+    # Reward/success/done from `env.step(a_t)` (captured by
+    # `SimSOFollower.send_action`) align with this frame's action; default before
+    # the first step. `done` is `terminated or truncated`; `success` is the env's
+    # `info["success"]` (0.0 when the env sets no success key).
     state.episode_rewards.append(step_info.reward if step_info is not None else 0.0)
+    if step_info is None:
+        state.episode_successes.append(0.0)
+        state.episode_dones.append(0.0)
+    else:
+        state.episode_successes.append(float(bool(step_info.info.get("success", False))))
+        state.episode_dones.append(float(step_info.terminated or step_info.truncated))
+    # Privileged state is the pre-step observation (s_t), aligned with
+    # `observation.state`. Absent when the env exposes no non-camera components.
+    env_state = obs.get("environment_state")
+    if env_state is not None:
+        state.episode_env_states.append(np.asarray(env_state, dtype=np.float32))
     _publish_camera_frames(state, obs)

@@ -36,7 +36,7 @@ from so101_nexus.teleop.app import (
     _progress_text,
 )
 from so101_nexus.teleop.config_customization import TeleopConfigOverrides
-from so101_nexus.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
+from so101_nexus.teleop.dataset import ENV_STATE_KEY, OVERHEAD_KEY, WRIST_KEY
 from so101_nexus.teleop.recorder import RecordingState
 
 
@@ -170,10 +170,11 @@ def test_require_port_ready_allows_accessible_port(monkeypatch, fake_gradio) -> 
 
 
 def test_build_field_selection_all_keys() -> None:
-    selection = _build_field_selection([WRIST_KEY, OVERHEAD_KEY, "task"])
+    selection = _build_field_selection([WRIST_KEY, OVERHEAD_KEY, ENV_STATE_KEY, "task"])
 
     assert selection.wrist_image is True
     assert selection.overhead_image is True
+    assert selection.environment_state is True
     assert selection.task is True
 
 
@@ -182,6 +183,7 @@ def test_build_field_selection_empty() -> None:
 
     assert selection.wrist_image is False
     assert selection.overhead_image is False
+    assert selection.environment_state is False
     assert selection.task is False
 
 
@@ -190,6 +192,7 @@ def test_build_field_selection_only_wrist() -> None:
 
     assert selection.wrist_image is True
     assert selection.overhead_image is False
+    assert selection.environment_state is False
     assert selection.task is False
 
 
@@ -1099,7 +1102,9 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
         "state": state,
         "dataset": dataset,
         "action_space": "joint_pos",
-        "field_selection": FieldSelection(wrist_image=False, overhead_image=False, task=False),
+        "field_selection": FieldSelection(
+            wrist_image=False, overhead_image=False, environment_state=False, task=False
+        ),
         "env_id": "CustomLookAtSO101-v1",
         "fps": 30,
     }

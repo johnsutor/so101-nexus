@@ -19,8 +19,12 @@ Typical usage::
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 class Observation(ABC):
@@ -264,3 +268,35 @@ class OverheadCamera(CameraObservation):
     ) -> None:
         super().__init__(width=width, height=height)
         self.fov_deg = fov_deg
+
+
+def privileged_state_feature_names(
+    observations: Sequence[Observation] | None,
+) -> list[str]:
+    """Return per-dimension names for the non-camera state observation vector.
+
+    The names match the concatenation order of the flat state vector built from
+    ``observations`` (camera components, whose ``size`` is 0, are skipped). Each
+    scalar dimension is named ``<component name>_<i>`` (e.g. ``object_pose_0``),
+    giving a stable, self-describing schema for the recorded
+    ``observation.environment_state`` channel.
+
+    Parameters
+    ----------
+    observations
+        Observation components (as on ``EnvironmentConfig.observations``), or
+        ``None``.
+
+    Returns
+    -------
+    list[str]
+        One name per scalar dimension, in component order. Empty when
+        ``observations`` is ``None`` or has no non-camera components.
+    """
+    if observations is None:
+        return []
+    names: list[str] = []
+    for comp in observations:
+        for i in range(comp.size):
+            names.append(f"{comp.name}_{i}")
+    return names

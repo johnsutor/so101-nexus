@@ -165,6 +165,36 @@ def _recording_env_kwargs(
     return kwargs
 
 
+def resolve_recording_observations(
+    env_id: str,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    *,
+    overrides: TeleopConfigOverrides | None = None,
+    profile_path: str | None = None,
+    factory: ConfigFactory | None = None,
+) -> list | None:
+    """Return the resolved recording config's ``observations`` list, or ``None``.
+
+    Resolves the exact config the recording follower will run
+    (``_recording_env_kwargs`` path), so the privileged-state schema derived from
+    it matches the runtime ``observation.environment_state`` vector. ``None`` when
+    the env exposes no config object (no privileged state to declare).
+    """
+    kwargs = _recording_env_kwargs(
+        env_id,
+        wrist_wh,
+        overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        factory=factory,
+    )
+    config = kwargs.get("config")
+    if config is None:
+        return None
+    return getattr(config, "observations", None)
+
+
 def prepare_follower_calibration(*, calibration_dir, robot_id: str):
     """Ensure a SimSOFollower-compatible calibration file exists."""
     from pathlib import Path

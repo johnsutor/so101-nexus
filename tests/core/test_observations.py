@@ -16,6 +16,7 @@ from so101_nexus.observations import (
     TargetOffset,
     TargetPosition,
     WristCamera,
+    privileged_state_feature_names,
 )
 
 
@@ -137,3 +138,46 @@ class TestCameraComponents:
         r2 = repr(cam2)
         assert "800" in r2
         assert "600" in r2
+
+
+class TestPrivilegedStateFeatureNames:
+    def test_none_returns_empty(self):
+        assert privileged_state_feature_names(None) == []
+
+    def test_camera_only_components_contribute_no_names(self):
+        # Camera components report size == 0, so no scalar dims are named.
+        assert privileged_state_feature_names([WristCamera(), OverheadCamera()]) == []
+
+    def test_mixed_components_named_in_order_with_per_dim_suffixes(self):
+        names = privileged_state_feature_names(
+            [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
+        )
+        assert names == [
+            "end_effector_pose_0",
+            "end_effector_pose_1",
+            "end_effector_pose_2",
+            "end_effector_pose_3",
+            "end_effector_pose_4",
+            "end_effector_pose_5",
+            "end_effector_pose_6",
+            "grasp_state_0",
+            "object_pose_0",
+            "object_pose_1",
+            "object_pose_2",
+            "object_pose_3",
+            "object_pose_4",
+            "object_pose_5",
+            "object_pose_6",
+            "object_offset_0",
+            "object_offset_1",
+            "object_offset_2",
+        ]
+
+    def test_cameras_interleaved_with_state_are_skipped(self):
+        # A camera between two state components must not shift or add names.
+        assert privileged_state_feature_names([GraspState(), WristCamera(), ObjectOffset()]) == [
+            "grasp_state_0",
+            "object_offset_0",
+            "object_offset_1",
+            "object_offset_2",
+        ]

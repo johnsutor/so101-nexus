@@ -181,6 +181,26 @@ def read_sim_qpos(env: object) -> np.ndarray:
     raise TypeError("Simulator env must expose _get_current_qpos().")
 
 
+def read_privileged_state(env: object) -> np.ndarray | None:
+    """Return the env's non-camera state observation vector, or ``None``.
+
+    Reads the flat privileged state the env would emit in ``obs_mode="state"``
+    (and carries as ``info["privileged_state"]`` in visual mode): the
+    concatenation of every non-camera observation component
+    (TCP pose, grasp, object pose, offsets, ...). Returns ``None`` when the env
+    exposes no component-based state (no ``_compute_obs_components`` method or an
+    empty/absent ``config.observations``), so callers can skip the channel.
+    """
+    unwrapped = _unwrap_env(env)
+    compute = getattr(unwrapped, "_compute_obs_components", None)
+    if not callable(compute):
+        return None
+    observations = getattr(getattr(unwrapped, "config", None), "observations", None)
+    if not observations or all(getattr(c, "size", 0) == 0 for c in observations):
+        return None
+    return np.asarray(compute(), dtype=np.float32)
+
+
 def _control_bounds(env: object) -> tuple[np.ndarray, np.ndarray] | None:
     unwrapped = _unwrap_env(env)
     if hasattr(unwrapped, "_ctrl_low") and hasattr(unwrapped, "_ctrl_high"):

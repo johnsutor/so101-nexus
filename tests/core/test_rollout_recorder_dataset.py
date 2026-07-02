@@ -85,6 +85,8 @@ def test_record_episode_writes_lerobot_frames_in_degrees() -> None:
         "observation.state",
         "action",
         "reward",
+        "success",
+        "done",
         "task",
         WRIST_KEY,
         OVERHEAD_KEY,
