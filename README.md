@@ -56,7 +56,7 @@ MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[war
 - **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, and pick-and-place.
 - **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
 - **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
-- **GPU-parallel Warp backend** (optional): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
+- **GPU-parallel Warp backend** (optional, experimental): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
 
 ## Installation
 
@@ -104,6 +104,8 @@ env.close()
 See the [environment reference](https://so101-nexus.com/docs/environments) for all task IDs.
 
 ### Run the GPU-parallel Warp backend
+
+> **Experimental**: The Warp backend's API and physics may change between minor releases while the MuJoCo backend is stable. See [Stability and versioning](https://so101-nexus.com/docs/getting-started/stability).
 
 Install the optional extra and create a batched vector environment:
 

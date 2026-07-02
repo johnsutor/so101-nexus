@@ -3405,7 +3405,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus"
-version = "0.4.6"
+version = "0.4.7"
 source = { editable = "." }
 dependencies = [
     { name = "gymnasium" },
@@ -3473,25 +3473,25 @@ visual = [
 requires-dist = [
     { name = "accelerate", marker = "extra == 'molmoact'" },
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
-    { name = "gymnasium", specifier = ">=1.0.0" },
-    { name = "huggingface-hub" },
+    { name = "gymnasium", specifier = ">=1.0.0,<2" },
+    { name = "huggingface-hub", specifier = "<2" },
     { name = "huggingface-hub", marker = "extra == 'molmoact'" },
     { name = "lerobot", extras = ["feetech"], marker = "extra == 'teleop'", specifier = ">=0.5.0,<0.6" },
-    { name = "mujoco", specifier = ">=3.1.3" },
+    { name = "mujoco", specifier = ">=3.1.3,<4" },
     { name = "mujoco-warp", marker = "extra == 'warp'", specifier = ">=3.9.0.1,<3.10" },
-    { name = "numpy" },
+    { name = "numpy", specifier = "<3" },
     { name = "opencv-python", marker = "extra == 'teleop'", specifier = ">=4.8.0" },
     { name = "pillow", marker = "extra == 'molmoact'" },
     { name = "pillow", marker = "extra == 'teleop'" },
     { name = "pillow", marker = "extra == 'viz'" },
     { name = "plotly", marker = "extra == 'teleop'", specifier = ">=6.0.0" },
-    { name = "scipy" },
+    { name = "scipy", specifier = "<2" },
     { name = "tensorboard", marker = "extra == 'train'", specifier = ">=2.0.0" },
     { name = "torch", marker = "extra == 'train'" },
     { name = "torch", marker = "extra == 'warp'" },
     { name = "transformers", marker = "extra == 'molmoact'", specifier = ">=5.8" },
-    { name = "trimesh" },
-    { name = "tyro", specifier = ">=0.9.0" },
+    { name = "trimesh", specifier = "<5" },
+    { name = "tyro", specifier = ">=0.9.0,<2" },
     { name = "wandb", extras = ["media"], marker = "extra == 'train'", specifier = ">=0.16.0" },
 ]
 provides-extras = ["viz", "teleop", "molmoact", "train", "warp"]

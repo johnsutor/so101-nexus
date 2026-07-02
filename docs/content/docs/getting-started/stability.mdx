@@ -1,0 +1,48 @@
+---
+title: Stability and versioning
+description: The public-API surface, semantic-versioning policy, deprecation process, and supported platforms.
+---
+
+SO101-Nexus follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This page defines what "the API" means, what you can rely on, and how changes are communicated.
+
+## Public API
+
+The public, supported surface is:
+
+- Every name exported from the top-level package, `so101_nexus.__all__` (configs, rewards, observation components, scene objects, asset helpers, and the LeRobot adapter helpers).
+- The documented Gymnasium environment IDs registered by `import so101_nexus.mujoco` (`MuJoCoTouch-v1`, `MuJoCoLookAt-v1`, `MuJoCoMove-v1`, `MuJoCoPickLift-v1`, `MuJoCoPickAndPlace-v1`) and their documented `gym.make` keyword arguments.
+- `so101_nexus.__version__`.
+
+The following are internal and may change at any time without a major version bump:
+
+- Any name prefixed with an underscore.
+- Backend submodule internals (`so101_nexus.mujoco.*`, `so101_nexus.warp.*`) beyond environment registration and names re-exported from the top level.
+- The `so101_nexus.testing` helpers and the teleoperation application internals.
+
+Import public objects from `so101_nexus`, not from backend submodules.
+
+## Versioning policy
+
+- **Patch** (`0.4.x`): bug fixes and additive, backward-compatible changes only.
+- **Minor** (`0.x.0`): new features. While the project is pre-1.0, a minor release may include a documented breaking change to the public API.
+- **Major** (`x.0.0`, from 1.0.0 onward): reserved for breaking changes to the public API.
+
+Until 1.0.0 the public API is still stabilizing, so pin a version range (for example `so101-nexus~=0.4`) if you need reproducible behavior. Every change is recorded in the [changelog](https://github.com/johnsutor/so101-nexus/blob/main/CHANGELOG.md).
+
+## Deprecation process
+
+Before a public name or behavior is removed:
+
+1. It is marked deprecated in the changelog and, where practical, raises a `DeprecationWarning` that names the replacement.
+2. It is kept for at least one subsequent minor release.
+3. It is removed only in a release whose version bump reflects the break.
+
+## Supported platforms
+
+- **Python**: 3.12 and 3.13, verified in continuous integration.
+- **Operating systems**: Linux and macOS are exercised in continuous integration for the MuJoCo backend.
+- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.4 for GPU execution.
+
+## Determinism
+
+Reset and rollout behavior is deterministic for a given seed on a fixed dependency set. Golden-value regression tests pin the reward and state-observation trajectories of every MuJoCo environment, so a dependency upgrade that changes physics or reward output is caught before release rather than silently altering trained-policy behavior.

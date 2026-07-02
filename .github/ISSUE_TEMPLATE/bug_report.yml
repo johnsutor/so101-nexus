@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with SO101-Nexus.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please upgrade to the latest release first and
+        search existing issues before opening a new one.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: A minimal code snippet or command sequence that reproduces the issue.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SO101-Nexus version
+      description: Output of `python -c "import so101_nexus; print(so101_nexus.__version__)"`.
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - MuJoCo
+        - MuJoCo Warp
+        - Not applicable
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and tracebacks
+      description: Any relevant output. This is automatically formatted as code.
+      render: shell
+    validations:
+      required: false

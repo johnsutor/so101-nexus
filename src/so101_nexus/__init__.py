@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
 from pathlib import Path
+
+try:
+    __version__ = _package_version("so101-nexus")
+except PackageNotFoundError:  # pragma: no cover - running from a source tree
+    __version__ = "0.0.0+unknown"
 
 from so101_nexus.config import (
     DIRECTION_VECTORS,
@@ -145,6 +152,7 @@ __all__ = [
     "WristCamera",
     "YCBObject",
     "YcbModelId",
+    "__version__",
     "dataset_row_to_sim_qpos",
     "describe_pick_target",
     "ensure_ycb_assets",

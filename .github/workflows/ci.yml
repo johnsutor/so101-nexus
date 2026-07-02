@@ -42,9 +42,13 @@ jobs:
         run: make lint
 
   test:
-    name: test
+    name: test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
         with:
@@ -60,7 +64,34 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: ${{ env.UV_CACHE_DEPENDENCY_GLOB }}
-          cache-suffix: ci-test
+          cache-suffix: ci-test-py${{ matrix.python-version }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --locked --group test
+
+      - name: Run tests
+        run: xvfb-run -a make test
+
+  test-macos:
+    name: test-macos
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: ${{ env.UV_CACHE_DEPENDENCY_GLOB }}
+          cache-suffix: ci-test-macos
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -70,8 +101,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --group test
 
-      - name: Run tests
-        run: xvfb-run -a make test
+      - name: Run GL-free MuJoCo and docs checks
+        env:
+          MUJOCO_GL: disabled
+        run: uv run pytest tests/mujoco/test_env_invariants.py tests/test_docs_consistency.py -q
 
   test-warp:
     name: test-warp
