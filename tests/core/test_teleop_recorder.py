@@ -15,6 +15,7 @@ from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.teleop.recorder import (
     RecordingState,
     TeeStream,
+    _append_step_buffers,
     _publish_camera_frames,
     compute_delta_actions,
     recording_thread,
@@ -315,3 +316,101 @@ def test_recording_thread_records_error_on_leader_failure(tmp_path) -> None:
     assert state.recording_finished
     assert state.error is not None
     assert "simulated leader read failure" in state.error
+
+
+def _motor_obs(value: float = 0.0) -> dict[str, object]:
+    return {f"{name}.pos": value for name in SO101_JOINT_NAMES}
+
+
+def _step_info(*, terminated=False, truncated=False, info=None, reward=0.0):
+    return types.SimpleNamespace(
+        terminated=terminated,
+        truncated=truncated,
+        info={} if info is None else info,
+        reward=reward,
+    )
+
+
+def test_append_step_buffers_non_terminal_step_records_zero_success_and_done() -> None:
+    state = RecordingState()
+
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        _motor_obs(2.0),
+        _step_info(terminated=False, truncated=False, info={}, reward=0.5),
+        SO101_JOINT_NAMES,
+    )
+
+    assert state.episode_rewards == [0.5]
+    assert state.episode_successes == [0.0]
+    assert state.episode_dones == [0.0]
+
+
+def test_append_step_buffers_terminal_success_records_success_and_done() -> None:
+    state = RecordingState()
+
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        _motor_obs(2.0),
+        _step_info(terminated=True, info={"success": True}, reward=1.0),
+        SO101_JOINT_NAMES,
+    )
+
+    assert state.episode_successes == [1.0]
+    assert state.episode_dones == [1.0]
+
+
+def test_append_step_buffers_truncated_step_records_done_without_success() -> None:
+    state = RecordingState()
+
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        _motor_obs(2.0),
+        _step_info(terminated=False, truncated=True, info={}),
+        SO101_JOINT_NAMES,
+    )
+
+    assert state.episode_successes == [0.0]
+    assert state.episode_dones == [1.0]
+
+
+def test_append_step_buffers_appends_env_state_from_obs() -> None:
+    state = RecordingState()
+    obs = _motor_obs(2.0)
+    obs["environment_state"] = np.arange(18, dtype=np.float64)
+
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        obs,
+        _step_info(),
+        SO101_JOINT_NAMES,
+    )
+
+    assert len(state.episode_env_states) == 1
+    stored = state.episode_env_states[0]
+    assert stored.dtype == np.float32
+    assert stored.shape == (18,)
+    np.testing.assert_array_equal(stored, np.arange(18, dtype=np.float32))
+
+
+def test_append_step_buffers_pre_first_step_defaults_and_skips_env_state() -> None:
+    state = RecordingState()
+
+    # step_info is None before the first env.step (seed frame); obs has no
+    # environment_state key, so no privileged vector is buffered.
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        _motor_obs(1.0),
+        None,
+        SO101_JOINT_NAMES,
+    )
+
+    assert state.episode_rewards == [0.0]
+    assert state.episode_successes == [0.0]
+    assert state.episode_dones == [0.0]
+    assert state.episode_env_states == []

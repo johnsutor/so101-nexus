@@ -22,6 +22,7 @@ from so101_nexus.lerobot_adapter.normalization import (
     motor_ticks_to_sim_rad,
     normalize_ticks,
     read_gripper_limits_rad,
+    read_privileged_state,
     read_sim_qpos,
     sim_rad_to_motor_ticks,
     unnormalize_values,
@@ -195,6 +196,10 @@ class SimSOFollower(Robot):
             f"{motor}.pos": value for motor, value in motor_values.items()
         }
         logger.debug("%s read sim state: %.1fms", self, (time.perf_counter() - start) * 1e3)
+
+        privileged_state = read_privileged_state(self._env)
+        if privileged_state is not None:
+            obs_dict["environment_state"] = privileged_state
 
         for camera_name, camera in self.cameras.items():
             start = time.perf_counter()

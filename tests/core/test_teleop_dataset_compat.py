@@ -29,6 +29,40 @@ class _FakeLeader:
         }
 
 
+def _record_episode(tmp_path, *, env_id: str, max_steps: int, robot_id: str):
+    """Drive the recording thread against *env_id* and return the populated state."""
+    from so101_nexus.config import SO101_JOINT_NAMES
+    from so101_nexus.teleop.recorder import RecordingState, recording_thread
+
+    state = RecordingState(num_episodes=1)
+    leader = _FakeLeader()
+    leader.connect()
+    thread = threading.Thread(
+        target=recording_thread,
+        kwargs={
+            "state": state,
+            "env_id": env_id,
+            "leader": leader,
+            "joint_names": SO101_JOINT_NAMES,
+            "fps": 30,
+            "max_steps": max_steps,
+            "countdown": 0,
+            "wrist_roll_offset_deg": -90.0,
+            "wrist_wh": (160, 120),
+            "overhead_wh": (160, 120),
+            "follower_calibration_dir": tmp_path / "cal",
+            "follower_robot_id": robot_id,
+        },
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=30)
+    assert not thread.is_alive()
+    assert state.error is None, state.error
+    assert len(state.episode_actions) == max_steps
+    return state
+
+
 @pytest.mark.slow
 def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     pytest.importorskip("mujoco")
@@ -38,6 +72,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     from so101_nexus.config import SO101_JOINT_NAMES
+    from so101_nexus.observations import privileged_state_feature_names
     from so101_nexus.teleop.dataset import (
         OVERHEAD_KEY,
         REWARD_KEY,
@@ -47,41 +82,24 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         build_features,
         build_frame,
     )
-    from so101_nexus.teleop.recorder import RecordingState, recording_thread
+    from so101_nexus.teleop.session import resolve_recording_observations
 
-    state = RecordingState(num_episodes=1)
-    leader = _FakeLeader()
-    leader.connect()
-
-    thread = threading.Thread(
-        target=recording_thread,
-        kwargs={
-            "state": state,
-            "env_id": "MuJoCoTouch-v1",
-            "leader": leader,
-            "joint_names": SO101_JOINT_NAMES,
-            "fps": 30,
-            "max_steps": 5,
-            "countdown": 0,
-            "wrist_roll_offset_deg": -90.0,
-            "wrist_wh": (160, 120),
-            "overhead_wh": (160, 120),
-            "follower_calibration_dir": tmp_path / "cal",
-            "follower_robot_id": "teleop_sim_smoke",
-        },
-        daemon=True,
+    state = _record_episode(
+        tmp_path, env_id="MuJoCoTouch-v1", max_steps=5, robot_id="teleop_sim_smoke"
     )
-    thread.start()
-    thread.join(timeout=30)
-
-    assert not thread.is_alive()
-    assert state.error is None, state.error
-    assert len(state.episode_actions) == 5
 
     selection = FieldSelection()
     action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
     follower_features = {**action_features, "wrist": (120, 160, 3), "overhead": (120, 160, 3)}
-    features = build_features(selection, follower_features, action_features)
+    # FieldSelection() defaults environment_state=True, so the privileged low-dim
+    # state must be declared (via names resolved from the SAME recording config the
+    # follower ran) and supplied to every frame; otherwise build_frame raises.
+    env_state_names = privileged_state_feature_names(
+        resolve_recording_observations("MuJoCoTouch-v1", (160, 120), (160, 120))
+    )
+    features = build_features(
+        selection, follower_features, action_features, env_state_names=env_state_names
+    )
 
     dataset_root = tmp_path / "dataset"
     dataset = _make_reward_scalar_dataset_cls().create(
@@ -101,6 +119,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
             action=state.episode_actions[i],
             task="reach the target",
             reward=reward,
+            env_state=state.episode_env_states[i],
             wrist_image=state.episode_wrist_images[i],
             overhead_image=state.episode_overhead_images[i],
         )
@@ -144,3 +163,122 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     reward_min = float(np.asarray(reward_stats["min"]).reshape(-1)[0])
     reward_max = float(np.asarray(reward_stats["max"]).reshape(-1)[0])
     assert reward_min <= float(sample[REWARD_KEY]) <= reward_max
+
+
+@pytest.mark.slow
+def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
+    pytest.importorskip("mujoco")
+    pytest.importorskip("so101_nexus.mujoco")
+
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    from so101_nexus.config import SO101_JOINT_NAMES
+    from so101_nexus.observations import privileged_state_feature_names
+    from so101_nexus.teleop.dataset import (
+        DONE_KEY,
+        ENV_STATE_KEY,
+        SUCCESS_KEY,
+        FieldSelection,
+        _make_reward_scalar_dataset_cls,
+        build_features,
+        build_frame,
+    )
+    from so101_nexus.teleop.session import resolve_recording_observations
+
+    env_id = "MuJoCoPickLift-v1"
+    max_steps = 6
+    state = _record_episode(
+        tmp_path, env_id=env_id, max_steps=max_steps, robot_id="teleop_envstate_smoke"
+    )
+    # The privileged low-dim state, success, and done are recorded once per step,
+    # aligned with the action buffer.
+    assert len(state.episode_env_states) == max_steps
+    assert len(state.episode_successes) == max_steps
+    assert len(state.episode_dones) == max_steps
+
+    # Camera-free selection: no wrist/overhead video, so `finalize` never invokes
+    # ffmpeg. This isolates the env_state/success/done channels from video encoding
+    # (which can hang in some environments), while still exercising the real
+    # LeRobot write + reload path via `_make_reward_scalar_dataset_cls`.
+    selection = FieldSelection(
+        wrist_image=False,
+        overhead_image=False,
+        environment_state=True,
+        task=True,
+    )
+    action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
+    env_state_names = privileged_state_feature_names(
+        resolve_recording_observations(env_id, (160, 120), (160, 120))
+    )
+    assert env_state_names, "PickLift env must expose privileged state names"
+    assert env_state_names[0] == "end_effector_pose_0"
+    n = len(env_state_names)
+
+    # No cameras selected, so the follower features reduce to the joint floats,
+    # yielding observation.state + action + the always-on scalar channels.
+    features = build_features(
+        selection, action_features, action_features, env_state_names=env_state_names
+    )
+
+    dataset_root = tmp_path / "dataset"
+    dataset = _make_reward_scalar_dataset_cls().create(
+        repo_id="local/teleop-envstate",
+        fps=30,
+        features=features,
+        robot_type="sim_so_follower",
+        root=dataset_root,
+        use_videos=False,
+    )
+
+    for i in range(len(state.episode_actions)):
+        reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
+        frame = build_frame(
+            selection,
+            state=state.episode_states[i],
+            action=state.episode_actions[i],
+            task="pick and lift the object",
+            reward=reward,
+            success=state.episode_successes[i],
+            done=state.episode_dones[i],
+            env_state=state.episode_env_states[i],
+            wrist_image=None,
+            overhead_image=None,
+        )
+        dataset.add_frame(frame)
+    dataset.save_episode()
+    dataset.finalize()
+
+    reloaded = LeRobotDataset("local/teleop-envstate", root=dataset_root)
+
+    # Privileged state reloads as a self-describing (n,) float32 vector, with the
+    # per-dimension names carried through from privileged_state_feature_names.
+    assert reloaded.features[ENV_STATE_KEY]["shape"] == (n,)
+    assert reloaded.features[ENV_STATE_KEY]["dtype"] == "float32"
+    assert reloaded.features[ENV_STATE_KEY]["names"][0] == "end_effector_pose_0"
+    # success/done are always-on scalar env-step channels, declared like reward.
+    for key in (SUCCESS_KEY, DONE_KEY):
+        assert reloaded.features[key]["shape"] == (1,)
+        assert reloaded.features[key]["dtype"] == "float32"
+
+    assert len(reloaded) == max_steps
+
+    sample = reloaded[0]
+    # env_state reloads as an (n,) vector holding the exact recorded frame-0 state.
+    assert sample[ENV_STATE_KEY].shape == (n,)
+    np.testing.assert_allclose(
+        sample[ENV_STATE_KEY].numpy(),
+        state.episode_env_states[0],
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    # Like reward, the (1,) success/done features map to scalar HF Values, so they
+    # read back as 0-d tensors (one per frame), not (1,) vectors.
+    assert sample[SUCCESS_KEY].dim() == 0
+    assert sample[DONE_KEY].dim() == 0
+    assert float(sample[SUCCESS_KEY]) == pytest.approx(state.episode_successes[0])
+    assert float(sample[DONE_KEY]) == pytest.approx(state.episode_dones[0])
+
+    # LeRobot's automatic per-feature stats aggregation covers every recorded
+    # channel, so normalization bounds exist downstream for the new channels too.
+    for key in (ENV_STATE_KEY, SUCCESS_KEY, DONE_KEY):
+        assert key in reloaded.meta.stats

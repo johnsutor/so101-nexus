@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import types
 from typing import Any
 
 import numpy as np
@@ -264,3 +265,54 @@ def test_dataset_row_to_sim_qpos_inverts_recorder_pipeline() -> None:
 
     decoded = dataset_row_to_sim_qpos(row)
     np.testing.assert_allclose(decoded, qpos, atol=2e-3)
+
+
+def test_read_privileged_state_none_without_compute_method() -> None:
+    from so101_nexus.lerobot_adapter.normalization import read_privileged_state
+
+    # No _compute_obs_components: env is not a component-based sim env.
+    env = types.SimpleNamespace(unwrapped=types.SimpleNamespace())
+    assert read_privileged_state(env) is None
+
+
+def test_read_privileged_state_none_when_observations_falsy() -> None:
+    from so101_nexus.lerobot_adapter.normalization import read_privileged_state
+
+    # Callable present but config.observations is empty -> skip the channel.
+    unwrapped = types.SimpleNamespace(
+        _compute_obs_components=lambda: np.zeros(3, dtype=np.float32),
+        config=types.SimpleNamespace(observations=[]),
+    )
+    assert read_privileged_state(types.SimpleNamespace(unwrapped=unwrapped)) is None
+
+
+def test_read_privileged_state_none_for_camera_only_observations() -> None:
+    from so101_nexus.lerobot_adapter.normalization import read_privileged_state
+
+    # All components report size == 0 (cameras): no privileged scalar vector.
+    cameras = [types.SimpleNamespace(size=0), types.SimpleNamespace(size=0)]
+    unwrapped = types.SimpleNamespace(
+        _compute_obs_components=lambda: np.empty(0, dtype=np.float32),
+        config=types.SimpleNamespace(observations=cameras),
+    )
+    assert read_privileged_state(types.SimpleNamespace(unwrapped=unwrapped)) is None
+
+
+def test_read_privileged_state_returns_float32_vector_via_unwrap() -> None:
+    from so101_nexus.lerobot_adapter.normalization import read_privileged_state
+
+    vector = np.arange(4, dtype=np.float64)
+    unwrapped = types.SimpleNamespace(
+        _compute_obs_components=lambda: vector,
+        config=types.SimpleNamespace(observations=[types.SimpleNamespace(size=4)]),
+    )
+    # Outer env only exposes `unwrapped`; the method lives on the inner env,
+    # so a returned vector proves the unwrap path is exercised.
+    wrapped = types.SimpleNamespace(unwrapped=unwrapped)
+
+    result = read_privileged_state(wrapped)
+
+    assert result is not None
+    assert result.dtype == np.float32
+    assert result.shape == (4,)
+    np.testing.assert_array_equal(result, np.arange(4, dtype=np.float32))

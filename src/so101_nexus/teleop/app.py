@@ -12,7 +12,7 @@ import importlib
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -29,6 +29,7 @@ from so101_nexus.teleop.config_customization import (
     overrides_to_mapping,
 )
 from so101_nexus.teleop.dataset import (
+    ENV_STATE_KEY,
     OVERHEAD_KEY,
     WRIST_KEY,
     FieldSelection,
@@ -54,6 +55,7 @@ from so101_nexus.teleop.session import (
     _resolve_env_ctor,
     make_review_video,
     make_state_plot,
+    resolve_recording_observations,
 )
 
 if TYPE_CHECKING:
@@ -61,7 +63,7 @@ if TYPE_CHECKING:
 
     from so101_nexus.teleop.cli import TeleopArgs
 
-_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY]
+_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, ENV_STATE_KEY]
 _FOLLOWER_ROBOT_ID = "teleop_sim"
 _TASK_PENDING_TEXT = "### Current task\n\n_Task will appear after reset._"
 logger = logging.getLogger(__name__)
@@ -121,6 +123,7 @@ def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
     return FieldSelection(
         wrist_image=WRIST_KEY in field_selection_value,
         overhead_image=OVERHEAD_KEY in field_selection_value,
+        environment_state=ENV_STATE_KEY in field_selection_value,
         task="task" in field_selection_value,
     )
 
@@ -331,6 +334,33 @@ def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict, lea
         raise RuntimeError(f"Failed to create dataset: {exc}") from exc
 
 
+def _resolve_env_state_names(
+    env_id: str,
+    wrist_wh: tuple[int, int],
+    overhead_wh: tuple[int, int],
+    *,
+    overrides: TeleopConfigOverrides | None,
+    profile_path: str | None,
+    factory,
+) -> list[str]:
+    """Return per-dim names for the env's privileged state, or ``[]`` if none.
+
+    Resolves the same recording config the follower will run so the declared
+    ``observation.environment_state`` schema matches the runtime vector.
+    """
+    from so101_nexus.observations import privileged_state_feature_names
+
+    observations = resolve_recording_observations(
+        env_id,
+        wrist_wh,
+        overhead_wh,
+        overrides=overrides,
+        profile_path=profile_path,
+        factory=factory,
+    )
+    return privileged_state_feature_names(observations)
+
+
 def _run_init_worker(
     session: dict,
     init_state: dict,
@@ -362,7 +392,24 @@ def _run_init_worker(
         follower_features = dict(action_features)
         follower_features["wrist"] = (wrist_wh[1], wrist_wh[0], 3)
         follower_features["overhead"] = (overhead_wh[1], overhead_wh[0], 3)
-        features = build_features(field_selection, follower_features, action_features)
+        env_state_names = _resolve_env_state_names(
+            env_id,
+            wrist_wh,
+            overhead_wh,
+            overrides=env_overrides,
+            profile_path=session.get("env_config_profile"),
+            factory=session.get("env_config_factory"),
+        )
+        if field_selection.environment_state and not env_state_names:
+            # Env exposes no privileged (non-camera) state; keep schema and
+            # frames 1:1 by dropping the channel instead of declaring an empty one.
+            field_selection = replace(field_selection, environment_state=False)
+        features = build_features(
+            field_selection,
+            follower_features,
+            action_features,
+            env_state_names=env_state_names,
+        )
         dataset = _create_dataset(repo_id, fps, robot_type, features, leader)
         session.update(
             leader=leader,
@@ -867,18 +914,27 @@ def _cb_approve_episode(session: dict):
 
         sel = session["field_selection"]
         rewards = list(s.episode_rewards)
+        successes = list(s.episode_successes)
+        dones = list(s.episode_dones)
+        env_states = list(s.episode_env_states)
         for i in range(len(actions)):
             wrist_img = s.episode_wrist_images[i] if i < len(s.episode_wrist_images) else None
             overhead_img = (
                 s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None
             )
             reward = rewards[i] if i < len(rewards) else 0.0
+            success = successes[i] if i < len(successes) else 0.0
+            done = dones[i] if i < len(dones) else 0.0
+            env_state = env_states[i] if i < len(env_states) else None
             frame = build_frame(
                 sel,
                 state=s.episode_states[i],
                 action=actions[i],
                 task=s.task_description,
                 reward=reward,
+                success=success,
+                done=done,
+                env_state=env_state,
                 wrist_image=wrist_img,
                 overhead_image=overhead_img,
             )
@@ -1109,7 +1165,7 @@ def _build_setup_screen(
         choices=_OPTIONAL_FIELD_CHOICES,
         value=list(_OPTIONAL_FIELD_CHOICES),
         label="Dataset fields",
-        info="observation.state, action, and task are always saved",
+        info="observation.state, action, task, reward, success, and done are always saved",
     )
 
     with gr.Accordion("Advanced Settings", open=False):

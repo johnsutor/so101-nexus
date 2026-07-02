@@ -59,6 +59,7 @@ from so101_nexus.observations import (
     TargetOffset,
     TargetPosition,
     WristCamera,
+    privileged_state_feature_names,
 )
 from so101_nexus.rewards import (
     lift_progress,
@@ -157,6 +158,7 @@ __all__ = [
     "get_ycb_visual_mesh",
     "lift_progress",
     "orientation_progress",
+    "privileged_state_feature_names",
     "reach_progress",
     "sample_color",
     "sim_qpos_to_dataset_row",

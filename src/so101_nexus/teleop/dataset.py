@@ -16,10 +16,17 @@ import numpy as np
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
+ENV_STATE_KEY = "observation.environment_state"
 REWARD_KEY = "reward"
-# Canonical LeRobot reward feature (matches the `modify_features` docstring
-# example in lerobot.datasets.dataset_tools): a scalar float32 per frame.
-REWARD_FEATURE: dict[str, Any] = {"dtype": "float32", "shape": (1,), "names": None}
+SUCCESS_KEY = "success"
+DONE_KEY = "done"
+# Canonical LeRobot scalar feature (matches the `modify_features` docstring
+# example in lerobot.datasets.dataset_tools): a scalar float32 per frame. Reused
+# for reward, success, and done, which are all always-recorded env-step scalars.
+SCALAR_FEATURE: dict[str, Any] = {"dtype": "float32", "shape": (1,), "names": None}
+REWARD_FEATURE: dict[str, Any] = SCALAR_FEATURE
+# The always-recorded per-step env scalars, in schema order.
+SCALAR_KEYS: tuple[str, ...] = (REWARD_KEY, SUCCESS_KEY, DONE_KEY)
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,7 @@ class FieldSelection:
 
     wrist_image: bool = True
     overhead_image: bool = True
+    environment_state: bool = True
     task: bool = True
 
     @property
@@ -70,6 +78,8 @@ def build_features(
     selection: FieldSelection,
     follower_features: dict[str, Any],
     action_features: dict[str, Any],
+    *,
+    env_state_names: list[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Return the LeRobot feature dict for the selected fields.
 
@@ -81,6 +91,11 @@ def build_features(
         ``SimSOFollower.observation_features``-shaped dict.
     action_features
         ``SimSOFollower.action_features``-shaped dict.
+    env_state_names
+        Per-dimension names for the privileged ``observation.environment_state``
+        vector (see :func:`so101_nexus.observations.privileged_state_feature_names`).
+        When provided and ``selection.environment_state`` is set, the channel is
+        declared as a ``(len(names),)`` float32 feature; otherwise it is omitted.
     """
     hw_to_dataset_features = _hw_to_dataset_features()
     features: dict[str, dict[str, Any]] = {}
@@ -92,9 +107,19 @@ def build_features(
             use_video=True,
         )
     )
-    # Reward is always available from `env.step` and is always recorded; it is
-    # not a user-toggleable field, so it is declared unconditionally.
-    features[REWARD_KEY] = dict(REWARD_FEATURE)
+    # Privileged low-dim ground-truth state (TCP/object pose, grasp, offsets).
+    # Declared directly because `hw_to_dataset_features` would fold per-dim
+    # floats into `observation.state`; a standalone vector needs its own key.
+    if selection.environment_state and env_state_names:
+        features[ENV_STATE_KEY] = {
+            "dtype": "float32",
+            "shape": (len(env_state_names),),
+            "names": list(env_state_names),
+        }
+    # reward/success/done are always available from `env.step` and are always
+    # recorded; they are not user-toggleable fields, so declared unconditionally.
+    for key in SCALAR_KEYS:
+        features[key] = dict(SCALAR_FEATURE)
     return features
 
 
@@ -105,6 +130,9 @@ def build_frame(
     action: np.ndarray,
     task: str,
     reward: float = 0.0,
+    success: float = 0.0,
+    done: float = 0.0,
+    env_state: np.ndarray | None = None,
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
 ) -> dict[str, Any]:
@@ -112,9 +140,11 @@ def build_frame(
     frame: dict[str, Any] = {
         "observation.state": state.astype(np.float32),
         "action": action.astype(np.float32),
-        # Per-step transition reward, aligned with `action` on this frame
+        # Per-step env-step scalars, aligned with `action` on this frame
         # (LeRobot `Transition` carries reward with (observation, action)).
         REWARD_KEY: np.array([reward], dtype=np.float32),
+        SUCCESS_KEY: np.array([success], dtype=np.float32),
+        DONE_KEY: np.array([done], dtype=np.float32),
     }
     # LeRobot v3 stores task text outside the regular feature schema, but
     # `LeRobotDataset.add_frame` requires it on every frame.
@@ -133,6 +163,13 @@ def build_frame(
                 "check that the env exposes an overhead camera."
             )
         frame[OVERHEAD_KEY] = overhead_image
+    if selection.environment_state:
+        if env_state is None:
+            raise ValueError(
+                "environment_state selected but no privileged state was recorded; "
+                "check that the env exposes non-camera observation components."
+            )
+        frame[ENV_STATE_KEY] = np.asarray(env_state, dtype=np.float32)
     return frame
 
 
@@ -144,9 +181,10 @@ def _make_reward_scalar_dataset_cls():
     ``Value("float32")`` in ``get_hf_features_from_features``. The buffer of
     (1,) arrays that ``add_frame`` accumulates triggers a NumPy deprecation
     warning when ``datasets`` coerces each element to ``float`` during
-    ``save_episode``. This subclass squeezes the reward buffer to Python
-    scalars before the ``np.stack`` that backs ``save_episode``, matching how
-    LeRobot handles its own ``DEFAULT_FEATURES`` (timestamp, frame_index, etc.).
+    ``save_episode``. This subclass squeezes each scalar buffer (reward,
+    success, done) to Python scalars before the ``np.stack`` that backs
+    ``save_episode``, matching how LeRobot handles its own ``DEFAULT_FEATURES``
+    (timestamp, frame_index, etc.).
 
     The in-progress buffer moved between supported 0.5.x layouts: 0.5.0 keeps
     it on the dataset (``self.episode_buffer``), while 0.5.1 routes recording
@@ -158,7 +196,7 @@ def _make_reward_scalar_dataset_cls():
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     class RewardRecordingDataset(LeRobotDataset):
-        """LeRobotDataset that records the reward feature without scalar coercion warnings."""
+        """LeRobotDataset that records scalar features without coercion warnings."""
 
         def _active_episode_buffer(self) -> dict | None:
             """Return the in-progress episode buffer across LeRobot 0.5.x layouts."""
@@ -174,8 +212,10 @@ def _make_reward_scalar_dataset_cls():
         ) -> None:
             if episode_data is None:
                 buf = self._active_episode_buffer()
-                if buf is not None and isinstance(buf.get("reward"), list):
-                    buf["reward"] = [float(np.asarray(v).reshape(-1)[0]) for v in buf["reward"]]
+                if buf is not None:
+                    for key in SCALAR_KEYS:
+                        if isinstance(buf.get(key), list):
+                            buf[key] = [float(np.asarray(v).reshape(-1)[0]) for v in buf[key]]
             super().save_episode(episode_data, parallel_encoding)
 
     return RewardRecordingDataset

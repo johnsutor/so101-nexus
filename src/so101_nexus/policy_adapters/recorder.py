@@ -133,7 +133,14 @@ class RolloutRecorder:
             next_obs, reward, terminated, truncated, info = self.env.step(action_rad)
 
             if self.dataset is not None:
-                self._add_frame(obs, action_deg, task, float(reward))
+                self._add_frame(
+                    obs,
+                    action_deg,
+                    task,
+                    float(reward),
+                    success=float(bool(info.get("success", False))),
+                    done=float(terminated or truncated),
+                )
 
             obs = next_obs
             if terminated or truncated:
@@ -177,6 +184,9 @@ class RolloutRecorder:
         action_deg: np.ndarray,
         task: str,
         reward: float,
+        *,
+        success: float = 0.0,
+        done: float = 0.0,
     ) -> None:
         """Append one frame to the configured dataset."""
         from so101_nexus.teleop.dataset import FieldSelection, build_frame
@@ -184,9 +194,12 @@ class RolloutRecorder:
         if self.dataset is None:
             raise RuntimeError("RolloutRecorder has no dataset configured.")
 
+        # Rollout obs in visual mode carries only joints, so the privileged
+        # environment_state channel is not recorded here.
         selection = FieldSelection(
             wrist_image="wrist_camera" in self.camera_keys,
             overhead_image="overhead_camera" in self.camera_keys,
+            environment_state=False,
             task=True,
         )
         frame = build_frame(
@@ -195,6 +208,8 @@ class RolloutRecorder:
             action=action_deg.astype(np.float32),
             task=task,
             reward=reward,
+            success=success,
+            done=done,
             wrist_image=obs.get("wrist_camera"),
             overhead_image=obs.get("overhead_camera"),
         )

@@ -12,8 +12,12 @@ import pytest
 
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.teleop.dataset import (
+    DONE_KEY,
+    ENV_STATE_KEY,
     OVERHEAD_KEY,
     REWARD_KEY,
+    SCALAR_FEATURE,
+    SUCCESS_KEY,
     WRIST_KEY,
     FieldSelection,
     build_features,
@@ -55,6 +59,8 @@ def test_build_features_default_contains_all_keys() -> None:
         "observation.state",
         "action",
         REWARD_KEY,
+        SUCCESS_KEY,
+        DONE_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
     }
@@ -102,6 +108,7 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
     action = np.ones(6, dtype=np.float32)
     wrist = np.zeros((64, 64, 3), dtype=np.uint8)
     overhead = np.ones((64, 64, 3), dtype=np.uint8) * 255
+    env_state = np.array([1.0, 2.0, 3.0], dtype=np.float32)
 
     frame = build_frame(
         sel,
@@ -111,12 +118,16 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
         reward=0.25,
         wrist_image=wrist,
         overhead_image=overhead,
+        env_state=env_state,
     )
 
     assert set(frame) == {
         "observation.state",
         "action",
         REWARD_KEY,
+        SUCCESS_KEY,
+        DONE_KEY,
+        ENV_STATE_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
         "task",
@@ -125,10 +136,13 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
     assert frame[REWARD_KEY].dtype == np.float32
     assert frame[REWARD_KEY].shape == (1,)
     np.testing.assert_allclose(frame[REWARD_KEY], [0.25])
+    np.testing.assert_allclose(frame[ENV_STATE_KEY], [1.0, 2.0, 3.0])
 
 
 def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
-    sel = FieldSelection(wrist_image=False, overhead_image=False, task=False)
+    sel = FieldSelection(
+        wrist_image=False, overhead_image=False, environment_state=False, task=False
+    )
     state = np.zeros(6, dtype=np.float32)
     action = np.zeros(6, dtype=np.float32)
 
@@ -141,7 +155,7 @@ def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
         overhead_image=None,
     )
 
-    assert set(frame) == {"observation.state", "action", REWARD_KEY, "task"}
+    assert set(frame) == {"observation.state", "action", REWARD_KEY, SUCCESS_KEY, DONE_KEY, "task"}
     assert frame["task"] == "required by LeRobotDataset.add_frame"
     assert frame[REWARD_KEY].shape == (1,)
 
@@ -157,6 +171,144 @@ def test_build_frame_raises_when_selected_image_missing() -> None:
             wrist_image=None,
             overhead_image=None,
         )
+
+
+def test_field_selection_defaults_environment_state_on() -> None:
+    # The privileged channel is recorded by default; flipping this silently
+    # drops observation.environment_state from every dataset.
+    assert FieldSelection().environment_state is True
+
+
+def test_build_features_declares_env_state_when_selected_with_names() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False)
+    names = ["object_pose_0", "object_pose_1", "grasp_state_0"]
+    features = build_features(sel, _follower_features(), _motor_features(), env_state_names=names)
+
+    assert features[ENV_STATE_KEY] == {
+        "dtype": "float32",
+        "shape": (3,),
+        "names": names,
+    }
+    # success and done are always declared as the canonical scalar feature.
+    assert (
+        features[SUCCESS_KEY]
+        == SCALAR_FEATURE
+        == {
+            "dtype": "float32",
+            "shape": (1,),
+            "names": None,
+        }
+    )
+    assert features[DONE_KEY] == SCALAR_FEATURE
+
+
+@pytest.mark.parametrize(
+    "selection, env_state_names",
+    [
+        # selection on but no names -> env_state channel not declarable.
+        (FieldSelection(wrist_image=False, overhead_image=False), []),
+        # names present but selection off -> user opted out.
+        (
+            FieldSelection(wrist_image=False, overhead_image=False, environment_state=False),
+            ["object_pose_0"],
+        ),
+    ],
+)
+def test_build_features_omits_env_state(selection, env_state_names) -> None:
+    features = build_features(
+        selection,
+        _follower_features(),
+        _motor_features(),
+        env_state_names=env_state_names,
+    )
+
+    assert ENV_STATE_KEY not in features
+    # reward/success/done stay regardless of the env_state decision.
+    assert SUCCESS_KEY in features
+    assert DONE_KEY in features
+
+
+def test_build_frame_emits_success_and_done_as_float32_scalars() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        success=1.0,
+        done=1.0,
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    for key in (SUCCESS_KEY, DONE_KEY):
+        assert frame[key].dtype == np.float32
+        assert frame[key].shape == (1,)
+    # Values propagate (not hardcoded).
+    np.testing.assert_array_equal(frame[SUCCESS_KEY], [1.0])
+    np.testing.assert_array_equal(frame[DONE_KEY], [1.0])
+
+
+def test_build_frame_success_and_done_default_to_zero() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    np.testing.assert_array_equal(frame[SUCCESS_KEY], [0.0])
+    np.testing.assert_array_equal(frame[DONE_KEY], [0.0])
+
+
+def test_build_frame_writes_env_state_when_selected() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=True)
+    env_state = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        env_state=env_state,
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    assert frame[ENV_STATE_KEY].dtype == np.float32
+    np.testing.assert_array_equal(frame[ENV_STATE_KEY], [1.0, 2.0, 3.0])
+
+
+def test_build_frame_raises_when_env_state_selected_but_missing() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=True)
+    with pytest.raises(ValueError, match="environment_state selected but no privileged state"):
+        build_frame(
+            sel,
+            state=np.zeros(6, dtype=np.float32),
+            action=np.zeros(6, dtype=np.float32),
+            task="t",
+            env_state=None,
+            wrist_image=None,
+            overhead_image=None,
+        )
+
+
+def test_build_frame_omits_env_state_when_deselected() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    # env_state supplied but not selected -> key must be absent.
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        env_state=np.array([1.0, 2.0], dtype=np.float32),
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    assert ENV_STATE_KEY not in frame
 
 
 def _reload_dataset_module():
