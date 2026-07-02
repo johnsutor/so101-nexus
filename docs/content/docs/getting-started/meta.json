@@ -4,6 +4,7 @@
     "overview",
     "installation",
     "quickstart-mujoco",
-    "environment-ids"
+    "environment-ids",
+    "stability"
   ]
 }
