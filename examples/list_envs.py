@@ -1,4 +1,5 @@
-import so101_nexus.mujoco  # noqa: F401  (registers MuJoCo envs)
+import so101_nexus.mujoco
+import so101_nexus.warp  # noqa: F401  (registers Warp envs)
 from so101_nexus.env_ids import all_registered_env_ids
 
 if __name__ == "__main__":

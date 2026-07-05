@@ -160,7 +160,7 @@ replace-imports-with-any = [
 extra-paths = ["src"]
 
 [tool.ty.src]
-exclude = ["**/tests/**"]
+exclude = ["**/tests/**", "**/*.ipynb"]
 
 [tool.coverage.run]
 source = ["so101_nexus"]

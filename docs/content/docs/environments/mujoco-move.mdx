@@ -29,11 +29,13 @@ Move the robot's end-effector in a cardinal direction by a fixed distance.
 
 ## Observation Space
 
-Default observation includes only joint positions (configurable via `observations` parameter on `MoveConfig`):
+Default observation is a 16-dimensional vector (configurable via the `observations` parameter on `MoveConfig`):
 
 | Component | Class | Dimensions | Description |
 |-----------|-------|------------|-------------|
 | Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
+| End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
+| Target offset | `TargetOffset` | 3 | Vector from the TCP to the goal position |
 
 ## Objects
 
@@ -66,3 +68,11 @@ for _ in range(256):
 
 env.close()
 ```
+
+## Train a policy
+
+Train a PPO policy for this task on the GPU-parallel Warp backend (`WarpMove-v1`) in Colab:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
+Set `ENV_ID = "WarpMove-v1"` in the notebook's environment cell. See [Training with PPO](/docs/guides/training-with-ppo) for the local CLI workflow.

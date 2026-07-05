@@ -64,7 +64,7 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
 class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     """LookAt primitive: orient the wrist camera toward a sampled target object.
 
-    Default obs (6,): joint_positions.
+    Default obs (16,): joint_positions(6) + end_effector_pose(7) + gaze_direction(3).
     Info: orientation_error (radians), success.
     task_description is auto-generated: "Look at the <repr(obj)>."
 

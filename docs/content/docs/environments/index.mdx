@@ -27,3 +27,11 @@ import so101_nexus.mujoco
 
 env = gym.make("MuJoCoPickLift-v1")
 ```
+
+## Train a policy in Colab
+
+Every task has a GPU-parallel Warp counterpart (`Warp*-v1`) you can train with PPO end to end in the browser, no local setup:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
+Pick the task with `ENV_ID` in the notebook's environment cell. See [Training with PPO](/docs/guides/training-with-ppo) for details and per-task results.

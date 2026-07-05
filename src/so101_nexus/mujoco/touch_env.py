@@ -23,7 +23,8 @@ class TouchEnv(PickEnv):
     its depth is unambiguous in the camera. Success fires when the TCP reaches
     within the target's bounding radius plus ``touch_margin``.
 
-    Default obs: end_effector_pose + grasp_state + object_pose + object_offset.
+    Default obs (24,): joint_positions + end_effector_pose + grasp_state +
+    object_pose + object_offset.
     Info: tcp_to_obj_dist, success.
     task_description is auto-generated: "Touch the <repr(object)>."
     """

@@ -66,10 +66,11 @@ Recorded PickAndPlace teleoperation rollout, shown from both stored camera strea
 
 ## Observation Space
 
-The observation is a 24-dimensional vector.
+The observation is a 30-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
+| `joint_pos` | 6 | Current angle of each robot joint |
 | `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
 | `is_grasped` | 1 | Whether the cube is currently grasped |
 | `target_pos` | 3 | Target disc position |
@@ -120,3 +121,7 @@ for _ in range(1024):
 
 env.close()
 ```
+
+## Train a policy
+
+`WarpPickAndPlace-v1` is excluded from the current solved PPO baselines while the task is being fixed. See [Training with PPO](/docs/guides/training-with-ppo) for the supported Warp baselines.

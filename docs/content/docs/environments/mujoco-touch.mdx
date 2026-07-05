@@ -30,10 +30,11 @@ Bring the gripper to an object resting on the table (touch it).
 
 ## Observation Space
 
-Default observation is the pick state vector (configurable via the `observations` parameter on `TouchConfig`):
+Default observation is the 24-dimensional pick state vector (configurable via the `observations` parameter on `TouchConfig`):
 
 | Component | Class | Dimensions | Description |
 |-----------|-------|------------|-------------|
+| Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
 | End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
 | Grasp state | `GraspState` | 1 | Whether the gripper is grasping |
 | Object pose | `ObjectPose` | 7 | Target object position and orientation |
@@ -79,3 +80,11 @@ from so101_nexus import TouchConfig, YCBObject
 config = TouchConfig(objects=[YCBObject("031_spoon")])
 env = gym.make("MuJoCoTouch-v1", config=config)
 ```
+
+## Train a policy
+
+Train a PPO policy for this task on the GPU-parallel Warp backend (`WarpTouch-v1`) in Colab:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
+Set `ENV_ID = "WarpTouch-v1"` in the notebook's environment cell. See [Training with PPO](/docs/guides/training-with-ppo) for the local CLI workflow.

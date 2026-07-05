@@ -221,7 +221,7 @@ def test_pick_multiple_cubes_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (18,)
+        assert obs.shape == (24,)
         _run_episode(env)
     finally:
         env.close()
@@ -237,7 +237,7 @@ def test_pick_mixed_pool_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (18,)
+        assert obs.shape == (24,)
         _run_episode(env)
     finally:
         env.close()
@@ -396,11 +396,11 @@ def test_delta_penalty_norms_use_normalized_action(control_mode):
 
 
 def test_pick_and_place_default_obs_shape():
-    """PickAndPlace default obs is a 24-dim flat vector."""
+    """PickAndPlace default obs is a 30-dim flat vector."""
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         obs, _ = env.reset()
-        assert obs.shape == (24,)
+        assert obs.shape == (30,)
     finally:
         env.close()
 
@@ -410,7 +410,7 @@ def test_pick_and_place_target_z_near_ground():
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         obs, _ = env.reset()
-        target_pos = obs[8:11]
+        target_pos = obs[14:17]
         assert target_pos[2] < 0.01
     finally:
         env.close()
@@ -1158,8 +1158,8 @@ def test_pick_and_place_object_pose_tracks_selected_slot():
         obs, _ = inner.reset(seed=3)
         selected = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
         obj_pose = inner.data.qpos[selected.qpos_addr : selected.qpos_addr + 7]  # type: ignore[attr-defined]
-        # Default obs layout: ee(7)+grasp(1)+target_pos(3)+obj_pose(7)+...
-        np.testing.assert_allclose(obs[11:18], obj_pose, atol=1e-6)
+        # Default obs layout: joints(6)+ee(7)+grasp(1)+target_pos(3)+obj_pose(7)+...
+        np.testing.assert_allclose(obs[17:24], obj_pose, atol=1e-6)
     finally:
         env.close()
 
@@ -1182,3 +1182,104 @@ def test_pick_and_place_info_keys_with_object_pool():
         assert set(info.keys()) == expected
     finally:
         env.close()
+
+
+# ---------------------------------------------------------------------------
+# Observation-ordering contract.
+#
+# The flat state vector is the concatenation of each non-camera component's
+# value in exactly ``config.observations`` order. The observation list does not
+# touch the seeded reset RNG or the physics, so at a fixed seed a component's
+# value is identical regardless of what else is in the list. Therefore a
+# permuted list, sliced at cumulative component sizes, must reproduce -- segment
+# by segment -- the single-component configs reset at the same seed. A builder
+# that sorted or otherwise reordered the list would misalign the slices and
+# fail these assertions.
+# ---------------------------------------------------------------------------
+
+
+def _single_component_obs(env_id, config_cls, obs_cls, seed: int = 0):
+    """Flat obs vector for a config holding only ``obs_cls``, reset at ``seed``."""
+    env = gym.make(env_id, config=config_cls(observations=[obs_cls()]))
+    try:
+        obs, _ = env.reset(seed=seed)
+    finally:
+        env.close()
+    return obs
+
+
+def _assert_flat_vector_matches_ordered_singles(env_id, config_cls, perm, seed: int = 0):
+    env = gym.make(env_id, config=config_cls(observations=[cls() for cls in perm]))
+    try:
+        full, _ = env.reset(seed=seed)
+    finally:
+        env.close()
+    assert isinstance(full, np.ndarray)
+    offset = 0
+    for cls in perm:
+        size = OBS_SIZES[cls]
+        single = _single_component_obs(env_id, config_cls, cls, seed=seed)
+        segment = full[offset : offset + size]
+        assert np.allclose(segment, single, atol=1e-6), (
+            f"{env_id}: {cls.__name__} at flat slice [{offset}:{offset + size}] does not "
+            f"match its single-component obs -- components not concatenated in list order"
+        )
+        offset += size
+    assert offset == full.shape[0], "flat vector length != sum of component sizes"
+
+
+_ORDERING_CASES = [
+    (
+        "MuJoCoTouch-v1",
+        TouchConfig,
+        [ObjectOffset, JointPositions, GraspState, EndEffectorPose, ObjectPose],
+    ),
+    (
+        "MuJoCoPickAndPlace-v1",
+        PickAndPlaceConfig,
+        [
+            TargetOffset,
+            ObjectPose,
+            JointPositions,
+            TargetPosition,
+            GraspState,
+            ObjectOffset,
+            EndEffectorPose,
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("env_id,config_cls,components", _ORDERING_CASES)
+@pytest.mark.parametrize("order", ["as_given", "reversed"])
+def test_flat_obs_preserves_component_list_order(env_id, config_cls, components, order):
+    """Non-camera components appear in the flat state vector in ``config.observations``
+    order. Exercising both a non-sorted permutation and its reverse means any builder
+    that sorts or reorders the list must misalign at least one segment and fail."""
+    perm = list(components) if order == "as_given" else list(reversed(components))
+    _assert_flat_vector_matches_ordered_singles(env_id, config_cls, perm)
+
+
+def test_camera_interleaved_is_skipped_but_state_order_preserved():
+    """obs_mode='state' with a camera between two state components: the flat 'state'
+    key concatenates ONLY the non-camera components (JointPositions then ObjectOffset)
+    in list order, and the camera image is a separate key. Proves the camera is skipped
+    while the relative order of the surrounding state components is preserved."""
+    cfg = TouchConfig(
+        observations=[JointPositions(), WristCamera(width=64, height=48), ObjectOffset()]
+    )
+    env = gym.make("MuJoCoTouch-v1", config=cfg)
+    try:
+        obs, _ = env.reset(seed=0)
+    finally:
+        env.close()
+    assert isinstance(obs, dict)
+    assert set(obs.keys()) == {"state", "wrist_camera"}
+    assert obs["wrist_camera"].shape == (48, 64, 3)
+    state = obs["state"]
+    n_joint = OBS_SIZES[JointPositions]
+    assert state.shape == (n_joint + OBS_SIZES[ObjectOffset],)
+    jp = _single_component_obs("MuJoCoTouch-v1", TouchConfig, JointPositions)
+    oo = _single_component_obs("MuJoCoTouch-v1", TouchConfig, ObjectOffset)
+    assert np.allclose(state[:n_joint], jp, atol=1e-6)
+    assert np.allclose(state[n_joint:], oo, atol=1e-6)

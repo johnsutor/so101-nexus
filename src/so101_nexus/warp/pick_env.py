@@ -60,8 +60,8 @@ def _contact_budget(n_pool: int) -> tuple[int, int]:
 class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     """Batched pick-lift: grasp the per-world target object and lift it.
 
-    Default obs (18,): end_effector_pose(7) + grasp_state(1) + object_pose(7) +
-    object_offset(3), matching ``MuJoCoPickLift-v1``.
+    Default obs (24,): joint_positions(6) + end_effector_pose(7) + grasp_state(1) +
+    object_pose(7) + object_offset(3), matching ``MuJoCoPickLift-v1``.
     """
 
     config: PickConfig

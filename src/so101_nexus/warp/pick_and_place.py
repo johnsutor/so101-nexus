@@ -40,9 +40,9 @@ def _target_disc_body(target_disc_radius: float, rgba: list[float]) -> str:
 class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
     """Batched pick-and-place: carry the per-world object onto the goal disc.
 
-    Default obs (24,): end_effector_pose(7) + grasp_state(1) + target_position(3)
-    + object_pose(7) + object_offset(3) + target_offset(3), matching
-    ``MuJoCoPickAndPlace-v1``.
+    Default obs (30,): joint_positions(6) + end_effector_pose(7) + grasp_state(1)
+    + target_position(3) + object_pose(7) + object_offset(3) + target_offset(3),
+    matching ``MuJoCoPickAndPlace-v1``.
     """
 
     config: PickAndPlaceConfig
