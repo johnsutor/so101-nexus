@@ -250,7 +250,7 @@ class TestRewardCompute:
         energy_norm=norm_float,
     )
     @settings(max_examples=200)
-    def test_compute_matches_weighted_sum_and_penalties(
+    def test_compute_matches_clamped_budget_and_penalties(
         self,
         cfg,
         reach_progress,
@@ -268,15 +268,59 @@ class TestRewardCompute:
             action_delta_norm=action_delta_norm,
             energy_norm=energy_norm,
         )
-        expected = (
+        shaped = (
             cfg.reaching * reach_progress
             + cfg.grasping * is_grasped
             + cfg.task_objective * task_progress
-            + cfg.completion_bonus * is_complete
+        )
+        expected = (
+            shaped
+            + (1.0 - shaped) * is_complete
             - cfg.action_delta_penalty * action_delta_norm
             - cfg.energy_penalty * energy_norm
         )
         assert reward == pytest.approx(expected)
+
+    @given(
+        cfg=reward_configs(),
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+    )
+    @settings(max_examples=200)
+    def test_success_yields_full_budget_and_dominates(
+        self, cfg, reach_progress, is_grasped, task_progress
+    ):
+        """Success clamps to the full budget (global max); completion_bonus is the margin."""
+        won = cfg.compute(reach_progress, is_grasped, task_progress, True)
+        lost = cfg.compute(reach_progress, is_grasped, task_progress, False)
+        assert won == pytest.approx(1.0)
+        assert lost <= 1.0 - cfg.completion_bonus + 1e-9
+        assert won >= lost - 1e-9
+
+    def test_compute_clamp_numpy_and_torch_batches(self):
+        """The success clamp holds on numpy and torch batches (Warp backend path)."""
+        cfg = RewardConfig()
+        margin = 1.0 - cfg.completion_bonus
+        reach = np.array([1.0, 0.5, 0.0])
+        grasped = np.array([1.0, 0.0, 0.0])
+        task = np.array([1.0, 0.3, 0.0])
+        complete = np.array([True, False, True])
+        out = cfg.compute(reach, grasped, task, complete)
+        # is_complete rows clamp to the full budget; others equal the shaped sum.
+        shaped1 = cfg.reaching * 0.5 + cfg.task_objective * 0.3
+        np.testing.assert_allclose(out, [1.0, shaped1, 1.0])
+        assert out[1] <= margin + 1e-9
+
+        torch = pytest.importorskip("torch")
+        t_out = cfg.compute(
+            torch.tensor(reach),
+            torch.tensor(grasped),
+            torch.tensor(task),
+            torch.tensor(complete),
+        )
+        assert t_out.dtype == torch.float64
+        assert torch.allclose(t_out, torch.tensor([1.0, shaped1, 1.0], dtype=torch.float64))
 
     @given(
         reach_progress=unit_float,

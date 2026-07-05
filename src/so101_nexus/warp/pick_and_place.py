@@ -174,8 +174,10 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         is_robot_static = self._is_robot_static()
         success = is_obj_placed & is_robot_static
         scale = self.config.reward.tanh_shaping_scale
-        # Placement progress counts only while grasped (mirrors MuJoCo PickAndPlace).
-        placement = reach_progress(obj_to_target, scale=scale) * grasped.to(torch.float32)
+        # Placement counts while grasped OR once the object is set down, so
+        # releasing to finish the task does not erase progress (mirrors MuJoCo).
+        placed_or_grasped = (grasped | is_obj_placed).to(torch.float32)
+        placement = reach_progress(obj_to_target, scale=scale) * placed_or_grasped
         reward = self.config.reward.compute(
             reach_progress=reach_progress(tcp_to_obj, scale=scale),
             is_grasped=is_grasped,

@@ -188,8 +188,14 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
+        # Credit placement while grasped OR once the object is set down, so
+        # releasing the grasp to finish the task does not erase progress. The disc
+        # goal is on the table (unlike ManiSkill's airborne goal), so a released,
+        # resting object must still count.
         placement_progress = (
-            reach_progress(info["obj_to_target_dist"], scale=scale) if is_grasped else 0.0
+            reach_progress(info["obj_to_target_dist"], scale=scale)
+            if (is_grasped or info["is_obj_placed"])
+            else 0.0
         )
         return self.config.reward.compute(
             reach_progress=rp,
