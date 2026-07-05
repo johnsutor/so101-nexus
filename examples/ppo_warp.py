@@ -635,17 +635,21 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 )
 
         if capture_video and eval_freq > 0 and (update % eval_freq == 0 or update == num_updates):
-            ev, frames = evaluate_mujoco(
-                agent,
-                obs_norm,
-                dev,
-                env_id=env_id,
-                control_mode=control_mode,
-                episode_length=episode_length,
-                eval_episodes=eval_episodes,
-                seed=seed,
-                capture_video=True,
-            )
+            try:
+                ev, frames = evaluate_mujoco(
+                    agent,
+                    obs_norm,
+                    dev,
+                    env_id=env_id,
+                    control_mode=control_mode,
+                    episode_length=episode_length,
+                    eval_episodes=eval_episodes,
+                    seed=seed,
+                    capture_video=True,
+                )
+            except Exception as e:  # eval is a best-effort transfer figure; never abort training
+                print(f"[eval {global_step}] skipped: {e}", flush=True)
+                ev, frames = {}, None
             if writer is not None:
                 for k, v in ev.items():
                     writer.add_scalar(k, v, global_step)
