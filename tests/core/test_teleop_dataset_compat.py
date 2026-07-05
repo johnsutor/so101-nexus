@@ -211,7 +211,7 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
         resolve_recording_observations(env_id, (160, 120), (160, 120))
     )
     assert env_state_names, "PickLift env must expose privileged state names"
-    assert env_state_names[0] == "end_effector_pose_0"
+    assert env_state_names[0] == "joint_positions_0"
     n = len(env_state_names)
 
     # No cameras selected, so the follower features reduce to the joint floats,
@@ -254,7 +254,7 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     # per-dimension names carried through from privileged_state_feature_names.
     assert reloaded.features[ENV_STATE_KEY]["shape"] == (n,)
     assert reloaded.features[ENV_STATE_KEY]["dtype"] == "float32"
-    assert reloaded.features[ENV_STATE_KEY]["names"][0] == "end_effector_pose_0"
+    assert reloaded.features[ENV_STATE_KEY]["names"][0] == "joint_positions_0"
     # success/done are always-on scalar env-step channels, declared like reward.
     for key in (SUCCESS_KEY, DONE_KEY):
         assert reloaded.features[key]["shape"] == (1,)

@@ -6,10 +6,10 @@ pytestmark = pytest.mark.warp
 
 _ENVS = ["WarpLookAt-v1", "WarpMove-v1", "WarpPickLift-v1", "WarpPickAndPlace-v1"]
 _DEFAULT_OBS_DIM = {
-    "WarpLookAt-v1": 6,
-    "WarpMove-v1": 6,
-    "WarpPickLift-v1": 18,
-    "WarpPickAndPlace-v1": 24,
+    "WarpLookAt-v1": 16,
+    "WarpMove-v1": 16,
+    "WarpPickLift-v1": 24,
+    "WarpPickAndPlace-v1": 30,
 }
 
 
@@ -325,3 +325,54 @@ def test_manipulation_central_obs_routed_by_base():
     obs, _ = env.reset(seed=0)
     assert obs.shape == (2, 8)  # EndEffectorPose(7) + GraspState(1)
     assert torch.allclose(obs[:, :7], env._get_tcp_pose7(), atol=1e-5)
+
+
+def test_flat_state_vector_preserves_component_list_order():
+    """Warp flat state vector concatenates the non-camera components in
+    ``config.observations`` order. The observation list does not touch the seeded
+    reset RNG or physics, so world 0's slices of a permuted-list obs must equal the
+    single-component configs at the same seed. A builder that sorted or reordered
+    the list would misalign the segments and fail."""
+    import torch
+
+    from so101_nexus.config import TouchConfig
+    from so101_nexus.observations import (
+        EndEffectorPose,
+        GraspState,
+        JointPositions,
+        ObjectOffset,
+        ObjectPose,
+    )
+    from so101_nexus.warp.touch_env import WarpTouchVectorEnv
+
+    sizes = {
+        JointPositions: 6,
+        EndEffectorPose: 7,
+        GraspState: 1,
+        ObjectPose: 7,
+        ObjectOffset: 3,
+    }
+    perm = [ObjectOffset, JointPositions, GraspState, EndEffectorPose, ObjectPose]
+
+    def _world0_obs(components):
+        env = WarpTouchVectorEnv(
+            num_envs=2,
+            config=TouchConfig(observations=[cls() for cls in components]),
+            device="cpu",
+            seed=0,
+        )
+        obs, _ = env.reset(seed=0)
+        return obs[0]
+
+    full = _world0_obs(perm)
+    offset = 0
+    for cls in perm:
+        size = sizes[cls]
+        single = _world0_obs([cls])
+        segment = full[offset : offset + size]
+        assert torch.allclose(segment, single, atol=1e-5), (
+            f"{cls.__name__} at flat slice [{offset}:{offset + size}] does not match its "
+            f"single-component obs -- Warp components not concatenated in list order"
+        )
+        offset += size
+    assert offset == full.shape[0]

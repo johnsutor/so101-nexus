@@ -52,9 +52,9 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     ``PickConfig.objects``. One object is randomly chosen as the target per
     episode; ``config.n_distractors`` others are placed as distractors.
 
-    Observation (18-dim):
-        tcp_pos(3) + tcp_quat(4) + is_grasped(1) + obj_pos(3) + obj_quat(4)
-        + tcp_to_obj(3)
+    Observation (24-dim):
+        joint_pos(6) + tcp_pos(3) + tcp_quat(4) + is_grasped(1) + obj_pos(3)
+        + obj_quat(4) + tcp_to_obj(3)
     """
 
     config: PickConfig

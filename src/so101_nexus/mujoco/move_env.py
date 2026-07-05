@@ -46,7 +46,7 @@ def _build_move_scene_xml(ground_rgba: list[float]) -> str:
 class MoveEnv(SO101NexusMuJoCoBaseEnv):
     """Move primitive: translate TCP a fixed distance in a specified direction.
 
-    Default obs (6,): joint_positions.
+    Default obs (16,): joint_positions(6) + end_effector_pose(7) + target_offset(3).
     Info: tcp_to_target_dist, success.
     task_description: "Move the end-effector <direction> by <distance> m."
 

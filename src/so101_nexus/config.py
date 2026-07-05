@@ -21,6 +21,7 @@ from so101_nexus.constants import (
 from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.observations import (
     EndEffectorPose,
+    GazeDirection,
     GraspState,
     JointPositions,
     ObjectOffset,
@@ -486,7 +487,9 @@ class EnvironmentConfig:
     robot_init_qpos_noise : float
         Initial joint position noise.
     observations : list, optional
-        Observation components to include in the state vector.
+        Observation components to include in the state vector. When ``None``
+        (the default), each config populates every observation applicable to
+        its task, i.e. all privileged state components the backend can compute.
     """
 
     def __init__(
@@ -661,7 +664,13 @@ class PickConfig(EnvironmentConfig):
                 f"min_object_separation must be >= 0, got {self.min_object_separation}"
             )
         if self.observations is None:
-            self.observations = [EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]
+            self.observations = [
+                JointPositions(),
+                EndEffectorPose(),
+                GraspState(),
+                ObjectPose(),
+                ObjectOffset(),
+            ]
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -776,6 +785,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
             )
         if self.observations is None:
             self.observations = [
+                JointPositions(),
                 EndEffectorPose(),
                 GraspState(),
                 TargetPosition(),
@@ -896,7 +906,7 @@ class LookAtConfig(EnvironmentConfig):
         if self.fov_deg is not None and self.fov_deg <= 0:
             raise ValueError(f"fov_deg must be > 0 or None, got {self.fov_deg}")
         if self.observations is None:
-            self.observations = [JointPositions()]
+            self.observations = [JointPositions(), EndEffectorPose(), GazeDirection()]
         for obj in self.objects:
             if not isinstance(obj, CubeObject):
                 raise TypeError(
@@ -941,7 +951,7 @@ class MoveConfig(EnvironmentConfig):
         self.target_distance = target_distance
         self.success_threshold = success_threshold
         if self.observations is None:
-            self.observations = [JointPositions()]
+            self.observations = [JointPositions(), EndEffectorPose(), TargetOffset()]
 
     @property
     def task_description(self) -> str:

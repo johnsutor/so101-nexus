@@ -66,10 +66,11 @@ Recorded PickLift teleoperation rollout, shown from both stored camera streams.
 
 ## Observation Space
 
-The observation is an 18-dimensional vector.
+The observation is a 24-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
+| `joint_pos` | 6 | Current angle of each robot joint |
 | `tcp_pos` | 3 | TCP position in world frame |
 | `tcp_quat` | 4 | TCP orientation as quaternion |
 | `is_grasped` | 1 | Whether the object is currently grasped |
@@ -134,3 +135,11 @@ for _ in range(1024):
 
 env.close()
 ```
+
+## Train a policy
+
+Train a PPO policy for this task on the GPU-parallel Warp backend (`WarpPickLift-v1`) in Colab:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
+Set `ENV_ID = "WarpPickLift-v1"` in the notebook's environment cell. See [Training with PPO](/docs/guides/training-with-ppo) for the local CLI workflow.

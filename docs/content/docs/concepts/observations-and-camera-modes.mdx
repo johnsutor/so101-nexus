@@ -60,6 +60,7 @@ from so101_nexus import (
 
 # State-only observations (default for PickLift)
 config = PickConfig(observations=[
+    JointPositions(),
     EndEffectorPose(),
     GraspState(),
     ObjectPose(),
@@ -84,11 +85,11 @@ Each task config auto-populates `observations` if you don't provide one:
 
 | Task | Default Components | State Dimensions |
 | --- | --- | --- |
-| PickLift | EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 18 |
-| PickAndPlace | EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 24 |
-| Touch | EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 18 |
-| LookAt | JointPositions | 6 |
-| Move | JointPositions | 6 |
+| PickLift | JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 24 |
+| PickAndPlace | JointPositions, EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 30 |
+| Touch | JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 24 |
+| LookAt | JointPositions, EndEffectorPose, GazeDirection | 16 |
+| Move | JointPositions, EndEffectorPose, TargetOffset | 16 |
 
 ## Observation Modes
 
@@ -131,7 +132,7 @@ import so101_nexus.mujoco
 # State-only (default)
 env = gym.make("MuJoCoPickLift-v1")
 obs, info = env.reset()
-print(f"Observation shape: {obs.shape}")  # (18,)
+print(f"Observation shape: {obs.shape}")  # (24,)
 env.close()
 
 # With camera

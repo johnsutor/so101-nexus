@@ -33,8 +33,8 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
     The target is a position sampled in the spawn square and stored as a tensor.
     When a camera observation is configured, a visual-only marker geom is added to
     the scene and tracked to the target so the rendered image shows it (matching
-    the MuJoCo backend). Default obs (6,): joint_positions, matching
-    ``MuJoCoLookAt-v1``. Add ``GazeDirection`` to make the target observable.
+    the MuJoCo backend). Default obs (16,): joint_positions(6) +
+    end_effector_pose(7) + gaze_direction(3), matching ``MuJoCoLookAt-v1``.
     """
 
     config: LookAtConfig

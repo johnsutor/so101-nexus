@@ -34,7 +34,7 @@ def test_make_vec_warns_and_ignores_render_mode():
         envs = gym.make_vec("WarpTouch-v1", num_envs=2, device="cpu", render_mode="rgb_array")
     obs, _ = envs.reset(seed=0)
     assert isinstance(obs, torch.Tensor)
-    assert obs.shape == (2, 18)
+    assert obs.shape == (2, 24)
     assert envs.unwrapped.render_mode is None
     envs.close()
 

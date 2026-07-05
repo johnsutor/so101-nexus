@@ -36,8 +36,8 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
     vector scaled by ``target_distance`` (settle-then-place contract), stored as
     a tensor rather than a placed site. Camera observations render a visual target
     marker, but Gymnasium ``render_mode`` visualization is not implemented.
-    Default obs (6,): joint_positions, matching ``MuJoCoMove-v1``. Add
-    ``TargetOffset`` in the config to make the target observable.
+    Default obs (16,): joint_positions(6) + end_effector_pose(7) +
+    target_offset(3), matching ``MuJoCoMove-v1``.
     """
 
     config: MoveConfig

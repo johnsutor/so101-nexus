@@ -127,6 +127,10 @@ envs.close()
 
 SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. See [Training with PPO](https://so101-nexus.com/docs/guides/training-with-ppo) for the command-line workflow and tuning notes.
 
+Or train a strong policy on the GPU-parallel Warp backend end to end in your browser:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm

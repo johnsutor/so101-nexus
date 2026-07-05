@@ -28,11 +28,13 @@ Orient the robot's end-effector so that it points at a target object.
 
 ## Observation Space
 
-Default observation includes only joint positions (configurable via `observations` parameter on `LookAtConfig`):
+Default observation is a 16-dimensional vector (configurable via the `observations` parameter on `LookAtConfig`):
 
 | Component | Class | Dimensions | Description |
 |-----------|-------|------------|-------------|
 | Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
+| End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
+| Gaze direction | `GazeDirection` | 3 | Unit vector from the TCP toward the target object |
 
 ## Objects
 
@@ -66,3 +68,11 @@ for _ in range(256):
 
 env.close()
 ```
+
+## Train a policy
+
+Train a PPO policy for this task on the GPU-parallel Warp backend (`WarpLookAt-v1`) in Colab:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+
+Set `ENV_ID = "WarpLookAt-v1"` in the notebook's environment cell. See [Training with PPO](/docs/guides/training-with-ppo) for the local CLI workflow.
