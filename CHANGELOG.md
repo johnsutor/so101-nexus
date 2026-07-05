@@ -9,6 +9,14 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pick-and-place reward no longer collapses when the grasp is released to complete the task. Placement progress is now credited while grasped or once the object is set on the goal disc (both backends), so finishing the task is no longer scored below hovering the grasped object above the disc.
+
+### Changed
+
+- On success the reward is clamped to the full normalized budget (the weights sum to 1.0) in both `RewardConfig.compute` and `simple_reward`, so a successful terminal step is always the global maximum with `completion_bonus` as the guaranteed margin. This mirrors ManiSkill PickCube's `reward[success] = max`. Non-success rewards are unchanged (bounded by `1 - completion_bonus`).
+
 ## [0.4.7] - 2026-07-02
 
 ### Added

@@ -399,13 +399,20 @@ class RewardConfig:
         promotes Python/NumPy/torch booleans to numeric, so both simulation
         backends call this one combiner instead of inlining the weighted sum.
         The scalar path returns a plain ``float``.
+
+        On completion the reward is lifted to the full budget (the four weights
+        sum to 1.0), so a successful terminal step is always the global maximum
+        with ``completion_bonus`` as the guaranteed margin over any non-terminal
+        state. This mirrors ManiSkill PickCube's ``reward[success] = max`` and
+        keeps success rewarding even when a task (pick-and-place) must release the
+        grasp to finish, which would otherwise zero the grasping and task terms.
         """
-        base = (
+        shaped = (
             self.reaching * reach_progress
             + self.grasping * is_grasped
             + self.task_objective * task_progress
-            + self.completion_bonus * is_complete
         )
+        base = shaped + (1.0 - shaped) * is_complete
         return self.apply_penalties(
             base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
         )

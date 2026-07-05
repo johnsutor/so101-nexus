@@ -45,13 +45,24 @@ class TestOrientationProgress:
 
 
 class TestSimpleReward:
-    """Tests for the reach/orient/move reward: (1-bonus)*progress + bonus*success."""
+    """Reach/orient/move reward: shaped in [0, 1-bonus], success clamps to 1.0."""
 
     @given(progress=unit_float, completion_bonus=unit_float, success=st.booleans())
     @settings(max_examples=200)
-    def test_matches_weighted_completion_formula(self, progress, completion_bonus, success):
+    def test_matches_clamped_completion_formula(self, progress, completion_bonus, success):
         reward = simple_reward(
             progress=progress, completion_bonus=completion_bonus, success=success
         )
-        expected = (1.0 - completion_bonus) * progress + completion_bonus * success
+        shaped = (1.0 - completion_bonus) * progress
+        expected = shaped + (1.0 - shaped) * success
         assert reward == pytest.approx(expected)
+
+    @given(progress=unit_float, completion_bonus=unit_float)
+    @settings(max_examples=200)
+    def test_success_yields_full_budget_and_dominates(self, progress, completion_bonus):
+        """Success clamps to the full budget (global max); completion_bonus is the margin."""
+        won = simple_reward(progress=progress, completion_bonus=completion_bonus, success=True)
+        lost = simple_reward(progress=progress, completion_bonus=completion_bonus, success=False)
+        assert won == pytest.approx(1.0)
+        assert lost <= 1.0 - completion_bonus + 1e-9
+        assert won >= lost - 1e-9

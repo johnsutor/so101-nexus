@@ -83,10 +83,13 @@ def lift_progress(height, *, scale, grasped):
 def simple_reward(*, progress, completion_bonus, success):
     """Reward for single-objective tasks (reach, move, look-at).
 
-    Formula: ``(1 - completion_bonus) * progress + completion_bonus * success``.
-    Accepts scalar or batched ``progress`` / ``success``; ``success`` may be a
-    Python bool, NumPy bool array, or torch bool tensor (operator overloading
-    promotes bool to float). The scalar path returns a plain ``float``.
+    Shaping fills ``[0, 1 - completion_bonus]`` via ``progress``; success lifts
+    the reward to the full budget (1.0), so a successful terminal step is always
+    the global maximum with ``completion_bonus`` as the guaranteed margin. This
+    matches the terminal clamp in ``RewardConfig.compute``. Accepts scalar or
+    batched ``progress`` / ``success``; ``success`` may be a Python bool, NumPy
+    bool array, or torch bool tensor (operator overloading promotes bool to
+    float). The scalar path returns a plain ``float``.
 
     Parameters
     ----------
@@ -97,4 +100,5 @@ def simple_reward(*, progress, completion_bonus, success):
     success : bool or numpy.ndarray or torch.Tensor
         Whether the task is complete.
     """
-    return (1.0 - completion_bonus) * progress + completion_bonus * success
+    shaped = (1.0 - completion_bonus) * progress
+    return shaped + (1.0 - shaped) * success

@@ -814,6 +814,45 @@ def test_pick_and_place_rgb_array_render():
         env.close()
 
 
+def test_pick_and_place_reward_no_collapse_on_release():
+    """Placement credit survives release, and success is the reward maximum.
+
+    Regression: placement_progress was gated on is_grasped, so opening the gripper
+    to complete the task erased the grasp and placement terms, making a placed,
+    released success score below a grasped hover. The terminal clamp plus
+    placed-gated placement credit fix this.
+    """
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=0)
+
+        def info(*, is_grasped, placed, success):
+            return {
+                "tcp_to_obj_dist": 0.0,
+                "obj_to_target_dist": 0.0,
+                "is_grasped": float(is_grasped),
+                "is_obj_placed": placed,
+                "success": success,
+            }
+
+        hover = inner._compute_reward(info(is_grasped=True, placed=False, success=False))
+        released_placed = inner._compute_reward(info(is_grasped=False, placed=True, success=False))
+        released_air = inner._compute_reward(info(is_grasped=False, placed=False, success=False))
+        success_grasped = inner._compute_reward(info(is_grasped=True, placed=True, success=True))
+        # Released success: grasp opened, object resting on the disc. Pre-fix this
+        # scored reaching + completion_bonus only (0.35); the terminal clamp lifts
+        # it to the full budget, so this assertion catches the clamp regression.
+        success_released = inner._compute_reward(info(is_grasped=False, placed=True, success=True))
+
+        assert released_placed > released_air + 1e-6
+        assert success_grasped == pytest.approx(1.0)
+        assert success_released == pytest.approx(1.0)
+        assert success_released > hover + 1e-6
+    finally:
+        env.close()
+
+
 _CAMERA_ENVS: list[tuple[str, type]] = ENV_MATRIX
 
 
