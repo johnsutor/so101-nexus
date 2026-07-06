@@ -18,7 +18,6 @@ import torch
 import tyro
 from torch import nn, optim
 from torch.distributions.normal import Normal
-from torch.utils.tensorboard import SummaryWriter
 
 from so101_nexus._reproducibility import seed_everything
 
@@ -270,6 +269,8 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
+    from torch.utils.tensorboard import SummaryWriter
+
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
