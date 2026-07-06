@@ -19,9 +19,9 @@ Two findings are decisive (both baked into the defaults):
   reward stream*, so vanilla PPO farms the reach reward forever and never lifts
   (return plateaus, 0% success). Fixed-horizon makes grasp+lift+**hold** (~1.0/step)
   beat hovering (~0.25/step).
-- **Explore-then-refine entropy** (`--ent-coef 0.01 --ent-coef-final 0.0`, `logstd`
-  clamped to std <= 1). High-std early discovers the grasp+lift; annealing to 0
-  refines it into a reliable lift. `--stagger-resets` (default) desynchronizes the
+- **Entropy off by default** (`--ent-coef 0.0 --ent-coef-final 0.0`, `logstd`
+  clamped to std <= 1). Use a positive entropy bonus when deliberately trading
+  repeatability for extra exploration. `--stagger-resets` (default) desynchronizes the
   episode phases so discovery is less seed-fragile.
 
 The training env uses the all-observation default config (24-d privileged state:
@@ -40,9 +40,9 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("MUJOCO_GL", "egl")
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import importlib
-import random
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -50,6 +50,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 from torch import nn
+
+from so101_nexus._reproducibility import seed_everything
 
 
 @dataclass
@@ -87,8 +89,8 @@ class Args:
     norm_adv: bool = True
     clip_coef: float = 0.2
     clip_vloss: bool = True
-    ent_coef: float = 0.01
-    """entropy bonus; >0 keeps exploration alive long enough to discover grasp+lift"""
+    ent_coef: float = 0.0
+    """entropy bonus; defaults to zero for more repeatable PPO baselines"""
     ent_coef_final: float = 0.0
     """entropy coef is linearly annealed ent_coef -> ent_coef_final over training"""
     vf_coef: float = 0.5
@@ -207,13 +209,25 @@ class Agent(nn.Module):
     def get_value(self, x):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
+    def get_action_and_value(
+        self,
+        x,
+        action=None,
+        *,
+        generator: torch.Generator | None = None,
+    ):
         mean = self.actor_mean(x)
         logstd = self.actor_logstd.clamp(-5.0, 0.0).expand_as(mean)
         std = torch.exp(logstd)
         dist = torch.distributions.Normal(mean, std)
         if action is None:
-            action = dist.sample()
+            noise = torch.randn(
+                mean.shape,
+                dtype=mean.dtype,
+                device=mean.device,
+                generator=generator,
+            )
+            action = mean + std * noise
         logprob = dist.log_prob(action).sum(1)
         entropy = dist.entropy().sum(1)
         return action, logprob, entropy, self.critic(x).squeeze(-1)
@@ -381,7 +395,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     norm_adv=True,
     clip_coef=0.2,
     clip_vloss=True,
-    ent_coef=0.01,
+    ent_coef=0.0,
     ent_coef_final=0.0,
     vf_coef=0.5,
     max_grad_norm=1.0,
@@ -399,6 +413,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     eval_episodes=5,
     device="cuda",
     seed=1,
+    torch_deterministic=True,
     save_dir=None,
     writer=None,
     log_freq=1,
@@ -424,10 +439,11 @@ def train(  # noqa: PLR0915, PLR0912, C901
     minibatch_size = batch_size // num_minibatches
     num_updates = total_timesteps // batch_size
 
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    seed_everything(seed, deterministic=torch_deterministic)
     dev = torch.device(device)
+    np_rng = np.random.default_rng(seed)
+    policy_rng = torch.Generator(device=dev).manual_seed(seed + 1)
+    stagger_rng = torch.Generator(device=dev).manual_seed(seed + 2)
 
     envs = _make_envs(
         env_id,
@@ -469,7 +485,9 @@ def train(  # noqa: PLR0915, PLR0912, C901
         # Otherwise all worlds reset in lockstep (shared reset(seed)) and explore the
         # same episode phase together -> correlated, seed-fragile discovery. Random
         # initial elapsed staggers truncations so the batch spans all task phases.
-        envs._elapsed = torch.randint(0, episode_length, (num_envs,), device=dev)
+        envs._elapsed = torch.randint(
+            0, episode_length, (num_envs,), generator=stagger_rng, device=dev
+        )
     next_obs = obs_norm(next_obs_raw.to(dev), update=True)
     next_done = torch.zeros(num_envs, device=dev)
 
@@ -491,7 +509,9 @@ def train(  # noqa: PLR0915, PLR0912, C901
             done_buf[step] = next_done
 
             with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(next_obs)
+                action, logprob, _, value = agent.get_action_and_value(
+                    next_obs, generator=policy_rng
+                )
             act_buf[step] = action
             logp_buf[step] = logprob
             val_buf[step] = value
@@ -560,7 +580,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
         b_inds = np.arange(batch_size)
         clipfracs = []
         for _epoch in range(update_epochs):
-            np.random.shuffle(b_inds)
+            np_rng.shuffle(b_inds)
             for start in range(0, batch_size, minibatch_size):
                 mb = b_inds[start : start + minibatch_size]
                 _, newlogp, entropy, newval = agent.get_action_and_value(b_obs[mb], b_act[mb])
@@ -730,6 +750,7 @@ def main():
         eval_episodes=args.eval_episodes,
         device=str(device),
         seed=args.seed,
+        torch_deterministic=args.torch_deterministic,
         save_dir=save_dir,
         writer=writer,
         log_freq=args.log_freq,

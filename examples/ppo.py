@@ -7,9 +7,10 @@ with continuous actions.
 
 import importlib
 import os
-import random
 import time
 from dataclasses import dataclass
+
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import gymnasium as gym
 import numpy as np
@@ -17,7 +18,8 @@ import torch
 import tyro
 from torch import nn, optim
 from torch.distributions.normal import Normal
-from torch.utils.tensorboard import SummaryWriter
+
+from so101_nexus._reproducibility import seed_everything
 
 
 def import_backend_for_env_id(env_id: str) -> None:
@@ -85,7 +87,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.01
+    ent_coef: float = 0.0
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -267,6 +269,8 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
+    from torch.utils.tensorboard import SummaryWriter
+
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -275,10 +279,7 @@ if __name__ == "__main__":
         ),
     )
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = args.torch_deterministic
+    seed_everything(args.seed, deterministic=args.torch_deterministic)
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 

@@ -11,6 +11,25 @@ def test_ppo_warp_default_budget_preserves_picklift_annealing_horizon():
     assert mod.Args().total_timesteps == 200_000_000
 
 
+def test_ppo_warp_default_entropy_bonus_is_disabled():
+    import importlib
+
+    mod = importlib.import_module("examples.ppo_warp")
+
+    args = mod.Args()
+
+    assert args.ent_coef == 0.0
+    assert args.ent_coef_final == 0.0
+
+
+def test_ppo_default_entropy_bonus_is_disabled():
+    import importlib
+
+    mod = importlib.import_module("examples.ppo")
+
+    assert mod.Args().ent_coef == 0.0
+
+
 def test_ppo_warp_short_run_finite():
     import importlib
 
@@ -28,6 +47,42 @@ def test_ppo_warp_short_run_finite():
     assert torch.isfinite(torch.tensor(stats["policy_loss"]))
     assert torch.isfinite(torch.tensor(stats["value_loss"]))
     assert stats["iterations"] == 2
+
+
+def test_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
+    """Same-seed CPU runs must return identical deterministic scalar stats."""
+    import importlib
+    import math
+
+    mod = importlib.import_module("examples.ppo_warp")
+    kwargs = {
+        "num_envs": 8,
+        "num_steps": 8,
+        "total_timesteps": 8 * 8 * 2,  # two iterations
+        "num_minibatches": 4,
+        "device": "cpu",
+        "seed": 123,
+        "capture_video": False,
+        "eval_freq": 0,
+        "log": False,
+    }
+
+    first = mod.train(**kwargs)
+    second = mod.train(**kwargs)
+
+    for key in (
+        "iterations",
+        "episodes",
+        "policy_loss",
+        "value_loss",
+        "success_rate",
+        "best_success",
+    ):
+        assert second[key] == first[key], key
+    if math.isnan(first["mean_return"]):
+        assert math.isnan(second["mean_return"])
+    else:
+        assert second["mean_return"] == first["mean_return"]
 
 
 @pytest.mark.parametrize(
