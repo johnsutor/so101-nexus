@@ -106,23 +106,28 @@ Common settings for the solved Warp baselines:
 | `--learning-rate` | `3e-4` |
 | `--gamma` | `0.99` |
 | `--gae-lambda` | `0.95` |
-| `--num-minibatches` | `8` |
-| `--update-epochs` | `4` |
+| `--num-minibatches` | `32` |
+| `--update-epochs` | `10` |
 | `--clip-coef` | `0.2` |
-| `--ent-coef` | `0.01` |
+| `--ent-coef` | `0.005` |
 | `--ent-coef-final` | `0.0` |
 | `--vf-coef` | `0.5` |
-| `--max-grad-norm` | `1.0` |
-| `--target-kl` | `0.05` |
+| `--max-grad-norm` | `0.5` |
+| `--target-kl` | `None` |
 | `--hidden-dim` | `256` |
 | `--control-mode` | `pd_joint_delta_pos` |
 | `--episode-length` | `512` |
 
 The entropy and learning-rate schedules run over `--total-timesteps`, so the step
-budget is part of the recipe. Do not shorten PickLift to 40M and expect the same
-behavior: that anneals exploration to zero too early.
+budget is part of the recipe. PickLift uses a mild entropy warm-start and a
+CleanRL-style update budget because the GPU Warp contact path is not bitwise
+deterministic; the extra optimization turns early grasps into reliable lift
+policies.
 
 ### Starting commands by environment
+
+PickLift repeats the tuned defaults explicitly so copied runs keep the seed-validated
+recipe even if script defaults change later.
 
 ```bash
 uv run --extra warp --extra train python examples/ppo_warp.py \
@@ -139,21 +144,27 @@ uv run --extra warp --extra train python examples/ppo_warp.py \
 
 uv run --extra warp --extra train python examples/ppo_warp.py \
   --env-id WarpPickLift-v1 \
-  --total-timesteps 100000000
+  --total-timesteps 30000000 \
+  --num-minibatches 32 \
+  --update-epochs 10 \
+  --ent-coef 0.005 \
+  --ent-coef-final 0.0 \
+  --max-grad-norm 0.5 \
+  --target-kl None
 ```
 
 ### Results by environment
 
-Single-seed PPO results on one RTX 5090 with the common settings above. "Success
-rate" is the recent completed-episode success rate reported by the Warp training
-rollout at the listed step budget.
+Success rate is the recent completed-episode success rate reported by the Warp
+training rollout at the listed step budget. PickLift reports seed-validated results
+from seeds 1, 2, and 3.
 
 | env_id | steps | success rate | wall-clock |
 |---|---:|---:|---:|
 | `WarpTouch-v1` | 5.0M | 1.000 | 88 s |
 | `WarpLookAt-v1` | 5.0M | 1.000 | 62 s |
 | `WarpMove-v1` | 5.0M | 1.000 | 60 s |
-| `WarpPickLift-v1` | 100.0M | 0.993 final, 1.000 best | 31.6 min |
+| `WarpPickLift-v1` | 30.0M | 0.905 min, 0.952 mean, 0.993 max final | 24.5 min/run |
 | `WarpPickAndPlace-v1` | pending | pending | pending |
 
 `WarpPickAndPlace-v1` is intentionally excluded for now; the environment needs task

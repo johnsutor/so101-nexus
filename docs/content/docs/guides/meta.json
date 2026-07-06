@@ -3,7 +3,6 @@
   "pages": [
     "customizing-environments",
     "working-with-objects",
-    "ycb-assets",
-    "training-with-ppo"
+    "ycb-assets"
   ]
 }

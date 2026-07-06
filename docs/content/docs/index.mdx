@@ -38,6 +38,7 @@ Recorded MuJoCo teleoperation rollouts are available as LeRobot datasets:
 - **End-to-end SO-101 workflow** -- record demonstrations, build LeRobot datasets, run environments, and train or evaluate policies
 - **[Built-in teleoperation](/docs/teleoperation/overview)** -- drive a simulated follower with a physical SO-100 or SO-101 leader arm
 - **LeRobot dataset conventions** -- save SO follower state/action units plus wrist and overhead camera fields
+- **[GPU PPO training](/docs/training/ppo)** -- train Warp baselines with tuned per-task commands and seed-validated PickLift hyperparameters
 - **Standard Gymnasium API** -- use the environments with RL libraries and existing Gymnasium tooling
 - **MuJoCo and MuJoCo Warp backends** -- five SO-101 manipulation tasks on MuJoCo, with an optional GPU-parallel MuJoCo Warp backend (`so101-nexus[warp]`) for batched RL
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards, and choose observation components
@@ -113,4 +114,4 @@ All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp back
 - **[Record demonstrations](/docs/teleoperation/overview)** -- teleoperate a simulated follower and save LeRobot datasets
 - **[Run MuJoCo environments](/docs/getting-started/quickstart-mujoco)** -- create your first Gymnasium SO-101 task
 - **[Customize tasks and objects](/docs/guides/customizing-environments)** -- tune rewards, cameras, spawn regions, colors, and observation components
-- **[Train with PPO](/docs/guides/training-with-ppo)** -- run the included baseline and adapt it for your experiments
+- **[Train with PPO](/docs/training/ppo)** -- run the included baseline and adapt it for your experiments
