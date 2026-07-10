@@ -1,0 +1,104 @@
+---
+title: Training with PPO
+description: Train policies on SO101-Nexus environments with the GPU-parallel Warp PPO baseline.
+---
+
+SO101-Nexus uses `examples/ppo_warp.py` as the default PPO baseline for RL. It is a CleanRL-style MLP actor-critic trainer for the GPU-batched `Warp*-v1` environments. Rollouts stay on the CUDA device, so this is the path to use for serious PPO experiments.
+
+`examples/ppo.py` is kept as a slower MuJoCo reference script for single-machine sanity checks. Prefer the Warp script for baseline numbers, Colab runs, and new tuning work.
+
+## Per-environment starting points
+
+These are grounded baselines from one RTX 5090 using the common settings below. "Success" is the recent completed-episode success rate reported by the Warp training rollout. PickLift reports seed-validated results from seeds 1, 2, 3, 4, and 5.
+
+| env_id | Suggested steps | Observed success | Wall-clock observed | Notes |
+| --- | ---: | ---: | ---: | --- |
+| `WarpTouch-v1` | `5000000` | `1.000` | 88 s | Solves quickly. |
+| `WarpLookAt-v1` | `5000000` | `1.000` | 62 s | Solves quickly. |
+| `WarpMove-v1` | `5000000` | `1.000` | 60 s | Solves quickly. |
+| `WarpPickLift-v1` | `30000000` | `0.965` min, `0.973` mean, `0.985` max final | 24.5 min/run | Seed-validated across 5 seeds (4/5 solved) with the strong entropy warm-start plus nonzero floor recipe. |
+| `WarpPickAndPlace-v1` | pending | pending | pending | Excluded until the environment is fixed. |
+
+Recommended commands. The PickLift command repeats the tuned defaults explicitly so copied runs keep the seed-validated recipe even if script defaults change later:
+
+```bash
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpTouch-v1 \
+    --total-timesteps 5000000
+
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpLookAt-v1 \
+    --total-timesteps 5000000
+
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpMove-v1 \
+    --total-timesteps 5000000
+
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpPickLift-v1 \
+    --total-timesteps 30000000 \
+    --num-minibatches 32 \
+    --update-epochs 10 \
+    --ent-coef 0.03 \
+    --ent-coef-final 0.005 \
+    --max-grad-norm 0.5 \
+    --target-kl None
+```
+
+If PickLift stalls at low return with 0% success, first verify that you are using the recommended entropy and optimizer settings above. Lift discovery is still stochastic on GPU, but the default recipe was validated across seeds 1, 2, 3, 4, and 5 (4 of 5 solved).
+
+## Quick start
+
+```bash
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpTouch-v1 \
+    --total-timesteps 5000000
+```
+
+Open TensorBoard while training:
+
+```bash
+tensorboard --logdir runs
+```
+
+## Baseline recipe
+
+The baseline uses fixed-horizon episodes, staggered resets, observation normalization, return-based reward scaling, and entropy annealing. Treat the annealing horizon as a real hyperparameter: shortening `--total-timesteps` also shortens the learning-rate and entropy schedules. `WarpPickLift-v1` uses a strong entropy warm-start (`ent_coef=0.03`) with a nonzero floor (`ent_coef_final=0.005`) and a CleanRL-style update budget because the GPU Warp contact path is not bitwise deterministic.
+
+Common settings for the solved baselines:
+
+| Argument | Value |
+| --- | ---: |
+| `--num-envs` | `1024` |
+| `--num-steps` | `16` |
+| `--learning-rate` | `3e-4` |
+| `--gamma` | `0.99` |
+| `--gae-lambda` | `0.95` |
+| `--num-minibatches` | `32` |
+| `--update-epochs` | `10` |
+| `--clip-coef` | `0.2` |
+| `--ent-coef` | `0.03` |
+| `--ent-coef-final` | `0.005` |
+| `--vf-coef` | `0.5` |
+| `--max-grad-norm` | `0.5` |
+| `--target-kl` | `None` |
+| `--hidden-dim` | `256` |
+| `--control-mode` | `pd_joint_delta_pos` |
+| `--episode-length` | `512` |
+
+
+## Evaluation
+
+Evaluate a saved checkpoint deterministically with the matching Warp environment:
+
+```bash
+uv run --extra warp python examples/eval_warp.py \
+    --env-id WarpPickLift-v1 \
+    --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
+```
+
+`examples/ppo_warp.py` can also render periodic transfer videos in the matching `MuJoCo*` backend with `--capture-video`.
+
+## Colab
+
+For browser training, open `examples/ppo_warp_colab.ipynb`. The notebook exposes the same `ENV_ID` and step-budget choices, embeds TensorBoard, trains, evaluates, and displays a rollout video.

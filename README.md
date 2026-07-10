@@ -125,7 +125,7 @@ envs.close()
 
 ### Train a baseline
 
-SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. See [Training with PPO](https://so101-nexus.com/docs/guides/training-with-ppo) for the command-line workflow and tuning notes.
+SO101-Nexus includes a CleanRL-style PPO baseline for Gymnasium environments. See [Training with PPO](https://so101-nexus.com/docs/training/ppo) for the command-line workflow and tuning notes.
 
 Or train a strong policy on the GPU-parallel Warp backend end to end in your browser:
 

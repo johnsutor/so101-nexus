@@ -3,26 +3,31 @@
 This is the "best PPO results" recipe for `so101-nexus`: large-batch PPO on the
 GPU-parallel MuJoCo Warp backend. `mujoco_warp` steps thousands of worlds in place
 and returns obs/reward/done as GPU tensors (zero host round-trip), so the whole hot
-path stays on-device. On `WarpPickLift-v1` this solves pick-lift to high success
-(observed 0.993 recent-episode success, 1.000 best recent success) in about 30
-minutes on one RTX 5090.
+path stays on-device. On `WarpPickLift-v1` the default recipe now uses a strong
+entropy warm-start with a nonzero floor plus CleanRL-style optimizer settings
+because MuJoCo Warp contact physics is not bitwise deterministic on GPU. A 30M-step
+sweep reached final success 0.97, 0.985, 0.965, and 0.97 on seeds 1, 2, 3, and 4.
 
 Logging uses TensorBoard (`torch.utils.tensorboard.SummaryWriter`, very Colab
 friendly): launch `tensorboard --logdir runs` (or `%tensorboard --logdir runs` in a
 notebook) and watch `charts/success_rate` climb live. See
 `examples/ppo_warp_colab.ipynb` for a self-contained Colab run.
 
-Two findings are decisive (both baked into the defaults):
+Three findings are decisive (all baked into the defaults):
 
 - **Fixed-horizon episodes** (`--no-terminate-on-success`, default). The env
   terminates on success; with a dense positive reward that makes *succeeding end the
   reward stream*, so vanilla PPO farms the reach reward forever and never lifts
   (return plateaus, 0% success). Fixed-horizon makes grasp+lift+**hold** (~1.0/step)
   beat hovering (~0.25/step).
-- **Entropy off by default** (`--ent-coef 0.0 --ent-coef-final 0.0`, `logstd`
-  clamped to std <= 1). Use a positive entropy bonus when deliberately trading
-  repeatability for extra exploration. `--stagger-resets` (default) desynchronizes the
-  episode phases so discovery is less seed-fragile.
+- **CleanRL-style optimizer budget** (`--update-epochs 10 --num-minibatches 32`,
+  `--max-grad-norm 0.5`, no target-KL stop). The larger update budget is slower per
+  environment step, but it turns early grasp discoveries into stable lift policies.
+- **Strong entropy warm-start with a nonzero floor** (`--ent-coef 0.03 --ent-coef-final 0.005`).
+  The high initial entropy gives the policy enough exploration to discover grasps
+  across seeds, and the nonzero floor keeps exploration alive so the policy can
+  escape the reaching local optimum late in training. `--stagger-resets` (default)
+  desynchronizes episode phases so discovery is less seed-fragile.
 
 The training env uses the all-observation default config (24-d privileged state:
 `joints(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)`), so no custom
@@ -77,26 +82,26 @@ class Args:
     stagger_resets: bool = True
     """randomize initial episode phase per env so the worlds do not reset in lockstep"""
 
-    total_timesteps: int = 200_000_000
+    total_timesteps: int = 30_000_000
     learning_rate: float = 3e-4
     anneal_lr: bool = True
     num_steps: int = 16
     """rollout length per env per update; batch = num_envs * num_steps"""
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    num_minibatches: int = 8
-    update_epochs: int = 4
+    num_minibatches: int = 32
+    update_epochs: int = 10
     norm_adv: bool = True
     clip_coef: float = 0.2
     clip_vloss: bool = True
-    ent_coef: float = 0.0
-    """entropy bonus; defaults to zero for more repeatable PPO baselines"""
-    ent_coef_final: float = 0.0
+    ent_coef: float = 0.03
+    """entropy bonus; strong warm-start plus nonzero floor for consistent lift discovery"""
+    ent_coef_final: float = 0.005
     """entropy coef is linearly annealed ent_coef -> ent_coef_final over training"""
     vf_coef: float = 0.5
-    max_grad_norm: float = 1.0
-    target_kl: float | None = 0.05
-    """KL early-stop threshold (None disables)"""
+    max_grad_norm: float = 0.5
+    target_kl: float | None = None
+    """KL early-stop threshold (None disables, matching CleanRL continuous PPO)"""
 
     norm_obs: bool = True
     norm_reward: bool = True
@@ -385,21 +390,21 @@ def train(  # noqa: PLR0915, PLR0912, C901
     env_id="WarpPickLift-v1",
     num_envs=1024,
     num_steps=16,
-    total_timesteps=100_000_000,
+    total_timesteps=30_000_000,
     learning_rate=3e-4,
     anneal_lr=True,
     gamma=0.99,
     gae_lambda=0.95,
-    num_minibatches=8,
-    update_epochs=4,
+    num_minibatches=32,
+    update_epochs=10,
     norm_adv=True,
     clip_coef=0.2,
     clip_vloss=True,
-    ent_coef=0.0,
-    ent_coef_final=0.0,
+    ent_coef=0.03,
+    ent_coef_final=0.005,
     vf_coef=0.5,
-    max_grad_norm=1.0,
-    target_kl=0.05,
+    max_grad_norm=0.5,
+    target_kl=None,
     norm_obs=True,
     norm_reward=True,
     hidden_dim=256,
@@ -624,9 +629,10 @@ def train(  # noqa: PLR0915, PLR0912, C901
         hold_frac = hold_sum / num_steps
         sps = int(global_step / (time.time() - start_time))
 
-        if save_dir and succ_rate > best_success and len(succ_hist) >= 100:
+        if succ_rate > best_success and len(succ_hist) >= 100:
             best_success = succ_rate
-            _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate)
+            if save_dir:
+                _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate)
 
         if (writer is not None or log) and (update % log_freq == 0 or update == num_updates):
             metrics = {
