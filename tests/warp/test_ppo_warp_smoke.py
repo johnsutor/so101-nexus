@@ -43,6 +43,25 @@ def test_ppo_default_entropy_bonus_is_disabled():
     assert mod.Args().ent_coef == 0.0
 
 
+def test_ppo_warp_default_entropy_bonus_is_disabled():
+    import importlib
+
+    mod = importlib.import_module("examples.ppo_warp")
+
+    args = mod.Args()
+
+    assert args.ent_coef == 0.0
+    assert args.ent_coef_final == 0.0
+
+
+def test_ppo_default_entropy_bonus_is_disabled():
+    import importlib
+
+    mod = importlib.import_module("examples.ppo")
+
+    assert mod.Args().ent_coef == 0.0
+
+
 def test_ppo_warp_short_run_finite():
     import importlib
 
