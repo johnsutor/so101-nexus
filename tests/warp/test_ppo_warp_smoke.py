@@ -11,15 +11,15 @@ def test_ppo_warp_default_budget_matches_validated_picklift_recipe():
     assert mod.Args().total_timesteps == 30_000_000
 
 
-def test_ppo_warp_default_entropy_bonus_is_mild_warm_start():
+def test_ppo_warp_default_entropy_bonus_is_strong_warm_start_with_floor():
     import importlib
 
     mod = importlib.import_module("examples.ppo_warp")
 
     args = mod.Args()
 
-    assert args.ent_coef == 0.005
-    assert args.ent_coef_final == 0.0
+    assert args.ent_coef == 0.03
+    assert args.ent_coef_final == 0.005
 
 
 def test_ppo_warp_defaults_use_cleanrl_optimizer_budget():

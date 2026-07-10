@@ -3,10 +3,10 @@
 This is the "best PPO results" recipe for `so101-nexus`: large-batch PPO on the
 GPU-parallel MuJoCo Warp backend. `mujoco_warp` steps thousands of worlds in place
 and returns obs/reward/done as GPU tensors (zero host round-trip), so the whole hot
-path stays on-device. On `WarpPickLift-v1` the default recipe now uses a mild
-entropy warm-start plus CleanRL-style optimizer settings because MuJoCo Warp contact
-physics is not bitwise deterministic on GPU. A 30M-step sweep reached final success
-0.9575, 0.9925, and 0.9050 on seeds 1, 2, and 3.
+path stays on-device. On `WarpPickLift-v1` the default recipe now uses a strong
+entropy warm-start with a nonzero floor plus CleanRL-style optimizer settings
+because MuJoCo Warp contact physics is not bitwise deterministic on GPU. A 30M-step
+sweep reached final success 0.97, 0.985, 0.965, and 0.97 on seeds 1, 2, 3, and 4.
 
 Logging uses TensorBoard (`torch.utils.tensorboard.SummaryWriter`, very Colab
 friendly): launch `tensorboard --logdir runs` (or `%tensorboard --logdir runs` in a
@@ -23,10 +23,11 @@ Three findings are decisive (all baked into the defaults):
 - **CleanRL-style optimizer budget** (`--update-epochs 10 --num-minibatches 32`,
   `--max-grad-norm 0.5`, no target-KL stop). The larger update budget is slower per
   environment step, but it turns early grasp discoveries into stable lift policies.
-- **Mild entropy warm-start** (`--ent-coef 0.005 --ent-coef-final 0.0`). This keeps
-  enough exploration to find grasps across seeds, then anneals away for the final
-  policy. `--stagger-resets` (default) desynchronizes episode phases so discovery is
-  less seed-fragile.
+- **Strong entropy warm-start with a nonzero floor** (`--ent-coef 0.03 --ent-coef-final 0.005`).
+  The high initial entropy gives the policy enough exploration to discover grasps
+  across seeds, and the nonzero floor keeps exploration alive so the policy can
+  escape the reaching local optimum late in training. `--stagger-resets` (default)
+  desynchronizes episode phases so discovery is less seed-fragile.
 
 The training env uses the all-observation default config (24-d privileged state:
 `joints(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)`), so no custom
@@ -93,9 +94,9 @@ class Args:
     norm_adv: bool = True
     clip_coef: float = 0.2
     clip_vloss: bool = True
-    ent_coef: float = 0.005
-    """entropy bonus; mild warm-start improves PickLift discovery across seeds"""
-    ent_coef_final: float = 0.0
+    ent_coef: float = 0.03
+    """entropy bonus; strong warm-start plus nonzero floor for consistent lift discovery"""
+    ent_coef_final: float = 0.005
     """entropy coef is linearly annealed ent_coef -> ent_coef_final over training"""
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
@@ -399,8 +400,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
     norm_adv=True,
     clip_coef=0.2,
     clip_vloss=True,
-    ent_coef=0.005,
-    ent_coef_final=0.0,
+    ent_coef=0.03,
+    ent_coef_final=0.005,
     vf_coef=0.5,
     max_grad_norm=0.5,
     target_kl=None,
