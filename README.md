@@ -131,6 +131,7 @@ The default workflow is demo-seeded: behavior cloning from teleoperation demonst
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
 
 Or run it locally with [`examples/bc_ppo_warp.py`](examples/bc_ppo_warp.py).
+For the full record -> clone -> reinforce walkthrough, see the [Workflow docs](https://so101-nexus.com/docs/workflow/overview).
 
 Prefer a from-scratch baseline instead? SO101-Nexus also ships a CleanRL-style PPO baseline for Gymnasium environments (no demonstration seeding). See [Training with PPO](https://so101-nexus.com/docs/training/ppo) for the command-line workflow and tuning notes, or train a strong policy end to end in your browser:
 
