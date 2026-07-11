@@ -12,6 +12,7 @@
     <a href="https://so101-nexus.com/docs"><img alt="Docs" src="https://img.shields.io/badge/docs-so101--nexus.com-blue"></a>
     <a href="https://github.com/johnsutor/so101-nexus/actions"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/johnsutor/so101-nexus/ci.yml?label=tests"></a>
     <a href="https://github.com/johnsutor/so101-nexus/releases"><img alt="GitHub release" src="https://img.shields.io/github/release/johnsutor/so101-nexus.svg"></a>
+    <a href="https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb"><img alt="Open In Colab" src="https://colab.research.google.com/assets/colab-badge.svg"></a>
 </p>
 
 > **Beta**: APIs may change between releases. Feedback and bug reports are welcome.
@@ -131,13 +132,15 @@ Or train a strong policy on the GPU-parallel Warp backend end to end in your bro
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
 
+For a demo-seeded variant (behavior cloning from teleop demonstrations, then PPO fine-tuning), see [`examples/bc_ppo_warp.py`](examples/bc_ppo_warp.py) or its [Colab notebook](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb).
+
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm
 - [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickAndPlace
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
 - [x] MuJoCo Warp backend for GPU-parallel throughput
-- [ ] Stronger training baselines and exemplars for every environment
+- [x] Stronger training baselines and exemplars for every environment
 - [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 
 ## Development

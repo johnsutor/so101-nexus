@@ -9,6 +9,15 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `examples/bc_ppo_warp.py`: demo-seeded PPO for `WarpPickLift-v1` -- the same GPU-batched CleanRL PPO recipe as `ppo_warp.py`, plus behavior-cloning (BC) seeding from the 10-episode [`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) demonstrations: the actor is BC-pretrained on the demos before online PPO starts, and a persistent BC loss (`--bc-coef`) anchors the actor mean toward demo actions throughout training. Targets the one known weakness in `ppo_warp.py`'s current default recipe: a 5-seed sweep passed seeds 1-4 but seed 5 got stuck at a grasp-hold-at-table local optimum and never discovered the lift (`best_success=0.037`). Validated: same seed, same 30M-step recipe, demo-seeding alone rescues it to `best_success=0.993, final_success=0.983`. Demo actions are recomputed as the delta between consecutive recorded joint states (not the recorded absolute-position `action` column) since `ppo_warp.py`'s proven `pd_joint_delta_pos` control mode is left unchanged. `--use-demos false` recovers `ppo_warp.py` exactly.
+- `docs/superpowers/specs/2026-07-11-rlpd-demo-augmented-sac-warp-design.md`: design doc for an RLPD-style demo-augmented off-policy alternative, deferred as a follow-up.
+
+### Removed
+
+- An earlier `examples/tdmpc2_warp.py` (demo-augmented TD-MPC2, MPPI planning over a learned world model) was built, smoke-tested, and then dropped before landing on `bc_ppo_warp.py` above. TD-MPC2's MPC planning is kernel-launch-latency-bound (many small sequential forward passes per action), so it does not benefit from GPU-batched Warp collection the way PPO's rollout collection does: measured steady-state throughput was ~17-70 env-steps/sec versus PPO's ~100k+ on identical hardware, and it never reliably solved this task even with demo BC-anchoring. Kept as a documented decision, not shipped.
+
 ### Fixed
 
 - Pick-and-place reward no longer collapses when the grasp is released to complete the task. Placement progress is now credited while grasped or once the object is set on the goal disc (both backends), so finishing the task is no longer scored below hovering the grasped object above the disc.

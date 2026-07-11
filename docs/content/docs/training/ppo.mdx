@@ -99,6 +99,26 @@ uv run --extra warp python examples/eval_warp.py \
 
 `examples/ppo_warp.py` can also render periodic transfer videos in the matching `MuJoCo*` backend with `--capture-video`.
 
+## Demo-seeded PPO
+
+`examples/bc_ppo_warp.py` is the same PPO recipe plus behavior-cloning (BC) seeding
+from the 10 teleop episodes in
+[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift):
+the actor is BC-pretrained on the demos before online PPO starts, and a persistent
+BC loss (`--bc-coef`, default `0.1`) keeps anchoring it toward demo actions
+throughout training. `--use-demos false` recovers `ppo_warp.py` exactly.
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py
+```
+
+This targets the one seed-fragility gap in the PPO baseline above: seed 5 gets
+stuck at a grasp-hold-at-table local optimum under vanilla PPO (`best_success=0.037`).
+Same 30M-step recipe, demo-seeding alone rescues it to `best_success=0.993`,
+`final_success=0.983`. See
+[`examples/README.md`](https://github.com/johnsutor/so101-nexus/blob/main/examples/README.md#bc-seeded-ppo-training)
+for the full design notes.
+
 ## Colab
 
 For browser training, open `examples/ppo_warp_colab.ipynb`. The notebook exposes the same `ENV_ID` and step-budget choices, embeds TensorBoard, trains, evaluates, and displays a rollout video.
