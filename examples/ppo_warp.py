@@ -371,6 +371,73 @@ def write_video(frames, path, fps=30):
     return path
 
 
+def rollout_video_from_checkpoint(
+    checkpoint: str,
+    env_id: str,
+    *,
+    control_mode: str = "pd_joint_delta_pos",
+    episode_length: int = 512,
+    hidden_dim: int = 256,
+    seed: int = 12345,
+    out_path: str = "runs/colab_rollout.mp4",
+    fps: int = 30,
+    capture_video: bool = True,
+) -> tuple[dict[str, float], str | None]:
+    """Render one deterministic MuJoCo rollout of a saved Warp PPO policy to mp4.
+
+    The Warp backend steps thousands of worlds in parallel and does not render, so the
+    rollout is shown in the matching ``MuJoCo*`` backend (same default all-observation
+    config and control mode). It is a transfer figure: the saved policy and obs-norm
+    stats transfer directly, with a slight physics gap versus Warp. Returns
+    ``(metrics, video_path)`` where ``video_path`` is the written mp4, or ``None`` when
+    ``capture_video`` is False.
+    """
+    import gymnasium as gym
+
+    import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
+
+    # Probe a throwaway MuJoCo env for obs/act dimensions (flat privileged state,
+    # matching the Warp training obs). The checkpoint stores only the policy and
+    # obs-norm stats, not the dims.
+    probe = gym.make(
+        env_id.replace("Warp", "MuJoCo"),
+        control_mode=control_mode,
+        max_episode_steps=episode_length,
+    )
+    obs_shape = probe.observation_space.shape
+    act_shape = probe.action_space.shape
+    if obs_shape is None or act_shape is None:
+        raise ValueError("rollout probe requires Box observation and action spaces")
+    obs_dim = int(np.prod(obs_shape))
+    act_dim = int(np.prod(act_shape))
+    probe.close()
+
+    agent = Agent(obs_dim, act_dim, hidden_dim).to(device)
+    agent.load_state_dict(ckpt["model"])
+    agent.eval()
+
+    obs_norm = ObsNormalizer(obs_dim, device, enabled=True)
+    obs_norm.rms.mean = ckpt["obs_mean"].to(device).double()
+    obs_norm.rms.var = ckpt["obs_var"].to(device).double()
+
+    metrics, frames = evaluate_mujoco(
+        agent,
+        obs_norm,
+        device,
+        env_id=env_id,
+        control_mode=control_mode,
+        episode_length=episode_length,
+        eval_episodes=1,
+        seed=seed,
+        capture_video=capture_video,
+    )
+    video_path = write_video(frames, out_path, fps=fps) if capture_video else None
+    return metrics, video_path
+
+
 def _save(agent, obs_norm, path, step, success):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save(
