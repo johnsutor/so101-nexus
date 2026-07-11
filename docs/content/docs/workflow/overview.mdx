@@ -1,0 +1,101 @@
+---
+title: Record -> Clone -> Reinforce
+description: The end-to-end SO101-Nexus workflow, from teleoperation demonstrations to a behavior-cloned policy fine-tuned with RL.
+---
+
+SO101-Nexus is built around one boring pipeline:
+
+1. **Record** demonstrations by teleoperating a simulated follower with a physical leader arm, saved as LeRobot datasets.
+2. **Clone** a policy from those demonstrations with behavior cloning (BC).
+3. **Reinforce** the cloned policy with RL fine-tuning (PPO), anchored to the demos.
+
+This page walks the whole path on `WarpPickLift-v1`, the task with a published, seed-validated demo-seeded recipe. Each stage hands off one artifact to the next:
+
+<Cards>
+  <Card title="1. Record" href="/docs/teleoperation/overview">
+    A LeRobot dataset (a Hugging Face repo id).
+  </Card>
+  <Card title="2. Clone" href="/docs/workflow/behavior-cloning">
+    A BC-pretrained actor, seeded from demo transitions.
+  </Card>
+  <Card title="3. Reinforce" href="/docs/training/ppo">
+    A PPO checkpoint, fine-tuned with a persistent BC anchor.
+  </Card>
+</Cards>
+
+<Callout type="info">
+No leader arm? Skip straight to stage 2 with the published
+[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift)
+dataset. See the [No-Hardware Quickstart](/docs/workflow/no-hardware).
+</Callout>
+
+## The pipeline
+
+  ### 1. Record demonstrations
+
+  Teleoperate a simulated SO-101 follower with a physical SO-100 or SO-101 leader arm. The
+  recorder saves episodes as a LeRobot v3 dataset, ready to push to the Hugging Face Hub.
+
+  ```bash
+  uvx --from "so101-nexus[teleop]" so101-nexus teleop \
+      --leader-port /dev/ttyACM0
+  ```
+
+  The artifact you carry forward is the **dataset repo id** (e.g. `your-user/MuJoCoPickLift`).
+  See [Teleoperation](/docs/teleoperation/overview) for hardware setup, camera fields, and
+  Hub upload.
+
+  ### 2. Clone with behavior cloning
+
+  `examples/bc_ppo_warp.py` BC-pretrains the actor mean on your demo transitions before any
+  online training. Point it at your dataset with `--demo-repo`:
+
+  ```bash
+  uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+      --demo-repo your-user/MuJoCoPickLift \
+      --env-id WarpPickLift-v1
+  ```
+
+  The artifact is a **BC-seeded actor**: the policy now starts near the demonstrations'
+  actual grasp-lift behavior instead of a random init. See
+  [Behavior Cloning](/docs/workflow/behavior-cloning) for running BC on your own dataset,
+  inspecting the clone, and the action-space details.
+
+  ### 3. Reinforce with RL
+
+  The same command continues into PPO fine-tuning. With `--use-demos` (the default), a
+  persistent BC loss (`--bc-coef`, default `0.1`) keeps anchoring the actor toward the demos
+  through training, so the clone is reinforced rather than overwritten. On `WarpPickLift-v1`
+  the seed that stalls under vanilla PPO (`best_success=0.037`) is rescued to
+  `best_success=0.993` by demo-seeding alone.
+
+  Evaluate the saved checkpoint deterministically:
+
+  ```bash
+  uv run --extra warp python examples/eval_warp.py \
+      --env-id WarpPickLift-v1 \
+      --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
+  ```
+
+  For the full RL recipe, per-task commands, and tuning notes, see
+  [Training with PPO](/docs/training/ppo).
+
+## The MuJoCo -> Warp handoff
+
+Recording runs on the **MuJoCo** backend (live viewer, physical leader arm); training runs on
+the **Warp** backend (GPU-parallel batched envs). Two things are handled for you, but you
+should know they exist:
+
+- **Action units.** Demos store absolute joint-position targets. Training uses
+  `pd_joint_delta_pos`, so demo actions are recomputed as the per-step delta between
+  consecutive recorded joint states, normalized by the env's `_DELTA_ACTION_SCALE`. Don't
+  switch control modes between record and train.
+- **Physics divergence.** Warp uses an implicit integrator without the noslip constraint, so
+  a policy may need light re-tuning when moved between backends. See
+  [Backend Support](/docs/concepts/backend-support) for the details.
+
+<Callout type="info">
+Prefer a browser? The [BC + PPO Colab](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
+runs this whole pipeline end to end on `WarpPickLift-v1`, with embedded TensorBoard and a
+rollout video.
+</Callout>

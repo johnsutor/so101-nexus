@@ -1,0 +1,47 @@
+---
+title: No-Hardware Quickstart
+description: Complete the record -> clone -> reinforce pipeline using published demonstration datasets, no leader arm required.
+---
+
+You do not need a physical SO-100 or SO-101 leader arm to try the full pipeline. SO101-Nexus
+publishes LeRobot demonstration datasets, so you can go straight from **clone** to
+**reinforce** and see a trained policy without ever touching hardware.
+
+| Task | Published dataset |
+| --- | --- |
+| PickLift | [`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) |
+| PickAndPlace | [`johnsutor/MuJoCoPickAndPlace`](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace) |
+
+The default `examples/bc_ppo_warp.py` already uses `johnsutor/MuJoCoPickLift`, so a single
+command runs both the clone and the reinforce stages (BC-pretrain, then PPO fine-tuning with
+a persistent BC anchor):
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py
+```
+
+That is the entire `WarpPickLift-v1` pipeline: it downloads the demo dataset, BC-pretrains
+the actor, fine-tunes with PPO, and writes `runs/WarpPickLift-v1__*/best_agent.pt`.
+
+Evaluate the result deterministically:
+
+```bash
+uv run --extra warp python examples/eval_warp.py \
+    --env-id WarpPickLift-v1 \
+    --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
+```
+
+<Callout type="info">
+Prefer a browser? The
+[BC + PPO Colab](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
+runs this exact pipeline end to end with embedded TensorBoard and a rollout video. Just pick
+a GPU runtime and run all cells.
+</Callout>
+
+## Add your own demonstrations later
+
+When you have a leader arm, the **record** stage slots in front of this: teleoperate with
+[`so101-nexus teleop`](/docs/teleoperation/overview), then point the same command at your
+dataset with `--demo-repo your-user/YourDataset`. Everything downstream is unchanged. See the
+full [Record -> Clone -> Reinforce](/docs/workflow/overview) walkthrough and the
+[Behavior Cloning](/docs/workflow/behavior-cloning) details.
