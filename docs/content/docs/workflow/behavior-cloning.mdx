@@ -1,0 +1,84 @@
+---
+title: Behavior Cloning
+description: Bootstrap a policy from teleoperation demonstrations, inspect the cloned policy, and feed it into RL fine-tuning.
+---
+
+Behavior cloning (BC) is the **clone** stage of the pipeline: it bootstraps a policy from
+your teleoperation demonstrations so RL fine-tuning starts near successful behavior instead
+of a random init. In SO101-Nexus, BC is done by `examples/bc_ppo_warp.py`, which
+BC-pretrains the actor mean on demo transitions and then continues into PPO.
+
+This is the same GPU-parallel Warp PPO recipe as `examples/ppo_warp.py`, plus demo seeding.
+`--use-demos false` recovers `ppo_warp.py` exactly.
+
+## Run BC on your own dataset
+
+Point the script at your recorded dataset with `--demo-repo` (a Hugging Face repo id, or a
+local dataset path). Arguments come from the `Args` dataclass and are exposed on the command
+line via `tyro`, so any field can be overridden:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+    --demo-repo your-user/MuJoCoPickLift \
+    --env-id WarpPickLift-v1
+```
+
+If you have no leader arm, use the published
+[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift)
+dataset (the default) and skip to [No-Hardware Quickstart](/docs/workflow/no-hardware).
+
+### Key flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--demo-repo` | `johnsutor/MuJoCoPickLift` | Dataset the actor is cloned from. |
+| `--use-demos` | `true` | Seed the actor from demos before PPO. `false` = pure PPO. |
+| `--bc-pretrain-updates` | `2000` | Supervised steps regressing the actor mean onto demo actions, before PPO. |
+| `--bc-pretrain-lr` | `1e-3` | Learning rate for the BC pretrain phase. |
+| `--bc-coef` | `0.1` | Weight of the persistent BC loss during PPO (anchors the actor to demos). |
+| `--bc-anneal-steps` | `0` | If `>0`, linearly decay `bc_coef` to 0 over this many env steps (0 = constant). |
+
+## Inspect the cloned policy
+
+The clone is the BC-pretrain phase that runs before PPO. To gauge clone quality:
+
+- Watch **`pretrain/bc_loss`** in TensorBoard during pretraining. A low, flat loss means the
+  actor has matched the demo actions.
+- After a run, evaluate the saved checkpoint deterministically with
+  `examples/eval_warp.py` (see [Training with PPO](/docs/training/ppo#evaluation)).
+
+<Callout type="warn">
+BC touches only the **actor mean**, never the critic. Demos carry no value estimate under
+the online policy, so biasing the critic toward them would corrupt the advantages PPO's
+gradient relies on. Keep `--bc-coef` on the actor path only.
+</Callout>
+
+## Feed the clone into RL
+
+The BC-pretrained actor is the starting point for reinforcement; you do not run a separate
+BC step. The handoff is controlled by two knobs:
+
+- `--bc-coef` (default `0.1`) keeps a persistent BC loss in every PPO minibatch, anchoring the
+  actor toward demo actions so fine-tuning reinforces rather than forgets the demos.
+- `--bc-anneal-steps` fades that anchor over training if you want the policy to drift toward
+  its own discoveries.
+
+On `WarpPickLift-v1`, demo-seeding alone rescues the seed that stalls under vanilla PPO
+(`best_success` `0.037` -> `0.993`). Full design notes and results are in
+[`examples/README.md`](https://github.com/johnsutor/so101-nexus/blob/main/examples/README.md#bc-seeded-ppo-training).
+
+## Action-space caveat
+
+<Callout type="warn">
+The demo dataset records **absolute** joint-position targets (as commanded to a leader arm),
+but training uses `pd_joint_delta_pos`. Rather than switch control modes (which would risk
+the validated recipe), demo actions are recomputed as the delta between consecutive recorded
+joint states, normalized by the env's `_DELTA_ACTION_SCALE`. Keep the same control mode at
+record and train time, or the clone will be silently wrong.
+</Callout>
+
+<Callout type="info">
+For the full RL recipe and per-task commands, continue to
+[Training with PPO](/docs/training/ppo). For the browser version of this whole stage, open
+the [BC + PPO Colab](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb).
+</Callout>
