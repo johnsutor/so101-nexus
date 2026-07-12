@@ -35,7 +35,9 @@ MuJoCo envs support Gymnasium `render_mode="human"` and `render_mode="rgb_array"
 
 Vectorized worlds may carry different tasks, so `env.task_descriptions` holds one string per world and `info["task_description"]` is returned from `reset()` and `step()`. `env.task_description` reduces to the shared string, or a generic family string when worlds differ.
 
-The physics also diverges: Warp uses the implicit integrator without the noslip constraint, so policies may need re-tuning when moving between backends. Install the backend with the `warp` extra (`pip install "so101-nexus[warp]"`), which needs an NVIDIA GPU and CUDA >= 12.4 for GPU execution.
+The physics also diverges: Warp uses the implicit integrator without the noslip constraint, so policies may need re-tuning when moving between backends. Install the backend with the `warp` extra (`pip install "so101-nexus[warp]"`), which needs an NVIDIA GPU and CUDA >= 12.4 for GPU execution: Warp has no ROCm/AMD support, so the `rocm` extra (below) does not enable it.
+
+To train on an AMD GPU instead, install `so101-nexus[rocm]`, which routes the `train` extra's torch dependency to the ROCm 7.2 wheel index on Linux x86_64. This only affects the MuJoCo backend's training loop (behavior cloning, PPO); it has no effect on the Warp backend.
 
 ## Objects
 

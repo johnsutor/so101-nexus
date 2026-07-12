@@ -58,7 +58,8 @@ MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[war
 - **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, and pick-and-place.
 - **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
 - **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
-- **GPU-parallel Warp backend** (optional, experimental): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
+- **GPU-parallel Warp backend** (optional, experimental): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]` (NVIDIA/CUDA only).
+- **ROCm training** (optional): install PyTorch from AMD's ROCm 7.2 wheel index instead of CUDA with `so101-nexus[rocm]`, for behavior cloning and PPO on the MuJoCo backend.
 
 ## Installation
 
@@ -124,6 +125,16 @@ obs, info = envs.reset(seed=0)
 obs, reward, terminated, truncated, info = envs.step(envs.action_space.sample())
 envs.close()
 ```
+
+### Train on an AMD GPU (ROCm)
+
+`so101-nexus[rocm]` installs PyTorch from the [ROCm 7.2 wheel index](https://download.pytorch.org/whl/rocm7.2) instead of the default CUDA build, for behavior-cloning and PPO training on the (CPU-simulated) MuJoCo backend on Linux x86_64. It targets the `train` extra's torch dependency, not the GPU-parallel Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.
+
+```bash
+uv sync --extra train --extra rocm --no-default-groups
+```
+
+`--no-default-groups` skips the `dev` dependency group, which pins `lerobot<0.6` (and therefore `torch<2.11`) for the test suite, a version range incompatible with the ROCm 7.2 torch build. `uv` rejects combining `rocm` with `teleop`, `dev`, or `test` for the same reason.
 
 ### Train a policy
 
