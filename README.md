@@ -13,6 +13,7 @@
     <a href="https://github.com/johnsutor/so101-nexus/actions"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/johnsutor/so101-nexus/ci.yml?label=tests"></a>
     <a href="https://github.com/johnsutor/so101-nexus/releases"><img alt="GitHub release" src="https://img.shields.io/github/release/johnsutor/so101-nexus.svg"></a>
     <a href="https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb"><img alt="Open In Colab" src="https://colab.research.google.com/assets/colab-badge.svg"></a>
+    <a href="https://discord.gg/37kKRXDh8"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join_Us-5865F2?style=flat&logo=discord&logoColor=white"></a>
 </p>
 
 > **Beta**: APIs may change between releases. Feedback and bug reports are welcome.
