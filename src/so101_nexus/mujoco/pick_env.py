@@ -1,6 +1,7 @@
 """MuJoCo unified pick environment.
 
-Provides ``PickEnv`` (reach-only reward) and ``PickLiftEnv`` (lift-to-success)
+Provides ``PickEnv`` (shared scene/object-slot base, not directly registered) and
+``PickLiftEnv`` (lift-to-success, the registered pick primitive),
 backed by a MuJoCo scene built dynamically from a ``PickConfig`` object list.
 The shared object-slot machinery (XML builders, ``ObjectSlot`` metadata) lives
 in ``so101_nexus.object_slots``.
@@ -46,7 +47,7 @@ _SO101_XML = get_so101_mujoco_model_path()
 
 
 class PickEnv(SO101NexusMuJoCoBaseEnv):
-    """Unified MuJoCo pick environment with reach-only reward.
+    """Shared base for the MuJoCo pick environments (not directly registered).
 
     Handles ``CubeObject``, ``YCBObject``, and ``MeshObject`` from
     ``PickConfig.objects``. One object is randomly chosen as the target per
@@ -166,9 +167,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state
         return info
-
-    def _compute_reward(self, info: dict) -> float:
-        return self._reach_only_reward(info)
 
     def _refresh_reset_reference_state(self) -> None:
         """Refresh lift baseline from the post-settle target object pose."""

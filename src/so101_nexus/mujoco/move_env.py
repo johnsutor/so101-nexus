@@ -159,4 +159,5 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
             base,
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
+            is_complete=info.get("success", False),
         )

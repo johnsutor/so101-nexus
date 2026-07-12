@@ -163,7 +163,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             success=success,
         )
         reward = self.config.reward.apply_penalties(
-            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=success
         )
         info = {"orientation_error": orientation_error, "success": success}
         return reward.to(torch.float32), success, info
