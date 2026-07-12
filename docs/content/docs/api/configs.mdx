@@ -94,18 +94,38 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `rest_qpos_deg` | `tuple[float, ...]` | `(0.0, -90.0, 90.0, 37.82, 0.0, -63.03)` | Rest joint positions in degrees, one per joint |
+| `rest_qpos_deg` | `tuple[float, ...]` | `(0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644)` | Rest joint positions in degrees, one per joint |
 | `init_pose` | `str \| Pose \| None` | `None` | Initial pose for resets. String looks up from `POSES`, `Pose` instance used directly, `None` uses legacy rest + noise. |
 | `grasp_force_threshold` | `float` | `0.5` | Minimum contact force to count as a grasp |
 | `static_vel_threshold` | `float` | `0.2` | Maximum velocity to consider the arm stationary |
 
-### Properties
+### Properties and methods
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `rest_qpos_rad` | `tuple[float, ...]` | `rest_qpos_deg` converted to radians |
 | `rest_qpos` | `tuple[float, ...]` | Alias for `rest_qpos_rad` |
 | `resolve_pose()` | `Pose \| None` | Returns the resolved `Pose` object, or `None` |
+
+---
+## RobotCameraPreset
+
+Robot-specific camera and mounting parameters for SO-100 and SO-101. All fields
+are required (no defaults); `wrist_cam_euler_center_rad` and `wrist_cam_euler_noise_rad`
+expose the Euler angles in radians.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base_quat` | `tuple[float, float, float, float]` | Base orientation quaternion (w, x, y, z) |
+| `sensor_cam_eye_pos` | `tuple[float, float, float]` | Sensor camera eye position |
+| `sensor_cam_target_pos` | `tuple[float, float, float]` | Sensor camera target position |
+| `human_cam_eye_pos` | `tuple[float, float, float]` | Human camera eye position |
+| `human_cam_target_pos` | `tuple[float, float, float]` | Human camera target position |
+| `wrist_camera_mount_link` | `str` | Link name for wrist camera mounting |
+| `wrist_cam_pos_center` | `tuple[float, float, float]` | Center position for the wrist camera |
+| `wrist_cam_pos_noise` | `tuple[float, float, float]` | Position noise applied to the wrist camera |
+| `wrist_cam_euler_center_deg` | `tuple[float, float, float]` | Center wrist camera Euler angles in degrees |
+| `wrist_cam_euler_noise_deg` | `tuple[float, float, float]` | Euler angle noise applied to the wrist camera |
 
 ---
 
@@ -304,7 +324,7 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 ### Default Observations
 
-When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (18 dimensions).
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (24 dimensions).
 
 ---
 
@@ -341,7 +361,7 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 ### Default Observations
 
-When `observations` is not specified: `[EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (24 dimensions).
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (30 dimensions).
 
 ---
 
@@ -365,7 +385,7 @@ This is in addition to all `PickConfig` object-pool parameters (`objects`, `n_di
 
 ### Default Observations
 
-When `observations` is not specified: `[EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (18 dimensions).
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (24 dimensions).
 
 ---
 
@@ -393,7 +413,7 @@ The `MuJoCoLookAt-v1` and `WarpLookAt-v1` registrations default `max_episode_ste
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions()]` (6 dimensions).
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GazeDirection()]` (16 dimensions).
 
 ---
 
@@ -419,4 +439,4 @@ The `MuJoCoMove-v1` and `WarpMove-v1` registrations default `max_episode_steps` 
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions()]` (6 dimensions).
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), TargetOffset()]` (16 dimensions).

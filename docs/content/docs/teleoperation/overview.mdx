@@ -99,12 +99,15 @@ fields are persisted:
 - `action` always saved (disabled checkbox)
 - `task` always saved by LeRobot v3 metadata
 - `reward` always saved from the same environment step as the frame's action
+- `success` always saved (episode success flag)
+- `done` always saved (episode termination flag)
+- `observation.environment_state` optional, on by default (privileged low-dim state: TCP/object pose, grasp, and offsets)
 - `observation.images.wrist` optional, on by default
 - `observation.images.overhead` optional, on by default
 
 Deselecting an optional field removes it from both the declared dataset
-feature schema and every recorded frame. `observation.state`, `action`, `reward`, and
-`task` stay forced on because LeRobot datasets require them for policy
+feature schema and every recorded frame. `observation.state`, `action`, `reward`,
+`success`, `done`, and `task` stay forced on because LeRobot datasets require them for policy
 training and task indexing.
 
 ### Camera resolution
@@ -135,6 +138,8 @@ The **Advanced Settings** section exposes common options:
   teleop observation and recorded frame. The default is 5.
 - `Pick-and-Place Cube Colors` and `Pick-and-Place Target Colors`:
   sampled cube/target colors for pick-and-place tasks
+- `Max Steps`: overrides the episode's step cap (default 1024)
+- `Success Hold (s)`: seconds to keep recording after the env reports success before auto-stopping (default 0.5 s, 0 = stop immediately)
 
 Options that do not apply to the selected environment are ignored after
 customization is enabled. For example, pick-object settings apply to
@@ -247,15 +252,16 @@ uv run so101-nexus teleop \
 ```
 
 Custom environments should accept SO-100/SO-101 six-joint actions in the
-standard joint order, expose current qpos through `_get_current_qpos()` or
-`agent.robot.get_qpos()`, and return camera observations compatible with the
-selected recording fields. If the unwrapped environment exposes
-`task_description`, teleop records it as the required LeRobot `task` field.
+standard joint order, expose current qpos through `_get_current_qpos()`, and
+return camera observations compatible with the selected recording fields.
+If the unwrapped environment exposes `task_description`, teleop records it
+as the required LeRobot `task` field.
 
 ## Session flow
 
 1. **Configure.** Pick the env, robot type, episode count, FPS, camera
-   resolutions, action space, countdown, and dataset fields. A leader-port
+   resolutions, action space, countdown, dataset fields, Max Steps, and
+   Success Hold. A leader-port
    status banner reports up front whether the configured serial port is
    reachable, with a `Recheck Port` button to refresh after fixing it.
 2. **Initialize.** The app connects to the leader arm and creates the
@@ -278,8 +284,11 @@ frames include:
 - `observation.state`: follower readback (6D), always present
 - `action`: commanded absolute joint positions (6D) by default, always present
 - `reward`: scalar transition reward from the same environment step as `action`, always present
+- `success`: episode success flag, always present
+- `done`: episode termination flag, always present
 - `observation.images.wrist`: wrist camera frames, optional
 - `observation.images.overhead`: overhead camera frames, optional
+- `observation.environment_state`: privileged low-dim state (TCP/object pose, grasp, and offsets), optional
 - `task`: language description, always present
 
 Body joints are stored in LeRobot degree units and the gripper is stored in

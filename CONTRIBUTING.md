@@ -69,8 +69,9 @@ meaningful step. Use standard git commits; never commit via credential tokens.
 - Update tests and documentation alongside code.
 - Add a `## [Unreleased]` entry to [CHANGELOG.md](CHANGELOG.md) for any user-facing
   change.
-- Continuous integration runs lint, tests (Python 3.12 and 3.13, Linux and macOS),
-  the Warp backend tests, and the documentation build. All must pass.
+- Continuous integration runs lint, tests (Python 3.12 and 3.13 on Linux;
+  Python 3.12 MuJoCo backend and docs-consistency smoke tests on macOS), the
+  Warp backend tests, and the documentation build. All must pass.
 
 ## Release process
 
