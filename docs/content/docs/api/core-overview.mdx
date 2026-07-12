@@ -34,7 +34,6 @@ import so101_nexus
 | `YCB_OBJECTS` | `dict[str, str]` | Maps YCB model IDs to human-readable names |
 | `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera mounting presets for SO-100 and SO-101 |
 | `ASSETS_DIR` | `Path` | Root directory for bundled assets |
-| `SO_ARM100_DIR` | `Path` | Asset directory for the SO-100 arm |
 | `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (URDF/XML retained for teleop calibration; the MuJoCo backend loads the menagerie MJCF) |
 
 ### Configuration Classes
@@ -71,6 +70,7 @@ See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual 
 | `TargetPosition` | State (3-dim) | Absolute goal position |
 | `WristCamera` | Camera | RGB image from wrist-mounted camera |
 | `OverheadCamera` | Camera | RGB image from stationary overhead camera |
+| `CameraObservation` | Camera (abstract) | Base class for camera observation components (`WristCamera`, `OverheadCamera`) |
 
 ### Scene Objects
 
@@ -91,6 +91,15 @@ See [Scene Objects](/docs/api/objects) for full reference.
 |----------|-----------|-------------|
 | `sample_color` | `(colors: ColorConfig, rng: Generator \| None = None) -> list[float]` | Resolve a ColorConfig to an RGBA list, sampling uniformly if given a list of colors |
 
+#### Reward and observation helpers
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `privileged_state_feature_names` | `(observations: Sequence[Observation] | None) -> list[str]` | Per-dimension names for the non-camera state observation vector |
+| `reach_progress` | `(distance, *, scale) -> float \| ndarray \| tensor` | Tanh-shaped progress in [0, 1]: 1 at distance 0, decaying toward 0 |
+| `orientation_progress` | `(cos_similarity) -> float \| ndarray \| tensor` | Maps cosine similarity in [-1, 1] to a reward in [0, 1] |
+| `lift_progress` | `(height, *, scale, grasped) -> float \| ndarray \| tensor` | Tanh-shaped lift progress in [0, 1], zero unless grasped |
+| `simple_reward` | `(*, progress, completion_bonus, success) -> float \| ndarray \| tensor` | Single-objective task reward; shaping fills [0, 1 - completion_bonus] via `progress` |
 #### Asset Paths
 
 | Function | Returns | Description |
@@ -98,7 +107,6 @@ See [Scene Objects](/docs/api/objects) for full reference.
 | `get_so101_simulation_dir()` | `Path` | Path to SO-101 `SO101/` assets (URDF/XML, retained for teleop calibration) |
 | `get_so101_mujoco_model_dir()` | `Path` | Directory of the vendored menagerie MJCF (loaded by the MuJoCo backend) |
 | `get_so101_mujoco_model_path()` | `Path` | Path to the menagerie `so101.xml` (loaded by the MuJoCo backend) |
-| `get_so100_simulation_dir()` | `Path` | Path to SO-100 simulation assets |
 
 #### YCB Asset Management
 

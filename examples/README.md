@@ -109,8 +109,8 @@ Common settings for the solved Warp baselines:
 | `--num-minibatches` | `32` |
 | `--update-epochs` | `10` |
 | `--clip-coef` | `0.2` |
-| `--ent-coef` | `0.005` |
-| `--ent-coef-final` | `0.0` |
+| `--ent-coef` | `0.03` |
+| `--ent-coef-final` | `0.005` |
 | `--vf-coef` | `0.5` |
 | `--max-grad-norm` | `0.5` |
 | `--target-kl` | `None` |
@@ -147,8 +147,8 @@ uv run --extra warp --extra train python examples/ppo_warp.py \
   --total-timesteps 30000000 \
   --num-minibatches 32 \
   --update-epochs 10 \
-  --ent-coef 0.005 \
-  --ent-coef-final 0.0 \
+  --ent-coef 0.03 \
+  --ent-coef-final 0.005 \
   --max-grad-norm 0.5 \
   --target-kl None
 ```
@@ -157,14 +157,13 @@ uv run --extra warp --extra train python examples/ppo_warp.py \
 
 Success rate is the recent completed-episode success rate reported by the Warp
 training rollout at the listed step budget. PickLift reports seed-validated results
-from seeds 1, 2, and 3.
-
+from seeds 1, 2, 3, 4, and 5 (4 of 5 solved).
 | env_id | steps | success rate | wall-clock |
 |---|---:|---:|---:|
 | `WarpTouch-v1` | 5.0M | 1.000 | 88 s |
 | `WarpLookAt-v1` | 5.0M | 1.000 | 62 s |
 | `WarpMove-v1` | 5.0M | 1.000 | 60 s |
-| `WarpPickLift-v1` | 30.0M | 0.905 min, 0.952 mean, 0.993 max final | 24.5 min/run |
+| `WarpPickLift-v1` | 30.0M | 0.965 min, 0.973 mean, 0.985 max final | 24.5 min/run |
 | `WarpPickAndPlace-v1` | pending | pending | pending |
 
 `WarpPickAndPlace-v1` is intentionally excluded for now; the environment needs task

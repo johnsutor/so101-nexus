@@ -30,7 +30,7 @@ env = gym.make("MuJoCoPickLift-v1")
 
 ## Train a policy in Colab
 
-Every task has a GPU-parallel Warp counterpart (`Warp*-v1`) you can train with PPO end to end in the browser, no local setup:
+Every task has a GPU-parallel Warp counterpart (`Warp*-v1`); PickLift, Touch, LookAt, and Move have solved PPO baselines you can reproduce in Colab (PickAndPlace's Warp baseline is pending a task fix, see [Training with PPO](/docs/training/ppo)).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
 

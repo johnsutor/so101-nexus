@@ -22,6 +22,7 @@ for the public-API and deprecation policy.
 ### Fixed
 
 - Pick-and-place reward no longer collapses when the grasp is released to complete the task. Placement progress is now credited while grasped or once the object is set on the goal disc (both backends), so finishing the task is no longer scored below hovering the grasped object above the disc.
+- Documentation consistency sweep (docs vs code): corrected `examples/README.md` PPO entropy defaults and PickLift results to match `ppo_warp.py` and `training/ppo`; removed two non-existent symbols (`SO_ARM100_DIR`, `get_so100_simulation_dir`) from the API overview; fixed the five `configs.mdx` default-observation lists (added `JointPositions()`, corrected dimensions); dropped a dead `agent.robot.get_qpos()` reference and documented the `observation.environment_state`, `success`, and `done` dataset fields plus the `Max Steps` and `Success Hold` teleop controls; documented `RobotCameraPreset` (in `configs.mdx`) and the reward/observation helper functions (in the API overview).
 
 ### Changed
 
