@@ -8,7 +8,7 @@ import numpy as np
 
 from so101_nexus.config import ControlMode, TouchConfig, describe_touch_target
 from so101_nexus.mujoco.pick_env import PickEnv
-from so101_nexus.rewards import reach_progress, simple_reward
+from so101_nexus.rewards import reach_progress
 
 if TYPE_CHECKING:
     from so101_nexus.objects import SceneObject
@@ -67,14 +67,12 @@ class TouchEnv(PickEnv):
         progress = reach_progress(
             info["tcp_to_obj_dist"], scale=self.config.reward.tanh_shaping_scale
         )
-        base = simple_reward(
-            progress=progress,
-            completion_bonus=self.config.reward.completion_bonus,
-            success=info.get("success", False),
-        )
-        return self.config.reward.apply_penalties(
-            base,
+        components = self.config.reward.compute_simple_components(
+            progress,
+            info.get("success", False),
+            progress_key="reaching",
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
-            is_complete=info.get("success", False),
         )
+        info["reward_components"] = components
+        return sum(components.values())

@@ -197,7 +197,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             if (is_grasped or info["is_obj_placed"])
             else 0.0
         )
-        return self.config.reward.compute(
+        components = self.config.reward.compute_components(
             reach_progress=rp,
             is_grasped=is_grasped,
             task_progress=placement_progress,
@@ -205,6 +205,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
         )
+        info["reward_components"] = components
+        return sum(components.values())
 
     def _refresh_reset_reference_state(self) -> None:
         """Refresh the placement baseline from the post-settle object pose."""

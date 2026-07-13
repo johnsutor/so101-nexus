@@ -13,7 +13,7 @@ from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
 from so101_nexus.constants import COLOR_MAP, sample_color
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.rewards import orientation_progress, simple_reward
+from so101_nexus.rewards import orientation_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 
 if TYPE_CHECKING:
@@ -190,14 +190,12 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         orient = orientation_progress(math.cos(float(info["orientation_error"])))
-        base = simple_reward(
-            progress=orient,
-            completion_bonus=self.config.reward.completion_bonus,
-            success=info.get("success", False),
-        )
-        return self.config.reward.apply_penalties(
-            base,
+        components = self.config.reward.compute_simple_components(
+            orient,
+            info.get("success", False),
+            progress_key="task_objective",
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
-            is_complete=info.get("success", False),
         )
+        info["reward_components"] = components
+        return sum(components.values())

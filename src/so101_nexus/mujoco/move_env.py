@@ -12,7 +12,6 @@ from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import DIRECTION_VECTORS, ControlMode, MoveConfig
 from so101_nexus.constants import sample_color
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.rewards import simple_reward
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
@@ -150,14 +149,12 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     def _compute_reward(self, info: dict) -> float:
         tcp_pos = self._get_tcp_pose()[:3]
         progress = self._reach_to_target_reward(tcp_pos, self._target_pos)
-        base = simple_reward(
-            progress=progress,
-            completion_bonus=self.config.reward.completion_bonus,
-            success=info.get("success", False),
-        )
-        return self.config.reward.apply_penalties(
-            base,
+        components = self.config.reward.compute_simple_components(
+            progress,
+            info.get("success", False),
+            progress_key="reaching",
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
-            is_complete=info.get("success", False),
         )
+        info["reward_components"] = components
+        return sum(components.values())

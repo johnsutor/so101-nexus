@@ -1125,6 +1125,48 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     assert outputs[8]["interactive"] is True
 
 
+def test_approve_episode_forwards_reward_components_to_frames(fake_gradio) -> None:
+    class _Dataset:
+        repo_id = "local/test"
+
+        def __init__(self) -> None:
+            self.frames = []
+            self.saved = 0
+
+        def add_frame(self, frame) -> None:
+            self.frames.append(frame)
+
+        def save_episode(self) -> None:
+            self.saved += 1
+
+    from so101_nexus.teleop.dataset import FieldSelection
+
+    state = RecordingState(num_episodes=1, episodes_completed=0)
+    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    state.episode_states.append(np.zeros(6, dtype=np.float32))
+    state.episode_rewards.append(0.75)
+    state.episode_reward_components.append({"reaching": 0.5, "grasping": 0.25})
+    dataset = _Dataset()
+    session = {
+        "state": state,
+        "dataset": dataset,
+        "action_space": "joint_pos",
+        "field_selection": FieldSelection(
+            wrist_image=False, overhead_image=False, environment_state=False, task=False
+        ),
+        "env_id": "CustomLookAtSO101-v1",
+        "fps": 30,
+    }
+
+    _cb_approve_episode(session)
+
+    frame = dataset.frames[0]
+    np.testing.assert_allclose(frame["reward_components.reaching"], [0.5])
+    np.testing.assert_allclose(frame["reward_components.grasping"], [0.25])
+    # Never-populated component keys default to zero.
+    np.testing.assert_array_equal(frame["reward_components.task_objective"], [0.0])
+
+
 def test_approve_episode_failure_reenables_review_controls(fake_gradio) -> None:
     class _Dataset:
         def __init__(self) -> None:

@@ -10,9 +10,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import numpy as np
+
+from so101_nexus.config import REWARD_COMPONENT_KEYS
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
@@ -20,13 +25,21 @@ ENV_STATE_KEY = "observation.environment_state"
 REWARD_KEY = "reward"
 SUCCESS_KEY = "success"
 DONE_KEY = "done"
+REWARD_COMPONENTS_KEY_PREFIX = "reward_components."
 # Canonical LeRobot scalar feature (matches the `modify_features` docstring
 # example in lerobot.datasets.dataset_tools): a scalar float32 per frame. Reused
 # for reward, success, and done, which are all always-recorded env-step scalars.
 SCALAR_FEATURE: dict[str, Any] = {"dtype": "float32", "shape": (1,), "names": None}
 REWARD_FEATURE: dict[str, Any] = SCALAR_FEATURE
+# Per-facet reward breakdown (see `RewardConfig.compute_components` /
+# `compute_simple_components`), one always-recorded scalar per
+# `REWARD_COMPONENT_KEYS` entry so callers can inspect e.g. grasping or
+# penalty contributions separately from the summed `reward` key.
+REWARD_COMPONENT_FEATURE_KEYS: tuple[str, ...] = tuple(
+    f"{REWARD_COMPONENTS_KEY_PREFIX}{name}" for name in REWARD_COMPONENT_KEYS
+)
 # The always-recorded per-step env scalars, in schema order.
-SCALAR_KEYS: tuple[str, ...] = (REWARD_KEY, SUCCESS_KEY, DONE_KEY)
+SCALAR_KEYS: tuple[str, ...] = (REWARD_KEY, SUCCESS_KEY, DONE_KEY, *REWARD_COMPONENT_FEATURE_KEYS)
 
 
 @dataclass(frozen=True)
@@ -130,6 +143,7 @@ def build_frame(
     action: np.ndarray,
     task: str,
     reward: float = 0.0,
+    reward_components: Mapping[str, float] | None = None,
     success: float = 0.0,
     done: float = 0.0,
     env_state: np.ndarray | None = None,
@@ -137,6 +151,7 @@ def build_frame(
     overhead_image: np.ndarray | None,
 ) -> dict[str, Any]:
     """Assemble one LeRobot frame dict using only the selected fields."""
+    components = reward_components or {}
     frame: dict[str, Any] = {
         "observation.state": state.astype(np.float32),
         "action": action.astype(np.float32),
@@ -145,6 +160,13 @@ def build_frame(
         REWARD_KEY: np.array([reward], dtype=np.float32),
         SUCCESS_KEY: np.array([success], dtype=np.float32),
         DONE_KEY: np.array([done], dtype=np.float32),
+        # Per-facet breakdown of `reward` (see `RewardConfig.compute_components`);
+        # missing keys (e.g. a caller with no component data) default to 0.0 so
+        # every frame still satisfies LeRobot's exact declared-feature match.
+        **{
+            key: np.array([components.get(name, 0.0)], dtype=np.float32)
+            for name, key in zip(REWARD_COMPONENT_KEYS, REWARD_COMPONENT_FEATURE_KEYS, strict=True)
+        },
     }
     # LeRobot v3 stores task text outside the regular feature schema, but
     # `LeRobotDataset.add_frame` requires it on every frame.

@@ -7,6 +7,7 @@ from so101_nexus.config import (
     EXTENDED_POSE,
     POSES,
     REST_POSE,
+    REWARD_COMPONENT_KEYS,
     SO101_JOINT_NAMES,
     EnvironmentConfig,
     LookAtConfig,
@@ -450,6 +451,138 @@ class TestRewardCompute:
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
         assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+class TestRewardComponents:
+    @given(
+        cfg=reward_configs(),
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+        is_complete=st.booleans(),
+        action_delta_norm=norm_float,
+        energy_norm=norm_float,
+    )
+    @settings(max_examples=200)
+    def test_compute_components_sums_to_compute(
+        self,
+        cfg,
+        reach_progress,
+        is_grasped,
+        task_progress,
+        is_complete,
+        action_delta_norm,
+        energy_norm,
+    ):
+        total = cfg.compute(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        components = cfg.compute_components(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        assert set(components) == set(REWARD_COMPONENT_KEYS)
+        assert sum(components.values()) == pytest.approx(total)
+
+    def test_compute_components_matches_named_weights(self):
+        cfg = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.4, completion_bonus=0.1)
+        components = cfg.compute_components(0.5, True, 0.8, False)
+        assert components["reaching"] == pytest.approx(0.25 * 0.5)
+        assert components["grasping"] == pytest.approx(0.25 * 1.0)
+        assert components["task_objective"] == pytest.approx(0.4 * 0.8)
+        assert components["action_delta_penalty"] == pytest.approx(0.0)
+        assert components["energy_penalty"] == pytest.approx(0.0)
+
+    def test_compute_components_penalty_terms_are_negative(self):
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        components = cfg.compute_components(
+            0.5, True, 0.5, False, action_delta_norm=1.0, energy_norm=1.0
+        )
+        assert components["action_delta_penalty"] == pytest.approx(-0.1)
+        assert components["energy_penalty"] == pytest.approx(-0.2)
+
+    @given(
+        cfg=reward_configs(),
+        progress=unit_float,
+        success=st.booleans(),
+        progress_key=st.sampled_from(["reaching", "task_objective"]),
+        action_delta_norm=norm_float,
+        energy_norm=norm_float,
+    )
+    @settings(max_examples=200)
+    def test_compute_simple_components_sums_to_simple_reward_plus_penalties(
+        self, cfg, progress, success, progress_key, action_delta_norm, energy_norm
+    ):
+        from so101_nexus.rewards import simple_reward
+
+        base = simple_reward(
+            progress=progress, completion_bonus=cfg.completion_bonus, success=success
+        )
+        total = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=success
+        )
+        components = cfg.compute_simple_components(
+            progress,
+            success,
+            progress_key=progress_key,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        assert set(components) == set(REWARD_COMPONENT_KEYS)
+        assert sum(components.values()) == pytest.approx(total)
+
+    def test_compute_simple_components_penalty_terms_are_negative(self):
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        components = cfg.compute_simple_components(
+            0.5, False, action_delta_norm=1.0, energy_norm=1.0
+        )
+        assert components["action_delta_penalty"] == pytest.approx(-0.1)
+        assert components["energy_penalty"] == pytest.approx(-0.2)
+
+    def test_compute_simple_components_floor_rescue_absorbed_into_completion_bonus(self):
+        """A penalty large enough to trigger apply_penalties' floor rescue on a
+        completed episode must have that rescue folded into ``completion_bonus``,
+        not dropped -- the terms still sum to the floored total.
+        """
+        cfg = RewardConfig(action_delta_penalty=5.0)
+        components = cfg.compute_simple_components(
+            1.0, True, progress_key="reaching", action_delta_norm=1.0
+        )
+        floor = 1.0 - cfg.completion_bonus
+        assert sum(components.values()) == pytest.approx(floor)
+        # The raw penalty term is untouched; completion_bonus absorbs the rescue.
+        assert components["action_delta_penalty"] == pytest.approx(-5.0)
+        # Without the rescue this bucket would be ~completion_bonus (0.1); the
+        # floor rescue lifts it to exactly cancel the 5.0 penalty term.
+        assert components["completion_bonus"] == pytest.approx(5.0)
+
+    def test_compute_simple_components_pins_unused_buckets_at_zero(self):
+        cfg = RewardConfig()
+        reaching_components = cfg.compute_simple_components(0.6, True, progress_key="reaching")
+        assert reaching_components["task_objective"] == 0.0
+        assert reaching_components["grasping"] == 0.0
+        assert reaching_components["reaching"] != 0.0
+
+        orientation_components = cfg.compute_simple_components(
+            0.6, True, progress_key="task_objective"
+        )
+        assert orientation_components["reaching"] == 0.0
+        assert orientation_components["grasping"] == 0.0
+        assert orientation_components["task_objective"] != 0.0
+
+    def test_compute_simple_components_rejects_invalid_progress_key(self):
+        cfg = RewardConfig()
+        with pytest.raises(ValueError, match="progress_key"):
+            cfg.compute_simple_components(0.5, True, progress_key="grasping")
 
 
 class TestEnergyPenalty:

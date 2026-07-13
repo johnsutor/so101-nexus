@@ -10,7 +10,7 @@ import numpy as np
 from so101_nexus.config import SO101_JOINT_NAMES
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from so101_nexus.policy_adapters.chunked_policy import ChunkedActionPolicy
 
@@ -138,6 +138,7 @@ class RolloutRecorder:
                     action_deg,
                     task,
                     float(reward),
+                    reward_components=info.get("reward_components", {}),
                     success=float(bool(info.get("success", False))),
                     done=float(terminated or truncated),
                 )
@@ -185,6 +186,7 @@ class RolloutRecorder:
         task: str,
         reward: float,
         *,
+        reward_components: Mapping[str, float] | None = None,
         success: float = 0.0,
         done: float = 0.0,
     ) -> None:
@@ -208,6 +210,7 @@ class RolloutRecorder:
             action=action_deg.astype(np.float32),
             task=task,
             reward=reward,
+            reward_components=reward_components,
             success=success,
             done=done,
             wrist_image=obs.get("wrist_camera"),

@@ -84,6 +84,7 @@ class RecordingState:
     episode_actions: list[np.ndarray] = field(default_factory=list)
     episode_states: list[np.ndarray] = field(default_factory=list)
     episode_rewards: list[float] = field(default_factory=list)
+    episode_reward_components: list[dict[str, float]] = field(default_factory=list)
     episode_env_states: list[np.ndarray] = field(default_factory=list)
     episode_successes: list[float] = field(default_factory=list)
     episode_dones: list[float] = field(default_factory=list)
@@ -104,6 +105,7 @@ class RecordingState:
         self.episode_actions.clear()
         self.episode_states.clear()
         self.episode_rewards.clear()
+        self.episode_reward_components.clear()
         self.episode_env_states.clear()
         self.episode_successes.clear()
         self.episode_dones.clear()
@@ -353,8 +355,12 @@ def _append_step_buffers(
     # Reward/success/done from `env.step(a_t)` (captured by
     # `SimSOFollower.send_action`) align with this frame's action; default before
     # the first step. `done` is `terminated or truncated`; `success` is the env's
-    # `info["success"]` (0.0 when the env sets no success key).
+    # `info["success"]` (0.0 when the env sets no success key). `reward_components`
+    # is the per-facet breakdown the env stored on `info` (empty when absent).
     state.episode_rewards.append(step_info.reward if step_info is not None else 0.0)
+    state.episode_reward_components.append(
+        step_info.info.get("reward_components", {}) if step_info is not None else {}
+    )
     if step_info is None:
         state.episode_successes.append(0.0)
         state.episode_dones.append(0.0)
