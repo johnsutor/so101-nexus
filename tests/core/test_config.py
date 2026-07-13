@@ -7,6 +7,7 @@ from so101_nexus.config import (
     EXTENDED_POSE,
     POSES,
     REST_POSE,
+    REWARD_COMPONENT_KEYS,
     SO101_JOINT_NAMES,
     EnvironmentConfig,
     LookAtConfig,
@@ -17,6 +18,7 @@ from so101_nexus.config import (
     RenderConfig,
     RewardConfig,
     RobotConfig,
+    TouchConfig,
     _normalize_objects,
 )
 from so101_nexus.constants import COLOR_MAP, sample_color
@@ -162,6 +164,79 @@ class TestApplyPenalties:
         expected = base - 0.1 * delta - 0.2 * energy
         assert torch.allclose(result, expected)
 
+    def test_apply_penalties_no_floor_when_not_complete(self):
+        """Without a completion signal, a large penalty can drop the reward below the margin."""
+        cfg = RewardConfig(action_delta_penalty=5.0)
+        result = cfg.apply_penalties(1.0, action_delta_norm=1.0, energy_norm=0.0)
+        assert result == pytest.approx(1.0 - 5.0)
+
+    def test_apply_penalties_floors_at_margin_when_complete(self):
+        """Regression: a penalized success must not fall below ``1 - completion_bonus``.
+
+        Before this fix, ``apply_penalties`` subtracted the penalty unconditionally, so a
+        jerky success could score below a clean non-terminal near-miss (whose shaped
+        reward is bounded by ``1 - completion_bonus``), breaking the documented
+        "success is always the global maximum" invariant.
+        """
+        cfg = RewardConfig(action_delta_penalty=5.0)
+        result = cfg.apply_penalties(1.0, action_delta_norm=1.0, energy_norm=0.0, is_complete=True)
+        assert result == pytest.approx(1.0 - cfg.completion_bonus)
+
+    @given(
+        cfg=reward_configs(), base=norm_float, action_delta_norm=norm_float, energy_norm=norm_float
+    )
+    @settings(max_examples=200)
+    def test_apply_penalties_is_complete_never_lowers_result(
+        self, cfg, base, action_delta_norm, energy_norm
+    ):
+        incomplete = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=False
+        )
+        complete = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=True
+        )
+        assert complete >= incomplete - 1e-9
+
+
+class TestInertRewardWeightWarning:
+    """Touch/Move/LookAt reward via ``simple_reward``, not ``RewardConfig.compute``, so
+    ``reaching``/``grasping``/``task_objective`` (and, for LookAt, ``tanh_shaping_scale``)
+    never affect their reward. Customizing those fields must warn instead of silently
+    doing nothing.
+    """
+
+    _INERT_WEIGHTS = RewardConfig(
+        reaching=0.0, grasping=0.0, task_objective=0.0, completion_bonus=1.0
+    )
+
+    @pytest.mark.parametrize("config_cls", [TouchConfig, MoveConfig, LookAtConfig])
+    def test_default_reward_does_not_warn(self, config_cls, recwarn):
+        config_cls()
+        assert len(recwarn) == 0
+
+    @pytest.mark.parametrize("config_cls", [TouchConfig, MoveConfig, LookAtConfig])
+    def test_customized_task_weights_warn(self, config_cls):
+        with pytest.warns(UserWarning, match="reaching"):
+            config_cls(reward=self._INERT_WEIGHTS)
+
+    @pytest.mark.parametrize("config_cls", [TouchConfig, MoveConfig])
+    def test_tanh_scale_is_live_for_touch_and_move(self, config_cls, recwarn):
+        config_cls(reward=RewardConfig(tanh_shaping_scale=10.0))
+        assert len(recwarn) == 0
+
+    def test_tanh_scale_is_inert_for_look_at(self):
+        with pytest.warns(UserWarning, match="tanh_shaping_scale"):
+            LookAtConfig(reward=RewardConfig(tanh_shaping_scale=10.0))
+
+    @pytest.mark.parametrize("config_cls", [TouchConfig, MoveConfig, LookAtConfig])
+    def test_penalty_only_customization_does_not_warn(self, config_cls, recwarn):
+        config_cls(reward=RewardConfig(action_delta_penalty=0.5, energy_penalty=0.3))
+        assert len(recwarn) == 0
+
+    def test_pick_config_never_warns_since_all_weights_are_live(self, recwarn):
+        PickConfig(reward=self._INERT_WEIGHTS)
+        assert len(recwarn) == 0
+
 
 class TestPickAndPlaceInvariants:
     def test_separation_covers_cube_diameter(self):
@@ -273,12 +348,12 @@ class TestRewardCompute:
             + cfg.grasping * is_grasped
             + cfg.task_objective * task_progress
         )
-        expected = (
-            shaped
-            + (1.0 - shaped) * is_complete
-            - cfg.action_delta_penalty * action_delta_norm
-            - cfg.energy_penalty * energy_norm
+        base = shaped + (1.0 - shaped) * is_complete
+        penalized = (
+            base - cfg.action_delta_penalty * action_delta_norm - cfg.energy_penalty * energy_norm
         )
+        floor = 1.0 - cfg.completion_bonus
+        expected = max(penalized, floor) if is_complete else penalized
         assert reward == pytest.approx(expected)
 
     @given(
@@ -297,6 +372,31 @@ class TestRewardCompute:
         assert won == pytest.approx(1.0)
         assert lost <= 1.0 - cfg.completion_bonus + 1e-9
         assert won >= lost - 1e-9
+
+    @given(
+        cfg=reward_configs(),
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+        action_delta_norm=st.floats(min_value=0.0, max_value=1e3, allow_nan=False),
+        energy_norm=st.floats(min_value=0.0, max_value=1e3, allow_nan=False),
+    )
+    @settings(max_examples=200)
+    def test_success_dominates_best_non_terminal_even_with_penalties(
+        self, cfg, reach_progress, is_grasped, task_progress, action_delta_norm, energy_norm
+    ):
+        """Regression: an arbitrarily large penalty must not push a success below the
+        best reward any (unpenalized) non-terminal state can reach (``1 - completion_bonus``).
+        """
+        won = cfg.compute(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            True,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        assert won >= 1.0 - cfg.completion_bonus - 1e-9
 
     def test_compute_clamp_numpy_and_torch_batches(self):
         """The success clamp holds on numpy and torch batches (Warp backend path)."""
@@ -346,11 +446,143 @@ class TestRewardCompute:
         base = r.compute(1.0, True, 1.0, True, action_delta_norm=0.0)
         penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=norm)
         assert penalized < base
-        assert base - penalized == pytest.approx(penalty * norm)
+        assert base - penalized == pytest.approx(min(penalty * norm, r.completion_bonus))
 
     def test_reward_config_tanh_shaping_scale_default(self):
         cfg = RewardConfig()
         assert cfg.tanh_shaping_scale == pytest.approx(5.0)
+
+
+class TestRewardComponents:
+    @given(
+        cfg=reward_configs(),
+        reach_progress=unit_float,
+        is_grasped=st.booleans(),
+        task_progress=unit_float,
+        is_complete=st.booleans(),
+        action_delta_norm=norm_float,
+        energy_norm=norm_float,
+    )
+    @settings(max_examples=200)
+    def test_compute_components_sums_to_compute(
+        self,
+        cfg,
+        reach_progress,
+        is_grasped,
+        task_progress,
+        is_complete,
+        action_delta_norm,
+        energy_norm,
+    ):
+        total = cfg.compute(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        components = cfg.compute_components(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        assert set(components) == set(REWARD_COMPONENT_KEYS)
+        assert sum(components.values()) == pytest.approx(total)
+
+    def test_compute_components_matches_named_weights(self):
+        cfg = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.4, completion_bonus=0.1)
+        components = cfg.compute_components(0.5, True, 0.8, False)
+        assert components["reaching"] == pytest.approx(0.25 * 0.5)
+        assert components["grasping"] == pytest.approx(0.25 * 1.0)
+        assert components["task_objective"] == pytest.approx(0.4 * 0.8)
+        assert components["action_delta_penalty"] == pytest.approx(0.0)
+        assert components["energy_penalty"] == pytest.approx(0.0)
+
+    def test_compute_components_penalty_terms_are_negative(self):
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        components = cfg.compute_components(
+            0.5, True, 0.5, False, action_delta_norm=1.0, energy_norm=1.0
+        )
+        assert components["action_delta_penalty"] == pytest.approx(-0.1)
+        assert components["energy_penalty"] == pytest.approx(-0.2)
+
+    @given(
+        cfg=reward_configs(),
+        progress=unit_float,
+        success=st.booleans(),
+        progress_key=st.sampled_from(["reaching", "task_objective"]),
+        action_delta_norm=norm_float,
+        energy_norm=norm_float,
+    )
+    @settings(max_examples=200)
+    def test_compute_simple_components_sums_to_simple_reward_plus_penalties(
+        self, cfg, progress, success, progress_key, action_delta_norm, energy_norm
+    ):
+        from so101_nexus.rewards import simple_reward
+
+        base = simple_reward(
+            progress=progress, completion_bonus=cfg.completion_bonus, success=success
+        )
+        total = cfg.apply_penalties(
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=success
+        )
+        components = cfg.compute_simple_components(
+            progress,
+            success,
+            progress_key=progress_key,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        assert set(components) == set(REWARD_COMPONENT_KEYS)
+        assert sum(components.values()) == pytest.approx(total)
+
+    def test_compute_simple_components_penalty_terms_are_negative(self):
+        cfg = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.2)
+        components = cfg.compute_simple_components(
+            0.5, False, action_delta_norm=1.0, energy_norm=1.0
+        )
+        assert components["action_delta_penalty"] == pytest.approx(-0.1)
+        assert components["energy_penalty"] == pytest.approx(-0.2)
+
+    def test_compute_simple_components_floor_rescue_absorbed_into_completion_bonus(self):
+        """A penalty large enough to trigger apply_penalties' floor rescue on a
+        completed episode must have that rescue folded into ``completion_bonus``,
+        not dropped -- the terms still sum to the floored total.
+        """
+        cfg = RewardConfig(action_delta_penalty=5.0)
+        components = cfg.compute_simple_components(
+            1.0, True, progress_key="reaching", action_delta_norm=1.0
+        )
+        floor = 1.0 - cfg.completion_bonus
+        assert sum(components.values()) == pytest.approx(floor)
+        # The raw penalty term is untouched; completion_bonus absorbs the rescue.
+        assert components["action_delta_penalty"] == pytest.approx(-5.0)
+        # Without the rescue this bucket would be ~completion_bonus (0.1); the
+        # floor rescue lifts it to exactly cancel the 5.0 penalty term.
+        assert components["completion_bonus"] == pytest.approx(5.0)
+
+    def test_compute_simple_components_pins_unused_buckets_at_zero(self):
+        cfg = RewardConfig()
+        reaching_components = cfg.compute_simple_components(0.6, True, progress_key="reaching")
+        assert reaching_components["task_objective"] == 0.0
+        assert reaching_components["grasping"] == 0.0
+        assert reaching_components["reaching"] != 0.0
+
+        orientation_components = cfg.compute_simple_components(
+            0.6, True, progress_key="task_objective"
+        )
+        assert orientation_components["reaching"] == 0.0
+        assert orientation_components["grasping"] == 0.0
+        assert orientation_components["task_objective"] != 0.0
+
+    def test_compute_simple_components_rejects_invalid_progress_key(self):
+        cfg = RewardConfig()
+        with pytest.raises(ValueError, match="progress_key"):
+            cfg.compute_simple_components(0.5, True, progress_key="grasping")
 
 
 class TestEnergyPenalty:
@@ -375,7 +607,7 @@ class TestEnergyPenalty:
         r = RewardConfig(action_delta_penalty=0.1, energy_penalty=0.05)
         base = r.compute(1.0, True, 1.0, True, action_delta_norm=0.0, energy_norm=0.0)
         penalized = r.compute(1.0, True, 1.0, True, action_delta_norm=1.0, energy_norm=2.0)
-        expected_reduction = 0.1 * 1.0 + 0.05 * 2.0
+        expected_reduction = min(0.1 * 1.0 + 0.05 * 2.0, r.completion_bonus)
         assert base - penalized == pytest.approx(expected_reduction)
 
 

@@ -73,7 +73,7 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
             success=success,
         )
         reward = self.config.reward.apply_penalties(
-            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=success
         )
         info = {"tcp_to_obj_dist": dist, "success": success}
         return reward.to(torch.float32), success, info

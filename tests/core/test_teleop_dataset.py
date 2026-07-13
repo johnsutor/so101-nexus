@@ -15,6 +15,7 @@ from so101_nexus.teleop.dataset import (
     DONE_KEY,
     ENV_STATE_KEY,
     OVERHEAD_KEY,
+    REWARD_COMPONENT_FEATURE_KEYS,
     REWARD_KEY,
     SCALAR_FEATURE,
     SUCCESS_KEY,
@@ -63,6 +64,7 @@ def test_build_features_default_contains_all_keys() -> None:
         DONE_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
+        *REWARD_COMPONENT_FEATURE_KEYS,
     }
     assert features["observation.state"]["shape"] == (len(SO101_JOINT_NAMES),)
     assert features["observation.state"]["dtype"] == "float32"
@@ -131,12 +133,60 @@ def test_build_frame_default_includes_all_selected_fields() -> None:
         WRIST_KEY,
         OVERHEAD_KEY,
         "task",
+        *REWARD_COMPONENT_FEATURE_KEYS,
     }
     assert frame["task"] == "pick the cube"
     assert frame[REWARD_KEY].dtype == np.float32
     assert frame[REWARD_KEY].shape == (1,)
     np.testing.assert_allclose(frame[REWARD_KEY], [0.25])
     np.testing.assert_allclose(frame[ENV_STATE_KEY], [1.0, 2.0, 3.0])
+    # reward_components defaults to all-zero when the caller supplies none.
+    for key in REWARD_COMPONENT_FEATURE_KEYS:
+        assert frame[key].dtype == np.float32
+        np.testing.assert_array_equal(frame[key], [0.0])
+
+
+def test_build_frame_writes_reward_components_when_provided() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        reward=0.7,
+        reward_components={
+            "reaching": 0.2,
+            "grasping": 0.15,
+            "task_objective": 0.3,
+            "completion_bonus": 0.05,
+            "action_delta_penalty": -0.0,
+            "energy_penalty": -0.0,
+        },
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    np.testing.assert_allclose(frame["reward_components.reaching"], [0.2])
+    np.testing.assert_allclose(frame["reward_components.grasping"], [0.15])
+    np.testing.assert_allclose(frame["reward_components.task_objective"], [0.3])
+    np.testing.assert_allclose(frame["reward_components.completion_bonus"], [0.05])
+
+
+def test_build_frame_reward_components_missing_keys_default_to_zero() -> None:
+    """A partial mapping (e.g. a single-objective task's inert bucket) fills zeros."""
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        reward_components={"reaching": 0.4},
+        wrist_image=None,
+        overhead_image=None,
+    )
+
+    np.testing.assert_allclose(frame["reward_components.reaching"], [0.4])
+    np.testing.assert_array_equal(frame["reward_components.grasping"], [0.0])
 
 
 def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
@@ -155,7 +205,15 @@ def test_build_frame_keeps_task_when_task_deselected_for_lerobot_v3() -> None:
         overhead_image=None,
     )
 
-    assert set(frame) == {"observation.state", "action", REWARD_KEY, SUCCESS_KEY, DONE_KEY, "task"}
+    assert set(frame) == {
+        "observation.state",
+        "action",
+        REWARD_KEY,
+        SUCCESS_KEY,
+        DONE_KEY,
+        "task",
+        *REWARD_COMPONENT_FEATURE_KEYS,
+    }
     assert frame["task"] == "required by LeRobotDataset.add_frame"
     assert frame[REWARD_KEY].shape == (1,)
 

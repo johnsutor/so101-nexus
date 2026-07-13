@@ -337,6 +337,23 @@ class RobotCameraPreset:
         )
 
 
+REWARD_COMPONENT_KEYS: tuple[str, ...] = (
+    "reaching",
+    "grasping",
+    "task_objective",
+    "completion_bonus",
+    "action_delta_penalty",
+    "energy_penalty",
+)
+"""Named reward facets recorded alongside the scalar total.
+
+Mirrors ``RewardConfig``'s own weight/penalty names. Every task backend
+decomposes its per-step reward onto this fixed vocabulary (see
+``RewardConfig.compute_components`` / ``compute_simple_components``), so the
+recorded LeRobot dataset schema does not depend on which task is running.
+"""
+
+
 class RewardConfig:
     """Normalized reward budget.
 
@@ -406,6 +423,9 @@ class RewardConfig:
         state. This mirrors ManiSkill PickCube's ``reward[success] = max`` and
         keeps success rewarding even when a task (pick-and-place) must release the
         grasp to finish, which would otherwise zero the grasping and task terms.
+        ``is_complete`` is forwarded to ``apply_penalties`` so a penalized success
+        stays floored at the guaranteed margin instead of falling below the best
+        reward any non-terminal state can reach.
         """
         shaped = (
             self.reaching * reach_progress
@@ -414,14 +434,111 @@ class RewardConfig:
         )
         base = shaped + (1.0 - shaped) * is_complete
         return self.apply_penalties(
-            base, action_delta_norm=action_delta_norm, energy_norm=energy_norm
+            base,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+            is_complete=is_complete,
         )
+
+    def compute_components(
+        self,
+        reach_progress: Any,
+        is_grasped: Any,
+        task_progress: Any,
+        is_complete: Any,
+        action_delta_norm: Any = 0.0,
+        energy_norm: Any = 0.0,
+    ) -> dict[str, Any]:
+        """Weighted reward terms that sum to ``compute()``'s return value.
+
+        Same tensor-agnostic dispatch as ``compute()``. Each of the six
+        ``REWARD_COMPONENT_KEYS`` is a named facet of the reward (the four
+        budget weights plus the two penalties) so callers can log or record
+        them individually, e.g. per-step in a LeRobot dataset. ``completion_bonus``
+        is defined as the residual against ``compute()``'s total, so it absorbs
+        both the terminal budget lift and any penalty-floor rescue from
+        ``apply_penalties`` -- the six terms always sum exactly to what
+        ``compute()`` returns.
+        """
+        reaching_term = self.reaching * reach_progress
+        grasping_term = self.grasping * is_grasped
+        task_term = self.task_objective * task_progress
+        action_penalty_term = -self.action_delta_penalty * action_delta_norm
+        energy_penalty_term = -self.energy_penalty * energy_norm
+        total = self.compute(
+            reach_progress,
+            is_grasped,
+            task_progress,
+            is_complete,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+        )
+        completion_term = (
+            total
+            - reaching_term
+            - grasping_term
+            - task_term
+            - action_penalty_term
+            - energy_penalty_term
+        )
+        values = (
+            reaching_term,
+            grasping_term,
+            task_term,
+            completion_term,
+            action_penalty_term,
+            energy_penalty_term,
+        )
+        return dict(zip(REWARD_COMPONENT_KEYS, values, strict=True))
+
+    def compute_simple_components(
+        self,
+        progress: Any,
+        success: Any,
+        *,
+        progress_key: str = "reaching",
+        action_delta_norm: Any = 0.0,
+        energy_norm: Any = 0.0,
+    ) -> dict[str, Any]:
+        """Component breakdown for single-objective ``simple_reward`` tasks.
+
+        Mirrors ``so101_nexus.rewards.simple_reward`` + ``apply_penalties``,
+        the formula ``TouchEnv``/``MoveEnv``/``LookAtEnv`` use instead of
+        ``compute()`` (their ``reaching``/``grasping``/``task_objective``
+        weights are inert, see ``TestInertRewardWeightWarning``). ``progress_key``
+        selects which of ``"reaching"``/``"task_objective"`` receives the
+        shaped progress term -- ``"grasping"`` and the other progress bucket
+        are always zero. Terms sum exactly to what ``simple_reward()`` +
+        ``apply_penalties()`` return.
+        """
+        if progress_key not in ("reaching", "task_objective"):
+            raise ValueError(
+                f"progress_key must be 'reaching' or 'task_objective', got {progress_key!r}"
+            )
+        shaped = (1.0 - self.completion_bonus) * progress
+        base = shaped + (1.0 - shaped) * success
+        action_penalty_term = -self.action_delta_penalty * action_delta_norm
+        energy_penalty_term = -self.energy_penalty * energy_norm
+        total = self.apply_penalties(
+            base,
+            action_delta_norm=action_delta_norm,
+            energy_norm=energy_norm,
+            is_complete=success,
+        )
+        completion_term = total - shaped - action_penalty_term - energy_penalty_term
+        components: dict[str, Any] = dict.fromkeys(REWARD_COMPONENT_KEYS, 0.0)
+        components["completion_bonus"] = completion_term
+        components["action_delta_penalty"] = action_penalty_term
+        components["energy_penalty"] = energy_penalty_term
+        components[progress_key] = shaped
+        return components
 
     def apply_penalties(
         self,
         base: Any,
         action_delta_norm: Any = 0.0,
         energy_norm: Any = 0.0,
+        is_complete: Any = False,
     ) -> Any:
         """Subtract action-smoothness and energy penalties from a base reward.
 
@@ -437,16 +554,27 @@ class RewardConfig:
             L2 norm of the difference between consecutive policy actions.
         energy_norm : float or array_like, optional
             L2 norm of the current action vector.
+        is_complete : bool or array_like, optional
+            Whether the task is complete on this step. When true, the penalized
+            reward is floored at ``1 - completion_bonus``, so a penalized success
+            never falls below the best reward any non-terminal state can reach.
+            Defaults to ``False`` (no flooring), matching the historical
+            penalty-only behaviour when the caller has no completion signal.
 
         Returns
         -------
         Same type as ``base``
-            ``base - action_delta_penalty * action_delta_norm
-            - energy_penalty * energy_norm``.
+            ``base - action_delta_penalty * action_delta_norm - energy_penalty *
+            energy_norm``, floored at ``1 - completion_bonus`` where
+            ``is_complete``.
         """
-        return (
+        penalized = (
             base - self.action_delta_penalty * action_delta_norm - self.energy_penalty * energy_norm
         )
+        floor = 1.0 - self.completion_bonus
+        shortfall = floor - penalized
+        needs_floor = is_complete * (shortfall > 0)
+        return penalized + shortfall * needs_floor
 
     def __repr__(self) -> str:  # noqa: D105
         return (
@@ -454,6 +582,38 @@ class RewardConfig:
             f"task_objective={self.task_objective}, completion_bonus={self.completion_bonus}, "
             f"action_delta_penalty={self.action_delta_penalty}, "
             f"energy_penalty={self.energy_penalty})"
+        )
+
+
+_REWARD_DEFAULTS = RewardConfig()
+
+
+def _warn_inert_reward_weights(
+    reward: RewardConfig, task_name: str, *, uses_tanh_scale: bool
+) -> None:
+    """Warn when a single-objective task's ``RewardConfig`` sets fields it ignores.
+
+    ``TouchConfig``/``MoveConfig``/``LookAtConfig`` reward via
+    ``so101_nexus.rewards.simple_reward``, not ``RewardConfig.compute``, so
+    ``reaching``/``grasping``/``task_objective`` never affect the reward.
+    ``LookAtConfig`` additionally ignores ``tanh_shaping_scale`` because
+    ``orientation_progress`` has no distance term.
+    """
+    inert = {
+        "reaching": reward.reaching,
+        "grasping": reward.grasping,
+        "task_objective": reward.task_objective,
+    }
+    if not uses_tanh_scale:
+        inert["tanh_shaping_scale"] = reward.tanh_shaping_scale
+    customized = [name for name, value in inert.items() if value != getattr(_REWARD_DEFAULTS, name)]
+    if customized:
+        live_fields = "completion_bonus" + (", tanh_shaping_scale" if uses_tanh_scale else "")
+        warnings.warn(
+            f"{task_name} reward is single-objective and ignores RewardConfig field(s) "
+            f"{customized}; only {live_fields}, action_delta_penalty, and energy_penalty "
+            "affect it (see so101_nexus.rewards.simple_reward).",
+            stacklevel=3,
         )
 
 
@@ -868,6 +1028,7 @@ class TouchConfig(PickConfig):
 
     def __init__(self, touch_margin: float = 0.03, **kwargs) -> None:
         super().__init__(**kwargs)
+        _warn_inert_reward_weights(self.reward, "TouchConfig", uses_tanh_scale=True)
         self.touch_margin = touch_margin
         if self.touch_margin < 0:
             raise ValueError(f"touch_margin must be >= 0, got {self.touch_margin}")
@@ -908,6 +1069,7 @@ class LookAtConfig(EnvironmentConfig):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        _warn_inert_reward_weights(self.reward, "LookAtConfig", uses_tanh_scale=False)
         self.objects = _normalize_objects(objects, CubeObject())
         self.fov_deg = fov_deg
         if self.fov_deg is not None and self.fov_deg <= 0:
@@ -954,6 +1116,7 @@ class MoveConfig(EnvironmentConfig):
                 f"direction must be one of {list(DIRECTION_VECTORS)}, got {direction!r}"
             )
         super().__init__(**kwargs)
+        _warn_inert_reward_weights(self.reward, "MoveConfig", uses_tanh_scale=True)
         self.direction = direction
         self.target_distance = target_distance
         self.success_threshold = success_threshold

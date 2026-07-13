@@ -61,6 +61,25 @@ def test_info_carries_penalty_norms(env_id, config_cls):
 
 
 @pytest.mark.parametrize(("env_id", "config_cls"), _PRIMITIVES)
+def test_info_carries_reward_components_summing_to_reward(env_id, config_cls):
+    """Every step's info["reward_components"] sums (almost) exactly to the reward."""
+    from so101_nexus.config import REWARD_COMPONENT_KEYS
+
+    env = gym.make(env_id, config=config_cls())
+    try:
+        env.reset(seed=0)
+        action = env.action_space.sample()
+        _, reward, _, _, info = env.step(action)
+        components = info["reward_components"]
+        assert set(components) == set(REWARD_COMPONENT_KEYS)
+        assert sum(components.values()) == pytest.approx(float(reward), abs=1e-5)
+        # Single-objective primitives never use the grasping bucket.
+        assert components["grasping"] == 0.0
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(("env_id", "config_cls"), _PRIMITIVES)
 def test_first_step_delta_is_zero_then_positive(env_id, config_cls):
     env = gym.make(env_id, config=config_cls())
     try:

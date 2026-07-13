@@ -347,6 +347,21 @@ def test_append_step_buffers_non_terminal_step_records_zero_success_and_done() -
     assert state.episode_dones == [0.0]
 
 
+def test_append_step_buffers_records_reward_components_from_info() -> None:
+    state = RecordingState()
+    components = {"reaching": 0.2, "grasping": 0.0, "task_objective": 0.1}
+
+    _append_step_buffers(
+        state,
+        _motor_obs(1.0),
+        _motor_obs(2.0),
+        _step_info(info={"reward_components": components}, reward=0.3),
+        SO101_JOINT_NAMES,
+    )
+
+    assert state.episode_reward_components == [components]
+
+
 def test_append_step_buffers_terminal_success_records_success_and_done() -> None:
     state = RecordingState()
 
@@ -413,4 +428,5 @@ def test_append_step_buffers_pre_first_step_defaults_and_skips_env_state() -> No
     assert state.episode_rewards == [0.0]
     assert state.episode_successes == [0.0]
     assert state.episode_dones == [0.0]
+    assert state.episode_reward_components == [{}]
     assert state.episode_env_states == []

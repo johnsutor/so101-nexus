@@ -814,6 +814,23 @@ def test_pick_and_place_rgb_array_render():
         env.close()
 
 
+def test_multi_objective_reward_components_sum_to_reward():
+    """PickEnv/PickAndPlace's info["reward_components"] sums to the total reward."""
+    from so101_nexus.config import REWARD_COMPONENT_KEYS
+
+    for env_id in ("MuJoCoPickLift-v1", "MuJoCoPickAndPlace-v1"):
+        env = gym.make(env_id)
+        try:
+            env.reset(seed=0)
+            action = env.action_space.sample()
+            _, reward, _, _, info = env.step(action)
+            components = info["reward_components"]
+            assert set(components) == set(REWARD_COMPONENT_KEYS)
+            assert sum(components.values()) == pytest.approx(float(reward), abs=1e-5)
+        finally:
+            env.close()
+
+
 def test_pick_and_place_reward_no_collapse_on_release():
     """Placement credit survives release, and success is the reward maximum.
 
@@ -851,6 +868,55 @@ def test_pick_and_place_reward_no_collapse_on_release():
         assert success_released > hover + 1e-6
     finally:
         env.close()
+
+
+def test_pick_and_place_reward_components_sum_through_terminal_clamp():
+    """reward_components must still sum to the reward once success lifts it to
+    the full budget, and once a penalty is large enough to trigger the
+    apply_penalties floor rescue -- both routes the residual completion_bonus
+    term is designed to absorb (see RewardConfig.compute_components).
+    """
+    from so101_nexus.config import REWARD_COMPONENT_KEYS, PickAndPlaceConfig, RewardConfig
+
+    def info(*, is_grasped, placed, success):
+        return {
+            "tcp_to_obj_dist": 0.0,
+            "obj_to_target_dist": 0.0,
+            "is_grasped": float(is_grasped),
+            "is_obj_placed": placed,
+            "success": success,
+        }
+
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=0)
+        # Released success: is_grasped=False would zero the grasping/task terms
+        # without the terminal clamp, exercising the same budget-lift residual
+        # as test_pick_and_place_reward_no_collapse_on_release.
+        released_success = info(is_grasped=False, placed=True, success=True)
+        reward = inner._compute_reward(released_success)
+        assert reward == pytest.approx(1.0)
+        assert set(released_success["reward_components"]) == set(REWARD_COMPONENT_KEYS)
+        assert sum(released_success["reward_components"].values()) == pytest.approx(reward)
+    finally:
+        env.close()
+
+    penalized_env = gym.make(
+        "MuJoCoPickAndPlace-v1",
+        config=PickAndPlaceConfig(reward=RewardConfig(action_delta_penalty=5.0)),
+    )
+    try:
+        inner = penalized_env.unwrapped
+        inner.reset(seed=0)
+        rescued_info = info(is_grasped=False, placed=True, success=True)
+        rescued_info["action_delta_norm"] = 1.0
+        reward = inner._compute_reward(rescued_info)
+        floor = 1.0 - inner.config.reward.completion_bonus
+        assert reward == pytest.approx(floor)
+        assert sum(rescued_info["reward_components"].values()) == pytest.approx(floor)
+    finally:
+        penalized_env.close()
 
 
 _CAMERA_ENVS: list[tuple[str, type]] = ENV_MATRIX

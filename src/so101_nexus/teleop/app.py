@@ -914,6 +914,7 @@ def _cb_approve_episode(session: dict):
 
         sel = session["field_selection"]
         rewards = list(s.episode_rewards)
+        reward_components = list(s.episode_reward_components)
         successes = list(s.episode_successes)
         dones = list(s.episode_dones)
         env_states = list(s.episode_env_states)
@@ -923,6 +924,7 @@ def _cb_approve_episode(session: dict):
                 s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None
             )
             reward = rewards[i] if i < len(rewards) else 0.0
+            components = reward_components[i] if i < len(reward_components) else None
             success = successes[i] if i < len(successes) else 0.0
             done = dones[i] if i < len(dones) else 0.0
             env_state = env_states[i] if i < len(env_states) else None
@@ -932,6 +934,7 @@ def _cb_approve_episode(session: dict):
                 action=actions[i],
                 task=s.task_description,
                 reward=reward,
+                reward_components=components,
                 success=success,
                 done=done,
                 env_state=env_state,

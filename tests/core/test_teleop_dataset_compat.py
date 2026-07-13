@@ -75,6 +75,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     from so101_nexus.observations import privileged_state_feature_names
     from so101_nexus.teleop.dataset import (
         OVERHEAD_KEY,
+        REWARD_COMPONENT_FEATURE_KEYS,
         REWARD_KEY,
         WRIST_KEY,
         FieldSelection,
@@ -113,12 +114,16 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
 
     for i in range(len(state.episode_actions)):
         reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
+        components = (
+            state.episode_reward_components[i] if i < len(state.episode_reward_components) else None
+        )
         frame = build_frame(
             selection,
             state=state.episode_states[i],
             action=state.episode_actions[i],
             task="reach the target",
             reward=reward,
+            reward_components=components,
             env_state=state.episode_env_states[i],
             wrist_image=state.episode_wrist_images[i],
             overhead_image=state.episode_overhead_images[i],
@@ -134,6 +139,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         REWARD_KEY,
         WRIST_KEY,
         OVERHEAD_KEY,
+        *REWARD_COMPONENT_FEATURE_KEYS,
     }
     assert reloaded.features[REWARD_KEY]["shape"] == (1,)
     assert reloaded.features[REWARD_KEY]["dtype"] == "float32"
@@ -163,6 +169,20 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     reward_min = float(np.asarray(reward_stats["min"]).reshape(-1)[0])
     reward_max = float(np.asarray(reward_stats["max"]).reshape(-1)[0])
     assert reward_min <= float(sample[REWARD_KEY]) <= reward_max
+
+    # Each reward facet round-trips as its own 0-d scalar and sums back to the
+    # recorded total (TouchEnv's simple_reward puts its sole progress term in
+    # "reaching"; "grasping"/"task_objective" are pinned at zero).
+    component_total = 0.0
+    for name in REWARD_COMPONENT_FEATURE_KEYS:
+        assert sample[name].dim() == 0
+        component_total += float(sample[name])
+    assert component_total == pytest.approx(float(sample[REWARD_KEY]), abs=1e-5)
+    np.testing.assert_allclose(
+        float(sample["reward_components.reaching"]),
+        state.episode_reward_components[0]["reaching"],
+        atol=1e-5,
+    )
 
 
 @pytest.mark.slow
@@ -232,12 +252,16 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
 
     for i in range(len(state.episode_actions)):
         reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
+        components = (
+            state.episode_reward_components[i] if i < len(state.episode_reward_components) else None
+        )
         frame = build_frame(
             selection,
             state=state.episode_states[i],
             action=state.episode_actions[i],
             task="pick and lift the object",
             reward=reward,
+            reward_components=components,
             success=state.episode_successes[i],
             done=state.episode_dones[i],
             env_state=state.episode_env_states[i],
@@ -277,6 +301,12 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     assert sample[DONE_KEY].dim() == 0
     assert float(sample[SUCCESS_KEY]) == pytest.approx(state.episode_successes[0])
     assert float(sample[DONE_KEY]) == pytest.approx(state.episode_dones[0])
+    # PickEnv's multi-objective breakdown records a live "grasping" facet
+    # (unlike TouchEnv/MoveEnv/LookAtEnv, where it is pinned at zero).
+    assert sample["reward_components.grasping"].dim() == 0
+    assert float(sample["reward_components.grasping"]) == pytest.approx(
+        state.episode_reward_components[0]["grasping"], abs=1e-5
+    )
 
     # LeRobot's automatic per-feature stats aggregation covers every recorded
     # channel, so normalization bounds exist downstream for the new channels too.

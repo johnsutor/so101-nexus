@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from so101_nexus.teleop.dataset import OVERHEAD_KEY, WRIST_KEY
+from so101_nexus.teleop.dataset import OVERHEAD_KEY, REWARD_COMPONENT_FEATURE_KEYS, WRIST_KEY
 
 
 class _Box:
@@ -90,6 +90,7 @@ def test_record_episode_writes_lerobot_frames_in_degrees() -> None:
         "task",
         WRIST_KEY,
         OVERHEAD_KEY,
+        *REWARD_COMPONENT_FEATURE_KEYS,
     }
     assert first_frame["task"] == "lift the cube"
     assert first_frame["reward"].shape == (1,)
@@ -120,3 +121,36 @@ def test_record_episode_omits_deselected_camera_frames() -> None:
 
     assert WRIST_KEY in dataset.frames[0]
     assert OVERHEAD_KEY not in dataset.frames[0]
+
+
+class _RewardComponentsEnv(_DatasetEnv):
+    """Env whose step info carries a reward-component breakdown."""
+
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        self.step_count += 1
+        terminated = self.step_count >= self.terminate_after
+        info = {
+            "success": terminated,
+            "reward_components": {"reaching": 0.4, "grasping": 0.1},
+        }
+        return self._obs(self.step_count), 0.5, terminated, False, info
+
+
+def test_record_episode_writes_reward_components_from_info() -> None:
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    dataset = _Dataset()
+    recorder = RolloutRecorder(
+        _RewardComponentsEnv(terminate_after=1),
+        _Policy(np.zeros(6, dtype=np.float32)),
+        dataset=dataset,
+    )
+
+    recorder.record_episode()
+
+    frame = dataset.frames[0]
+    np.testing.assert_allclose(frame["reward_components.reaching"], [0.4])
+    np.testing.assert_allclose(frame["reward_components.grasping"], [0.1])
+    np.testing.assert_array_equal(frame["reward_components.task_objective"], [0.0])

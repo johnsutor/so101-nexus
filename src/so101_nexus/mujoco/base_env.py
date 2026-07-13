@@ -29,7 +29,7 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus.rewards import lift_progress, orientation_progress, reach_progress
+from so101_nexus.rewards import lift_progress, reach_progress
 
 logger = logging.getLogger(__name__)
 
@@ -585,28 +585,18 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._viewer.close()
             self._viewer = None
 
-    def _reach_only_reward(self, info: dict) -> float:
-        """Reach-only reward: tanh distance shaping toward the object with no task progress."""
-        # mirrors RewardConfig.compute() in so101_nexus.config
-        rp = reach_progress(info["tcp_to_obj_dist"], scale=self.config.reward.tanh_shaping_scale)
-        is_grasped = info["is_grasped"] > 0.5
-        return self.config.reward.compute(
-            reach_progress=rp,
-            is_grasped=is_grasped,
-            task_progress=0.0,
-            is_complete=info.get("success", False),
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-            energy_norm=info.get("energy_norm", 0.0),
-        )
-
     def _lift_reward(self, info: dict) -> float:
-        """Lift reward: reach + grasp + tanh lift shaping + completion bonus."""
-        # mirrors RewardConfig.compute() in so101_nexus.config
+        """Lift reward: reach + grasp + tanh lift shaping + completion bonus.
+
+        Stores the per-facet breakdown on ``info["reward_components"]`` (see
+        ``RewardConfig.compute_components``) so recorders can persist each
+        facet alongside the summed total returned here.
+        """
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
         lift_prog = lift_progress(info["lift_height"], scale=scale, grasped=is_grasped)
-        return self.config.reward.compute(
+        components = self.config.reward.compute_components(
             reach_progress=rp,
             is_grasped=is_grasped,
             task_progress=lift_prog,
@@ -614,19 +604,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
         )
+        info["reward_components"] = components
+        return sum(components.values())
 
     def _reach_to_target_reward(self, tcp_pos: np.ndarray, target_pos: np.ndarray) -> float:
         """Tanh-shaped reward for reaching a 3-D target position."""
         dist = float(np.linalg.norm(tcp_pos - target_pos))
         return reach_progress(dist, scale=self.config.reward.tanh_shaping_scale)
-
-    def _orientation_toward_reward(self, current_dir: np.ndarray, target_dir: np.ndarray) -> float:
-        """Cosine-similarity reward for aligning a direction vector with a target."""
-        cos_sim = float(
-            np.dot(current_dir, target_dir)
-            / (np.linalg.norm(current_dir) * np.linalg.norm(target_dir) + 1e-8)
-        )
-        return orientation_progress(cos_sim)
 
     def _task_reset(self) -> None:
         raise NotImplementedError
