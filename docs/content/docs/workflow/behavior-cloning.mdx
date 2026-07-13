@@ -19,19 +19,19 @@ line via `tyro`, so any field can be overridden:
 
 ```bash
 uv run --extra warp --extra train python examples/bc_ppo_warp.py \
-    --demo-repo your-user/MuJoCoPickLift \
+    --demo-repo your-user/MuJoCoPickLift-v1 \
     --env-id WarpPickLift-v1
 ```
 
 If you have no leader arm, use the published
-[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift)
+[`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1)
 dataset (the default) and skip to [No-Hardware Quickstart](/docs/workflow/no-hardware).
 
 ### Key flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--demo-repo` | `johnsutor/MuJoCoPickLift` | Dataset the actor is cloned from. |
+| `--demo-repo` | `johnsutor/MuJoCoPickLift-v1` | Dataset the actor is cloned from. |
 | `--use-demos` | `true` | Seed the actor from demos before PPO. `false` = pure PPO. |
 | `--bc-pretrain-updates` | `2000` | Supervised steps regressing the actor mean onto demo actions, before PPO. |
 | `--bc-pretrain-lr` | `1e-3` | Learning rate for the BC pretrain phase. |

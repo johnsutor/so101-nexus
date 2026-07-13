@@ -4,7 +4,7 @@ Same large-batch PPO recipe as `ppo_warp.py` (fixed-horizon episodes, CleanRL op
 budget, entropy warm-start/anneal -- see that file's module doc for why each is decisive),
 plus demonstration seeding: the actor is pretrained via behavior cloning (BC) on the 10
 successful teleop episodes in
-[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) before
+[`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1) before
 online PPO starts, and (optionally, `--bc-coef > 0`) a BC regularization term keeps pulling the
 actor mean toward demo actions throughout online training.
 
@@ -110,7 +110,7 @@ class Args:
     # demo seeding
     use_demos: bool = True
     """seed the actor from teleop demonstrations before online PPO"""
-    demo_repo: str = "johnsutor/MuJoCoPickLift"
+    demo_repo: str = "johnsutor/MuJoCoPickLift-v1"
     """HuggingFace dataset repo id with the seed rollouts"""
     bc_pretrain_updates: int = 2_000
     """supervised gradient steps regressing the actor mean onto demo actions, before PPO starts"""
@@ -548,7 +548,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     success_bonus=0.0,
     stagger_resets=True,
     use_demos=True,
-    demo_repo="johnsutor/MuJoCoPickLift",
+    demo_repo="johnsutor/MuJoCoPickLift-v1",
     bc_pretrain_updates=2_000,
     bc_pretrain_lr=1e-3,
     bc_batch_size=256,

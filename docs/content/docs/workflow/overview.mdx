@@ -25,7 +25,7 @@ This page walks the whole path on `WarpPickLift-v1`, the task with a published, 
 
 <Callout type="info">
 No leader arm? Skip straight to stage 2 with the published
-[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift)
+[`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1)
 dataset. See the [No-Hardware Quickstart](/docs/workflow/no-hardware).
 </Callout>
 
@@ -41,7 +41,7 @@ dataset. See the [No-Hardware Quickstart](/docs/workflow/no-hardware).
       --leader-port /dev/ttyACM0
   ```
 
-  The artifact you carry forward is the **dataset repo id** (e.g. `your-user/MuJoCoPickLift`).
+  The artifact you carry forward is the **dataset repo id** (e.g. `your-user/MuJoCoPickLift-v1`).
   See [Teleoperation](/docs/teleoperation/overview) for hardware setup, camera fields, and
   Hub upload.
 
@@ -52,7 +52,7 @@ dataset. See the [No-Hardware Quickstart](/docs/workflow/no-hardware).
 
   ```bash
   uv run --extra warp --extra train python examples/bc_ppo_warp.py \
-      --demo-repo your-user/MuJoCoPickLift \
+      --demo-repo your-user/MuJoCoPickLift-v1 \
       --env-id WarpPickLift-v1
   ```
 
