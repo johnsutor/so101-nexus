@@ -9,8 +9,16 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-07-12
+
 ### Added
 
+- PEP 561 `py.typed` marker so downstream type checkers consume the library's inline type hints.
+- `so101_nexus.__version__`, resolved from installed package metadata.
+- Golden-value determinism regression tests covering every MuJoCo environment, guarding reward and state-observation drift across dependency and code changes.
+- `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, a Stability and versioning documentation page, and GitHub issue/pull-request templates.
+- Continuous integration coverage for Python 3.13 and macOS (MuJoCo backend).
+- Teleoperation records privileged state and success/done signals by default (#105).
 - `examples/bc_ppo_warp.py`: demo-seeded PPO for `WarpPickLift-v1` -- the same GPU-batched CleanRL PPO recipe as `ppo_warp.py`, plus behavior-cloning (BC) seeding from the 10-episode [`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) demonstrations: the actor is BC-pretrained on the demos before online PPO starts, and a persistent BC loss (`--bc-coef`) anchors the actor mean toward demo actions throughout training. Targets the one known weakness in `ppo_warp.py`'s current default recipe: a 5-seed sweep passed seeds 1-4 but seed 5 got stuck at a grasp-hold-at-table local optimum and never discovered the lift (`best_success=0.037`). Validated: same seed, same 30M-step recipe, demo-seeding alone rescues it to `best_success=0.993, final_success=0.983`. Demo actions are recomputed as the delta between consecutive recorded joint states (not the recorded absolute-position `action` column) since `ppo_warp.py`'s proven `pd_joint_delta_pos` control mode is left unchanged. `--use-demos false` recovers `ppo_warp.py` exactly.
 - `docs/superpowers/specs/2026-07-11-rlpd-demo-augmented-sac-warp-design.md`: design doc for an RLPD-style demo-augmented off-policy alternative, deferred as a follow-up.
 - `examples/ppo_warp.py` / `examples/bc_ppo_warp.py`: added `rollout_video_from_checkpoint()`, which renders one deterministic MuJoCo rollout of a saved Warp PPO policy to an mp4 (the Warp backend runs GPU-parallel worlds and does not render, so the rollout is shown in the matching MuJoCo backend as a transfer figure). Both Colab notebooks (`ppo_warp_colab.ipynb`, `bc_ppo_warp_colab.ipynb`) now finish with a "Watch a sample rollout" step that plays the mp4 inline via `IPython.display.Video`.
@@ -29,26 +37,12 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Pinned upper version bounds on core runtime dependencies (`numpy`, `scipy`, `trimesh`, `huggingface_hub`, `mujoco`, `gymnasium`, `tyro`) so a transitive major release cannot silently break installs.
+- Documented the MuJoCo Warp backend as experimental; its API may change between minor releases while the MuJoCo backend is stable.
 - On success the reward is clamped to the full normalized budget (the weights sum to 1.0) in both `RewardConfig.compute` and `simple_reward`, so a successful terminal step is always the global maximum with `completion_bonus` as the guaranteed margin. This mirrors ManiSkill PickCube's `reward[success] = max`. Non-success rewards are unchanged (bounded by `1 - completion_bonus`).
 - Tuned the Warp PickLift PPO default entropy schedule from `ent_coef=0.005, ent_coef_final=0.0` to `ent_coef=0.03, ent_coef_final=0.005`. A 5-seed sweep (30M steps each) showed the previous default solved only 2/3 seeds while the new schedule solves 4/5 (final success 0.97, 0.985, 0.965, 0.97). The strong warm-start plus nonzero floor keeps exploration alive so the policy can escape the reaching local optimum late in training.
 - `RewardConfig.apply_penalties` gained an `is_complete` keyword (default `False`, backward compatible) so callers can opt into the completion-margin floor above.
 - `TouchConfig`/`MoveConfig`/`LookAtConfig` now warn (`UserWarning`) when constructed with a `RewardConfig` that customizes `reaching`/`grasping`/`task_objective` (and, for `LookAtConfig`, `tanh_shaping_scale`): these envs reward via `so101_nexus.rewards.simple_reward`, not `RewardConfig.compute`, so those fields were silently inert.
-
-## [0.4.7] - 2026-07-02
-
-### Added
-
-- PEP 561 `py.typed` marker so downstream type checkers consume the library's inline type hints.
-- `so101_nexus.__version__`, resolved from installed package metadata.
-- Golden-value determinism regression tests covering every MuJoCo environment, guarding reward and state-observation drift across dependency and code changes.
-- `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, a Stability and versioning documentation page, and GitHub issue/pull-request templates.
-- Continuous integration coverage for Python 3.13 and macOS (MuJoCo backend).
-- Teleoperation records privileged state and success/done signals by default (#105).
-
-### Changed
-
-- Pinned upper version bounds on core runtime dependencies (`numpy`, `scipy`, `trimesh`, `huggingface_hub`, `mujoco`, `gymnasium`, `tyro`) so a transitive major release cannot silently break installs.
-- Documented the MuJoCo Warp backend as experimental; its API may change between minor releases while the MuJoCo backend is stable.
 
 ## [0.4.5] - 2026-06-29
 
