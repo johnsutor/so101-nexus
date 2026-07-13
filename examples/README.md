@@ -197,7 +197,7 @@ same GPU-parallel CleanRL PPO recipe as `ppo_warp.py` (fixed-horizon episodes,
 CleanRL optimizer budget, entropy warm-start/anneal -- see that file's module doc
 for why each is decisive), plus behavior-cloning (BC) seeding from the 10 successful
 teleop episodes in
-[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift):
+[`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1):
 the actor is BC-pretrained on the demos before online PPO starts, and an optional
 persistent BC loss (`--bc-coef`, default on) keeps anchoring the actor mean toward
 demo actions throughout training.

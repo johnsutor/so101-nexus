@@ -4,7 +4,7 @@ Same large-batch PPO recipe as `ppo_warp.py` (fixed-horizon episodes, CleanRL op
 budget, entropy warm-start/anneal -- see that file's module doc for why each is decisive),
 plus demonstration seeding: the actor is pretrained via behavior cloning (BC) on the 10
 successful teleop episodes in
-[`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) before
+[`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1) before
 online PPO starts, and (optionally, `--bc-coef > 0`) a BC regularization term keeps pulling the
 actor mean toward demo actions throughout online training.
 
@@ -110,7 +110,7 @@ class Args:
     # demo seeding
     use_demos: bool = True
     """seed the actor from teleop demonstrations before online PPO"""
-    demo_repo: str = "johnsutor/MuJoCoPickLift"
+    demo_repo: str = "johnsutor/MuJoCoPickLift-v1"
     """HuggingFace dataset repo id with the seed rollouts"""
     bc_pretrain_updates: int = 2_000
     """supervised gradient steps regressing the actor mean onto demo actions, before PPO starts"""
@@ -494,15 +494,15 @@ def load_demo_transitions(demo_repo: str, device: torch.device):
     df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
 
     joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)  # [N,6]
-    env_state = np.stack(df["observation.environment_state"].to_numpy()).astype(
-        np.float32
-    )  # [N,18]
+    # `environment_state` already includes joint_positions as its first 6 dims
+    # (PickConfig's default observations list starts with JointPositions()), so it
+    # is the full 24-d obs vector directly -- no separate joints concat needed.
+    obs_all = np.stack(df["observation.environment_state"].to_numpy()).astype(np.float32)  # [N,24]
     ep_index = df["episode_index"].to_numpy()
 
     joints_rad = dataset_row_to_sim_qpos(joints_raw).astype(
         np.float32
-    )  # SO101_GRIPPER_LIMITS_RAD default
-    obs_all = np.concatenate([joints_rad, env_state], axis=-1).astype(np.float32)  # [N,24]
+    )  # SO101_GRIPPER_LIMITS_RAD default; used for the delta-action target below
     delta_scale = np.asarray(_DELTA_ACTION_SCALE, dtype=np.float32)
 
     obs_list, act_list = [], []
@@ -548,7 +548,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     success_bonus=0.0,
     stagger_resets=True,
     use_demos=True,
-    demo_repo="johnsutor/MuJoCoPickLift",
+    demo_repo="johnsutor/MuJoCoPickLift-v1",
     bc_pretrain_updates=2_000,
     bc_pretrain_lr=1e-3,
     bc_batch_size=256,

@@ -27,23 +27,36 @@ For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/doc
 ## Demo Rollouts
 
 <div align="center">
-  <video controls muted playsinline width="720" aria-label="MuJoCo PickLift teleoperation rollout">
-    <source src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/docs/public/videos/pick-lift-overhead.mp4" type="video/mp4">
-    Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0">PickLift episode viewer</a> instead.
+  <video controls muted playsinline width="720" aria-label="MuJoCo PickAndPlace teleoperation rollout">
+    <source src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/docs/public/videos/pick-it-up.mp4" type="video/mp4">
+    Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace episode viewer</a> instead.
   </video>
   <p>
-    <a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift">PickLift dataset</a>
+    <a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1">PickAndPlace dataset</a>
     ·
-    <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0">PickLift viewer</a>
+    <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace viewer</a>
   </p>
 </div>
 
 Recorded MuJoCo teleoperation datasets are available on Hugging Face:
 
-| Task | Dataset | Episode viewer |
-| --- | --- | --- |
-| PickLift | [johnsutor/MuJoCoPickLift](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift%2Fepisode_0) |
-| PickAndPlace | [johnsutor/MuJoCoPickAndPlace](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace%2Fepisode_0) |
+<table align="center">
+  <thead>
+    <tr><th>Task</th><th>Dataset</th><th>Example Rollout</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>PickLift</td>
+      <td><a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1">johnsutor/MuJoCoPickLift-v1</a></td>
+      <td><a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0">Example Rollout</a></td>
+    </tr>
+    <tr>
+      <td>PickAndPlace</td>
+      <td><a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1">johnsutor/MuJoCoPickAndPlace-v1</a></td>
+      <td><a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">Example Rollout</a></td>
+    </tr>
+  </tbody>
+</table>
 
 ## Why
 

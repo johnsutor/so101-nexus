@@ -11,7 +11,7 @@ def test_bc_ppo_warp_defaults_use_demos_with_persistent_bc_loss():
     args = mod.Args()
 
     assert args.use_demos is True
-    assert args.demo_repo == "johnsutor/MuJoCoPickLift"
+    assert args.demo_repo == "johnsutor/MuJoCoPickLift-v1"
     assert args.bc_pretrain_updates > 0
     assert args.bc_coef > 0.0
     assert args.control_mode == "pd_joint_delta_pos"  # unchanged from ppo_warp.py
@@ -40,7 +40,7 @@ def test_bc_ppo_warp_load_demo_transitions_shapes_and_units():
     import torch
 
     mod = importlib.import_module("examples.bc_ppo_warp")
-    obs, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift", torch.device("cpu"))
+    obs, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift-v1", torch.device("cpu"))
 
     assert obs.ndim == 2
     assert obs.shape[1] == 24  # joints(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)
@@ -70,7 +70,7 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
     from huggingface_hub import hf_hub_download
 
     pq = hf_hub_download(
-        "johnsutor/MuJoCoPickLift", "data/chunk-000/file-000.parquet", repo_type="dataset"
+        "johnsutor/MuJoCoPickLift-v1", "data/chunk-000/file-000.parquet", repo_type="dataset"
     )
     df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
     df = df[df["episode_index"] == df["episode_index"].iloc[0]].reset_index(drop=True)
@@ -83,7 +83,7 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
         1.0,
     )
 
-    _, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift", torch.device("cpu"))
+    _, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift-v1", torch.device("cpu"))
     np.testing.assert_allclose(action[0].numpy(), expected_first, atol=1e-5)
 
 
