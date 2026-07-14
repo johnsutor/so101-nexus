@@ -18,7 +18,7 @@ from so101_nexus.config import ControlMode, PickAndPlaceConfig, describe_place_t
 from so101_nexus.constants import COLOR_MAP
 from so101_nexus.objects import CubeObject
 from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
-from so101_nexus.rewards import reach_progress
+from so101_nexus.rewards import potential_shaping, reach_progress
 from so101_nexus.warp.object_slots import sample_polar
 from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
@@ -88,6 +88,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         self._mocap_pos = wp.to_torch(self.data.mocap_pos)  # (N, nmocap, 3)
         first = scene_objects[0]
         self.cube_color_name = first.color if isinstance(first, CubeObject) else ""
+        self._prev_task_potential = torch.zeros(num_envs, device=self.device)
 
     def _describe_target(self, obj) -> str:
         return describe_place_target(obj, self.target_color_name)
@@ -100,6 +101,58 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
 
     def _target_disc_pos(self) -> torch.Tensor:
         return self._mocap_pos[:, self._target_mocap_id, :]
+
+    def _obj_placement_state(
+        self, obj_pos: torch.Tensor, target_pos: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return ``(obj_to_target_xy_dist, is_obj_placed)`` batched over worlds."""
+        obj_to_target = torch.linalg.norm(obj_pos[:, :2] - target_pos[:, :2], dim=1)
+        is_obj_placed = (obj_to_target <= self.config.goal_thresh) & (
+            obj_pos[:, 2] < self._initial_obj_z + _PLACE_Z_SLACK
+        )
+        return obj_to_target, is_obj_placed
+
+    def _task_potential(
+        self,
+        obj_pos: torch.Tensor,
+        target_pos: torch.Tensor,
+        is_grasped: torch.Tensor,
+        is_obj_placed: torch.Tensor,
+    ) -> torch.Tensor:
+        """``Phi_place(s)``: joint xy/height/stillness progress toward completion.
+
+        Batched analogue of the MuJoCo backend's ``PickAndPlaceEnv._task_potential``
+        -- zero unless the object has been grasped or is already placed, otherwise
+        the product of three ``[0, 1]`` progress factors (goal xy proximity, height
+        back near rest, arm stillness). Fed through ``rewards.potential_shaping`` as
+        a step-to-step delta rather than used directly as ``task_progress``. See
+        docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md.
+        """
+        scale = self.config.reward.tanh_shaping_scale
+        vscale = self.config.reward.velocity_shaping_scale
+        obj_to_target, _ = self._obj_placement_state(obj_pos, target_pos)
+        height_gap = (obj_pos[:, 2] - self._initial_obj_z).clamp(min=0.0)
+        arm_speed = torch.linalg.norm(self.qvel.index_select(1, self._arm_dof_adr), dim=1)
+        gate = ((is_grasped > 0.5) | is_obj_placed).to(torch.float32)
+        return (
+            reach_progress(obj_to_target, scale=scale)
+            * reach_progress(height_gap, scale=scale)
+            * reach_progress(arm_speed, scale=vscale)
+            * gate
+        )
+
+    def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:
+        """Refresh the placement baseline and task potential from the post-settle pose."""
+        super()._refresh_reset_reference_state(mask)
+        idx = mask.nonzero(as_tuple=True)[0]
+        if idx.numel() == 0:
+            return
+        obj_pos = self._target_pos()
+        target_pos = self._target_disc_pos()
+        is_grasped = self._is_grasping()
+        _, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
+        potential = self._task_potential(obj_pos, target_pos, is_grasped, is_obj_placed)
+        self._prev_task_potential[idx] = potential[idx]
 
     def _task_reset(self, mask: torch.Tensor) -> None:
         idx = mask.nonzero(as_tuple=True)[0]
@@ -165,23 +218,21 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         obj_pos = self._target_pos()
         target_pos = self._target_disc_pos()
         tcp_to_obj = torch.linalg.norm(obj_pos - self._tcp_pos(), dim=1)
-        obj_to_target = torch.linalg.norm(obj_pos[:, :2] - target_pos[:, :2], dim=1)
+        obj_to_target, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
         is_grasped = self._is_grasping()
-        grasped = is_grasped > 0.5
-        is_obj_placed = (obj_to_target <= self.config.goal_thresh) & (
-            obj_pos[:, 2] < self._initial_obj_z + _PLACE_Z_SLACK
-        )
         is_robot_static = self._is_robot_static()
         success = is_obj_placed & is_robot_static
         scale = self.config.reward.tanh_shaping_scale
-        # Placement counts while grasped OR once the object is set down, so
-        # releasing to finish the task does not erase progress (mirrors MuJoCo).
-        placed_or_grasped = (grasped | is_obj_placed).to(torch.float32)
-        placement = reach_progress(obj_to_target, scale=scale) * placed_or_grasped
+        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
+        # 1999; see _task_potential), not the raw potential -- dwelling at any
+        # fixed state pays ~0 per step instead of the potential's full value.
+        task_potential = self._task_potential(obj_pos, target_pos, is_grasped, is_obj_placed)
+        task_progress = potential_shaping(task_potential, self._prev_task_potential)
+        self._prev_task_potential = task_potential
         reward = self.config.reward.compute(
             reach_progress=reach_progress(tcp_to_obj, scale=scale),
             is_grasped=is_grasped,
-            task_progress=placement,
+            task_progress=task_progress,
             is_complete=success,
             action_delta_norm=action_delta_norm,
             energy_norm=energy_norm,

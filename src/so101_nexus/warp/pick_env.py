@@ -28,7 +28,7 @@ from so101_nexus.constants import sample_color
 from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import SceneObject, YCBObject
 from so101_nexus.observations import ObjectOffset, ObjectPose
-from so101_nexus.rewards import lift_progress, reach_progress
+from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 from so101_nexus.warp.object_slots import (
@@ -187,6 +187,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._target_qadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_slot = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._initial_obj_z = torch.zeros(num_envs, device=self.device)
+        self._prev_task_potential = torch.zeros(num_envs, device=self.device)
         self._world_rows = torch.arange(num_envs, device=self.device)
         self.task_descriptions = [self._describe_target(scene_objects[0])] * num_envs
 
@@ -293,6 +294,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         if idx.numel() == 0:
             return
         self._initial_obj_z[idx] = self._target_pos()[idx, 2]
+        # lift_progress(0, ...) == 0 regardless of grasped (tanh(0) == 0), so the
+        # potential baseline is always 0 here: the object sits at its own baseline.
+        self._prev_task_potential[idx] = 0.0
 
     def _get_component_data(self, component: object) -> torch.Tensor:
         if isinstance(component, ObjectPose):
@@ -312,10 +316,17 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         grasped = is_grasped > 0.5
         success = (lift_height > self.config.lift_threshold) & grasped
         scale = self.config.reward.tanh_shaping_scale
+        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
+        # 1999; see rewards.potential_shaping), not the raw lift potential --
+        # dwelling at a fixed lift height pays ~0 per step instead of the
+        # potential's full value every step.
+        lift_potential = lift_progress(lift_height, scale=scale, grasped=grasped)
+        task_progress = potential_shaping(lift_potential, self._prev_task_potential)
+        self._prev_task_potential = lift_potential
         reward = self.config.reward.compute(
             reach_progress=reach_progress(tcp_to_obj, scale=scale),
             is_grasped=is_grasped,
-            task_progress=lift_progress(lift_height, scale=scale, grasped=grasped),
+            task_progress=task_progress,
             is_complete=success,
             action_delta_norm=action_delta_norm,
             energy_norm=energy_norm,

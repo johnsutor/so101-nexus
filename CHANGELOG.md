@@ -9,6 +9,16 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `so101_nexus.rewards.potential_shaping`: a potential-based reward-shaping delta helper (`Phi(s') - Phi(s)`, the `gamma=1` case of Ng, Harada & Russell's policy-invariance theorem, ICML 1999). `RewardConfig.velocity_shaping_scale` (new field, default `15.0`) scales a dense arm-stillness shaping factor used by the pick-and-place potential below.
+- `PickAndPlaceEnv`/`WarpPickAndPlaceVectorEnv` info now includes `task_potential`: the current value of the smooth completion-progress potential (goal-xy proximity x height-back-near-rest x arm-stillness x grasped-or-placed), useful for diagnosing reward shaping during training.
+- `RewardConfig.velocity_shaping_scale` is only read by `PickAndPlaceEnv._task_potential`; customizing it on `PickConfig` (pick-lift), `TouchConfig`, `MoveConfig`, or `LookAtConfig` now warns (no dead knobs), matching the existing `reaching`/`grasping`/`task_objective`/`tanh_shaping_scale` inert-field warnings.
+
+### Changed
+
+- Pick-and-place and pick-lift `task_progress` (both backends) is now a potential-based shaping delta (`Phi(s') - Phi(s)`) instead of the raw potential value, closing a reward-hacking trap: a policy that reached a high-reward state and then stopped moving (e.g. carrying a grasped object to hover above the pick-and-place goal disc without lowering it) previously kept collecting up to 90% of the per-step reward budget indefinitely without ever completing the task, since `task_progress` was recomputed fresh from instantaneous state every step. Summed over an episode the new delta telescopes to `Phi(final) - Phi(initial)`, bounded regardless of dwell time, so hovering now earns ~0 further reward after the first step. Pick-and-place's potential additionally gates on height-back-near-rest and arm stillness (previously xy-only), a smooth relaxation of `success`'s `is_obj_placed & is_robot_static` AND condition. `reaching`/`grasping` and all other environments (Touch/Move/LookAt) are unchanged.
+
 ## [0.4.7] - 2026-07-12
 
 ### Added

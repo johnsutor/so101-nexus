@@ -376,6 +376,10 @@ class RewardConfig:
         Penalty coefficient on L2 norm of the action vector (energy cost).
     tanh_shaping_scale : float
         Scale factor for tanh distance shaping.
+    velocity_shaping_scale : float
+        Scale factor for tanh velocity shaping (used by task potentials that
+        include a staticness factor, e.g. pick-and-place; see
+        ``PickAndPlaceEnv._task_potential`` in ``so101_nexus.mujoco.pick_and_place``).
     """
 
     def __init__(
@@ -387,6 +391,7 @@ class RewardConfig:
         action_delta_penalty: float = 0.0,
         energy_penalty: float = 0.0,
         tanh_shaping_scale: float = 5.0,
+        velocity_shaping_scale: float = 15.0,
     ) -> None:
         total = reaching + grasping + task_objective + completion_bonus
         if not math.isclose(total, 1.0, abs_tol=1e-6):
@@ -398,6 +403,7 @@ class RewardConfig:
         self.action_delta_penalty = action_delta_penalty
         self.energy_penalty = energy_penalty
         self.tanh_shaping_scale = tanh_shaping_scale
+        self.velocity_shaping_scale = velocity_shaping_scale
 
     def compute(
         self,
@@ -617,6 +623,24 @@ def _warn_inert_reward_weights(
         )
 
 
+def _warn_inert_velocity_scale(reward: RewardConfig, task_name: str) -> None:
+    """Warn when ``velocity_shaping_scale`` is customized on a task that ignores it.
+
+    Only ``PickAndPlaceEnv``'s task potential (``Phi_place``) reads
+    ``velocity_shaping_scale`` (see ``_task_potential``); every other task
+    (``PickConfig``/``PickLiftEnv``, ``TouchConfig``, ``MoveConfig``,
+    ``LookAtConfig``) never constructs a velocity-gated potential, so
+    customizing it there is a silent no-op.
+    """
+    if reward.velocity_shaping_scale != _REWARD_DEFAULTS.velocity_shaping_scale:
+        warnings.warn(
+            f"{task_name} reward ignores RewardConfig.velocity_shaping_scale (only "
+            "PickAndPlaceConfig's task potential uses it; see "
+            "so101_nexus.mujoco.pick_and_place.PickAndPlaceEnv._task_potential).",
+            stacklevel=3,
+        )
+
+
 class EnvironmentConfig:
     """Base config shared by all environments.
 
@@ -814,6 +838,7 @@ class PickConfig(EnvironmentConfig):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        _warn_inert_velocity_scale(self.reward, type(self).__name__)
         self.objects = _normalize_objects(objects, CubeObject())
         self.n_distractors = n_distractors
         self.lift_threshold = lift_threshold
@@ -1070,6 +1095,7 @@ class LookAtConfig(EnvironmentConfig):
     ) -> None:
         super().__init__(**kwargs)
         _warn_inert_reward_weights(self.reward, "LookAtConfig", uses_tanh_scale=False)
+        _warn_inert_velocity_scale(self.reward, "LookAtConfig")
         self.objects = _normalize_objects(objects, CubeObject())
         self.fov_deg = fov_deg
         if self.fov_deg is not None and self.fov_deg <= 0:
@@ -1117,6 +1143,7 @@ class MoveConfig(EnvironmentConfig):
             )
         super().__init__(**kwargs)
         _warn_inert_reward_weights(self.reward, "MoveConfig", uses_tanh_scale=True)
+        _warn_inert_velocity_scale(self.reward, "MoveConfig")
         self.direction = direction
         self.target_distance = target_distance
         self.success_threshold = success_threshold

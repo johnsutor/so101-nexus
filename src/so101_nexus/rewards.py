@@ -102,3 +102,35 @@ def simple_reward(*, progress, completion_bonus, success):
     """
     shaped = (1.0 - completion_bonus) * progress
     return shaped + (1.0 - shaped) * success
+
+
+def potential_shaping(potential, prev_potential):
+    """Potential-based shaping delta: ``potential(s') - potential(s)``.
+
+    The ``gamma=1`` telescoping special case of Ng, Harada & Russell's
+    potential-based reward shaping theorem ("Policy Invariance Under Reward
+    Transformations," ICML 1999, Theorem 1): a shaping reward of the form
+    ``F(s, s') = gamma * Phi(s') - Phi(s)`` is a necessary and sufficient
+    condition for the shaped MDP's optimal policy to equal the unshaped one's.
+    Summed over an episode this term telescopes to ``Phi(final) - Phi(initial)``,
+    bounded regardless of episode length, so a policy that reaches a high
+    potential and then stops moving earns ~0 further reward instead of the
+    unbounded dwelling reward a raw ``Phi(s')`` term would pay out every step
+    (see ``RewardConfig`` callers for the concrete exploit this closes).
+    ``gamma=1`` rather than Devlin & Kudenko's fully general dynamic potential
+    ("Dynamic Potential-Based Reward Shaping," AAMAS 2012, Eq. 4) because
+    callers here do not know the training algorithm's discount factor; for
+    ``gamma`` close to 1 (typical PPO/FPO settings, 0.95-0.99) this is a close
+    approximation, and it is exact at ``gamma=1``.
+
+    Accepts a Python float, NumPy array, or torch tensor for either argument
+    (plain subtraction; no dispatch needed, unlike the other functions here).
+
+    Parameters
+    ----------
+    potential : float or numpy.ndarray or torch.Tensor
+        Potential function value at the current state, ``Phi(s')``.
+    prev_potential : float or numpy.ndarray or torch.Tensor
+        Potential function value at the previous state, ``Phi(s)``.
+    """
+    return potential - prev_potential
