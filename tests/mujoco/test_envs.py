@@ -177,6 +177,7 @@ def test_pick_and_place_info_keys_exact():
         "lift_height",
         "success",
         "tcp_to_obj_dist",
+        "task_potential",
     }
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
@@ -831,41 +832,76 @@ def test_multi_objective_reward_components_sum_to_reward():
             env.close()
 
 
-def test_pick_and_place_reward_no_collapse_on_release():
-    """Placement credit survives release, and success is the reward maximum.
-
-    Regression: placement_progress was gated on is_grasped, so opening the gripper
-    to complete the task erased the grasp and placement terms, making a placed,
-    released success score below a grasped hover. The terminal clamp plus
-    placed-gated placement credit fix this.
+def test_pick_and_place_success_is_reward_maximum_regardless_of_task_progress():
+    """Success clamps the reward to 1.0 regardless of the task_progress delta's
+    sign or magnitude -- the terminal clamp (``RewardConfig.compute``) guarantees
+    success is always the global maximum, even when a released grasp or a
+    momentary potential dip would otherwise score task_progress negatively.
     """
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         inner = env.unwrapped
         inner.reset(seed=0)
 
-        def info(*, is_grasped, placed, success):
+        def info(*, is_grasped, success, task_potential):
             return {
                 "tcp_to_obj_dist": 0.0,
-                "obj_to_target_dist": 0.0,
                 "is_grasped": float(is_grasped),
-                "is_obj_placed": placed,
                 "success": success,
+                "task_potential": task_potential,
             }
 
-        hover = inner._compute_reward(info(is_grasped=True, placed=False, success=False))
-        released_placed = inner._compute_reward(info(is_grasped=False, placed=True, success=False))
-        released_air = inner._compute_reward(info(is_grasped=False, placed=False, success=False))
-        success_grasped = inner._compute_reward(info(is_grasped=True, placed=True, success=True))
-        # Released success: grasp opened, object resting on the disc. Pre-fix this
-        # scored reaching + completion_bonus only (0.35); the terminal clamp lifts
-        # it to the full budget, so this assertion catches the clamp regression.
-        success_released = inner._compute_reward(info(is_grasped=False, placed=True, success=True))
+        inner._prev_task_potential = 0.5
+        # Success with a positive task_progress delta (0.5 -> 0.9).
+        r_up = inner._compute_reward(info(is_grasped=True, success=True, task_potential=0.9))
+        inner._prev_task_potential = 0.9
+        # Success with a NEGATIVE task_progress delta (released grasp dips the
+        # potential just before settling into success): pre-clamp fix this
+        # scored below a non-terminal hover; the clamp still lifts it to 1.0.
+        r_down = inner._compute_reward(info(is_grasped=False, success=True, task_potential=0.1))
 
-        assert released_placed > released_air + 1e-6
-        assert success_grasped == pytest.approx(1.0)
-        assert success_released == pytest.approx(1.0)
-        assert success_released > hover + 1e-6
+        assert r_up == pytest.approx(1.0)
+        assert r_down == pytest.approx(1.0)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_hovering_earns_no_dwelling_task_objective_reward():
+    """Regression coverage for the reward-hacking trap in IMPROVEMENTS.md
+    ("RewardConfig's dwelling-reward structure invites the exact exploit we
+    hit"): hovering at a fixed task potential (no xy/height/velocity
+    improvement) must score ~0 on the task_objective facet on every step after
+    the first, instead of paying out the full potential value every step
+    forever. Genuine progress (the potential increasing) still earns real,
+    one-time credit -- see docs/superpowers/plans/
+    2026-07-12-potential-based-task-progress-shaping.md.
+    """
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=0)
+        weight = inner.config.reward.task_objective
+
+        def step_info(task_potential):
+            return {
+                "tcp_to_obj_dist": 0.0,
+                "is_grasped": 1.0,
+                "success": False,
+                "task_potential": task_potential,
+            }
+
+        inner._prev_task_potential = 0.0
+        # Carrying the grasped object toward the goal: genuine progress.
+        first = step_info(0.85)
+        inner._compute_reward(first)
+        assert first["reward_components"]["task_objective"] == pytest.approx(weight * 0.85)
+
+        # Hover: the potential does not change step to step, so no further
+        # task_objective reward accrues no matter how long the hover lasts.
+        for _ in range(5):
+            hover = step_info(0.85)
+            inner._compute_reward(hover)
+            assert hover["reward_components"]["task_objective"] == pytest.approx(0.0, abs=1e-9)
     finally:
         env.close()
 
@@ -878,23 +914,24 @@ def test_pick_and_place_reward_components_sum_through_terminal_clamp():
     """
     from so101_nexus.config import REWARD_COMPONENT_KEYS, PickAndPlaceConfig, RewardConfig
 
-    def info(*, is_grasped, placed, success):
+    def info(*, is_grasped, success, task_potential):
         return {
             "tcp_to_obj_dist": 0.0,
-            "obj_to_target_dist": 0.0,
             "is_grasped": float(is_grasped),
-            "is_obj_placed": placed,
             "success": success,
+            "task_potential": task_potential,
         }
 
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         inner = env.unwrapped
         inner.reset(seed=0)
-        # Released success: is_grasped=False would zero the grasping/task terms
-        # without the terminal clamp, exercising the same budget-lift residual
-        # as test_pick_and_place_reward_no_collapse_on_release.
-        released_success = info(is_grasped=False, placed=True, success=True)
+        inner._prev_task_potential = 0.9
+        # Released success: is_grasped=False and a lower task_potential would
+        # zero/negate the grasping/task terms without the terminal clamp,
+        # exercising the same budget-lift residual as
+        # test_pick_and_place_success_is_reward_maximum_regardless_of_task_progress.
+        released_success = info(is_grasped=False, success=True, task_potential=0.5)
         reward = inner._compute_reward(released_success)
         assert reward == pytest.approx(1.0)
         assert set(released_success["reward_components"]) == set(REWARD_COMPONENT_KEYS)
@@ -909,7 +946,8 @@ def test_pick_and_place_reward_components_sum_through_terminal_clamp():
     try:
         inner = penalized_env.unwrapped
         inner.reset(seed=0)
-        rescued_info = info(is_grasped=False, placed=True, success=True)
+        inner._prev_task_potential = 0.9
+        rescued_info = info(is_grasped=False, success=True, task_potential=0.5)
         rescued_info["action_delta_norm"] = 1.0
         reward = inner._compute_reward(rescued_info)
         floor = 1.0 - inner.config.reward.completion_bonus
@@ -1281,6 +1319,7 @@ def test_pick_and_place_info_keys_with_object_pool():
         "lift_height",
         "success",
         "tcp_to_obj_dist",
+        "task_potential",
     }
     try:
         _, info = env.reset(seed=0)

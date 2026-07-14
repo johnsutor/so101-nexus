@@ -237,6 +237,18 @@ class TestInertRewardWeightWarning:
         PickConfig(reward=self._INERT_WEIGHTS)
         assert len(recwarn) == 0
 
+    @pytest.mark.parametrize("config_cls", [PickConfig, TouchConfig, MoveConfig, LookAtConfig])
+    def test_velocity_shaping_scale_is_inert_outside_pick_and_place(self, config_cls):
+        """Only ``PickAndPlaceEnv._task_potential`` reads ``velocity_shaping_scale``;
+        every other task silently ignores it and must warn instead.
+        """
+        with pytest.warns(UserWarning, match="velocity_shaping_scale"):
+            config_cls(reward=RewardConfig(velocity_shaping_scale=99.0))
+
+    def test_velocity_shaping_scale_is_live_for_pick_and_place(self, recwarn):
+        PickAndPlaceConfig(reward=RewardConfig(velocity_shaping_scale=99.0))
+        assert len(recwarn) == 0
+
 
 class TestPickAndPlaceInvariants:
     def test_separation_covers_cube_diameter(self):

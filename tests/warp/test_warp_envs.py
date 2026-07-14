@@ -376,3 +376,101 @@ def test_flat_state_vector_preserves_component_list_order():
         )
         offset += size
     assert offset == full.shape[0]
+
+
+def test_pick_and_place_reward_no_dwelling_when_hovering():
+    """Regression coverage for the reward-hacking trap in IMPROVEMENTS.md
+    ("RewardConfig's dwelling-reward structure invites the exact exploit we
+    hit"): repeated ``_compute_reward_terminated`` calls at an unchanged
+    "grasped, hovering above the goal" state pay ~0 further task_objective
+    reward after the first (a potential-shaping delta, not the raw
+    ``Phi_place`` value); the first observation of that state still earns
+    real, one-time credit. ``_is_grasping`` is monkeypatched to a constant
+    True so the test does not depend on driving a real contact-based grasp
+    through physics, and the object is placed directly via ``qpos`` at a
+    fixed "hovering above the goal, not yet lowered" pose, unchanged between
+    the two reward calls. See docs/superpowers/plans/
+    2026-07-12-potential-based-task-progress-shaping.md.
+    """
+    import torch
+
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.rewards import reach_progress
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    env = WarpPickAndPlaceVectorEnv(num_envs=2, config=PickAndPlaceConfig(), device="cpu", seed=0)
+    env.reset(seed=0)
+    env._is_grasping = lambda: torch.ones(2)  # force grasped, no real contact needed
+
+    target_pos = env._target_disc_pos()
+    rows, qa = env._world_rows, env._target_qadr
+    env.qpos[rows, qa] = target_pos[:, 0] + 0.05
+    env.qpos[rows, qa + 1] = target_pos[:, 1]
+    env.qpos[rows, qa + 2] = env._initial_obj_z + 0.05  # elevated, not lowered
+
+    zero = torch.zeros(2)
+    reward1, _, _ = env._compute_reward_terminated(zero, zero)
+    reward2, _, info2 = env._compute_reward_terminated(zero, zero)
+
+    scale = env.config.reward.tanh_shaping_scale
+    # The reward a task_progress=0 formula would pay on the second call --
+    # what the actual (delta-shaped) reward must match, since the potential
+    # did not move between the two identical hover snapshots. This assertion
+    # would fail against the pre-fix raw-potential formula, which pays the
+    # same nonzero task_objective credit on both calls.
+    expected_no_dwelling_credit = env.config.reward.compute(
+        reach_progress=reach_progress(info2["tcp_to_obj_dist"], scale=scale),
+        is_grasped=info2["is_grasped"],
+        task_progress=torch.zeros(2),
+        is_complete=info2["success"],
+    )
+    assert torch.allclose(reward2, expected_no_dwelling_credit, atol=1e-5)
+    # The first observation of this state, from the reset baseline
+    # (Phi(s0) ~= 0, pre-grasp), earns real one-time credit.
+    assert bool((reward1 > reward2 + 1e-3).all())
+
+
+def test_pick_lift_reward_no_dwelling_at_fixed_height():
+    """Repeated ``_compute_reward_terminated`` calls at an unchanged lift height
+    pay ~0 further task_objective reward (a potential-shaping delta, not the
+    raw ``lift_progress`` value); the first observation of that height still
+    earns real, one-time credit. Companion to the pick-and-place regression
+    above for the same family of task ("dwelling" pick-lift's task_progress).
+    ``_is_grasping`` is monkeypatched to a constant True (a real contact-based
+    grasp is not needed to exercise the delta-shaping state machine), since a
+    call made right after reset would otherwise gate ``lift_progress`` to 0
+    regardless of whether the fix is present, making the test pass vacuously.
+    """
+    import torch
+
+    from so101_nexus.config import PickConfig
+    from so101_nexus.rewards import reach_progress
+    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+
+    env = WarpPickLiftVectorEnv(num_envs=2, config=PickConfig(), device="cpu", seed=0)
+    env.reset(seed=0)
+    env._is_grasping = lambda: torch.ones(2)  # force grasped, no real contact needed
+
+    rows, qa = env._world_rows, env._target_qadr
+    env.qpos[rows, qa + 2] = env._initial_obj_z + 0.05  # lift the object, held fixed
+
+    zero = torch.zeros(2)
+    reward1, _, _ = env._compute_reward_terminated(zero, zero)
+    reward2, _, info2 = env._compute_reward_terminated(zero, zero)
+
+    scale = env.config.reward.tanh_shaping_scale
+    # The reward a task_progress=0 formula would pay on the second call --
+    # what the actual (delta-shaped) reward must match, since the potential
+    # did not move between the two identical snapshots. This assertion would
+    # fail against the pre-fix raw-potential formula, which pays the same
+    # nonzero task_objective credit on both calls.
+    expected_no_dwelling_credit = env.config.reward.compute(
+        reach_progress=reach_progress(info2["tcp_to_obj_dist"], scale=scale),
+        is_grasped=info2["is_grasped"],
+        task_progress=torch.zeros(2),
+        is_complete=info2["success"],
+    )
+    assert torch.allclose(reward2, expected_no_dwelling_credit, atol=1e-5)
+    # The first observation of this lift height, from the reset baseline
+    # (Phi(s0) == 0, ungrasped), earns real one-time credit.
+    assert bool((reward1 > reward2 + 1e-3).all())

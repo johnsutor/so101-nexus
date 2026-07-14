@@ -29,7 +29,7 @@ from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.mujoco.spawn_utils import hide_freejoint_slot, place_freejoint_slot
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import CubeObject, YCBObject
-from so101_nexus.rewards import reach_progress
+from so101_nexus.rewards import potential_shaping, reach_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
@@ -120,6 +120,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
         self._target_slot_idx: int = 0
         self._initial_obj_z: float = 0.0
+        self._prev_task_potential: float = 0.0
         self._obj_geom_id: int = self._slots[0].geom_id
         self.task_description = config.task_description
 
@@ -156,17 +157,52 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             return self._get_target_pos() - self._get_object_pose()[:3]
         return super()._get_component_data(component)
 
+    def _obj_placement_state(
+        self, obj_pos: np.ndarray, target_pos: np.ndarray
+    ) -> tuple[float, bool]:
+        """Return ``(obj_to_target_xy_dist, is_obj_placed)`` for the given pose."""
+        obj_to_target_dist = float(np.linalg.norm(obj_pos[:2] - target_pos[:2]))
+        is_obj_placed = (
+            obj_to_target_dist <= self.config.goal_thresh
+            and obj_pos[2] < self._initial_obj_z + _PLACE_Z_SLACK
+        )
+        return obj_to_target_dist, is_obj_placed
+
+    def _task_potential(
+        self, obj_pos: np.ndarray, target_pos: np.ndarray, is_grasped: float, is_obj_placed: bool
+    ) -> float:
+        """``Phi_place(s)``: joint xy/height/stillness progress toward completion.
+
+        Zero unless the object has been grasped or is already placed; otherwise
+        the product of three ``[0, 1]`` progress factors (goal xy proximity,
+        height back near rest, arm stillness), so credit only accrues when every
+        sub-goal improves together -- a smooth relaxation of ``success``'s hard
+        AND. Fed through ``rewards.potential_shaping`` as a step-to-step delta
+        rather than used directly as ``task_progress``, so dwelling at any fixed
+        state (e.g. hovering the grasped object above the goal without lowering
+        it) earns ~0 further reward instead of paying this value out every step.
+        See docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md.
+        """
+        scale = self.config.reward.tanh_shaping_scale
+        vscale = self.config.reward.velocity_shaping_scale
+        obj_to_target_dist, _ = self._obj_placement_state(obj_pos, target_pos)
+        height_gap = max(0.0, float(obj_pos[2]) - self._initial_obj_z)
+        arm_speed = float(np.linalg.norm(self.data.qvel[self._arm_qvel_addrs]))
+        gate = 1.0 if (is_grasped > 0.5 or is_obj_placed) else 0.0
+        return (
+            reach_progress(obj_to_target_dist, scale=scale)
+            * reach_progress(height_gap, scale=scale)
+            * reach_progress(arm_speed, scale=vscale)
+            * gate
+        )
+
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
         obj_pos = self._get_object_pose()[:3]
         target_pos = self._get_target_pos()
         is_grasped = self._is_grasping()
 
-        obj_to_target_dist = float(np.linalg.norm(obj_pos[:2] - target_pos[:2]))
-        is_obj_placed = (
-            obj_to_target_dist <= self.config.goal_thresh
-            and obj_pos[2] < self._initial_obj_z + _PLACE_Z_SLACK
-        )
+        obj_to_target_dist, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
         is_robot_static = self._is_robot_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
         success = is_obj_placed and is_robot_static
@@ -179,6 +215,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             "lift_height": lift_height,
             "success": success,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
+            "task_potential": self._task_potential(obj_pos, target_pos, is_grasped, is_obj_placed),
         }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state
@@ -188,19 +225,16 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         scale = self.config.reward.tanh_shaping_scale
         rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         is_grasped = info["is_grasped"] > 0.5
-        # Credit placement while grasped OR once the object is set down, so
-        # releasing the grasp to finish the task does not erase progress. The disc
-        # goal is on the table (unlike ManiSkill's airborne goal), so a released,
-        # resting object must still count.
-        placement_progress = (
-            reach_progress(info["obj_to_target_dist"], scale=scale)
-            if (is_grasped or info["is_obj_placed"])
-            else 0.0
-        )
+        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
+        # 1999; see _task_potential), not the raw potential -- dwelling at any
+        # fixed state pays ~0 per step instead of the potential's full value.
+        task_potential = info["task_potential"]
+        task_progress = potential_shaping(task_potential, self._prev_task_potential)
+        self._prev_task_potential = task_potential
         components = self.config.reward.compute_components(
             reach_progress=rp,
             is_grasped=is_grasped,
-            task_progress=placement_progress,
+            task_progress=task_progress,
             is_complete=info["success"],
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),
@@ -209,8 +243,15 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return sum(components.values())
 
     def _refresh_reset_reference_state(self) -> None:
-        """Refresh the placement baseline from the post-settle object pose."""
+        """Refresh the placement baseline and task potential from the post-settle pose."""
         self._initial_obj_z = float(self._get_object_pose()[2])
+        obj_pos = self._get_object_pose()[:3]
+        target_pos = self._get_target_pos()
+        is_grasped = self._is_grasping()
+        _, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
+        self._prev_task_potential = self._task_potential(
+            obj_pos, target_pos, is_grasped, is_obj_placed
+        )
 
     def _task_reset(self) -> None:
         rng = self.np_random

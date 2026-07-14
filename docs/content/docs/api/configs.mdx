@@ -136,7 +136,7 @@ Defines reward component weights and computes the shaped reward.
 ```python
 from so101_nexus import RewardConfig
 
-reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.40, completion_bonus=0.10)
+reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.25, completion_bonus=0.25)
 ```
 
 ### Constructor Parameters
@@ -145,11 +145,12 @@ reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.40, complet
 |-----------|------|---------|-------------|
 | `reaching` | `float` | `0.25` | Weight for the reaching component |
 | `grasping` | `float` | `0.25` | Weight for the grasping component |
-| `task_objective` | `float` | `0.40` | Weight for the task-specific objective |
-| `completion_bonus` | `float` | `0.10` | Weight for the task completion bonus |
+| `task_objective` | `float` | `0.25` | Weight for the task-specific objective |
+| `completion_bonus` | `float` | `0.25` | Weight for the task completion bonus |
 | `action_delta_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of consecutive action deltas |
 | `energy_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of the action vector |
 | `tanh_shaping_scale` | `float` | `5.0` | Scale factor for tanh reward shaping |
+| `velocity_shaping_scale` | `float` | `15.0` | Scale factor for tanh velocity shaping (only read by `PickAndPlaceConfig`'s task potential) |
 
 ### Validation
 

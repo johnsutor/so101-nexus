@@ -9,6 +9,18 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `so101_nexus.rewards.potential_shaping`: a potential-based reward-shaping delta helper (`Phi(s') - Phi(s)`, the `gamma=1` case of Ng, Harada & Russell's policy-invariance theorem, ICML 1999). `RewardConfig.velocity_shaping_scale` (new field, default `15.0`) scales a dense arm-stillness shaping factor used by the pick-and-place potential below.
+- `PickAndPlaceEnv`/`WarpPickAndPlaceVectorEnv` info now includes `task_potential`: the current value of the smooth completion-progress potential (goal-xy proximity x height-back-near-rest x arm-stillness x grasped-or-placed), useful for diagnosing reward shaping during training.
+- `RewardConfig.velocity_shaping_scale` is only read by `PickAndPlaceEnv._task_potential`; customizing it on `PickConfig` (pick-lift), `TouchConfig`, `MoveConfig`, or `LookAtConfig` now warns (no dead knobs), matching the existing `reaching`/`grasping`/`task_objective`/`tanh_shaping_scale` inert-field warnings.
+
+### Changed
+
+- Pick-and-place and pick-lift `task_progress` (both backends) is now a potential-based shaping delta (`Phi(s') - Phi(s)`) instead of the raw potential value, closing a reward-hacking trap: a policy that reached a high-reward state and then stopped moving (e.g. carrying a grasped object to hover above the pick-and-place goal disc without lowering it) previously kept collecting up to 90% of the per-step reward budget indefinitely without ever completing the task, since `task_progress` was recomputed fresh from instantaneous state every step. Summed over an episode the new delta telescopes to `Phi(final) - Phi(initial)`, bounded regardless of dwell time, so hovering now earns ~0 further reward after the first step. Pick-and-place's potential additionally gates on height-back-near-rest and arm stillness (previously xy-only), a smooth relaxation of `success`'s `is_obj_placed & is_robot_static` AND condition. `reaching`/`grasping` and Touch/Move/LookAt's shaping mechanism are unchanged (see the default-weight entry below for a separate, shared-field magnitude change that does touch Touch/Move/LookAt).
+
+- `RewardConfig`'s default weights are now equal across all four components: `reaching=0.25, grasping=0.25, task_objective=0.25, completion_bonus=0.25` (previously `task_objective=0.40, completion_bonus=0.10`). Matches the reference environment's actual reward structure: ManiSkill's `StackCubeEnv.compute_dense_reward` allocates an equal 2-of-8 (25%) budget to each of its four completion stages (reach, grasp, place, success), via sequential floor-jumps rather than this repo's flat weighted sum, but the per-stage split is the same. `task_objective`'s exploit-closing property (see the potential-based shaping entry above) does not depend on its weight's magnitude, so this rebalance is a pure precedent-alignment change, not a follow-up fix. `completion_bonus` is live for every task (`simple_reward` uses it too, not only `RewardConfig.compute`), so this also rescales Touch/Move/LookAt reward magnitudes (`shaped = (1 - completion_bonus) * progress` is now `0.75 * progress`, previously `0.90 * progress`); their reward *mechanism* (raw progress, no potential-based delta) is unchanged, only this shared weight's default value moved. Determinism goldens regenerated to reflect the new defaults.
+
 ## [0.4.7] - 2026-07-12
 
 ### Added

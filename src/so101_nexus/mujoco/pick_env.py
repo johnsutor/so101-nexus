@@ -116,6 +116,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         self._target_slot_idx: int = 0
         self._task_description: str = ""
         self._initial_obj_z: float = 0.0
+        self._prev_task_potential: float = 0.0
         # _obj_geom_id required by base _is_grasping(); will be set at reset
         self._obj_geom_id: int = self._slots[0].geom_id
 
@@ -169,8 +170,11 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _refresh_reset_reference_state(self) -> None:
-        """Refresh lift baseline from the post-settle target object pose."""
+        """Refresh lift baseline and task potential from the post-settle pose."""
         self._initial_obj_z = float(self._get_target_pose()[2])
+        # lift_progress(0, ...) == 0 regardless of grasped (tanh(0) == 0), so the
+        # potential baseline is always 0 here: the object sits at its own baseline.
+        self._prev_task_potential = 0.0
 
     def _task_reset(self) -> None:
         rng = self.np_random
