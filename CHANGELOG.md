@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-07-12
+
 ### Added
 
 - `so101_nexus.rewards.potential_shaping`: a potential-based reward-shaping delta helper (`Phi(s') - Phi(s)`, the `gamma=1` case of Ng, Harada & Russell's policy-invariance theorem, ICML 1999). `RewardConfig.velocity_shaping_scale` (new field, default `15.0`) scales a dense arm-stillness shaping factor used by the pick-and-place potential below.
@@ -268,7 +270,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.7...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.8...HEAD
+[0.4.8]: https://github.com/johnsutor/so101-nexus/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/johnsutor/so101-nexus/compare/0.4.5...0.4.7
 [0.4.5]: https://github.com/johnsutor/so101-nexus/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/johnsutor/so101-nexus/compare/0.4.3...0.4.4
