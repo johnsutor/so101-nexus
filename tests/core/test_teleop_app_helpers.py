@@ -60,11 +60,16 @@ def fake_gradio(monkeypatch):
 
 
 def test_progress_text_formats_episode_count() -> None:
-    assert _progress_text(2, 5) == "**Episode 2 / 5**"
+    assert _progress_text(2, 5) == "**Episode 3 / 5**"
 
 
 def test_progress_text_formats_zero_completed() -> None:
-    assert _progress_text(0, 10) == "**Episode 0 / 10**"
+    assert _progress_text(0, 10) == "**Episode 1 / 10**"
+
+
+def test_progress_text_caps_at_total_once_all_episodes_completed() -> None:
+    """Once every episode is saved, the counter reads N/N, not N+1/N."""
+    assert _progress_text(5, 5) == "**Episode 5 / 5**"
 
 
 def test_format_hub_links_basic() -> None:
@@ -96,11 +101,14 @@ def test_format_hub_links_url_encodes_dataset_page_path() -> None:
     assert "https://huggingface.co/datasets/alice/data%20set" in text
 
 
-def test_cb_validate_repo_id_status_branches(fake_gradio) -> None:
+def test_cb_validate_repo_id_status_branches(fake_gradio, monkeypatch, tmp_path) -> None:
     from so101_nexus.teleop.app import _cb_validate_repo_id
 
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+
     blank = _cb_validate_repo_id("")
-    assert blank["visible"] is False
+    assert blank["visible"] is True
+    assert "local-only" in blank["value"]
 
     ok = _cb_validate_repo_id("alice/dataset")
     assert ok["visible"] is False
@@ -112,6 +120,51 @@ def test_cb_validate_repo_id_status_branches(fake_gradio) -> None:
     invalid = _cb_validate_repo_id("alice/has space")
     assert invalid["visible"] is True
     assert "alphanumeric" in invalid["value"]
+
+
+def test_cb_validate_repo_id_warns_when_local_dataset_exists(
+    fake_gradio, monkeypatch, tmp_path
+) -> None:
+    from so101_nexus.teleop.app import _cb_validate_repo_id
+
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+    (tmp_path / "alice" / "dataset").mkdir(parents=True)
+
+    result = _cb_validate_repo_id("alice/dataset")
+
+    assert result["visible"] is True
+    assert "already exists on disk" in result["value"]
+
+
+def test_cb_validate_repo_id_skips_remote_check_by_default(
+    fake_gradio, monkeypatch, tmp_path
+) -> None:
+    from so101_nexus.teleop.app import _cb_validate_repo_id
+
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+
+    def _boom(repo_id, repo_type):
+        raise AssertionError("remote check should not run without check_remote=True")
+
+    monkeypatch.setattr("huggingface_hub.repo_exists", _boom)
+
+    result = _cb_validate_repo_id("alice/dataset")
+
+    assert result["visible"] is False
+
+
+def test_cb_validate_repo_id_warns_when_remote_dataset_exists(
+    fake_gradio, monkeypatch, tmp_path
+) -> None:
+    from so101_nexus.teleop.app import _cb_validate_repo_id
+
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+    monkeypatch.setattr("huggingface_hub.repo_exists", lambda repo_id, repo_type: True)
+
+    result = _cb_validate_repo_id("alice/dataset", check_remote=True)
+
+    assert result["visible"] is True
+    assert "already exists on the HuggingFace Hub" in result["value"]
 
 
 def test_format_port_status_ok_when_accessible(monkeypatch) -> None:

@@ -13,9 +13,12 @@ import datetime
 import importlib
 import tempfile
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 
+if TYPE_CHECKING:
+    from pathlib import Path
 from so101_nexus.observations import OverheadCamera, WristCamera
 from so101_nexus.teleop.config_customization import (
     ConfigFactory,
@@ -65,6 +68,38 @@ def _default_repo_id(env_id: str) -> str:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = env_id.replace("/", "-").replace(" ", "_")
     return f"local/teleop-{safe}-{ts}"
+
+
+def local_dataset_path(repo_id: str) -> Path:
+    """Return the on-disk LeRobot dataset directory for *repo_id*."""
+    from lerobot.utils.constants import HF_LEROBOT_HOME
+
+    return HF_LEROBOT_HOME / repo_id.strip()
+
+
+def local_dataset_exists(repo_id: str) -> bool:
+    """Return whether a LeRobot dataset directory already exists for *repo_id*."""
+    stripped = repo_id.strip()
+    return bool(stripped) and local_dataset_path(stripped).exists()
+
+
+def remote_dataset_exists(repo_id: str) -> bool | None:
+    """Return whether *repo_id* already exists as a dataset on the HuggingFace Hub.
+
+    Returns ``None`` when existence cannot be determined -- a malformed or
+    local-only repo ID, or an unreachable Hub -- rather than raising, since
+    this backs a best-effort UI warning and must never block recording.
+    """
+    stripped = repo_id.strip()
+    if validate_hub_repo_id(stripped) is not RepoIdStatus.OK:
+        return None
+
+    from huggingface_hub import repo_exists
+
+    try:
+        return repo_exists(stripped, repo_type="dataset")
+    except Exception:
+        return None
 
 
 def _resolve_env_config(env_ctor: type) -> object | None:

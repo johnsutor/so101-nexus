@@ -26,6 +26,9 @@ from so101_nexus.teleop.session import (
     _replace_wrist_camera,
     _resolve_env_config,
     _wire_camera_observations,
+    local_dataset_exists,
+    local_dataset_path,
+    remote_dataset_exists,
     validate_hub_repo_id,
 )
 
@@ -85,6 +88,49 @@ def test_validate_hub_repo_id_invalid_chars() -> None:
 
 def test_validate_hub_repo_id_local_default_passes() -> None:
     assert validate_hub_repo_id("local/teleop-Reach-v0-20260518_120000") is RepoIdStatus.OK
+
+
+def test_local_dataset_path_joins_hf_lerobot_home(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+
+    assert local_dataset_path("alice/my-dataset") == tmp_path / "alice/my-dataset"
+
+
+def test_local_dataset_exists_true_when_directory_present(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+    (tmp_path / "alice" / "my-dataset").mkdir(parents=True)
+
+    assert local_dataset_exists("alice/my-dataset") is True
+    assert local_dataset_exists("alice/other-dataset") is False
+
+
+def test_local_dataset_exists_false_for_blank_repo_id(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("lerobot.utils.constants.HF_LEROBOT_HOME", tmp_path)
+
+    assert local_dataset_exists("") is False
+    assert local_dataset_exists("   ") is False
+
+
+def test_remote_dataset_exists_skips_network_for_non_ok_status() -> None:
+    """Malformed or local-only repo IDs never reach the Hub, so no request is made."""
+    assert remote_dataset_exists("") is None
+    assert remote_dataset_exists("just-a-name") is None
+    assert remote_dataset_exists("alice/has space") is None
+
+
+def test_remote_dataset_exists_returns_hub_result(monkeypatch) -> None:
+    monkeypatch.setattr("huggingface_hub.repo_exists", lambda repo_id, repo_type: True)
+
+    assert remote_dataset_exists("alice/my-dataset") is True
+
+
+def test_remote_dataset_exists_returns_none_on_hub_error(monkeypatch) -> None:
+    def _raise(repo_id, repo_type):
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr("huggingface_hub.repo_exists", _raise)
+
+    assert remote_dataset_exists("alice/my-dataset") is None
 
 
 class _ExplicitConfigEnv:
