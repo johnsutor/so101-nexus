@@ -92,8 +92,9 @@ class CustomizationUIState:
 
 
 def _progress_text(completed: int, total: int) -> str:
-    """Format a progress string for the episode counter."""
-    return f"**Episode {completed} / {total}**"
+    """Format a progress string for the episode counter, one-indexed like the recording status."""
+    current = min(completed + 1, total)
+    return f"**Episode {current} / {total}**"
 
 
 def _format_hub_links(repo_id: str) -> str:
@@ -673,26 +674,59 @@ def _cb_update_customization_for_env(env_id: str):
     )
 
 
-def _cb_validate_repo_id(repo_id: str):
-    """Return a warning update for the repo ID input."""
-    import gradio as gr
-
-    from so101_nexus.teleop.session import RepoIdStatus, validate_hub_repo_id
+def _repo_id_warning_messages(repo_id: str, *, check_remote: bool) -> list[str]:
+    """Return warning strings for *repo_id*: format, no-username, and existence conflicts."""
+    from so101_nexus.teleop.session import (
+        RepoIdStatus,
+        local_dataset_exists,
+        local_dataset_path,
+        remote_dataset_exists,
+        validate_hub_repo_id,
+    )
 
     status = validate_hub_repo_id(repo_id)
-    if status in (RepoIdStatus.OK, RepoIdStatus.LOCAL_ONLY):
-        return gr.update(visible=False, value="")
+    if status is RepoIdStatus.INVALID_CHARS:
+        return [
+            "Invalid repo ID: must be alphanumeric plus `-`, `_`, or `.`, "
+            "with no spaces and a maximum length of 96 characters."
+        ]
+
+    messages: list[str] = []
     if status is RepoIdStatus.MISSING_NAMESPACE:
-        msg = (
+        messages.append(
             "Use `username/dataset` format if you plan to push to the Hub. "
             "Leave blank for local-only recording."
         )
-    else:
-        msg = (
-            "Invalid repo ID: must be alphanumeric plus `-`, `_`, or `.`, "
-            "with no spaces and a maximum length of 96 characters."
+    elif status is RepoIdStatus.LOCAL_ONLY:
+        messages.append(
+            "No username given: recording will be local-only. Use `username/dataset` "
+            "if you want to be able to push this dataset to the Hub."
         )
-    return gr.update(visible=True, value=f"_{msg}_")
+
+    if status is not RepoIdStatus.LOCAL_ONLY and local_dataset_exists(repo_id):
+        messages.append(f"A dataset already exists on disk at `{local_dataset_path(repo_id)}`.")
+
+    if check_remote and status is RepoIdStatus.OK and remote_dataset_exists(repo_id):
+        messages.append(
+            f"A dataset named `{repo_id.strip()}` already exists on the HuggingFace Hub."
+        )
+
+    return messages
+
+
+def _cb_validate_repo_id(repo_id: str, *, check_remote: bool = False):
+    """Return a warning update for the repo ID input.
+
+    *check_remote* additionally queries the HuggingFace Hub for a name
+    collision; callers should reserve that for infrequent triggers (e.g. on
+    blur) since it is a network call.
+    """
+    import gradio as gr
+
+    messages = _repo_id_warning_messages(repo_id, check_remote=check_remote)
+    if not messages:
+        return gr.update(visible=False, value="")
+    return gr.update(visible=True, value="\n\n".join(f"_{msg}_" for msg in messages))
 
 
 def _cb_poll_init(session: dict, init_state: dict):
@@ -1446,6 +1480,11 @@ def _wire_events(
     )
     repo_id_input.change(
         fn=_cb_validate_repo_id,
+        inputs=[repo_id_input],
+        outputs=[repo_id_warning],
+    )
+    repo_id_input.blur(
+        fn=functools.partial(_cb_validate_repo_id, check_remote=True),
         inputs=[repo_id_input],
         outputs=[repo_id_warning],
     )

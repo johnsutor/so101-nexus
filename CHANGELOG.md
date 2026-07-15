@@ -9,6 +9,11 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Changed
+
+- Teleop recorder UI: the episode progress counter is now one-indexed ("Episode 1 / 5" at the start of the first episode, matching the already-one-indexed "Recording episode 1/5..." status text) instead of showing "Episode 0 / 5" before any episode was recorded.
+- Teleop recorder UI: the dataset Repo ID warning now also flags a repo ID that already has a dataset on local disk (`HF_LEROBOT_HOME/<repo_id>`), flags (on blur) a repo ID that already exists as a dataset on the HuggingFace Hub, and warns when no `username/` namespace is given that the recording will be local-only and cannot be pushed to the Hub.
+
 ## [0.4.8] - 2026-07-12
 
 ### Added
