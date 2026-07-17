@@ -395,7 +395,6 @@ def test_pick_and_place_reward_no_dwelling_when_hovering():
     import torch
 
     from so101_nexus.config import PickAndPlaceConfig
-    from so101_nexus.rewards import reach_progress
     from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
 
     env = WarpPickAndPlaceVectorEnv(num_envs=2, config=PickAndPlaceConfig(), device="cpu", seed=0)
@@ -412,15 +411,17 @@ def test_pick_and_place_reward_no_dwelling_when_hovering():
     reward1, _, _ = env._compute_reward_terminated(zero, zero)
     reward2, _, info2 = env._compute_reward_terminated(zero, zero)
 
-    scale = env.config.reward.tanh_shaping_scale
-    # The reward a task_progress=0 formula would pay on the second call --
-    # what the actual (delta-shaped) reward must match, since the potential
-    # did not move between the two identical hover snapshots. This assertion
-    # would fail against the pre-fix raw-potential formula, which pays the
-    # same nonzero task_objective credit on both calls.
+    # The reward a fully-zero-delta formula would pay on the second call --
+    # what the actual (delta-shaped) reward must match, since reach, grasp,
+    # and task potential all held steady between the two identical hover
+    # snapshots (reaching/grasping are potential-shaped deltas too, same
+    # rationale as task_progress -- see docs/superpowers/plans/
+    # 2026-07-16-pick-grasp-potential-shaping.md). This assertion would fail
+    # against the pre-fix raw-value formula, which pays the same nonzero
+    # reaching/grasping/task_objective credit on both calls.
     expected_no_dwelling_credit = env.config.reward.compute(
-        reach_progress=reach_progress(info2["tcp_to_obj_dist"], scale=scale),
-        is_grasped=info2["is_grasped"],
+        reach_progress=torch.zeros(2),
+        is_grasped=torch.zeros(2),
         task_progress=torch.zeros(2),
         is_complete=info2["success"],
     )
@@ -444,7 +445,6 @@ def test_pick_lift_reward_no_dwelling_at_fixed_height():
     import torch
 
     from so101_nexus.config import PickConfig
-    from so101_nexus.rewards import reach_progress
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
     env = WarpPickLiftVectorEnv(num_envs=2, config=PickConfig(), device="cpu", seed=0)
@@ -458,15 +458,17 @@ def test_pick_lift_reward_no_dwelling_at_fixed_height():
     reward1, _, _ = env._compute_reward_terminated(zero, zero)
     reward2, _, info2 = env._compute_reward_terminated(zero, zero)
 
-    scale = env.config.reward.tanh_shaping_scale
-    # The reward a task_progress=0 formula would pay on the second call --
-    # what the actual (delta-shaped) reward must match, since the potential
-    # did not move between the two identical snapshots. This assertion would
-    # fail against the pre-fix raw-potential formula, which pays the same
-    # nonzero task_objective credit on both calls.
+    # The reward a fully-zero-delta formula would pay on the second call --
+    # what the actual (delta-shaped) reward must match, since reach, grasp,
+    # and lift potential all held steady between the two identical snapshots
+    # (reaching/grasping are potential-shaped deltas too, same rationale as
+    # task_progress -- see docs/superpowers/plans/
+    # 2026-07-16-pick-grasp-potential-shaping.md). This assertion would fail
+    # against the pre-fix raw-value formula, which pays the same nonzero
+    # reaching/grasping/task_objective credit on both calls.
     expected_no_dwelling_credit = env.config.reward.compute(
-        reach_progress=reach_progress(info2["tcp_to_obj_dist"], scale=scale),
-        is_grasped=info2["is_grasped"],
+        reach_progress=torch.zeros(2),
+        is_grasped=torch.zeros(2),
         task_progress=torch.zeros(2),
         is_complete=info2["success"],
     )

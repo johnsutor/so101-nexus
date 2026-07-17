@@ -129,7 +129,7 @@ env = gym.make("MuJoCoPickLift-v1", config=config)
 
 ## Tune Rewards
 
-Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). The four weights must sum to 1.0. Optional penalty terms are applied separately.
+Reward is composed of four weighted components: `reaching` (progress toward the object), `grasping` (gripper contact), `task_objective` (the primary goal like lifting), and `completion_bonus` (one-time success reward). The four weights must sum to 1.0. Optional penalty terms are applied separately. For pick-lift and pick-and-place, `reaching`/`grasping`/`task_objective` pay a potential-shaped *change* in progress rather than the raw value, so dwelling at a fixed state (e.g. holding a grasped object without lifting or placing it) earns no further reward.
 
 ```python
 from so101_nexus import RewardConfig, PickConfig

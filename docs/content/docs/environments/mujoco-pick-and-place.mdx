@@ -96,8 +96,16 @@ The reward is a shaped sum of:
 
 - **Reaching** -- progress toward the cube
 - **Grasping** -- bonus for grasping the cube
-- **Placement progress** -- reward for moving the cube closer to the target
+- **Placement progress** -- reward for moving the cube toward the target, lowering it, and settling
 - **Completion** -- bonus when the success condition is met
+
+PickAndPlace has several things to get right in order (reach, grasp, carry,
+lower, settle), so `reaching`/`grasping`/`placement progress` each pay for
+*making progress*, not for the current state: carrying the cube to the target
+and then just holding it there in the air pays no further reward past the
+initial credit for each step -- it has to actually be lowered and set down.
+See [Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation of why.
 
 ## Example
 

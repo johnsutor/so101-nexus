@@ -45,6 +45,14 @@ No objects are present. The goal position is computed at episode start from the 
 
 Succeeds when the TCP has traveled at least `target_distance` along the move direction (within `success_threshold`), regardless of perpendicular drift.
 
+## Reward
+
+Reward rises smoothly as the TCP travels toward the target displacement, plus
+a one-time bonus on success. Move has just one thing to accomplish, so the
+reward reflects the TCP's current displacement, not just a change since last
+step. See [Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation.
+
 ## Example
 
 ```python

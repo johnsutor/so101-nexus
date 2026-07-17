@@ -586,27 +586,34 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             self._viewer = None
 
     def _lift_reward(self, info: dict) -> float:
-        """Lift reward: reach + grasp + potential-based tanh lift shaping + completion bonus.
+        """Lift reward: potential-shaped reach + grasp + lift + completion bonus.
 
         Stores the per-facet breakdown on ``info["reward_components"]`` (see
         ``RewardConfig.compute_components``) so recorders can persist each
-        facet alongside the summed total returned here. ``task_progress`` is a
-        potential-based delta (Ng, Harada & Russell, ICML 1999; see
-        ``rewards.potential_shaping``), not the raw lift potential -- dwelling at
-        a fixed lift height pays ~0 per step instead of the potential's full
-        value every step. Requires the caller to maintain
-        ``self._prev_task_potential``, seeded post-settle by
-        ``_refresh_reset_reference_state`` (see ``PickEnv``).
+        facet alongside the summed total returned here. ``reaching``,
+        ``grasping``, and ``task_progress`` are all potential-based deltas (Ng,
+        Harada & Russell, ICML 1999; see ``rewards.potential_shaping``), not raw
+        state values -- each is a strict subset of ``success``'s completion
+        surface (reach and grasp must happen before lift), so a raw (dwelling)
+        value lets a policy park at "reached and grasped, never lifted" and
+        collect up to their combined budget every step forever. Requires the
+        caller to maintain ``self._prev_reach_progress``,
+        ``self._prev_grasp_progress``, and ``self._prev_task_potential``, seeded
+        post-settle by ``_refresh_reset_reference_state`` (see ``PickEnv``).
         """
         scale = self.config.reward.tanh_shaping_scale
-        rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
-        is_grasped = info["is_grasped"] > 0.5
-        lift_potential = lift_progress(info["lift_height"], scale=scale, grasped=is_grasped)
+        reach_now = reach_progress(info["tcp_to_obj_dist"], scale=scale)
+        grasp_now = float(info["is_grasped"] > 0.5)
+        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
+        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
+        self._prev_reach_progress = reach_now
+        self._prev_grasp_progress = grasp_now
+        lift_potential = lift_progress(info["lift_height"], scale=scale, grasped=grasp_now)
         lift_prog = potential_shaping(lift_potential, self._prev_task_potential)
         self._prev_task_potential = lift_potential
         components = self.config.reward.compute_components(
-            reach_progress=rp,
-            is_grasped=is_grasped,
+            reach_progress=reach_delta,
+            is_grasped=grasp_delta,
             task_progress=lift_prog,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),

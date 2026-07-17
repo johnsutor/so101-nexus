@@ -50,6 +50,17 @@ ENV_MATRIX: list[tuple[str, type]] = [
 ]
 ENV_IDS = [e for e, _ in ENV_MATRIX]
 
+# Pick-lift/pick-and-place feed `reaching`/`grasping`/`task_objective` as
+# potential-based deltas (see rewards.potential_shaping), which can swing
+# negative on a genuine regression (e.g. losing a grasp), not just the
+# positive-only raw progress values Touch/Move/LookAt use. Worst-case
+# non-terminal bound with default equal weights: -(0.25+0.25+0.25) = -0.75.
+_MULTI_PHASE_REWARD_RANGE = (-0.75, 1.0)
+REWARD_RANGE_OVERRIDES: dict[str, tuple[float, float]] = {
+    "MuJoCoPickLift-v1": _MULTI_PHASE_REWARD_RANGE,
+    "MuJoCoPickAndPlace-v1": _MULTI_PHASE_REWARD_RANGE,
+}
+
 CUBE_COLORS = list(CUBE_COLOR_MAP.keys())
 YCB_MODEL_IDS = list(YCB_OBJECTS.keys())
 MOVE_DIRECTIONS = ["up", "down", "left", "right", "forward", "backward"]
@@ -85,7 +96,8 @@ def _run_episode(env, n_steps: int = N_STEPS):
 def test_gymnasium_contract(env_id: str, config_cls: type):
     """Every env satisfies the shared Gymnasium contract."""
     del config_cls  # parametrized for symmetry with other matrix tests.
-    run_env_contract(env_id)
+    reward_range = REWARD_RANGE_OVERRIDES.get(env_id, (0.0, 1.0))
+    run_env_contract(env_id, reward_range=reward_range)
 
 
 _ENV_OBS_MAP: dict[str, list[type]] = {
@@ -455,12 +467,19 @@ def test_pick_and_place_success_false_at_reset():
         env.close()
 
 
-def test_pick_and_place_reward_in_unit_range():
+def test_pick_and_place_reward_in_bounds():
+    """Per-step reward stays within the documented multi-phase bound.
+
+    ``reaching``/``grasping``/``task_objective`` are all potential-based
+    deltas (see ``REWARD_RANGE_OVERRIDES``), so a non-terminal step can score
+    down to -0.75 (default equal weights), not just the [0, 1] raw-progress
+    range Touch/Move/LookAt stay within.
+    """
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         env.reset()
         _, reward, _, _, _ = env.step(env.action_space.sample())
-        assert 0.0 <= float(reward) <= 1.0
+        assert -0.75 <= float(reward) <= 1.0
     finally:
         env.close()
 

@@ -363,11 +363,19 @@ class RewardConfig:
     Parameters
     ----------
     reaching : float
-        Weight for TCP-to-object distance shaping.
+        Weight for TCP-to-object distance shaping. For pick-lift and
+        pick-and-place (both backends) this is fed a potential-based delta
+        (Ng, Harada & Russell, ICML 1999; ``rewards.potential_shaping``), not
+        a raw progress value: reaching and grasping are both a strict subset
+        of ``success``'s completion surface, so a raw value would let a
+        policy park at "reached and grasped, task never finished" and
+        collect this weight's full budget every step forever.
     grasping : float
-        Weight for grasp binary signal.
+        Weight for grasp binary signal. Same potential-based-delta treatment
+        as ``reaching`` for pick-lift and pick-and-place.
     task_objective : float
-        Weight for task-specific progress.
+        Weight for task-specific progress. Also a potential-based delta for
+        pick-lift and pick-and-place; see ``rewards.potential_shaping``.
     completion_bonus : float
         Weight for episode completion signal.
     action_delta_penalty : float

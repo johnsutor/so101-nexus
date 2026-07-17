@@ -13,6 +13,11 @@ for the public-API and deprecation policy.
 
 - Teleop recorder UI: the episode progress counter is now one-indexed ("Episode 1 / 5" at the start of the first episode, matching the already-one-indexed "Recording episode 1/5..." status text) instead of showing "Episode 0 / 5" before any episode was recorded.
 - Teleop recorder UI: the dataset Repo ID warning now also flags a repo ID that already has a dataset on local disk (`HF_LEROBOT_HOME/<repo_id>`), flags (on blur) a repo ID that already exists as a dataset on the HuggingFace Hub, and warns when no `username/` namespace is given that the recording will be local-only and cannot be pushed to the Hub.
+- Pick-lift and pick-and-place `reaching`/`grasping` reward facets (both backends) are now potential-based shaping deltas, like `task_objective` since 0.4.8, instead of raw dwelling values: a policy that reaches and grasps but never finishes the task (lift/place) previously kept collecting up to 0.50/step (the combined `reaching + grasping` budget) indefinitely; it now collects that credit once, on genuine progress, same as `task_objective`. Non-terminal per-step reward for these two envs can now go as low as `-0.75` (default equal weights) instead of `0.0`, since these facets can swing negative on a genuine regression (e.g. losing a grasp) -- terminal (success) reward is unaffected, still clamped to `1.0`. See `docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md`.
+
+### Fixed
+
+- `examples/ppo_warp.py` / `examples/bc_ppo_warp.py`: `RunningMeanStd`, `ObsNormalizer`, and `RewardScaler` now sanitize non-finite (NaN/Inf) inputs, the raw `envs.step()` observation/reward are sanitized before use, and every `optimizer.step()` (including `bc_ppo_warp.py`'s BC-pretrain optimizer) is gated on a finite loss. One diverging parallel Warp world could previously emit a NaN/Inf observation or reward that permanently corrupted the shared running-stat accumulators, eventually crashing training with `ValueError: Normal(loc=NaN, ...)`.
 
 ## [0.4.8] - 2026-07-12
 

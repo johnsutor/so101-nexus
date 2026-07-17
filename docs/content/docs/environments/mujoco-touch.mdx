@@ -48,6 +48,14 @@ Any `CubeObject`, `YCBObject` (e.g. a spoon), or `MeshObject` can be the touch t
 
 Succeeds when the TCP reaches within the target object bounding radius plus `touch_margin`.
 
+## Reward
+
+Reward rises smoothly as the TCP gets closer to the object, plus a one-time
+bonus on success. Touch has just one thing to accomplish, so the reward
+reflects how close the TCP currently is, not just a change since last step.
+See [Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation.
+
 ## Example
 
 ```python

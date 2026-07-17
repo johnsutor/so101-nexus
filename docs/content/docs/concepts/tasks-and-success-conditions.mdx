@@ -31,8 +31,68 @@ Each task defines a binary success signal returned in the `info` dict.
 
 ## Reward Structure
 
-All tasks use a shared reward structure that decomposes into weighted components: reaching progress, grasp quality, the task-specific objective (lifting height, placement accuracy, etc.), and a one-time completion bonus. The weights are configurable through `RewardConfig` and must sum to 1.0.
+Every step, the environment scores how well the robot is doing and hands back a
+number (the reward) between about `-1` and `1`. Higher is better; `1.0` means
+"you just finished the task." A policy is trained to rack up as much reward as
+possible over an episode, so *how* the reward is computed shapes *what
+behavior gets learned* -- this section explains the shape in plain terms.
 
-Distance-based reward components use tanh shaping to produce smooth, bounded rewards that decay as the agent moves away from the goal. Optional penalties for action deltas and energy usage can be enabled for smoother or more efficient behavior.
+The reward is a weighted sum of a few named pieces (`reaching`, `grasping`,
+the task-specific objective, and a one-time `completion_bonus`), configurable
+through [`RewardConfig`](/docs/api/configs) and required to sum to `1.0`. What
+differs across tasks is *what each piece is measuring* and *when it pays out*:
 
-See the [Configs API reference](/docs/api/configs) for all `RewardConfig` parameters and default values.
+### Simple tasks: reward reflects where you are right now
+
+Touch, Move, and LookAt each have one thing to get right (reach a point, move
+a fixed distance, point the camera at an object). For these, the reward each
+step is just "how close are you to done right now" -- a smooth score that's
+low far from the goal and rises toward `1.0` as the robot gets closer, plus a
+one-time bonus the instant the goal is reached. There's nothing to game here:
+since there's only one thing to accomplish and getting closer to it is always
+the same direction as finishing, sitting still doesn't do anything special.
+
+### Multi-step tasks: reward reflects *progress*, not position
+
+PickLift and PickAndPlace involve several things that all have to happen in
+order: reach the object, grasp it, then lift or carry-and-place it, and (for
+PickAndPlace) end up still. Here, the reward that isn't the one-time
+completion bonus is not "how good does this look right now" -- it's "how much
+*better* is this than the last step." Concretely: getting closer pays credit
+once, while it's happening; once you stop getting closer, that piece of the
+reward goes to exactly zero, whether you're standing still one meter away or
+one millimeter away.
+
+This matters because of a real trap a purely "how good does this look" reward
+falls into: imagine the reward for lifting an object just measured how high it
+currently is off the table. A robot arm that picks the object up and then just
+*holds it there*, without ever finishing the task, would keep collecting that
+"it's high up" reward every single step for the rest of the episode -- often
+far more total reward than a robot that finishes quickly and ends the episode
+early. The policy learns to freeze in a good-looking pose instead of finishing,
+because standing still there simply pays better. Rewarding *progress* instead
+of *position* closes that loophole: once you stop improving, the reward for
+that piece stops too, so there's no benefit to parking anywhere short of
+actually finishing. The formal name for this technique is *potential-based
+reward shaping*; see `so101_nexus.rewards.potential_shaping` in the source for
+the implementation if you're curious, but the plain-language version above is
+the whole idea.
+
+One consequence worth knowing: because the reward now reflects a *change*,
+it can go slightly negative if you genuinely lose progress (for example,
+dropping an object you'd already grasped), symmetric to the credit you'd earn
+for making that same progress. This is intentional, not a bug -- it's what
+makes "reward for progress" fair in both directions. Finishing the task always
+pays the maximum reward (`1.0`) regardless of how the rest of the components
+are behaving at that instant.
+
+### Everything else
+
+Distance-based pieces use a smooth curve (tanh shaping) rather than a hard
+cutoff, so reward rises gradually as the robot gets closer rather than jumping
+all at once. Optional penalties for jerky or high-effort motion
+(`action_delta_penalty`, `energy_penalty`) can be turned on for smoother or
+more efficient behavior; they're off by default.
+
+See the [Configs API reference](/docs/api/configs) for all `RewardConfig`
+parameters and default values.

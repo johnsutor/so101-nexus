@@ -44,6 +44,15 @@ The environment uses `CubeObject` instances as gaze targets.
 
 Succeeds when the target is within the wrist camera's field of view: the angle between the wrist-camera optical axis and the direction to the object is at most half the camera FOV (`fov_deg / 2`, or the live `cam_fovy / 2` when `fov_deg` is `None`). The dense reward shapes toward dead-center (1.0 when perfectly aligned), rewarding the object being centered in the frame.
 
+## Reward
+
+Reward rises smoothly as the wrist camera centers the target in its field of
+view, plus a one-time bonus on success. LookAt has just one thing to
+accomplish, so the reward reflects how centered the object currently is, not
+just a change since last step. See
+[Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation.
+
 ## Example
 
 ```python
