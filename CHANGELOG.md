@@ -9,6 +9,14 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `so101_nexus.rewards.place_task_potential`, `place_reach_potential`, `place_grasp_potential`: shared, tensor-agnostic facet potentials for place tasks, now used by both pick-and-place backends instead of per-backend inline formulas.
+
+### Changed
+
+- Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held up by `is_obj_placed` so releasing on the goal and retreating after delivery pay no negative delta. Dwelling anywhere still pays ~0 (all facets remain potential-based deltas), genuine regressions (dropping the object mid-carry, knocking it off the goal) still pay negative deltas, and per-step bounds are unchanged at `[-0.75, 1.0]`. See `docs/superpowers/plans/2026-07-16-monotone-place-potential.md`.
+
 ## [0.4.9] - 2026-07-16
 
 ### Changed

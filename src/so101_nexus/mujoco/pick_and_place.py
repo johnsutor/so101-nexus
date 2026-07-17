@@ -29,7 +29,12 @@ from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.mujoco.spawn_utils import hide_freejoint_slot, place_freejoint_slot
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import CubeObject, YCBObject
-from so101_nexus.rewards import potential_shaping, reach_progress
+from so101_nexus.rewards import (
+    place_grasp_potential,
+    place_reach_potential,
+    place_task_potential,
+    potential_shaping,
+)
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
@@ -173,29 +178,25 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     def _task_potential(
         self, obj_pos: np.ndarray, target_pos: np.ndarray, is_grasped: float, is_obj_placed: bool
     ) -> float:
-        """``Phi_place(s)``: joint xy/height/stillness progress toward completion.
+        """``Phi_place(s)``: staged transport-then-settle progress toward completion.
 
-        Zero unless the object has been grasped or is already placed; otherwise
-        the product of three ``[0, 1]`` progress factors (goal xy proximity,
-        height back near rest, arm stillness), so credit only accrues when every
-        sub-goal improves together -- a smooth relaxation of ``success``'s hard
-        AND. Fed through ``rewards.potential_shaping`` as a step-to-step delta
-        rather than used directly as ``task_progress``, so dwelling at any fixed
-        state (e.g. hovering the grasped object above the goal without lowering
-        it) earns ~0 further reward instead of paying this value out every step.
-        See docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md.
+        Thin physics-query wrapper around ``rewards.place_task_potential``,
+        which is monotone non-decreasing along the ideal grasp-lift-carry-
+        lower-settle trajectory so ``rewards.potential_shaping`` pays a
+        positive delta for forward progress and ~0 for dwelling at any fixed
+        state. See docs/superpowers/plans/2026-07-16-monotone-place-potential.md.
         """
-        scale = self.config.reward.tanh_shaping_scale
-        vscale = self.config.reward.velocity_shaping_scale
         obj_to_target_dist, _ = self._obj_placement_state(obj_pos, target_pos)
         height_gap = max(0.0, float(obj_pos[2]) - self._initial_obj_z)
         arm_speed = float(np.linalg.norm(self.data.qvel[self._arm_qvel_addrs]))
-        gate = 1.0 if (is_grasped > 0.5 or is_obj_placed) else 0.0
-        return (
-            reach_progress(obj_to_target_dist, scale=scale)
-            * reach_progress(height_gap, scale=scale)
-            * reach_progress(arm_speed, scale=vscale)
-            * gate
+        return place_task_potential(
+            obj_to_target_dist,
+            height_gap,
+            arm_speed,
+            is_grasped,
+            is_obj_placed,
+            scale=self.config.reward.tanh_shaping_scale,
+            velocity_scale=self.config.reward.velocity_shaping_scale,
         )
 
     def _get_info(self) -> dict:
@@ -225,14 +226,16 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         scale = self.config.reward.tanh_shaping_scale
-        # reaching/grasping are potential-shaped deltas, not raw state values --
-        # like task_progress below, both are a strict subset of `success`'s
-        # completion surface (must reach and grasp before placing), so a raw
-        # (dwelling) value lets a policy park at "reached and grasped, carrying,
-        # never placed" and collect up to their combined budget every step
-        # forever. See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
-        reach_now = reach_progress(info["tcp_to_obj_dist"], scale=scale)
-        grasp_now = float(info["is_grasped"] > 0.5)
+        # reaching/grasping are potential-shaped deltas, not raw state values
+        # (dwelling at "reached and grasped, never placed" must pay ~0/step, see
+        # docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md), and
+        # both potentials are held up by is_obj_placed so the mandatory release
+        # on the goal and the post-place retreat pay no negative delta (see
+        # docs/superpowers/plans/2026-07-16-monotone-place-potential.md).
+        reach_now = place_reach_potential(
+            info["tcp_to_obj_dist"], info["is_obj_placed"], scale=scale
+        )
+        grasp_now = place_grasp_potential(info["is_grasped"], info["is_obj_placed"])
         reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
         grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
         self._prev_reach_progress = reach_now
@@ -266,8 +269,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         )
         scale = self.config.reward.tanh_shaping_scale
         tcp_to_obj_dist = float(np.linalg.norm(obj_pos - self._get_tcp_pose()[:3]))
-        self._prev_reach_progress = reach_progress(tcp_to_obj_dist, scale=scale)
-        self._prev_grasp_progress = is_grasped
+        self._prev_reach_progress = place_reach_potential(
+            tcp_to_obj_dist, is_obj_placed, scale=scale
+        )
+        self._prev_grasp_progress = place_grasp_potential(is_grasped, is_obj_placed)
 
     def _task_reset(self) -> None:
         rng = self.np_random

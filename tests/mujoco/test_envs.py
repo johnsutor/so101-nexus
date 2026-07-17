@@ -867,6 +867,7 @@ def test_pick_and_place_success_is_reward_maximum_regardless_of_task_progress():
                 "tcp_to_obj_dist": 0.0,
                 "is_grasped": float(is_grasped),
                 "success": success,
+                "is_obj_placed": success,
                 "task_potential": task_potential,
             }
 
@@ -905,6 +906,7 @@ def test_pick_and_place_hovering_earns_no_dwelling_task_objective_reward():
             return {
                 "tcp_to_obj_dist": 0.0,
                 "is_grasped": 1.0,
+                "is_obj_placed": False,
                 "success": False,
                 "task_potential": task_potential,
             }
@@ -925,6 +927,67 @@ def test_pick_and_place_hovering_earns_no_dwelling_task_objective_reward():
         env.close()
 
 
+def test_pick_and_place_reward_nonnegative_along_ideal_trajectory():
+    """Forward progress must never pay negative reward: the facet potentials
+    are monotone non-decreasing along the ideal pick-carry-place trajectory,
+    so the mandatory lift, the transport toward the goal at realistic arm
+    speed, and the release on the goal all score >= 0, and transport pays a
+    real gradient (the stillness-multiplied product formula left ~1e-7). See
+    docs/superpowers/plans/2026-07-16-monotone-place-potential.md.
+    """
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    try:
+        inner = env.unwrapped
+        inner.reset(seed=0)
+        inner._initial_obj_z = 0.0
+        target_pos = np.zeros(3)
+
+        def stage(*, tcp_to_obj, obj_xy, height, arm_speed, grasped, placed):
+            inner.data.qvel[inner._arm_qvel_addrs] = arm_speed
+            obj_pos = np.array([obj_xy, 0.0, height])
+            info = {
+                "tcp_to_obj_dist": tcp_to_obj,
+                "is_grasped": float(grasped),
+                "is_obj_placed": placed,
+                "success": False,
+                "task_potential": inner._task_potential(
+                    obj_pos, target_pos, float(grasped), placed
+                ),
+            }
+            return inner._compute_reward(info), info
+
+        # Stages: label, tcp_to_obj, obj_xy_to_goal, height, arm_speed, grasped, placed.
+        trajectory = [
+            ("reset", 0.25, 0.15, 0.0, 0.0, False, False),
+            ("approach", 0.02, 0.15, 0.0, 0.5, False, False),
+            ("grasp", 0.01, 0.15, 0.0, 0.0, True, False),
+            ("lift", 0.01, 0.15, 0.05, 0.3, True, False),
+            ("carry", 0.01, 0.07, 0.05, 0.5, True, False),
+            ("hover", 0.01, 0.01, 0.05, 0.5, True, False),
+            ("lower", 0.01, 0.005, 0.005, 0.2, True, True),
+            ("release", 0.01, 0.005, 0.0, 0.1, False, True),
+        ]
+        rewards: dict[str, float] = {}
+        infos: dict[str, dict] = {}
+        for i, (label, tcp, xy, h, speed, grasped, placed) in enumerate(trajectory):
+            reward, info = stage(
+                tcp_to_obj=tcp, obj_xy=xy, height=h, arm_speed=speed, grasped=grasped, placed=placed
+            )
+            if i > 0:  # the reset stage only seeds the _prev_* baselines
+                rewards[label], infos[label] = reward, info
+
+        negative = {label: r for label, r in rewards.items() if r < -1e-9}
+        assert not negative, f"forward progress paid negative reward: {negative}"
+        # Carrying the object toward the goal pays a real gradient even while
+        # the arm is moving, not a stillness-muted ~0.
+        assert rewards["carry"] >= 0.005
+        # Releasing the grasp on the goal is forward progress, not a -0.25
+        # grasp regression: the grasp potential is held up by is_obj_placed.
+        assert infos["release"]["reward_components"]["grasping"] == pytest.approx(0.0, abs=1e-9)
+    finally:
+        env.close()
+
+
 def test_pick_and_place_reward_components_sum_through_terminal_clamp():
     """reward_components must still sum to the reward once success lifts it to
     the full budget, and once a penalty is large enough to trigger the
@@ -939,6 +1002,7 @@ def test_pick_and_place_reward_components_sum_through_terminal_clamp():
             "is_grasped": float(is_grasped),
             "success": success,
             "task_potential": task_potential,
+            "is_obj_placed": success,
         }
 
     env = gym.make("MuJoCoPickAndPlace-v1")

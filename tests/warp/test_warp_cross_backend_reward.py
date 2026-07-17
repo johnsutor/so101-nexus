@@ -143,8 +143,8 @@ def _pick_and_place_envs():
 @pytest.mark.parametrize(
     ("obj_xy", "height", "speed", "grasped", "placed"),
     [
-        (0.02, 0.05, 1.0, 1.0, False),  # elevated, arm fast -> low potential
-        (0.02, 0.05, 0.02, 1.0, False),  # elevated, arm nearly still -> partial credit
+        (0.02, 0.05, 1.0, 1.0, False),  # carrying: transport credit at full arm speed
+        (0.02, 0.05, 0.02, 1.0, False),  # nearly still but not placed: same transport credit
         (0.0, 0.0, 0.0, 1.0, True),  # placed and still -> full potential
         (0.3, 0.05, 0.5, 0.0, False),  # ungrasped, far -> gated to 0
     ],
@@ -186,7 +186,14 @@ def test_pick_and_place_task_potential_formula_matches_mujoco(
 
 
 def _set_pick_and_place_state(
-    m, w, *, tcp_to_obj_dist: float, is_grasped: float, task_potential: float, success: bool
+    m,
+    w,
+    *,
+    tcp_to_obj_dist: float,
+    is_grasped: float,
+    task_potential: float,
+    placed: bool,
+    static: bool,
 ):
     """Stub out the geometric potential itself (covered separately above) and
     pin both backends to the same reach/grasp/placement/staticness inputs.
@@ -198,8 +205,8 @@ def _set_pick_and_place_state(
     m._get_tcp_pose = lambda: np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
     m._is_grasping = lambda: float(is_grasped)
     m._task_potential = lambda *a, **k: task_potential
-    m._obj_placement_state = lambda *a, **k: (0.0, success)
-    m._is_robot_static = lambda: success
+    m._obj_placement_state = lambda *a, **k: (0.0, placed)
+    m._is_robot_static = lambda: static
 
     w._target_pos = lambda: torch.tensor([obj] * NUM_ENVS, dtype=torch.float32)
     w._tcp_pos = lambda: torch.zeros(NUM_ENVS, 3)
@@ -208,42 +215,53 @@ def _set_pick_and_place_state(
     w._task_potential = lambda *a, **k: torch.full((NUM_ENVS,), task_potential)
     w._obj_placement_state = lambda *a, **k: (
         torch.zeros(NUM_ENVS),
-        torch.full((NUM_ENVS,), success),
+        torch.full((NUM_ENVS,), placed, dtype=torch.bool),
     )
-    w._is_robot_static = lambda: torch.full((NUM_ENVS,), success, dtype=torch.bool)
+    w._is_robot_static = lambda: torch.full((NUM_ENVS,), static, dtype=torch.bool)
 
 
 def test_pick_and_place_reward_matches_mujoco_across_trajectory():
-    """Reach, grasp, carry (dwelling on task potential), and place-to-success
-    all pay identical reward in both backends. Companion to the PickLift
-    trajectory test above for the other multi-phase task.
+    """Reach, grasp, carry (dwelling on task potential), release on the goal,
+    and place-to-success all pay identical reward in both backends. Companion
+    to the PickLift trajectory test above for the other multi-phase task.
     """
     import torch
 
     m_env, m, w = _pick_and_place_envs()
     try:
         _reset_prev_state(m, w)
-        trajectory: list[tuple[float, float, float, bool]] = [
-            (0.30, 0.0, 0.0, False),  # reaching
-            (0.02, 0.0, 0.0, False),  # reached
-            (0.02, 1.0, 0.0, False),  # grasp
-            (0.02, 1.0, 0.35, False),  # carrying toward the goal: genuine progress
-            (0.02, 1.0, 0.35, False),  # dwell: hovering at the same potential -- must plateau
-            (0.02, 1.0, 1.0, True),  # placed and static -> success
+        trajectory: list[tuple[float, float, float, bool, bool]] = [
+            (0.30, 0.0, 0.0, False, False),  # reaching
+            (0.02, 0.0, 0.0, False, False),  # reached
+            (0.02, 1.0, 0.0, False, False),  # grasp
+            (0.02, 1.0, 0.35, False, False),  # carrying toward the goal: genuine progress
+            (
+                0.02,
+                1.0,
+                0.35,
+                False,
+                False,
+            ),  # dwell: hovering at the same potential -- must plateau
+            (0.02, 1.0, 0.9, True, False),  # lowered onto the goal, still grasped
+            (0.02, 0.0, 0.9, True, False),  # released on the goal: no grasp penalty either side
+            (0.02, 0.0, 1.0, True, True),  # static -> success
         ]
         zero = torch.zeros(NUM_ENVS)
-        for tcp_to_obj_dist, is_grasped, task_potential, success in trajectory:
+        for tcp_to_obj_dist, is_grasped, task_potential, placed, static in trajectory:
+            success = placed and static
             _set_pick_and_place_state(
                 m,
                 w,
                 tcp_to_obj_dist=tcp_to_obj_dist,
                 is_grasped=is_grasped,
                 task_potential=task_potential,
-                success=success,
+                placed=placed,
+                static=static,
             )
             info_m = {
                 "tcp_to_obj_dist": tcp_to_obj_dist,
                 "is_grasped": is_grasped,
+                "is_obj_placed": placed,
                 "task_potential": task_potential,
                 "success": success,
             }
@@ -254,7 +272,8 @@ def test_pick_and_place_reward_matches_mujoco_across_trajectory():
                 tcp_to_obj_dist,
                 is_grasped,
                 task_potential,
-                success,
+                placed,
+                static,
             )
             assert success == bool(success_w[0])
     finally:
