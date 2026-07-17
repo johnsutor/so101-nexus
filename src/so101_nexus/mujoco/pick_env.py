@@ -40,6 +40,7 @@ from so101_nexus.object_slots import (
     extract_object_slots,
 )
 from so101_nexus.objects import SceneObject, YCBObject
+from so101_nexus.rewards import reach_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
 _SO101_DIR = get_so101_mujoco_model_dir()
@@ -117,6 +118,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         self._task_description: str = ""
         self._initial_obj_z: float = 0.0
         self._prev_task_potential: float = 0.0
+        self._prev_reach_progress: float = 0.0
+        self._prev_grasp_progress: float = 0.0
         # _obj_geom_id required by base _is_grasping(); will be set at reset
         self._obj_geom_id: int = self._slots[0].geom_id
 
@@ -170,11 +173,25 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         return info
 
     def _refresh_reset_reference_state(self) -> None:
-        """Refresh lift baseline and task potential from the post-settle pose."""
+        """Refresh lift, reach, and grasp baselines from the post-settle pose.
+
+        ``reaching``/``grasping`` are potential-shaped deltas here, like
+        ``task_progress`` -- both are a strict subset of ``success``'s
+        completion surface (must reach and grasp before lifting), so a raw
+        (dwelling) value lets a policy park at "reached and grasped, never
+        lifted" and collect up to their combined budget every step forever.
+        See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
+        """
         self._initial_obj_z = float(self._get_target_pose()[2])
         # lift_progress(0, ...) == 0 regardless of grasped (tanh(0) == 0), so the
         # potential baseline is always 0 here: the object sits at its own baseline.
         self._prev_task_potential = 0.0
+        scale = self.config.reward.tanh_shaping_scale
+        tcp_pos = self._get_tcp_pose()[:3]
+        obj_pos = self._get_target_pose()[:3]
+        tcp_to_obj_dist = float(np.linalg.norm(obj_pos - tcp_pos))
+        self._prev_reach_progress = reach_progress(tcp_to_obj_dist, scale=scale)
+        self._prev_grasp_progress = self._is_grasping()
 
     def _task_reset(self) -> None:
         rng = self.np_random

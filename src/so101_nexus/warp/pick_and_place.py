@@ -223,6 +223,19 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         is_robot_static = self._is_robot_static()
         success = is_obj_placed & is_robot_static
         scale = self.config.reward.tanh_shaping_scale
+        # reaching/grasping are potential-shaped deltas, not raw state values --
+        # like task_progress below, both are a strict subset of `success`'s
+        # completion surface (must reach and grasp before placing), so a raw
+        # (dwelling) value lets a policy park at "reached and grasped, carrying,
+        # never placed" and collect up to their combined budget every step
+        # forever. Baseline seeded post-settle by the inherited
+        # ``WarpPickLiftVectorEnv._refresh_reset_reference_state``. See
+        # docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
+        reach_now = reach_progress(tcp_to_obj, scale=scale)
+        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
+        grasp_delta = potential_shaping(is_grasped, self._prev_grasp_progress)
+        self._prev_reach_progress = reach_now
+        self._prev_grasp_progress = is_grasped
         # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
         # 1999; see _task_potential), not the raw potential -- dwelling at any
         # fixed state pays ~0 per step instead of the potential's full value.
@@ -230,8 +243,8 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         task_progress = potential_shaping(task_potential, self._prev_task_potential)
         self._prev_task_potential = task_potential
         reward = self.config.reward.compute(
-            reach_progress=reach_progress(tcp_to_obj, scale=scale),
-            is_grasped=is_grasped,
+            reach_progress=reach_delta,
+            is_grasped=grasp_delta,
             task_progress=task_progress,
             is_complete=success,
             action_delta_norm=action_delta_norm,

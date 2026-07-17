@@ -188,6 +188,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._target_slot = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._initial_obj_z = torch.zeros(num_envs, device=self.device)
         self._prev_task_potential = torch.zeros(num_envs, device=self.device)
+        self._prev_reach_progress = torch.zeros(num_envs, device=self.device)
+        self._prev_grasp_progress = torch.zeros(num_envs, device=self.device)
         self._world_rows = torch.arange(num_envs, device=self.device)
         self.task_descriptions = [self._describe_target(scene_objects[0])] * num_envs
 
@@ -297,6 +299,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # lift_progress(0, ...) == 0 regardless of grasped (tanh(0) == 0), so the
         # potential baseline is always 0 here: the object sits at its own baseline.
         self._prev_task_potential[idx] = 0.0
+        scale = self.config.reward.tanh_shaping_scale
+        tcp_to_obj = torch.linalg.norm(self._target_pos() - self._tcp_pos(), dim=1)
+        self._prev_reach_progress[idx] = reach_progress(tcp_to_obj, scale=scale)[idx]
+        self._prev_grasp_progress[idx] = self._is_grasping()[idx]
 
     def _get_component_data(self, component: object) -> torch.Tensor:
         if isinstance(component, ObjectPose):
@@ -316,6 +322,17 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         grasped = is_grasped > 0.5
         success = (lift_height > self.config.lift_threshold) & grasped
         scale = self.config.reward.tanh_shaping_scale
+        # reaching/grasping are potential-shaped deltas, not raw state values --
+        # like task_progress below, both are a strict subset of `success`'s
+        # completion surface (must reach and grasp before lifting), so a raw
+        # (dwelling) value lets a policy park at "reached and grasped, never
+        # lifted" and collect up to their combined budget every step forever.
+        # See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
+        reach_now = reach_progress(tcp_to_obj, scale=scale)
+        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
+        grasp_delta = potential_shaping(is_grasped, self._prev_grasp_progress)
+        self._prev_reach_progress = reach_now
+        self._prev_grasp_progress = is_grasped
         # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
         # 1999; see rewards.potential_shaping), not the raw lift potential --
         # dwelling at a fixed lift height pays ~0 per step instead of the
@@ -324,8 +341,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         task_progress = potential_shaping(lift_potential, self._prev_task_potential)
         self._prev_task_potential = lift_potential
         reward = self.config.reward.compute(
-            reach_progress=reach_progress(tcp_to_obj, scale=scale),
-            is_grasped=is_grasped,
+            reach_progress=reach_delta,
+            is_grasped=grasp_delta,
             task_progress=task_progress,
             is_complete=success,
             action_delta_norm=action_delta_norm,

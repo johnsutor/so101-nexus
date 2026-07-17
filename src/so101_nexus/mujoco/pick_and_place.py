@@ -121,6 +121,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self._target_slot_idx: int = 0
         self._initial_obj_z: float = 0.0
         self._prev_task_potential: float = 0.0
+        self._prev_reach_progress: float = 0.0
+        self._prev_grasp_progress: float = 0.0
         self._obj_geom_id: int = self._slots[0].geom_id
         self.task_description = config.task_description
 
@@ -223,8 +225,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         scale = self.config.reward.tanh_shaping_scale
-        rp = reach_progress(info["tcp_to_obj_dist"], scale=scale)
-        is_grasped = info["is_grasped"] > 0.5
+        # reaching/grasping are potential-shaped deltas, not raw state values --
+        # like task_progress below, both are a strict subset of `success`'s
+        # completion surface (must reach and grasp before placing), so a raw
+        # (dwelling) value lets a policy park at "reached and grasped, carrying,
+        # never placed" and collect up to their combined budget every step
+        # forever. See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
+        reach_now = reach_progress(info["tcp_to_obj_dist"], scale=scale)
+        grasp_now = float(info["is_grasped"] > 0.5)
+        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
+        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
+        self._prev_reach_progress = reach_now
+        self._prev_grasp_progress = grasp_now
         # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
         # 1999; see _task_potential), not the raw potential -- dwelling at any
         # fixed state pays ~0 per step instead of the potential's full value.
@@ -232,8 +244,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         task_progress = potential_shaping(task_potential, self._prev_task_potential)
         self._prev_task_potential = task_potential
         components = self.config.reward.compute_components(
-            reach_progress=rp,
-            is_grasped=is_grasped,
+            reach_progress=reach_delta,
+            is_grasped=grasp_delta,
             task_progress=task_progress,
             is_complete=info["success"],
             action_delta_norm=info.get("action_delta_norm", 0.0),
@@ -243,7 +255,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         return sum(components.values())
 
     def _refresh_reset_reference_state(self) -> None:
-        """Refresh the placement baseline and task potential from the post-settle pose."""
+        """Refresh the placement, reach, and grasp baselines from the post-settle pose."""
         self._initial_obj_z = float(self._get_object_pose()[2])
         obj_pos = self._get_object_pose()[:3]
         target_pos = self._get_target_pos()
@@ -252,6 +264,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_task_potential = self._task_potential(
             obj_pos, target_pos, is_grasped, is_obj_placed
         )
+        scale = self.config.reward.tanh_shaping_scale
+        tcp_to_obj_dist = float(np.linalg.norm(obj_pos - self._get_tcp_pose()[:3]))
+        self._prev_reach_progress = reach_progress(tcp_to_obj_dist, scale=scale)
+        self._prev_grasp_progress = is_grasped
 
     def _task_reset(self) -> None:
         rng = self.np_random
