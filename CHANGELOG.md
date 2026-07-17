@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 See [Stability and versioning](https://so101-nexus.com/docs/getting-started/stability)
 for the public-API and deprecation policy.
 
-## [Unreleased]
+## [0.4.10] - 2026-07-16
 
 ### Added
 
@@ -15,7 +15,10 @@ for the public-API and deprecation policy.
 
 ### Changed
 
-- Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held up by `is_obj_placed` so releasing on the goal and retreating after delivery pay no negative delta. Dwelling anywhere still pays ~0 (all facets remain potential-based deltas), genuine regressions (dropping the object mid-carry, knocking it off the goal) still pay negative deltas, and per-step bounds are unchanged at `[-0.75, 1.0]`. See `docs/superpowers/plans/2026-07-16-monotone-place-potential.md`.
+- Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held constant once the object is placed.
+
+## [Unreleased]
+
 
 ## [0.4.9] - 2026-07-16
 
