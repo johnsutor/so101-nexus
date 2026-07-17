@@ -122,6 +122,20 @@ class Args:
     num_updates: int = field(default=0, init=False)
 
 
+# One diverging Warp world in a batched rollout can emit a NaN/Inf observation
+# or reward; left unguarded that value permanently poisons the shared running
+# mean/variance accumulators below (every subsequent `update()` mixes NaN
+# forward), eventually crashing training with e.g.
+# `ValueError: Normal(loc=NaN, ...)`. `_finite` clamps such values to 0 / a
+# large finite bound instead of letting them propagate.
+_STAT_BOUND = 1e6
+
+
+def _finite(x: torch.Tensor) -> torch.Tensor:
+    """Replace non-finite entries with 0 (NaN) or a large finite bound (+-Inf)."""
+    return torch.nan_to_num(x, nan=0.0, posinf=_STAT_BOUND, neginf=-_STAT_BOUND)
+
+
 class RunningMeanStd:
     """On-GPU Welford running mean / variance for a fixed feature shape."""
 
@@ -131,7 +145,7 @@ class RunningMeanStd:
         self.count = epsilon
 
     def update(self, x: torch.Tensor) -> None:
-        x = x.to(torch.float64)
+        x = _finite(x.to(torch.float64))
         batch_mean = x.mean(dim=0)
         batch_var = x.var(dim=0, unbiased=False)
         batch_count = x.shape[0]
@@ -155,6 +169,7 @@ class ObsNormalizer:
     def __call__(self, obs: torch.Tensor, update: bool = True) -> torch.Tensor:
         if not self.enabled:
             return obs
+        obs = _finite(obs)
         if update:
             self.rms.update(obs)
         normed = (obs - self.rms.mean.float()) / torch.sqrt(self.rms.var.float() + 1e-8)
@@ -173,6 +188,7 @@ class RewardScaler:
     def __call__(self, reward: torch.Tensor, done: torch.Tensor) -> torch.Tensor:
         if not self.enabled:
             return reward
+        reward = _finite(reward)
         self.ret = self.ret * self.gamma + reward.to(torch.float64)
         self.rms.update(self.ret)
         scaled = reward / torch.sqrt(self.rms.var.float() + 1e-8)
@@ -589,8 +605,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
             val_buf[step] = value
 
             next_obs_raw, reward, terminated, truncated, info = envs.step(action)
-            next_obs_raw = next_obs_raw.to(dev)
-            reward = reward.to(dev)
+            next_obs_raw = _finite(next_obs_raw.to(dev))
+            reward = _finite(reward.to(dev))
             terminated = terminated.to(dev)
             done = (terminated | truncated.to(dev)).float()
             succ = info["success"].to(dev).bool()
@@ -683,9 +699,14 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 loss = pg_loss - ent_now * entropy_loss + vf_coef * v_loss
 
                 optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
-                optimizer.step()
+                # A NaN/Inf loss (from a diverging Warp world slipping past the
+                # sanitization above) must not reach the optimizer: backward()
+                # would NaN-poison every parameter's gradient, and step() would
+                # then permanently corrupt the policy weights.
+                if torch.isfinite(loss):
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
+                    optimizer.step()
 
             if target_kl is not None and approx_kl > target_kl:
                 break

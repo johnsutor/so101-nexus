@@ -238,3 +238,102 @@ def test_bc_ppo_warp_rejects_invalid_batch_args_before_env_construction(monkeypa
     monkeypatch.setattr(mod, "_make_envs", fail_make_envs)
     with pytest.raises(ValueError, match=match):
         mod.train(device="cpu", use_demos=False, **kwargs)
+
+
+def test_running_mean_std_update_sanitizes_nan_and_inf():
+    """A NaN/Inf row in a batch must not permanently poison the running
+    mean/variance accumulator (a corrupted stat mixes NaN into every future
+    ``update()`` via the Welford recurrence): the vulnerability that could
+    crash a long ``bc_ppo_warp.py`` run with ``ValueError: Normal(loc=NaN,
+    ...)``. Same ``RunningMeanStd`` code as ``ppo_warp.py`` (copied verbatim),
+    tested again here since the two scripts are standalone copies that could
+    drift independently.
+    """
+    import torch
+
+    import examples.bc_ppo_warp as mod
+
+    rms = mod.RunningMeanStd((3,), "cpu")
+    poisoned = torch.tensor(
+        [[float("nan"), 1.0, float("inf")], [1.0, float("-inf"), 2.0]], dtype=torch.float32
+    )
+    rms.update(poisoned)
+    assert torch.isfinite(rms.mean).all()
+    assert torch.isfinite(rms.var).all()
+
+    rms.update(torch.tensor([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]], dtype=torch.float32))
+    assert torch.isfinite(rms.mean).all()
+    assert torch.isfinite(rms.var).all()
+
+
+def test_obs_normalizer_sanitizes_nan_observation():
+    import torch
+
+    import examples.bc_ppo_warp as mod
+
+    norm = mod.ObsNormalizer(3, "cpu")
+    obs = torch.tensor([[float("nan"), float("inf"), 1.0]])
+    out = norm(obs, update=True)
+    assert torch.isfinite(out).all()
+    assert bool((out >= -10.0).all() and (out <= 10.0).all())
+
+
+def test_reward_scaler_sanitizes_nan_reward():
+    import torch
+
+    import examples.bc_ppo_warp as mod
+
+    scaler = mod.RewardScaler(2, "cpu", gamma=0.99)
+    reward = torch.tensor([float("nan"), float("inf")])
+    done = torch.zeros(2)
+    out = scaler(reward, done)
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(scaler.rms.mean).all()
+    assert torch.isfinite(scaler.rms.var).all()
+
+
+def test_bc_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
+    """End-to-end regression: a single NaN reward from one parallel Warp world
+    (injected at the exact ``envs.step()`` boundary ``train()`` reads) must not
+    propagate into the shared reward-scaler stats, the loss, or the optimizer
+    step -- training must finish with finite losses instead of eventually
+    crashing on a poisoned ``RunningMeanStd``. ``use_demos=False`` keeps this
+    test network-free. See docs/superpowers/plans/
+    2026-07-16-pick-grasp-potential-shaping.md.
+    """
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module("examples.bc_ppo_warp")
+    real_make_envs = mod._make_envs
+    poisoned = {"done": False}
+
+    def make_envs_with_one_nan_step(*args, **kwargs):
+        envs = real_make_envs(*args, **kwargs)
+        real_step = envs.step
+
+        def step(action):
+            obs, reward, terminated, truncated, info = real_step(action)
+            if not poisoned["done"]:
+                poisoned["done"] = True
+                reward = reward.clone()
+                reward[0] = float("nan")
+            return obs, reward, terminated, truncated, info
+
+        envs.step = step
+        return envs
+
+    monkeypatch.setattr(mod, "_make_envs", make_envs_with_one_nan_step)
+    stats = mod.train(
+        num_envs=8,
+        num_steps=8,
+        total_timesteps=8 * 8 * 2,  # two iterations
+        num_minibatches=4,
+        device="cpu",
+        seed=0,
+        use_demos=False,
+    )
+    assert torch.isfinite(torch.tensor(stats["policy_loss"]))
+    assert torch.isfinite(torch.tensor(stats["value_loss"]))
+    assert stats["iterations"] == 2
