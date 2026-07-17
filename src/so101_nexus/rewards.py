@@ -134,3 +134,103 @@ def potential_shaping(potential, prev_potential):
         Potential function value at the previous state, ``Phi(s)``.
     """
     return potential - prev_potential
+
+
+def _elementwise_max(a, b):
+    """Elementwise ``max(a, b)`` across Python floats, NumPy arrays, and torch tensors."""
+    diff = b - a
+    if hasattr(diff, "clamp"):  # torch.Tensor
+        return a + diff.clamp(min=0.0)
+    if isinstance(diff, np.ndarray):
+        return a + np.clip(diff, 0.0, None)
+    return max(a, b)
+
+
+def place_reach_potential(tcp_to_obj_dist, is_obj_placed, *, scale):
+    """Reach potential for place tasks: ``max(reach_progress, is_obj_placed)``.
+
+    Once the object rests on the goal the reach sub-goal is moot, so
+    ``is_obj_placed`` holds the potential at 1.0: retreating the arm after
+    delivery pays no negative ``potential_shaping`` delta, while knocking the
+    object off the goal still does. Accepts Python scalars, NumPy arrays, or
+    torch tensors (duck-typed like ``reach_progress``).
+
+    Parameters
+    ----------
+    tcp_to_obj_dist : float or numpy.ndarray or torch.Tensor
+        Distance from the TCP to the carried object (metres).
+    is_obj_placed : bool or numpy.ndarray or torch.Tensor
+        Whether the object currently rests on the goal.
+    scale : float
+        Positive shaping steepness (``RewardConfig.tanh_shaping_scale``).
+    """
+    return _elementwise_max(reach_progress(tcp_to_obj_dist, scale=scale), is_obj_placed * 1.0)
+
+
+def place_grasp_potential(is_grasped, is_obj_placed):
+    """Grasp potential for place tasks: 1.0 while the object is held or delivered.
+
+    Raw ``is_grasped`` treats the mandatory release on the goal as a
+    regression and pays a -1 ``potential_shaping`` delta at the finish; a
+    sub-goal that a later phase must undo has to be held up by its successor
+    condition. With the ``is_obj_placed`` hold, releasing on the goal pays 0
+    while dropping the object mid-carry still pays the full negative delta.
+    Accepts Python scalars, NumPy arrays, or torch tensors.
+
+    Parameters
+    ----------
+    is_grasped : float or numpy.ndarray or torch.Tensor
+        Whether the object is currently grasped (thresholded at 0.5).
+    is_obj_placed : bool or numpy.ndarray or torch.Tensor
+        Whether the object currently rests on the goal.
+    """
+    return ((is_grasped > 0.5) | is_obj_placed) * 1.0
+
+
+def place_task_potential(
+    obj_to_target_xy, height_gap, arm_speed, is_grasped, is_obj_placed, *, scale, velocity_scale
+):
+    """``Phi_place(s)``: staged transport-then-settle place progress in [0, 1].
+
+    ``gate * 0.5 * (transport + is_obj_placed * still)`` where ``transport =
+    reach_progress(max(obj_to_target_xy, height_gap))``, ``still =
+    reach_progress(arm_speed, velocity_scale)``, and ``gate`` is
+    grasped-or-placed. Monotone non-decreasing along the ideal
+    grasp-lift-carry-lower-settle trajectory, the property a potential fed
+    through ``potential_shaping`` needs for forward progress to pay a
+    positive per-step delta:
+
+    - The Chebyshev ``max`` distance makes the mandatory lift free while far
+      from the goal (xy dominates), unlike a height-back-near-rest factor
+      (which pays negative on lift-off) or a plain 3D norm (which still dips
+      slightly), and hands the gradient to lowering once above the goal.
+    - The stillness term is additive and gated on ``is_obj_placed``
+      (ManiSkill PickCube's ``static_reward * is_obj_placed``), so it shapes
+      only the final settle instead of multiplying the transport gradient
+      down to ~0 at realistic carry speeds, which a stillness *factor* does.
+
+    See docs/superpowers/plans/2026-07-16-monotone-place-potential.md for the
+    audit that motivated this shape. Accepts Python scalars, NumPy arrays, or
+    torch tensors.
+
+    Parameters
+    ----------
+    obj_to_target_xy : float or numpy.ndarray or torch.Tensor
+        Horizontal distance from the object to the goal centre (metres).
+    height_gap : float or numpy.ndarray or torch.Tensor
+        Object height above its per-episode rest baseline, clamped >= 0 (metres).
+    arm_speed : float or numpy.ndarray or torch.Tensor
+        Norm of the arm joint velocities (rad/s).
+    is_grasped : float or numpy.ndarray or torch.Tensor
+        Whether the object is currently grasped (thresholded at 0.5).
+    is_obj_placed : bool or numpy.ndarray or torch.Tensor
+        Whether the object currently rests on the goal.
+    scale : float
+        Positive shaping steepness (``RewardConfig.tanh_shaping_scale``).
+    velocity_scale : float
+        Stillness shaping steepness (``RewardConfig.velocity_shaping_scale``).
+    """
+    gate = (is_grasped > 0.5) | is_obj_placed
+    transport = reach_progress(_elementwise_max(obj_to_target_xy, height_gap), scale=scale)
+    still = reach_progress(arm_speed, scale=velocity_scale)
+    return gate * 0.5 * (transport + is_obj_placed * still)
