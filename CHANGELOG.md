@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-07-16
+
 ### Changed
 
 - Teleop recorder UI: the episode progress counter is now one-indexed ("Episode 1 / 5" at the start of the first episode, matching the already-one-indexed "Recording episode 1/5..." status text) instead of showing "Episode 0 / 5" before any episode was recorded.
@@ -280,7 +282,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.8...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.9...HEAD
+[0.4.9]: https://github.com/johnsutor/so101-nexus/compare/0.4.8...0.4.9
 [0.4.8]: https://github.com/johnsutor/so101-nexus/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/johnsutor/so101-nexus/compare/0.4.5...0.4.7
 [0.4.5]: https://github.com/johnsutor/so101-nexus/compare/0.4.4...0.4.5
