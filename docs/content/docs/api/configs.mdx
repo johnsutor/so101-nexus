@@ -143,14 +143,20 @@ reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.25, complet
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `reaching` | `float` | `0.25` | Weight for the reaching component |
-| `grasping` | `float` | `0.25` | Weight for the grasping component |
-| `task_objective` | `float` | `0.25` | Weight for the task-specific objective |
+| `reaching` | `float` | `0.25` | Weight for the reaching component. Potential-shaped delta for pick-lift/pick-and-place; raw progress value for Touch/Move/LookAt. |
+| `grasping` | `float` | `0.25` | Weight for the grasping component. Potential-shaped delta for pick-lift/pick-and-place. |
+| `task_objective` | `float` | `0.25` | Weight for the task-specific objective. Potential-shaped delta for pick-lift/pick-and-place. |
 | `completion_bonus` | `float` | `0.25` | Weight for the task completion bonus |
 | `action_delta_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of consecutive action deltas |
 | `energy_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of the action vector |
 | `tanh_shaping_scale` | `float` | `5.0` | Scale factor for tanh reward shaping |
 | `velocity_shaping_scale` | `float` | `15.0` | Scale factor for tanh velocity shaping (only read by `PickAndPlaceConfig`'s task potential) |
+
+A "potential-shaped delta" pays the *change* in progress since the previous
+step rather than the raw value, so dwelling at a fixed state (e.g. holding an
+object without lifting it) earns no further reward. See
+`so101_nexus.rewards.potential_shaping` and `docs/superpowers/skills/
+reward-engineering/SKILL.md` in the source repo for the full rationale.
 
 ### Validation
 

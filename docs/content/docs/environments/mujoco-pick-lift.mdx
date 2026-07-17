@@ -102,6 +102,13 @@ The reward is a shaped sum of:
 - **Lift progress** -- reward proportional to lift height
 - **Completion bonus** -- awarded when the success condition is met
 
+PickLift has several things to get right in order (reach, grasp, lift), so
+`reaching`/`grasping`/`lift progress` each pay for *making progress*, not for
+the current state: reaching, grasping, and then just holding the object
+without lifting pays no further reward past the initial credit for each step.
+See [Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation of why.
+
 ## Distractors
 
 Pass `n_distractors` in the config to add non-target objects to the scene. These objects are not part of the task but increase visual and physical complexity.
