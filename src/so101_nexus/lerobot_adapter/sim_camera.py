@@ -67,6 +67,17 @@ class SimCamera(Camera):
         if self._env is None:
             raise RuntimeError("SimCamera is not connected to an environment")
         env = getattr(self._env, "unwrapped", self._env)
+        if self.config.source == "render":
+            render = getattr(env, "render", None)
+            if not callable(render):
+                raise TypeError("Simulator env must expose render() for source='render'.")
+            frame = render()
+            if frame is None:
+                raise RuntimeError(
+                    "SimCamera source='render' got no frame; construct the env "
+                    "with render_mode='rgb_array'."
+                )
+            return frame
         get_obs = getattr(env, "_get_obs", None)
         if callable(get_obs):
             obs = get_obs()

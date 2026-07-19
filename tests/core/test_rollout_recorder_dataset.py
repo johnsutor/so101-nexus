@@ -5,8 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 
-from so101_nexus.teleop.dataset import OVERHEAD_KEY, REWARD_COMPONENT_FEATURE_KEYS, WRIST_KEY
+from so101_nexus.teleop.dataset import (
+    OVERHEAD_KEY,
+    REWARD_COMPONENT_FEATURE_KEYS,
+    SIDE_KEY,
+    WRIST_KEY,
+)
 
 
 class _Box:
@@ -154,3 +160,89 @@ def test_record_episode_writes_reward_components_from_info() -> None:
     np.testing.assert_allclose(frame["reward_components.reaching"], [0.4])
     np.testing.assert_allclose(frame["reward_components.grasping"], [0.1])
     np.testing.assert_array_equal(frame["reward_components.task_objective"], [0.0])
+
+
+class _SideVideoEnv(_DatasetEnv):
+    """Env exposing the rgb_array render path used for the side video channel."""
+
+    render_mode = "rgb_array"
+
+    def __init__(self, *, terminate_after: int = 2) -> None:
+        super().__init__(terminate_after=terminate_after)
+        self.render_calls = 0
+
+    def render(self) -> np.ndarray:
+        self.render_calls += 1
+        return np.full((4, 5, 3), 40 + self.step_count, dtype=np.uint8)
+
+
+def test_record_side_video_writes_side_frames() -> None:
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    dataset = _Dataset()
+    env = _SideVideoEnv(terminate_after=2)
+    recorder = RolloutRecorder(
+        env,
+        _Policy(np.zeros(6, dtype=np.float32)),
+        dataset=dataset,
+        record_side_video=True,
+    )
+
+    recorder.record_episode()
+
+    assert env.render_calls == 2
+    for step, frame in enumerate(dataset.frames):
+        # The side frame is rendered before env.step, so it depicts the same
+        # pre-step state s_t as the rest of the frame.
+        np.testing.assert_array_equal(frame[SIDE_KEY], np.full((4, 5, 3), 40 + step, np.uint8))
+
+
+def test_record_side_video_keeps_side_out_of_policy_batches() -> None:
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    class _BatchSpy(_Policy):
+        def __init__(self, action_deg: np.ndarray) -> None:
+            super().__init__(action_deg)
+            self.batches: list[dict[str, Any]] = []
+
+        def select_action(self, batch: dict[str, Any]) -> np.ndarray:
+            self.batches.append(batch)
+            return super().select_action(batch)
+
+    policy = _BatchSpy(np.zeros(6, dtype=np.float32))
+    recorder = RolloutRecorder(
+        _SideVideoEnv(terminate_after=1),
+        policy,
+        dataset=_Dataset(),
+        record_side_video=True,
+    )
+
+    recorder.record_episode()
+
+    image_keys = {k for k in policy.batches[0] if k.startswith("observation.images.")}
+    assert image_keys == {"observation.images.overhead", "observation.images.wrist"}
+
+
+def test_record_side_video_requires_rgb_array_render_mode() -> None:
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    with pytest.raises(ValueError, match="render_mode"):
+        RolloutRecorder(
+            _DatasetEnv(),
+            _Policy(np.zeros(6, dtype=np.float32)),
+            dataset=_Dataset(),
+            record_side_video=True,
+        )
+
+
+def test_side_video_off_by_default() -> None:
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    dataset = _Dataset()
+    env = _SideVideoEnv(terminate_after=1)
+    recorder = RolloutRecorder(env, _Policy(np.zeros(6, dtype=np.float32)), dataset=dataset)
+
+    recorder.record_episode()
+
+    assert env.render_calls == 0
+    assert SIDE_KEY not in dataset.frames[0]

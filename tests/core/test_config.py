@@ -96,6 +96,30 @@ class TestConfigConsistency:
         assert cfg.width > 0
         assert cfg.height > 0
 
+    def test_render_camera_defaults_to_overhead(self):
+        cfg = RenderConfig()
+        assert cfg.camera == "overhead"
+        assert cfg.side_azimuth_deg == 160.0
+        assert cfg.side_elevation_deg == -30.0
+
+    def test_render_side_camera_fields(self):
+        cfg = RenderConfig(camera="side", side_azimuth_deg=90.0, side_elevation_deg=-20.0)
+        assert cfg.camera == "side"
+        assert cfg.side_azimuth_deg == 90.0
+        assert cfg.side_elevation_deg == -20.0
+
+    def test_render_invalid_camera_raises(self):
+        with pytest.raises(ValueError, match="camera"):
+            RenderConfig(camera="wrist")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("elevation", [-90.5, 0.0, 15.0])
+    def test_render_side_elevation_out_of_range_raises(self, elevation):
+        with pytest.raises(ValueError, match="side_elevation_deg"):
+            RenderConfig(side_elevation_deg=elevation)
+
+    def test_render_repr_includes_camera(self):
+        assert "camera='side'" in repr(RenderConfig(camera="side"))
+
     def test_max_episode_steps_field_removed(self):
         # max_episode_steps was removed as a dead config knob; episode length is
         # owned by the gym registration.

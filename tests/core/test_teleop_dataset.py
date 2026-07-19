@@ -18,6 +18,7 @@ from so101_nexus.teleop.dataset import (
     REWARD_COMPONENT_FEATURE_KEYS,
     REWARD_KEY,
     SCALAR_FEATURE,
+    SIDE_KEY,
     SUCCESS_KEY,
     WRIST_KEY,
     FieldSelection,
@@ -40,6 +41,86 @@ def _follower_features(
 def test_image_keys_are_lerobot_canonical() -> None:
     assert WRIST_KEY == "observation.images.wrist"
     assert OVERHEAD_KEY == "observation.images.overhead"
+    assert SIDE_KEY == "observation.images.side"
+
+
+def test_field_selection_defaults_side_image_off() -> None:
+    # The side view is opt-in; the default schema must stay byte-identical
+    # for existing recordings.
+    assert FieldSelection().side_image is False
+
+
+def test_build_features_default_omits_side_key() -> None:
+    features = build_features(FieldSelection(), _follower_features(), _motor_features())
+    assert SIDE_KEY not in features
+
+
+def test_build_features_includes_side_when_selected() -> None:
+    sel = FieldSelection(side_image=True)
+    follower_features = {**_follower_features(), "side": (240, 320, 3)}
+
+    features = build_features(sel, follower_features, _motor_features())
+
+    assert features[SIDE_KEY]["dtype"] == "video"
+    assert features[SIDE_KEY]["shape"] == (240, 320, 3)
+    assert features[SIDE_KEY]["names"] == ["height", "width", "channels"]
+
+
+def test_build_features_requires_side_camera_feature() -> None:
+    sel = FieldSelection(side_image=True)
+
+    with pytest.raises(ValueError, match="side"):
+        build_features(sel, _follower_features(), _motor_features())
+
+
+def test_build_frame_writes_side_image_when_selected() -> None:
+    sel = FieldSelection(
+        wrist_image=False, overhead_image=False, side_image=True, environment_state=False
+    )
+    side = np.full((48, 64, 3), 7, dtype=np.uint8)
+
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        wrist_image=None,
+        overhead_image=None,
+        side_image=side,
+    )
+
+    np.testing.assert_array_equal(frame[SIDE_KEY], side)
+
+
+def test_build_frame_raises_when_side_selected_but_missing() -> None:
+    sel = FieldSelection(
+        wrist_image=False, overhead_image=False, side_image=True, environment_state=False
+    )
+
+    with pytest.raises(ValueError, match="side_image selected"):
+        build_frame(
+            sel,
+            state=np.zeros(6, dtype=np.float32),
+            action=np.zeros(6, dtype=np.float32),
+            task="t",
+            wrist_image=None,
+            overhead_image=None,
+        )
+
+
+def test_build_frame_omits_side_image_when_deselected() -> None:
+    sel = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    # side frame supplied but not selected -> key must be absent.
+    frame = build_frame(
+        sel,
+        state=np.zeros(6, dtype=np.float32),
+        action=np.zeros(6, dtype=np.float32),
+        task="t",
+        wrist_image=None,
+        overhead_image=None,
+        side_image=np.zeros((8, 8, 3), dtype=np.uint8),
+    )
+    assert SIDE_KEY not in frame
 
 
 def test_field_selection_forces_state_and_action_on() -> None:

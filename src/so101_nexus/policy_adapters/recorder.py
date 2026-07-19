@@ -57,6 +57,12 @@ class RolloutRecorder:
     fps : int, optional
         Dataset frame rate metadata retained for callers constructing matching
         LeRobot datasets.
+    record_side_video : bool, optional
+        When ``True``, render the env's configured view each step (before the
+        step, so it depicts the same state as the rest of the frame) and record
+        it as ``observation.images.side``. Requires
+        ``render_mode="rgb_array"``; pair with ``RenderConfig(camera="side")``
+        for the tabletop side view. The side frame never enters policy batches.
 
     Notes
     -----
@@ -77,6 +83,7 @@ class RolloutRecorder:
         max_steps_per_episode: int = 200,
         dataset: Any | None = None,
         fps: int = 30,
+        record_side_video: bool = False,
     ) -> None:
         unknown_camera_keys = set(camera_keys) - SUPPORTED_CAMERA_KEYS
         if unknown_camera_keys:
@@ -88,6 +95,12 @@ class RolloutRecorder:
             raise ValueError("max_steps_per_episode must be positive.")
         if fps <= 0:
             raise ValueError("fps must be positive.")
+        if record_side_video and getattr(env, "render_mode", None) != "rgb_array":
+            raise ValueError(
+                "record_side_video requires the env to be constructed with "
+                "render_mode='rgb_array' (pair with RenderConfig(camera='side') "
+                "for the side view)."
+            )
 
         self.env = env
         self.policy = policy
@@ -97,6 +110,7 @@ class RolloutRecorder:
         self.max_steps_per_episode = max_steps_per_episode
         self.dataset = dataset
         self.fps = fps
+        self.record_side_video = record_side_video
 
     def record_episode(self, *, seed: int | None = None) -> EpisodeResult:
         """Record one policy rollout episode."""
@@ -130,6 +144,10 @@ class RolloutRecorder:
             # Step before adding the frame so the transition reward r_t (from
             # env.step(a_t)) is available for the frame holding (s_t, a_t). The
             # frame keeps the pre-step `obs` (s_t); `next_obs` drives the loop.
+            # The side frame is rendered before stepping for the same reason.
+            side_image = None
+            if self.dataset is not None and self.record_side_video:
+                side_image = np.asarray(self.env.render())
             next_obs, reward, terminated, truncated, info = self.env.step(action_rad)
 
             if self.dataset is not None:
@@ -141,6 +159,7 @@ class RolloutRecorder:
                     reward_components=info.get("reward_components", {}),
                     success=float(bool(info.get("success", False))),
                     done=float(terminated or truncated),
+                    side_image=side_image,
                 )
 
             obs = next_obs
@@ -189,6 +208,7 @@ class RolloutRecorder:
         reward_components: Mapping[str, float] | None = None,
         success: float = 0.0,
         done: float = 0.0,
+        side_image: np.ndarray | None = None,
     ) -> None:
         """Append one frame to the configured dataset."""
         from so101_nexus.teleop.dataset import FieldSelection, build_frame
@@ -201,6 +221,7 @@ class RolloutRecorder:
         selection = FieldSelection(
             wrist_image="wrist_camera" in self.camera_keys,
             overhead_image="overhead_camera" in self.camera_keys,
+            side_image=self.record_side_video,
             environment_state=False,
             task=True,
         )
@@ -215,6 +236,7 @@ class RolloutRecorder:
             done=done,
             wrist_image=obs.get("wrist_camera"),
             overhead_image=obs.get("overhead_camera"),
+            side_image=side_image,
         )
         dataset = self.dataset
         dataset.add_frame(frame)
