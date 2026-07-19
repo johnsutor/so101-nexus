@@ -19,6 +19,19 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- New stack-cube task: `StackCubeConfig`, `MuJoCoStackCube-v1`, and `WarpStackCube-v1`. Pick up cube A and stack it directly on top of cube B; success requires cube A to rest on cube B (within `stack_alignment_margin`), the arm to be static, cube A itself to be static (within `cube_static_lin_threshold`/`cube_static_ang_threshold`), and cube A to be released (a strict superset of ManiSkill's `StackCubeEnv`). `cube_a_colors`/`cube_b_colors` default to disjoint colors (red vs. blue) and warn on overlap, matching `PickAndPlaceConfig`'s cube/target overlap warning. Reuses the pick-and-place staged transport-then-settle potential (`so101_nexus.rewards.place_task_potential` and friends) with the goal generalized to a moving 3D point (`2 * cube_half_size` above cube B) instead of a fixed ground disc. Both backends resample both cube colors every episode: the MuJoCo backend via per-geom `geom_rgba`, the Warp backend by compiling one freejoint cube slot per configured color and selecting one slot per role per world at reset (the same slot-pool mechanism `WarpPickLift` uses for object identity), with unselected slots parked off-world. `WarpStackCubeVectorEnv.cube_a_color_names`/`cube_b_color_names` expose the selected color per world.
+- `so101_nexus.rewards.cube_stack_offset_ok`: a shared, tensor-agnostic geometric predicate for "is cube A stacked on cube B" (mirrors ManiSkill `StackCubeEnv.evaluate`'s `xy_flag`/`z_flag` check), used by both `StackCubeEnv` and `WarpStackCubeVectorEnv`.
+- `so101_nexus.rewards.cube_static_ok`: a shared, tensor-agnostic predicate for "is a cube's velocity near zero" (mirrors ManiSkill's `is_cubeA_static(lin_thresh=1e-2, ang_thresh=0.5)` check), used by both stack-cube backends.
+
+### Changed
+
+- Stack-cube success (both backends) now additionally requires cube A itself to be static -- linear speed below `StackCubeConfig.cube_static_lin_threshold` (default 0.01 m/s) and angular speed below `cube_static_ang_threshold` (default 0.5 rad/s, ManiSkill's `is_cubeA_static` thresholds) -- making the predicate a strict superset of ManiSkill's `StackCubeEnv.evaluate`. Previously a cube released inside the tolerance band while still descending or rocking counted as success (and terminated the episode) even if it later toppled. `info["is_cube_a_static"]` exposes the new gate.
+
+### Fixed
+
+- Color config fields (`cube_a_colors`, `cube_b_colors`, `cube_colors`, `target_colors`, `ground_colors`, `robot_colors`) now reject an empty list at construction with a clear `ValueError` instead of failing later with an opaque `IndexError` at env build or reset time.
 
 ## [0.4.9] - 2026-07-16
 

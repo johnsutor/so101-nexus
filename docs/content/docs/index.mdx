@@ -40,7 +40,7 @@ Recorded MuJoCo teleoperation rollouts are available as LeRobot datasets:
 - **LeRobot dataset conventions** -- save SO follower state/action units plus wrist and overhead camera fields
 - **[GPU PPO training](/docs/training/ppo)** -- train Warp baselines with tuned per-task commands and seed-validated PickLift hyperparameters
 - **Standard Gymnasium API** -- use the environments with RL libraries and existing Gymnasium tooling
-- **MuJoCo and MuJoCo Warp backends** -- five SO-101 manipulation tasks on MuJoCo, with an optional GPU-parallel MuJoCo Warp backend (`so101-nexus[warp]`) for batched RL
+- **MuJoCo and MuJoCo Warp backends** -- six SO-101 manipulation tasks on MuJoCo, with an optional GPU-parallel MuJoCo Warp backend (`so101-nexus[warp]`) for batched RL
 - **[Configurable scenes](/docs/guides/customizing-environments)** -- swap objects, add distractors, randomize colors, tune rewards, and choose observation components
 - **YCB object support** -- use real-world object meshes from the YCB dataset
 
@@ -98,15 +98,16 @@ env = gym.make("MuJoCoPickLift-v1", config=config, render_mode="human")
 
 ## Tasks
 
-SO101-Nexus ships five manipulation primitives that cover the fundamentals of robotic grasping and movement:
+SO101-Nexus ships six manipulation primitives that cover the fundamentals of robotic grasping and movement:
 
 - **PickLift** -- grasp an object and lift it above a height threshold
 - **PickAndPlace** -- pick up a cube and place it at a marked target location
+- **StackCube** -- pick up one cube and stack it directly on top of another
 - **Touch** -- bring the gripper to an object resting on the table
 - **LookAt** -- orient the end-effector to gaze at a target object
 - **Move** -- move the end-effector a set distance in a cardinal direction
 
-All five tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend covers all five (Touch, LookAt, Move, PickLift, PickAndPlace) with GPU-parallel simulation, including heterogeneous object pools (cubes, YCB, and mesh objects, with distractors), subject to the documented batched-model limitation that a single object's colour cannot be randomized per episode (the shared model's `geom_rgba` is global).
+All six tasks run on the MuJoCo backend on the SO-101 arm. The MuJoCo Warp backend covers all six (Touch, LookAt, Move, PickLift, PickAndPlace, StackCube) with GPU-parallel simulation, including heterogeneous object pools (cubes, YCB, and mesh objects, with distractors), subject to the documented batched-model limitation that a single object's colour cannot be randomized per episode (the shared model's `geom_rgba` is global).
 
 ## Get Started
 

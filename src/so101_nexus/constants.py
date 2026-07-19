@@ -46,8 +46,10 @@ YCB_OBJECTS: dict[str, str] = {
 
 
 def validate_color_config(colors: ColorConfig, field_name: str) -> None:
-    """Raise ``ValueError`` if any color name is not in ``COLOR_MAP``."""
+    """Raise ``ValueError`` on an empty list or a color name not in ``COLOR_MAP``."""
     names = [colors] if isinstance(colors, str) else colors
+    if not names:
+        raise ValueError(f"{field_name} must contain at least one color, got []")
     for name in names:
         if name not in COLOR_MAP:
             raise ValueError(f"{field_name} must be one of {list(COLOR_MAP)}, got {name!r}")

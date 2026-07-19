@@ -26,6 +26,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
+    StackCubeConfig,
     TouchConfig,
 )
 
@@ -182,6 +183,7 @@ _CONFIG_CLASSES = [
     MoveConfig,
     PickConfig,
     PickAndPlaceConfig,
+    StackCubeConfig,
 ]
 
 

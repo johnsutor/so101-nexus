@@ -32,6 +32,41 @@ actions are recomputed as the delta between consecutive recorded joint states
 a delta controller would need to command to reproduce that trajectory, then normalized by the
 same `_DELTA_ACTION_SCALE` the env applies internally.
 
+**Also covers the harder `WarpPickAndPlace-v1` task, as opt-in CLI flags -- all off/at their
+`WarpPickLift-v1`-safe default otherwise, so the recipe above is completely unaffected.**
+`env_id`/`demo_repo` are already free-form (any `Warp*-v1` id / matching demo dataset works;
+`_make_envs`/`evaluate_mujoco` build the env with `config=None`, so the obs dimension is read
+straight off whatever env is registered). Pick-and-place's `success` (object lowered back to
+the goal *and* the whole arm simultaneously static -- a rarer two-condition event than
+pick-lift's pure height-threshold success) needs two additional levers, both zero/off by
+default:
+
+- `--success-bonus 50` -- a one-time reward on first reaching `info['success']` in an episode,
+  making the rare completion event's advantage swamp the surrounding dense reward once found.
+- `--anneal-timesteps`/`--lr-min-frac` -- decouples `anneal_lr`/`ent_coef`'s annealing
+  *horizon* from `total_timesteps` (`0`/`0.0` = anneal across the full `total_timesteps`,
+  identical to the historical un-decoupled behavior). Lets `total_timesteps` run well past the
+  point the schedule finishes annealing, holding LR/entropy at a floored value for the extended
+  tail instead of stretching the schedule itself across the longer horizon (which reliably
+  backfires once a task's convergence is slow enough that mid-training exploration noise still
+  matters).
+
+Validated recipe for `WarpPickAndPlace-v1` (3 seeds, `so101-nexus==0.4.10`)::
+
+    uv run --extra warp --extra train python examples/bc_ppo_warp.py \\
+        --env-id WarpPickAndPlace-v1 --demo-repo johnsutor/MuJoCoPickAndPlace-v1 \\
+        --success-bonus 50 --total-timesteps 160000000 \\
+        --anneal-timesteps 80000000 --lr-min-frac 0.1
+
+reaches `best_success` `0.927` / `0.912` / `0.743` across seeds 1/2/3 (mean `0.861`, std
+`0.083`); a 100-episode MuJoCo-transfer eval of the seed-1 checkpoint measured
+`success_rate=0.870` (95% CI approx +/- 0.066). Dropping `--anneal-timesteps`/`--lr-min-frac`
+(plain `--total-timesteps 80000000`) still works (mean `best_success=0.601`, std `0.134`, a
+large win over this task's earlier ~9% ceiling under a since-fixed, exploitable reward) but is
+both lower-mean and higher-variance across seeds than the decoupled-schedule extension above --
+the extension is not a lucky-seed artifact, it wins the paired seed-for-seed comparison every
+time (`+13.7`, `+40.7`, `+23.6` points).
+
 Usage::
 
     uv run --extra warp --extra train python examples/bc_ppo_warp.py
@@ -69,7 +104,8 @@ class Args:
     cuda: bool = True
 
     env_id: str = "WarpPickLift-v1"
-    """any registered ``Warp*-v1`` id; the demo-seeding path is tuned for ``WarpPickLift-v1``"""
+    """any registered ``Warp*-v1`` id (e.g. ``WarpPickAndPlace-v1``); see the module
+    docstring's pick-and-place section for the validated flag set beyond ``WarpPickLift-v1``"""
     num_envs: int = 1024
     """number of GPU-parallel Warp worlds"""
     episode_length: int = 512
@@ -78,7 +114,9 @@ class Args:
     terminate_on_success: bool = False
     """default False = fixed-horizon (avoids the reach-farming trap; see ppo_warp.py's doc)"""
     success_bonus: float = 0.0
-    """optional extra reward added on the step success is achieved (raw, pre-scale)"""
+    """optional extra reward added on the step success is achieved (raw, pre-scale); ``0.0`` is
+    correct for ``WarpPickLift-v1``, ``50.0`` is validated for ``WarpPickAndPlace-v1`` -- see
+    the module docstring"""
     stagger_resets: bool = True
     """randomize initial episode phase per env so the worlds do not reset in lockstep"""
 
@@ -98,6 +136,23 @@ class Args:
     """entropy bonus; strong warm-start plus nonzero floor for consistent lift discovery"""
     ent_coef_final: float = 0.005
     """entropy coef is linearly annealed ent_coef -> ent_coef_final over training"""
+    anneal_timesteps: int = 0
+    """Decouples **both** `anneal_lr` and `ent_coef`'s annealing *horizon* from
+    `total_timesteps` (`0` = anneal across the full `total_timesteps`, the historical
+    behavior -- disabled by default, the `WarpPickLift-v1` recipe above is unaffected). Naively
+    extending `total_timesteps` alone (schedule stretched across the longer horizon too)
+    reliably backfires once a task's convergence is slow enough that exploration noise still
+    matters mid-training. Setting this to a validated pace while raising `total_timesteps`
+    well beyond it anneals both schedules on exactly that pace, then holds LR and `ent_coef` at
+    their end-of-schedule values for the extended tail. Validated for `WarpPickAndPlace-v1` at
+    `80_000_000` (paired with `total_timesteps=160_000_000`, `lr_min_frac=0.1` below) -- see
+    the module docstring."""
+    lr_min_frac: float = 0.0
+    """Floors `anneal_lr`'s fraction at this value instead of letting it approach `0` at the
+    anneal horizon (`0.0` = no floor, the historical behavior). Without a floor, the schedule
+    anneals LR close enough to `0` that essentially no further optimization happens for any
+    extended tail past `anneal_timesteps`. Validated default `0.1` (`eta_max/10`) for
+    `WarpPickAndPlace-v1` when `anneal_timesteps > 0` -- see the module docstring."""
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     target_kl: float | None = None
@@ -111,7 +166,8 @@ class Args:
     use_demos: bool = True
     """seed the actor from teleop demonstrations before online PPO"""
     demo_repo: str = "johnsutor/MuJoCoPickLift-v1"
-    """HuggingFace dataset repo id with the seed rollouts"""
+    """HuggingFace dataset repo id with the seed rollouts (task-matched, e.g.
+    ``johnsutor/MuJoCoPickAndPlace-v1`` for ``WarpPickAndPlace-v1``)"""
     bc_pretrain_updates: int = 2_000
     """supervised gradient steps regressing the actor mean onto demo actions, before PPO starts"""
     bc_pretrain_lr: float = 1e-3
@@ -189,7 +245,11 @@ class ObsNormalizer:
         if update:
             self.rms.update(obs)
         normed = (obs - self.rms.mean.float()) / torch.sqrt(self.rms.var.float() + 1e-8)
-        return normed.clamp(-10.0, 10.0)
+        # Sanitize the output too, not just the input `obs` above: at long enough training
+        # budgets a single diverging Warp world's NaN/Inf can still slip through arithmetic
+        # (e.g. sqrt of a poisoned running variance) even after input-side _finite(). Cheap
+        # insurance, a no-op for already-finite values.
+        return torch.nan_to_num(normed, nan=0.0, posinf=10.0, neginf=-10.0).clamp(-10.0, 10.0)
 
 
 class RewardScaler:
@@ -209,7 +269,8 @@ class RewardScaler:
         self.rms.update(self.ret)
         scaled = reward / torch.sqrt(self.rms.var.float() + 1e-8)
         self.ret = self.ret * (1.0 - done.to(torch.float64))
-        return scaled
+        # Same output-side sanitization as ObsNormalizer -- see its comment.
+        return torch.nan_to_num(scaled, nan=0.0, posinf=1e3, neginf=-1e3)
 
 
 _LAYER_INIT_STD = float(np.sqrt(2))
@@ -358,6 +419,7 @@ def evaluate_mujoco(
 
     def norm(o):
         t = torch.as_tensor(o, dtype=torch.float32, device=device)
+        t = torch.nan_to_num(t, nan=0.0, posinf=1e6, neginf=-1e6)
         return (((t - mean) / torch.sqrt(var + 1e-8)).clamp(-10.0, 10.0)).unsqueeze(0)
 
     returns, succs, lens = [], [], []
@@ -552,6 +614,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
     clip_vloss=True,
     ent_coef=0.03,
     ent_coef_final=0.005,
+    anneal_timesteps=0,
+    lr_min_frac=0.0,
     vf_coef=0.5,
     max_grad_norm=0.5,
     target_kl=None,
@@ -600,6 +664,14 @@ def train(  # noqa: PLR0915, PLR0912, C901
         )
     minibatch_size = batch_size // num_minibatches
     num_updates = total_timesteps // batch_size
+    # Decoupled from num_updates when anneal_timesteps > 0: both anneal_lr and ent_coef reach
+    # their end-of-schedule values at anneal_updates and hold there for any remaining updates,
+    # instead of stretching across the full (possibly much longer) total_timesteps -- see
+    # anneal_timesteps' docstring in Args. Default 0 reproduces the historical behavior
+    # exactly (anneal_updates == num_updates).
+    anneal_updates = max(
+        1, (anneal_timesteps if anneal_timesteps > 0 else total_timesteps) // batch_size
+    )
 
     seed_everything(seed, deterministic=torch_deterministic)
     dev = torch.device(device)
@@ -677,15 +749,19 @@ def train(  # noqa: PLR0915, PLR0912, C901
     next_done = torch.zeros(num_envs, device=dev)
 
     pg_loss = v_loss = entropy_loss = bc_loss = torch.tensor(0.0)
+    nonfinite_updates = 0
     approx_kl = torch.tensor(0.0)
     clipfracs: list[float] = []
     succ_rate = mean_ret = mean_len = 0.0
 
     for update in range(1, num_updates + 1):
+        anneal_eff_update = min(update, anneal_updates)
         if anneal_lr:
-            frac = 1.0 - (update - 1.0) / num_updates
+            frac = max(lr_min_frac, 1.0 - (anneal_eff_update - 1.0) / anneal_updates)
             optimizer.param_groups[0]["lr"] = frac * learning_rate
-        ent_now = ent_coef + (ent_coef_final - ent_coef) * ((update - 1.0) / num_updates)
+        ent_now = ent_coef + (ent_coef_final - ent_coef) * (
+            (anneal_eff_update - 1.0) / anneal_updates
+        )
         if bc_anneal_steps > 0:
             bc_coef_now = bc_coef * max(0.0, 1.0 - global_step / bc_anneal_steps)
         else:
@@ -824,6 +900,16 @@ def train(  # noqa: PLR0915, PLR0912, C901
                     loss.backward()
                     nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
                     optimizer.step()
+                else:
+                    # Defense in depth on top of the obs/reward sanitization above: never let
+                    # a non-finite loss (e.g. from a pathological minibatch) reach the
+                    # optimizer, which would otherwise permanently NaN Adam's moment estimates.
+                    nonfinite_updates += 1
+                    print(
+                        f"[warn] non-finite loss at step {global_step}, skipping update "
+                        f"({nonfinite_updates} so far)",
+                        flush=True,
+                    )
 
             if target_kl is not None and approx_kl > target_kl:
                 break
@@ -856,6 +942,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 "losses/bc_loss": bc_loss.item(),
                 "losses/approx_kl": approx_kl.item(),
                 "losses/clipfrac": float(np.mean(clipfracs)) if clipfracs else 0.0,
+                "charts/nonfinite_updates": nonfinite_updates,
             }
             if writer is not None:
                 for k, v in metrics.items():
@@ -948,6 +1035,8 @@ def main():
         clip_vloss=args.clip_vloss,
         ent_coef=args.ent_coef,
         ent_coef_final=args.ent_coef_final,
+        anneal_timesteps=args.anneal_timesteps,
+        lr_min_frac=args.lr_min_frac,
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         target_kl=args.target_kl,

@@ -68,7 +68,7 @@ MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[war
 
 - **Teleoperation recorder**: drive a simulated follower with a physical SO-100 or SO-101 leader arm.
 - **LeRobot dataset output**: save demonstrations with SO follower state/action units and wrist/overhead camera fields.
-- **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, and pick-and-place.
+- **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, pick-and-place, and stack-cube.
 - **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
 - **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
 - **GPU-parallel Warp backend** (optional, experimental): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]`.
@@ -144,7 +144,13 @@ The default workflow is demo-seeded: behavior cloning from teleoperation demonst
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
 
-Or run it locally with [`examples/bc_ppo_warp.py`](examples/bc_ppo_warp.py).
+Or run it locally with [`examples/bc_ppo_warp.py`](examples/bc_ppo_warp.py). Defaults target
+`WarpPickLift-v1`; the harder pick-and-place task (carry the object onto a goal disc, lower
+it, and hold still) is the same script with a few opt-in flags
+(`--env-id WarpPickAndPlace-v1 --demo-repo johnsutor/MuJoCoPickAndPlace-v1 --success-bonus 50
+--total-timesteps 160000000 --anneal-timesteps 80000000 --lr-min-frac 0.1`, all off/at their
+`WarpPickLift-v1`-safe default otherwise); validated across 3 seeds at `best_success=0.86`
+mean (`std=0.08`), see the module docstring for the full sweep.
 For the full record -> clone -> reinforce walkthrough, see the [Workflow docs](https://so101-nexus.com/docs/workflow/overview).
 
 Prefer a from-scratch baseline instead? SO101-Nexus also ships a CleanRL-style PPO baseline for Gymnasium environments (no demonstration seeding). See [Training with PPO](https://so101-nexus.com/docs/training/ppo) for the command-line workflow and tuning notes, or train a strong policy end to end in your browser:
@@ -154,7 +160,7 @@ Prefer a from-scratch baseline instead? SO101-Nexus also ships a CleanRL-style P
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm
-- [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickAndPlace
+- [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickAndPlace, StackCube
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
 - [x] MuJoCo Warp backend for GPU-parallel throughput
 - [x] Stronger training baselines and exemplars for every environment

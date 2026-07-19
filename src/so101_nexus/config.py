@@ -386,8 +386,9 @@ class RewardConfig:
         Scale factor for tanh distance shaping.
     velocity_shaping_scale : float
         Scale factor for tanh velocity shaping (used by task potentials that
-        include a staticness factor, e.g. pick-and-place; see
-        ``PickAndPlaceEnv._task_potential`` in ``so101_nexus.mujoco.pick_and_place``).
+        include a staticness factor, e.g. pick-and-place and stack-cube; see
+        ``PickAndPlaceEnv._task_potential`` in ``so101_nexus.mujoco.pick_and_place``
+        and ``StackCubeEnv._task_potential`` in ``so101_nexus.mujoco.stack_cube``).
     """
 
     def __init__(
@@ -634,17 +635,18 @@ def _warn_inert_reward_weights(
 def _warn_inert_velocity_scale(reward: RewardConfig, task_name: str) -> None:
     """Warn when ``velocity_shaping_scale`` is customized on a task that ignores it.
 
-    Only ``PickAndPlaceEnv``'s task potential (``Phi_place``) reads
-    ``velocity_shaping_scale`` (see ``_task_potential``); every other task
-    (``PickConfig``/``PickLiftEnv``, ``TouchConfig``, ``MoveConfig``,
-    ``LookAtConfig``) never constructs a velocity-gated potential, so
-    customizing it there is a silent no-op.
+    Only ``PickAndPlaceEnv`` and ``StackCubeEnv``'s task potentials (``Phi_place``
+    / ``Phi_stack``) read ``velocity_shaping_scale`` (see ``_task_potential``);
+    every other task (``PickConfig``/``PickLiftEnv``, ``TouchConfig``,
+    ``MoveConfig``, ``LookAtConfig``) never constructs a velocity-gated
+    potential, so customizing it there is a silent no-op.
     """
     if reward.velocity_shaping_scale != _REWARD_DEFAULTS.velocity_shaping_scale:
         warnings.warn(
             f"{task_name} reward ignores RewardConfig.velocity_shaping_scale (only "
-            "PickAndPlaceConfig's task potential uses it; see "
-            "so101_nexus.mujoco.pick_and_place.PickAndPlaceEnv._task_potential).",
+            "PickAndPlaceConfig's and StackCubeConfig's task potentials use it; see "
+            "so101_nexus.mujoco.pick_and_place.PickAndPlaceEnv._task_potential and "
+            "so101_nexus.mujoco.stack_cube.StackCubeEnv._task_potential).",
             stacklevel=3,
         )
 
@@ -808,6 +810,15 @@ def describe_place_target(obj: object, target_name: str) -> str:
     Shared by both backends so the object-generic template lives in one place.
     """
     return f"Pick up the {obj!r} and place it on the {target_name} circle."
+
+
+def describe_stack_target(cube_a: object, cube_b: object) -> str:
+    """Return the canonical task description for a stack-cube episode.
+
+    Backends call this instead of inlining the f-string, matching
+    ``describe_pick_target`` / ``describe_place_target``.
+    """
+    return f"Stack the {cube_a!r} on the {cube_b!r}."
 
 
 class PickConfig(EnvironmentConfig):
@@ -1037,6 +1048,131 @@ class PickAndPlaceConfig(EnvironmentConfig):
             self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
         )
         return describe_place_target(self.object_pool()[0], target_name)
+
+
+class StackCubeConfig(EnvironmentConfig):
+    """Config for the stack-cube environment.
+
+    Two cubes are spawned every episode: a movable cube ("cube A") and a base
+    cube ("cube B"). Cube A must be picked up and stacked directly on top of
+    cube B. Colors for the two cubes are sampled independently from
+    ``cube_a_colors`` / ``cube_b_colors`` each episode; the defaults are
+    disjoint (red vs. blue) so the two cubes are never the same color unless
+    explicitly configured to overlap.
+
+    Parameters
+    ----------
+    cube_a_colors : ColorConfig
+        Color(s) for cube A, the cube that gets picked up and stacked.
+    cube_b_colors : ColorConfig
+        Color(s) for cube B, the stationary stacking base.
+    cube_half_size : float
+        Half-extent of each cube in metres. Both cubes share the same size.
+    cube_mass : float
+        Mass of each cube in kg. Both cubes share the same mass.
+    min_cube_separation : float
+        Minimum spawn separation between the two cubes (metres), added on top
+        of their combined bounding radii.
+    stack_alignment_margin : float
+        Alignment tolerance (metres) for the stacked success check: cube A
+        counts as stacked on cube B when their horizontal offset is within
+        ``sqrt(2) * cube_half_size + stack_alignment_margin`` and their
+        vertical offset is within ``stack_alignment_margin`` of exactly
+        ``2 * cube_half_size`` (resting on cube B's top face). Mirrors
+        ManiSkill's ``StackCubeEnv.evaluate`` tolerance (margin ``0.005``).
+    cube_static_lin_threshold : float
+        Maximum linear speed (m/s) at which cube A still counts as static
+        for the success check. Mirrors ManiSkill's
+        ``is_cubeA_static(lin_thresh=1e-2)``.
+    cube_static_ang_threshold : float
+        Maximum angular speed (rad/s) at which cube A still counts as static
+        for the success check. Mirrors ManiSkill's ``ang_thresh=0.5``.
+    **kwargs
+        Forwarded to EnvironmentConfig.
+    """
+
+    def __init__(
+        self,
+        cube_a_colors: ColorConfig = "red",
+        cube_b_colors: ColorConfig = "blue",
+        cube_half_size: float = 0.0125,
+        cube_mass: float = 0.01,
+        min_cube_separation: float = 0.04,
+        stack_alignment_margin: float = 0.005,
+        cube_static_lin_threshold: float = 0.01,
+        cube_static_ang_threshold: float = 0.5,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.cube_a_colors = cube_a_colors
+        self.cube_b_colors = cube_b_colors
+        self.cube_half_size = cube_half_size
+        self.cube_mass = cube_mass
+        self.min_cube_separation = min_cube_separation
+        self.stack_alignment_margin = stack_alignment_margin
+        self.cube_static_lin_threshold = cube_static_lin_threshold
+        self.cube_static_ang_threshold = cube_static_ang_threshold
+
+        _validate_color_config(self.cube_a_colors, "cube_a_colors")
+        _validate_color_config(self.cube_b_colors, "cube_b_colors")
+        a_set = (
+            {self.cube_a_colors} if isinstance(self.cube_a_colors, str) else set(self.cube_a_colors)
+        )
+        b_set = (
+            {self.cube_b_colors} if isinstance(self.cube_b_colors, str) else set(self.cube_b_colors)
+        )
+        overlap = a_set & b_set
+        if overlap:
+            warnings.warn(
+                f"cube_a_colors and cube_b_colors overlap on {overlap}; "
+                "the two cubes may be the same color in some episodes",
+                stacklevel=2,
+            )
+        if not (0.01 <= self.cube_half_size <= 0.05):
+            raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.cube_mass <= 0:
+            raise ValueError(f"cube_mass must be > 0, got {self.cube_mass}")
+        if self.min_cube_separation < 0:
+            raise ValueError(f"min_cube_separation must be >= 0, got {self.min_cube_separation}")
+        if self.stack_alignment_margin < 0:
+            raise ValueError(
+                f"stack_alignment_margin must be >= 0, got {self.stack_alignment_margin}"
+            )
+        if self.cube_static_lin_threshold < 0:
+            raise ValueError(
+                f"cube_static_lin_threshold must be >= 0, got {self.cube_static_lin_threshold}"
+            )
+        if self.cube_static_ang_threshold < 0:
+            raise ValueError(
+                f"cube_static_ang_threshold must be >= 0, got {self.cube_static_ang_threshold}"
+            )
+        if self.observations is None:
+            self.observations = [
+                JointPositions(),
+                EndEffectorPose(),
+                GraspState(),
+                ObjectPose(),
+                ObjectOffset(),
+                TargetPosition(),
+                TargetOffset(),
+            ]
+
+    def __repr__(self) -> str:  # noqa: D105
+        return (
+            f"StackCubeConfig(cube_a_colors={self.cube_a_colors!r}, "
+            f"cube_b_colors={self.cube_b_colors!r}, cube_half_size={self.cube_half_size})"
+        )
+
+    @property
+    def task_description(self) -> str:
+        """Canonical task description for the first configured color pair."""
+        a_name = (
+            self.cube_a_colors if isinstance(self.cube_a_colors, str) else self.cube_a_colors[0]
+        )
+        b_name = (
+            self.cube_b_colors if isinstance(self.cube_b_colors, str) else self.cube_b_colors[0]
+        )
+        return describe_stack_target(CubeObject(color=a_name), CubeObject(color=b_name))
 
 
 class TouchConfig(PickConfig):

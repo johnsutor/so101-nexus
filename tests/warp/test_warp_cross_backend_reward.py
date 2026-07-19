@@ -278,3 +278,170 @@ def test_pick_and_place_reward_matches_mujoco_across_trajectory():
             assert success == bool(success_w[0])
     finally:
         m_env.close()
+
+
+def _stack_cube_envs():
+    import gymnasium as gym
+
+    import so101_nexus.mujoco
+    import so101_nexus.warp  # noqa: F401
+    from so101_nexus.config import StackCubeConfig
+    from so101_nexus.warp.stack_cube import WarpStackCubeVectorEnv
+
+    m_env = gym.make("MuJoCoStackCube-v1")
+    m = m_env.unwrapped
+    m.reset(seed=0)
+    w = WarpStackCubeVectorEnv(num_envs=NUM_ENVS, config=StackCubeConfig(), device="cpu", seed=0)
+    w.reset(seed=0)
+    return m_env, m, w
+
+
+@pytest.mark.parametrize(
+    ("goal_dist", "speed", "grasped", "stacked"),
+    [
+        (0.30, 1.0, 1.0, False),  # carrying: transport credit at full arm speed
+        (0.05, 0.02, 1.0, False),  # nearly still but not stacked: same transport credit
+        (0.0, 0.0, 1.0, True),  # stacked and still -> full potential
+        (0.30, 0.5, 0.0, False),  # ungrasped, far -> gated to 0
+    ],
+)
+def test_stack_cube_task_potential_formula_matches_mujoco(goal_dist, speed, grasped, stacked):
+    """``_task_potential`` (Phi_stack) is independently implemented per
+    backend (it composes shared ``rewards.reach_progress`` calls itself,
+    unlike the fully-shared ``RewardConfig.compute``), so its geometric
+    formula gets its own direct parity check across a spread of
+    distance/speed/gate combinations, mirroring
+    ``test_pick_and_place_task_potential_formula_matches_mujoco``.
+    """
+    import torch
+
+    m_env, m, w = _stack_cube_envs()
+    try:
+        m.data.qvel[m._arm_qvel_addrs] = speed
+        w.qvel[:, w._arm_dof_adr] = speed
+
+        # Cube B fixed at its resting height; cube A placed goal_dist away
+        # from the goal point (2 * half_size directly above cube B) along the
+        # X axis, so the fed transport distance equals goal_dist exactly.
+        half = m.cube_half_size
+        b_pos_m = np.array([0.0, 0.0, half])
+        a_pos_m = np.array([goal_dist, 0.0, 3 * half])
+        phi_m = m._task_potential(a_pos_m, b_pos_m, grasped, stacked)
+
+        b_pos_w = torch.tensor([[0.0, 0.0, half]] * NUM_ENVS)
+        a_pos_w = torch.tensor([[goal_dist, 0.0, 3 * half]] * NUM_ENVS)
+        phi_w = w._task_potential(
+            a_pos_w,
+            b_pos_w,
+            torch.full((NUM_ENVS,), grasped),
+            torch.full((NUM_ENVS,), stacked),
+        )
+
+        assert phi_m == pytest.approx(float(phi_w[0]), abs=REL_TOL)
+    finally:
+        m_env.close()
+
+
+def _set_stack_cube_state(
+    m,
+    w,
+    *,
+    tcp_to_obj_dist: float,
+    is_grasped: float,
+    task_potential: float,
+    stacked: bool,
+    static: bool,
+    cube_static: bool,
+):
+    """Stub out the geometric potential itself (covered separately above) and
+    pin both backends to the same reach/grasp/stacked/staticness inputs.
+    """
+    import torch
+
+    a_pos = [tcp_to_obj_dist, 0.0, 0.0]
+    b_pos = [0.0, 0.0, 0.0]
+    m._get_cube_a_pose = lambda: np.array([*a_pos, 1.0, 0.0, 0.0, 0.0])
+    m._get_cube_b_pose = lambda: np.array([*b_pos, 1.0, 0.0, 0.0, 0.0])
+    m._get_tcp_pose = lambda: np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+    m._is_grasping = lambda: float(is_grasped)
+    m._task_potential = lambda *a, **k: task_potential
+    m._is_robot_static = lambda: static
+
+    w._cube_a_pos = lambda: torch.tensor([a_pos] * NUM_ENVS, dtype=torch.float32)
+    w._cube_b_pos = lambda: torch.tensor([b_pos] * NUM_ENVS, dtype=torch.float32)
+    w._tcp_pos = lambda: torch.zeros(NUM_ENVS, 3)
+    w._is_grasping = lambda: torch.full((NUM_ENVS,), float(is_grasped))
+    w._task_potential = lambda *a, **k: torch.full((NUM_ENVS,), task_potential)
+    w._stack_state = lambda *a, **k: (
+        torch.zeros(NUM_ENVS),
+        torch.full((NUM_ENVS,), stacked, dtype=torch.bool),
+    )
+    w._is_robot_static = lambda: torch.full((NUM_ENVS,), static, dtype=torch.bool)
+    w._is_cube_a_static = lambda: torch.full((NUM_ENVS,), cube_static, dtype=torch.bool)
+
+
+def test_stack_cube_reward_matches_mujoco_across_trajectory():
+    """Reach, grasp, carry (dwelling on task potential), align above cube B,
+    and release-to-success all pay identical reward in both backends.
+    Companion to the PickAndPlace trajectory test above for the sibling
+    multi-phase task; the crucial difference is success requires releasing
+    the grasp (``is_grasped < 0.5``) and cube A itself being static, not just
+    being on-goal with a static arm.
+    """
+    import torch
+
+    m_env, m, w = _stack_cube_envs()
+    try:
+        _reset_prev_state(m, w)
+        trajectory: list[tuple[float, float, float, bool, bool, bool]] = [
+            (0.30, 0.0, 0.0, False, False, False),  # reaching
+            (0.02, 0.0, 0.0, False, False, False),  # reached
+            (0.02, 1.0, 0.0, False, False, False),  # grasp
+            (0.02, 1.0, 0.35, False, False, False),  # carrying: genuine progress
+            (
+                0.02,
+                1.0,
+                0.35,
+                False,
+                False,
+                False,
+            ),  # dwell: hovering at the same potential -- must plateau
+            (0.02, 1.0, 0.9, True, False, True),  # aligned above cube B, grasped, arm moving
+            (0.02, 0.0, 0.9, True, False, True),  # released while stacked: no grasp penalty
+            (0.02, 0.0, 0.9, True, True, False),  # arm static but cube still settling: no success
+            (0.02, 0.0, 1.0, True, True, True),  # released, stacked, both static -> success
+        ]
+        zero = torch.zeros(NUM_ENVS)
+        for tcp_to_obj_dist, is_grasped, task_potential, stacked, static, cube_static in trajectory:
+            success = stacked and static and cube_static and is_grasped < 0.5
+            _set_stack_cube_state(
+                m,
+                w,
+                tcp_to_obj_dist=tcp_to_obj_dist,
+                is_grasped=is_grasped,
+                task_potential=task_potential,
+                stacked=stacked,
+                static=static,
+                cube_static=cube_static,
+            )
+            info_m = {
+                "tcp_to_obj_dist": tcp_to_obj_dist,
+                "is_grasped": is_grasped,
+                "is_stacked": stacked,
+                "task_potential": task_potential,
+                "success": success,
+            }
+            r_m = m._compute_reward(info_m)
+            r_w, success_w, _ = w._compute_reward_terminated(zero, zero)
+
+            assert r_m == pytest.approx(float(r_w[0]), abs=REL_TOL), (
+                tcp_to_obj_dist,
+                is_grasped,
+                task_potential,
+                stacked,
+                static,
+                cube_static,
+            )
+            assert success == bool(success_w[0])
+    finally:
+        m_env.close()

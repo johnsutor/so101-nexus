@@ -27,6 +27,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
+    StackCubeConfig,
     TouchConfig,
 )
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
@@ -48,6 +49,7 @@ _ENVS = [
     ("MuJoCoLookAt-v1", LookAtConfig),
     ("MuJoCoPickLift-v1", PickConfig),
     ("MuJoCoPickAndPlace-v1", PickAndPlaceConfig),
+    ("MuJoCoStackCube-v1", StackCubeConfig),
 ]
 
 

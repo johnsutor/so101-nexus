@@ -10,6 +10,30 @@ from __future__ import annotations
 
 import torch
 
+HIDE_CLEARANCE = 0.1
+"""Clearance (m) between the off-world parking band and the reachable spawn annulus."""
+
+
+def hidden_slot_band_xy(
+    device: torch.device,
+    n_slots: int,
+    max_bounding_radius: float,
+    spawn_max_radius: float,
+    spawn_center: tuple[float, float],
+) -> torch.Tensor:
+    """Return ``(n_slots, 2)`` off-world parking positions for inactive slots.
+
+    Positions form a band beyond the reachable spawn annulus, spaced by object
+    diameter so neither active samples nor adjacent hidden bodies overlap (Warp
+    contact bits are model-global, so hidden slots stay collidable and must be
+    parked, not disabled).
+    """
+    cx, cy = spawn_center
+    step = 2.0 * max_bounding_radius + HIDE_CLEARANCE
+    base = spawn_max_radius + 2.0 * max_bounding_radius + HIDE_CLEARANCE
+    hide_x = cx - base - step * torch.arange(n_slots, device=device)
+    return torch.stack([hide_x, torch.full((n_slots,), cy, device=device)], dim=1)
+
 
 def sample_polar(
     generator: torch.Generator,

@@ -1,0 +1,119 @@
+---
+title: MuJoCoStackCube-v1
+description: Pick up cube A and stack it on top of cube B using the MuJoCo backend.
+---
+
+# MuJoCoStackCube-v1
+
+Pick up cube A and stack it directly on top of cube B, then let go.
+
+## Overview
+
+| Property | Value |
+|----------|-------|
+| Environment ID | `MuJoCoStackCube-v1` |
+| Backend | MuJoCo |
+| Max episode steps | 1024 |
+| Config class | `StackCubeConfig` |
+| Task description | "Stack the \{cube_a_color\} cube on the \{cube_b_color\} cube." |
+
+## Observation Space
+
+The observation is a 30-dimensional vector.
+
+| Component | Dimensions | Description |
+|-----------|------------|-------------|
+| `joint_pos` | 6 | Current angle of each robot joint |
+| `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
+| `is_grasped` | 1 | Whether cube A is currently grasped |
+| `obj_pose` | 7 | Cube A position (3) and orientation as quaternion (4) |
+| `tcp_to_obj` | 3 | Vector from TCP to cube A |
+| `target_pos` | 3 | Cube B position |
+| `obj_to_target` | 3 | Vector from cube A to cube B |
+
+Both cube positions are exposed as privileged state: `obj_pose` gives cube A's
+full pose, `target_pos` gives cube B's position (re-read every step, so
+bumping cube B during the episode updates it).
+
+## Objects
+
+The scene always contains exactly two active cubes: cube A (the one picked up
+and stacked) and cube B (the stationary base). Colors for both are
+configurable through `StackCubeConfig` (`cube_a_colors` / `cube_b_colors`,
+each a single color or a list sampled uniformly) and default to disjoint
+values (red vs. blue) so the two cubes are never the same color out of the
+box; passing overlapping color pools warns. Colors are resampled every episode
+in both backends: MuJoCo recolors the two cube geoms directly, while
+`WarpStackCube-v1` compiles one cube slot per configured color and selects one
+slot per role per world at reset, exposing the per-world choice as
+`cube_a_color_names` / `cube_b_color_names`.
+
+## Success Condition
+
+The episode succeeds when all conditions are met:
+
+1. Cube A's horizontal offset from cube B is within `sqrt(2) * cube_half_size + stack_alignment_margin`.
+2. Cube A's height above cube B is within `stack_alignment_margin` of exactly `2 * cube_half_size` (resting flush on cube B's top face).
+3. The robot arm is static.
+4. Cube A itself is static: linear speed below `cube_static_lin_threshold` (0.01 m/s) and angular speed below `cube_static_ang_threshold` (0.5 rad/s).
+5. Cube A is no longer grasped -- the robot must let go.
+
+This is a strict superset of ManiSkill's `StackCubeEnv.evaluate` (which checks
+cube A's staticness via `is_cubeA_static` but not the arm's): a cube released
+inside the tolerance band while still descending does not count as success
+until it settles.
+
+## Reward
+
+The reward is a shaped sum of:
+
+- **Reaching** -- progress toward cube A
+- **Grasping** -- whether cube A is held
+- **Task objective** -- progress carrying cube A toward the point directly above cube B, then settling
+- **Completion bonus** -- awarded on success
+
+StackCube reuses the same staged transport-then-settle potential
+(`so101_nexus.rewards.place_task_potential`) as `MuJoCoPickAndPlace-v1`: cube
+A's goal is a moving 3D point (`2 * cube_half_size` above cube B, which
+follows cube B if it gets bumped) rather than a fixed ground marker, so
+`reaching`/`grasping`/`task_objective` each pay for *making progress*, not for
+the current state -- carrying cube A above cube B and just holding it there
+pays no further reward past the initial credit for each step. See
+[Reward Structure](/docs/concepts/tasks-and-success-conditions#reward-structure)
+for the full explanation of why.
+
+## Example
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco
+from so101_nexus import StackCubeConfig
+
+env = gym.make(
+    "MuJoCoStackCube-v1",
+    render_mode="human",
+    config=StackCubeConfig(),
+)
+
+obs, info = env.reset()
+for _ in range(1024):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+Stack a specific color pair:
+
+```python
+config = StackCubeConfig(cube_a_colors="green", cube_b_colors="purple")
+env = gym.make("MuJoCoStackCube-v1", config=config)
+```
+
+## Train a policy
+
+`WarpStackCube-v1` has no solved PPO baseline yet. See
+[Training with PPO](/docs/training/ppo) for the currently supported Warp
+baselines.
