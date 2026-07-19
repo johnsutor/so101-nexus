@@ -184,6 +184,21 @@ config = PickAndPlaceConfig(
 env = gym.make("MuJoCoPickAndPlace-v1", config=config, render_mode="human")
 ```
 
+## Configure Stack-Cube Tasks
+
+`StackCubeConfig` controls the two cubes' colors, size, and spawn separation. Use it for StackCube environments. The defaults keep cube A and cube B distinct colors (red vs. blue); passing overlapping color pools warns.
+
+```python
+from so101_nexus import StackCubeConfig
+
+config = StackCubeConfig(
+    cube_a_colors=["red", "orange"],
+    cube_b_colors=["blue", "green"],
+    min_cube_separation=0.05,
+)
+env = gym.make("MuJoCoStackCube-v1", config=config, render_mode="human")
+```
+
 ## All Parameters
 
-See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `TouchConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and `RobotConfig`.
+See the [Configs API reference](/docs/api/configs) for the full list of parameters on `EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `StackCubeConfig`, `TouchConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and `RobotConfig`.

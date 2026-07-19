@@ -3,7 +3,28 @@
 import numpy as np
 import pytest
 
-from so101_nexus.rewards import reach_progress, simple_reward
+from so101_nexus.rewards import cube_static_ok, reach_progress, simple_reward
+
+
+def test_cube_static_ok_numpy_and_torch_match_scalar():
+    lin = [0.0, 0.005, 0.02, 0.0]
+    ang = [0.0, 0.6, 0.0, 0.49]
+    scalar = [
+        cube_static_ok(lin_v, ang_v, lin_threshold=0.01, ang_threshold=0.5)
+        for lin_v, ang_v in zip(lin, ang, strict=True)
+    ]
+    out_np = cube_static_ok(np.array(lin), np.array(ang), lin_threshold=0.01, ang_threshold=0.5)
+    np.testing.assert_array_equal(out_np, scalar)
+    assert isinstance(cube_static_ok(0.0, 0.0, lin_threshold=0.01, ang_threshold=0.5), bool)
+
+    torch = pytest.importorskip("torch")
+    out_t = cube_static_ok(
+        torch.tensor(lin, dtype=torch.float64),
+        torch.tensor(ang, dtype=torch.float64),
+        lin_threshold=0.01,
+        ang_threshold=0.5,
+    )
+    np.testing.assert_array_equal(out_t.numpy(), scalar)
 
 
 def test_reach_progress_numpy_batch_matches_scalar():
@@ -75,3 +96,33 @@ def test_lift_progress_numpy_and_torch_match_scalar():
         grasped=torch.tensor(grasped),
     )
     np.testing.assert_allclose(out_t.numpy(), scalar, rtol=1e-6)
+
+
+def test_cube_stack_offset_ok_numpy_and_torch_match_scalar():
+    from so101_nexus.rewards import cube_stack_offset_ok
+
+    half, margin = 0.0125, 0.005
+    dx = [0.0, 0.02, 0.0, 0.05]
+    dy = [0.0, 0.0, 0.0, 0.0]
+    dz = [2 * half, 2 * half, 0.0, 2 * half]
+    scalar = [
+        cube_stack_offset_ok(x, y, z, cube_half_size=half, margin=margin)
+        for x, y, z in zip(dx, dy, dz, strict=True)
+    ]
+    out_np = cube_stack_offset_ok(
+        np.array(dx), np.array(dy), np.array(dz), cube_half_size=half, margin=margin
+    )
+    np.testing.assert_array_equal(out_np, scalar)
+    assert isinstance(
+        cube_stack_offset_ok(0.0, 0.0, 2 * half, cube_half_size=half, margin=margin), bool
+    )
+
+    torch = pytest.importorskip("torch")
+    out_t = cube_stack_offset_ok(
+        torch.tensor(dx, dtype=torch.float64),
+        torch.tensor(dy, dtype=torch.float64),
+        torch.tensor(dz, dtype=torch.float64),
+        cube_half_size=half,
+        margin=margin,
+    )
+    np.testing.assert_array_equal(out_t.numpy(), scalar)

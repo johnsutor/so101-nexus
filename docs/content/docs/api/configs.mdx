@@ -243,7 +243,7 @@ env = gym.make("MuJoCoTouch-v1", config=config, max_episode_steps=256)
 envs = gym.make_vec("WarpTouch-v1", num_envs=4, device="cuda", config=config, max_episode_steps=256)
 ```
 
-Registered defaults: PickLift and PickAndPlace 1024, Touch 512, LookAt and Move 256. They apply to both the `MuJoCo*-v1` and `Warp*-v1` ids.
+Registered defaults: PickLift, PickAndPlace, and StackCube 1024, Touch 512, LookAt and Move 256. They apply to both the `MuJoCo*-v1` and `Warp*-v1` ids.
 
 ---
 
@@ -369,6 +369,43 @@ These are in addition to all `EnvironmentConfig` parameters.
 ### Default Observations
 
 When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (30 dimensions).
+
+---
+
+## StackCubeConfig
+
+Extends `EnvironmentConfig` with parameters for the stack-cube task. Two
+cubes are spawned every episode: cube A (picked up and stacked) and cube B
+(the stationary base). Colors default to disjoint values so the two cubes
+are never the same color out of the box.
+
+```python
+from so101_nexus import StackCubeConfig
+
+config = StackCubeConfig(cube_a_colors="green", cube_b_colors="purple")
+```
+
+### Additional Parameters
+
+These are in addition to all `EnvironmentConfig` parameters.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cube_a_colors` | `ColorConfig` | `"red"` | Color(s) for cube A, the cube that gets picked up and stacked |
+| `cube_b_colors` | `ColorConfig` | `"blue"` | Color(s) for cube B, the stationary stacking base |
+| `cube_half_size` | `float` | `0.0125` | Half-extent of each cube (meters); both cubes share the same size |
+| `cube_mass` | `float` | `0.01` | Mass of each cube (kg); both cubes share the same mass |
+| `min_cube_separation` | `float` | `0.04` | Minimum spawn separation between the two cubes (meters), on top of their combined bounding radii |
+| `stack_alignment_margin` | `float` | `0.005` | Alignment tolerance (meters) for the stacked success check |
+| `cube_static_lin_threshold` | `float` | `0.01` | Maximum linear speed (m/s) at which cube A still counts as static for success |
+| `cube_static_ang_threshold` | `float` | `0.5` | Maximum angular speed (rad/s) at which cube A still counts as static for success |
+
+Passing overlapping `cube_a_colors`/`cube_b_colors` pools warns (the two
+cubes may be the same color in some episodes).
+
+### Default Observations
+
+When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset(), TargetPosition(), TargetOffset()]` (30 dimensions).
 
 ---
 

@@ -39,3 +39,9 @@ gymnasium.register(
     vector_entry_point="so101_nexus.warp.pick_and_place:WarpPickAndPlaceVectorEnv",
     max_episode_steps=1024,
 )
+
+gymnasium.register(
+    id="WarpStackCube-v1",
+    vector_entry_point="so101_nexus.warp.stack_cube:WarpStackCubeVectorEnv",
+    max_episode_steps=1024,
+)

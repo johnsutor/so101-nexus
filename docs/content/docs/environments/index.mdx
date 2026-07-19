@@ -13,6 +13,7 @@ SO101-Nexus provides Gymnasium-compatible MuJoCo environments for the SO-101 arm
 |----|---------|------|-----------|
 | [`MuJoCoPickLift-v1`](/docs/environments/mujoco-pick-lift) | MuJoCo | Pick and lift an object | 1024 |
 | [`MuJoCoPickAndPlace-v1`](/docs/environments/mujoco-pick-and-place) | MuJoCo | Pick a cube and place on target | 1024 |
+| [`MuJoCoStackCube-v1`](/docs/environments/mujoco-stack-cube) | MuJoCo | Pick up cube A and stack it on cube B | 1024 |
 | [`MuJoCoTouch-v1`](/docs/environments/mujoco-touch) | MuJoCo | Touch an object on the table | 512 |
 | [`MuJoCoLookAt-v1`](/docs/environments/mujoco-look-at) | MuJoCo | Orient TCP toward object | 256 |
 | [`MuJoCoMove-v1`](/docs/environments/mujoco-move) | MuJoCo | Move TCP in a direction | 256 |
@@ -30,7 +31,7 @@ env = gym.make("MuJoCoPickLift-v1")
 
 ## Train a policy in Colab
 
-Every task has a GPU-parallel Warp counterpart (`Warp*-v1`); PickLift, Touch, LookAt, and Move have solved PPO baselines you can reproduce in Colab (PickAndPlace's Warp baseline is pending a task fix, see [Training with PPO](/docs/training/ppo)).
+Every task has a GPU-parallel Warp counterpart (`Warp*-v1`); PickLift, Touch, LookAt, and Move have solved PPO baselines you can reproduce in Colab (PickAndPlace's and StackCube's Warp baselines are pending, see [Training with PPO](/docs/training/ppo)).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
 

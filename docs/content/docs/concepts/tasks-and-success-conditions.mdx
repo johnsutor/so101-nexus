@@ -3,7 +3,7 @@ title: Tasks and Success Conditions
 description: Task objectives, success criteria, and reward structure.
 ---
 
-SO101-Nexus ships five task types that cover fundamental manipulation primitives.
+SO101-Nexus ships six task types that cover fundamental manipulation primitives.
 
 ## Task Overview
 
@@ -11,6 +11,7 @@ SO101-Nexus ships five task types that cover fundamental manipulation primitives
 | --- | --- | --- |
 | PickLift | Grasp an object and lift it above a height threshold | 1024 |
 | PickAndPlace | Pick up a cube and place it at a target location | 1024 |
+| StackCube | Pick up cube A and stack it directly on top of cube B | 1024 |
 | Touch | Bring the gripper to an object resting on the table | 512 |
 | LookAt | Orient the end-effector to gaze at a target object | 256 |
 | Move | Move the TCP a set distance in a cardinal direction | 256 |
@@ -22,6 +23,8 @@ Each task defines a binary success signal returned in the `info` dict.
 **PickLift** succeeds when the object is grasped and lifted above the `lift_threshold` (default: 0.05 m).
 
 **PickAndPlace** succeeds when the cube's XY distance to the goal is below `goal_thresh`, the cube is on the ground, and the robot is static.
+
+**StackCube** succeeds when cube A's horizontal offset from cube B is within `sqrt(2) * cube_half_size + stack_alignment_margin` and its height above cube B is within `stack_alignment_margin` of exactly `2 * cube_half_size` (resting flush on cube B's top face), the robot is static, and cube A is no longer grasped -- releasing the cube is mandatory.
 
 **Touch** succeeds when the TCP reaches within the target object's bounding radius plus `touch_margin` (default: 0.03 m), so it fires when the gripper reaches objects of any size.
 
@@ -54,9 +57,10 @@ the same direction as finishing, sitting still doesn't do anything special.
 
 ### Multi-step tasks: reward reflects *progress*, not position
 
-PickLift and PickAndPlace involve several things that all have to happen in
-order: reach the object, grasp it, then lift or carry-and-place it, and (for
-PickAndPlace) end up still. Here, the reward that isn't the one-time
+PickLift, PickAndPlace, and StackCube involve several things that all have to happen in
+order: reach the object, grasp it, then lift or carry-and-place (or carry-and-stack) it,
+and end up still (PickAndPlace and StackCube additionally require releasing the object).
+Here, the reward that isn't the one-time
 completion bonus is not "how good does this look right now" -- it's "how much
 *better* is this than the last step." Concretely: getting closer pays credit
 once, while it's happening; once you stop getting closer, that piece of the

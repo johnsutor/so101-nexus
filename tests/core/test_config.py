@@ -18,6 +18,7 @@ from so101_nexus.config import (
     RenderConfig,
     RewardConfig,
     RobotConfig,
+    StackCubeConfig,
     TouchConfig,
     _normalize_objects,
 )
@@ -249,11 +250,25 @@ class TestInertRewardWeightWarning:
         PickAndPlaceConfig(reward=RewardConfig(velocity_shaping_scale=99.0))
         assert len(recwarn) == 0
 
+    def test_velocity_shaping_scale_is_live_for_stack_cube(self, recwarn):
+        StackCubeConfig(reward=RewardConfig(velocity_shaping_scale=99.0))
+        assert len(recwarn) == 0
+
 
 class TestPickAndPlaceInvariants:
     def test_separation_covers_cube_diameter(self):
         cfg = PickAndPlaceConfig()
         assert cfg.min_cube_target_separation >= 2.0 * cfg.cube_half_size
+
+
+class TestStackCubeInvariants:
+    def test_separation_covers_cube_diameter(self):
+        cfg = StackCubeConfig()
+        assert cfg.min_cube_separation >= 2.0 * cfg.cube_half_size
+
+    def test_default_colors_are_distinct(self):
+        cfg = StackCubeConfig()
+        assert cfg.cube_a_colors != cfg.cube_b_colors
 
 
 class TestJointInvariants:
@@ -714,6 +729,22 @@ class TestTaskDescriptions:
         obj = YCBObject(model_id="009_gelatin_box")
         assert describe_pick_target(obj) == f"Pick up the {obj!r}."
 
+    def test_stack_cube_config_task_description_str_colors(self):
+        cfg = StackCubeConfig(cube_a_colors="red", cube_b_colors="blue")
+        assert cfg.task_description == "Stack the red cube on the blue cube."
+
+    def test_stack_cube_config_task_description_list_colors(self):
+        cfg = StackCubeConfig(cube_a_colors=["red", "green"], cube_b_colors=["blue"])
+        assert cfg.task_description == "Stack the red cube on the blue cube."
+
+    def test_describe_stack_target(self):
+        from so101_nexus.config import describe_stack_target
+        from so101_nexus.objects import CubeObject
+
+        cube_a = CubeObject(color="orange")
+        cube_b = CubeObject(color="purple")
+        assert describe_stack_target(cube_a, cube_b) == f"Stack the {cube_a!r} on the {cube_b!r}."
+
 
 def test_robot_config_grasp_force_threshold_default():
     cfg = RobotConfig()
@@ -922,6 +953,18 @@ class TestConfigValidation:
     def test_same_cube_and_target_color_warns(self):
         with pytest.warns(UserWarning, match="overlap"):
             PickAndPlaceConfig(cube_colors="red", target_colors="red")
+
+    def test_invalid_cube_a_colors_stack_cube(self):
+        with pytest.raises(ValueError, match="cube_a_colors"):
+            StackCubeConfig(cube_a_colors="neon")
+
+    def test_invalid_cube_b_colors_stack_cube(self):
+        with pytest.raises(ValueError, match="cube_b_colors"):
+            StackCubeConfig(cube_b_colors="neon")
+
+    def test_same_cube_a_and_cube_b_color_warns(self):
+        with pytest.warns(UserWarning, match="overlap"):
+            StackCubeConfig(cube_a_colors="red", cube_b_colors="red")
 
     def test_invalid_ground_color(self):
         with pytest.raises(ValueError, match="ground_colors"):

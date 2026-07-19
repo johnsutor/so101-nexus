@@ -14,6 +14,6 @@ def test_mujoco_filter_contract() -> None:
     run_env_id_filter_contract(
         backend="mujoco",
         prefix="MuJoCo",
-        min_count=5,
-        required_ids=("MuJoCoPickAndPlace-v1",),
+        min_count=6,
+        required_ids=("MuJoCoPickAndPlace-v1", "MuJoCoStackCube-v1"),
     )

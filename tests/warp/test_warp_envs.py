@@ -4,12 +4,19 @@ import pytest
 
 pytestmark = pytest.mark.warp
 
-_ENVS = ["WarpLookAt-v1", "WarpMove-v1", "WarpPickLift-v1", "WarpPickAndPlace-v1"]
+_ENVS = [
+    "WarpLookAt-v1",
+    "WarpMove-v1",
+    "WarpPickLift-v1",
+    "WarpPickAndPlace-v1",
+    "WarpStackCube-v1",
+]
 _DEFAULT_OBS_DIM = {
     "WarpLookAt-v1": 16,
     "WarpMove-v1": 16,
     "WarpPickLift-v1": 24,
     "WarpPickAndPlace-v1": 30,
+    "WarpStackCube-v1": 30,
 }
 
 

@@ -3,18 +3,19 @@ title: Backend Support
 description: The MuJoCo and MuJoCo Warp backends, environment availability, and vectorization.
 ---
 
-SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend adds native GPU-parallel batching for reinforcement learning, and covers all five tasks (Touch, LookAt, Move, PickLift, PickAndPlace).
+SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend adds native GPU-parallel batching for reinforcement learning, and covers all six tasks (Touch, LookAt, Move, PickLift, PickAndPlace, StackCube).
 
 The MuJoCo backend is stable. The MuJoCo Warp backend is experimental: its API and physics may change between minor releases. See [Stability and versioning](/docs/getting-started/stability).
 
 ## Task Availability
 
-All five tasks run on the SO-101 arm:
+All six tasks run on the SO-101 arm:
 
 | Task | Robot |
 |------|-------|
 | PickLift | SO-101 |
 | PickAndPlace | SO-101 |
+| StackCube | SO-101 |
 | Touch | SO-101 |
 | LookAt | SO-101 |
 | Move | SO-101 |
@@ -23,7 +24,7 @@ All five tasks run on the SO-101 arm:
 
 MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU.
 
-The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")` (env IDs `WarpTouch-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`); reset and step return torch CUDA tensors of shape `(num_envs, ...)`.
+The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")` (env IDs `WarpTouch-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`, `WarpStackCube-v1`); reset and step return torch CUDA tensors of shape `(num_envs, ...)`.
 
 Warp envs route the same composable state observation components as MuJoCo (joint positions, end-effector pose, grasp state, object and target offsets, gaze direction). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Camera observations return `uint8` image tensors of shape `(num_envs, height, width, 3)`, with per-world wrist-camera domain randomization.
 
@@ -31,7 +32,7 @@ Warp envs route the same composable state observation components as MuJoCo (join
 
 MuJoCo envs support Gymnasium `render_mode="human"` and `render_mode="rgb_array"` for visualization. Warp envs do not implement `render()` because images are produced as observation tensors; passing a `render_mode` to `gym.make_vec()` is accepted for compatibility, warns, and is ignored. Configure `WristCamera` or `OverheadCamera` in `observations` when a Warp policy needs pixels.
 
-`WarpPickLift` and `WarpTouch` accept the same heterogeneous object pools as MuJoCo (`CubeObject`, `YCBObject`, `MeshObject`, plus `n_distractors`), and `WarpPickAndPlace` accepts a carried-object pool. Each pool object is compiled as a freejoint slot, the per-world target is selected at reset, and inactive slots are parked off-world. Because all worlds share one model, per-episode `geom_rgba` colour randomization of a single object is unsupported; distinct coloured cube slots still give per-world colour variation through selection, and the `WarpPickAndPlace` goal disc colour is fixed to the first configured colour.
+`WarpPickLift` and `WarpTouch` accept the same heterogeneous object pools as MuJoCo (`CubeObject`, `YCBObject`, `MeshObject`, plus `n_distractors`), `WarpPickAndPlace` accepts a carried-object pool, and `WarpStackCube` compiles one cube slot per configured colour in `cube_a_colors`/`cube_b_colors`. Each pool object is compiled as a freejoint slot, the per-world target (or, for stack-cube, one slot per role) is selected at reset, and inactive slots are parked off-world. Because all worlds share one model, per-episode `geom_rgba` colour randomization of a single object is unsupported; distinct coloured cube slots still give per-world colour variation through selection (this is how `WarpStackCube` matches the MuJoCo backend's per-episode resampling of both cube colours), and the `WarpPickAndPlace` goal disc colour is fixed to the first configured colour.
 
 Vectorized worlds may carry different tasks, so `env.task_descriptions` holds one string per world and `info["task_description"]` is returned from `reset()` and `step()`. `env.task_description` reduces to the shared string, or a generic family string when worlds differ.
 

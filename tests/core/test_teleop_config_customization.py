@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from so101_nexus.config import MoveConfig, PickAndPlaceConfig, PickConfig
+from so101_nexus.config import MoveConfig, PickAndPlaceConfig, PickConfig, StackCubeConfig
 from so101_nexus.objects import CubeObject, MeshObject, YCBObject
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
@@ -120,6 +120,23 @@ def test_apply_config_overrides_ignores_pick_specific_options_for_non_pick_confi
 
     assert isinstance(cfg, MoveConfig)
     assert vars(cfg) == vars(base)
+
+
+def test_apply_config_overrides_applies_common_fields_to_stack_cube() -> None:
+    """StackCubeConfig has no dedicated override keys (unlike cube_colors/target_colors
+    for PickAndPlaceConfig), but still picks up common overrides generically."""
+    base = StackCubeConfig()
+
+    cfg = apply_config_overrides(
+        base,
+        TeleopConfigOverrides(ground_colors=("white",), spawn_min_radius=0.2),
+    )
+
+    assert isinstance(cfg, StackCubeConfig)
+    assert cfg.ground_colors == ["white"]
+    assert cfg.spawn_min_radius == 0.2
+    assert cfg.cube_a_colors == base.cube_a_colors
+    assert cfg.cube_b_colors == base.cube_b_colors
 
 
 def test_apply_config_overrides_rejects_negative_distractors() -> None:

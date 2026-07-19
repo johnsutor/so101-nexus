@@ -23,6 +23,7 @@ from so101_nexus.config import (
     MoveConfig,
     PickAndPlaceConfig,
     PickConfig,
+    StackCubeConfig,
     TouchConfig,
 )
 from so101_nexus.constants import CUBE_COLOR_MAP, YCB_OBJECTS
@@ -47,6 +48,7 @@ ENV_MATRIX: list[tuple[str, type]] = [
     ("MuJoCoMove-v1", MoveConfig),
     ("MuJoCoPickLift-v1", PickConfig),
     ("MuJoCoPickAndPlace-v1", PickAndPlaceConfig),
+    ("MuJoCoStackCube-v1", StackCubeConfig),
 ]
 ENV_IDS = [e for e, _ in ENV_MATRIX]
 
@@ -59,6 +61,7 @@ _MULTI_PHASE_REWARD_RANGE = (-0.75, 1.0)
 REWARD_RANGE_OVERRIDES: dict[str, tuple[float, float]] = {
     "MuJoCoPickLift-v1": _MULTI_PHASE_REWARD_RANGE,
     "MuJoCoPickAndPlace-v1": _MULTI_PHASE_REWARD_RANGE,
+    "MuJoCoStackCube-v1": _MULTI_PHASE_REWARD_RANGE,
 }
 
 CUBE_COLORS = list(CUBE_COLOR_MAP.keys())
@@ -118,6 +121,15 @@ _ENV_OBS_MAP: dict[str, list[type]] = {
         TargetPosition,
         ObjectPose,
         ObjectOffset,
+        TargetOffset,
+    ],
+    "MuJoCoStackCube-v1": [
+        JointPositions,
+        EndEffectorPose,
+        GraspState,
+        ObjectPose,
+        ObjectOffset,
+        TargetPosition,
         TargetOffset,
     ],
 }
@@ -192,6 +204,26 @@ def test_pick_and_place_info_keys_exact():
         "task_potential",
     }
     env = gym.make("MuJoCoPickAndPlace-v1")
+    try:
+        _, info = env.reset()
+        assert set(info.keys()) == expected
+    finally:
+        env.close()
+
+
+def test_stack_cube_info_keys_exact():
+    """StackCubeEnv info keys are the documented full set."""
+    expected = {
+        "cube_a_to_goal_dist",
+        "is_stacked",
+        "is_grasped",
+        "is_robot_static",
+        "is_cube_a_static",
+        "success",
+        "tcp_to_obj_dist",
+        "task_potential",
+    }
+    env = gym.make("MuJoCoStackCube-v1")
     try:
         _, info = env.reset()
         assert set(info.keys()) == expected
@@ -323,6 +355,28 @@ def test_pick_and_place_target_colors(target_color):
     cube_color = "red" if target_color != "red" else "blue"
     config = PickAndPlaceConfig(cube_colors=cube_color, target_colors=target_color)
     env = gym.make("MuJoCoPickAndPlace-v1", config=config)
+    try:
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("color", CUBE_COLORS)
+def test_stack_cube_cube_a_colors(color):
+    cube_b_color = "green" if color != "green" else "purple"
+    config = StackCubeConfig(cube_a_colors=color, cube_b_colors=cube_b_color)
+    env = gym.make("MuJoCoStackCube-v1", config=config)
+    try:
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("color", CUBE_COLORS)
+def test_stack_cube_cube_b_colors(color):
+    cube_a_color = "orange" if color != "orange" else "purple"
+    config = StackCubeConfig(cube_a_colors=cube_a_color, cube_b_colors=color)
+    env = gym.make("MuJoCoStackCube-v1", config=config)
     try:
         _run_episode(env)
     finally:
@@ -838,7 +892,7 @@ def test_multi_objective_reward_components_sum_to_reward():
     """PickEnv/PickAndPlace's info["reward_components"] sums to the total reward."""
     from so101_nexus.config import REWARD_COMPONENT_KEYS
 
-    for env_id in ("MuJoCoPickLift-v1", "MuJoCoPickAndPlace-v1"):
+    for env_id in ("MuJoCoPickLift-v1", "MuJoCoPickAndPlace-v1", "MuJoCoStackCube-v1"):
         env = gym.make(env_id)
         try:
             env.reset(seed=0)

@@ -234,3 +234,55 @@ def place_task_potential(
     transport = reach_progress(_elementwise_max(obj_to_target_xy, height_gap), scale=scale)
     still = reach_progress(arm_speed, scale=velocity_scale)
     return gate * 0.5 * (transport + is_obj_placed * still)
+
+
+def cube_static_ok(lin_speed, ang_speed, *, lin_threshold, ang_threshold):
+    """Whether a cube's linear and angular speeds are below the static thresholds.
+
+    Mirrors ManiSkill's ``is_static(lin_thresh=1e-2, ang_thresh=0.5)`` check on
+    cube A in ``StackCubeEnv.evaluate``. Accepts Python floats, NumPy arrays, or
+    torch tensors for the speeds (comparisons and ``&`` overload identically
+    across all three, like ``cube_stack_offset_ok``); the caller supplies the
+    speed norms, so no backend-specific linalg is needed here.
+
+    Parameters
+    ----------
+    lin_speed : float or numpy.ndarray or torch.Tensor
+        Norm of the cube's linear velocity (m/s).
+    ang_speed : float or numpy.ndarray or torch.Tensor
+        Norm of the cube's angular velocity (rad/s).
+    lin_threshold : float
+        Maximum linear speed that still counts as static (m/s).
+    ang_threshold : float
+        Maximum angular speed that still counts as static (rad/s).
+    """
+    return (lin_speed <= lin_threshold) & (ang_speed <= ang_threshold)
+
+
+def cube_stack_offset_ok(offset_x, offset_y, offset_z, *, cube_half_size, margin):
+    """Whether cube A rests directly on top of cube B (ManiSkill StackCube's check).
+
+    ``offset_*`` is cube A's world position minus cube B's, per axis (a Python
+    float, NumPy array, or torch tensor, dispatched by operator overloading
+    like this module's other helpers -- no ``hasattr``/``isinstance`` branching
+    needed since ``**``, ``abs``, and comparisons are overloaded identically by
+    all three types). Cube A counts as stacked when its horizontal offset from
+    cube B is within ``sqrt(2) * cube_half_size`` (the cube's half-diagonal)
+    plus ``margin``, and its vertical offset is within ``margin`` of exactly
+    ``2 * cube_half_size`` (resting flush on cube B's top face). Mirrors
+    ManiSkill's ``StackCubeEnv.evaluate`` (``xy_flag`` / ``z_flag``),
+    generalized to named, backend-agnostic operands.
+
+    Parameters
+    ----------
+    offset_x, offset_y, offset_z : float or numpy.ndarray or torch.Tensor
+        Cube A's world position minus cube B's, per axis.
+    cube_half_size : float
+        Shared half-extent of both cubes (metres).
+    margin : float
+        Alignment tolerance (metres) applied to both the XY and Z checks.
+    """
+    xy_dist = (offset_x**2 + offset_y**2) ** 0.5
+    xy_ok = xy_dist <= math.sqrt(2) * cube_half_size + margin
+    z_ok = abs(offset_z - 2.0 * cube_half_size) <= margin
+    return xy_ok & z_ok

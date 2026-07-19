@@ -32,6 +32,7 @@ from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 from so101_nexus.warp.object_slots import (
+    hidden_slot_band_xy,
     quat_mul_wxyz,
     random_yaw_quat_batch,
     sample_separated_polar,
@@ -45,11 +46,6 @@ _SO101_XML = get_so101_mujoco_model_path()
 # budget scales with the pool size. naconmax = nconmax * num_envs.
 _PICK_NCONMAX_BASE = 192
 _PICK_NCONMAX_PER_SLOT = 16
-
-# Clearance (m) between the off-world parking band for inactive slots and the
-# reachable spawn annulus. Parking positions are derived from the configured
-# spawn bounds and object radii so hidden slots never overlap active samples.
-_HIDE_CLEARANCE = 0.1
 
 
 def _contact_budget(n_pool: int) -> tuple[int, int]:
@@ -169,16 +165,12 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._slot_rest_quat = torch.tensor(
             np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
         )
-        # Park inactive slots in a band beyond the reachable spawn annulus, spaced
-        # by object diameter so neither active samples nor adjacent hidden bodies
-        # overlap (Warp contact bits are global, so hidden slots stay collidable).
-        cx, cy = config.spawn_center
-        max_br = float(self._slot_bradius.max())
-        step = 2.0 * max_br + _HIDE_CLEARANCE
-        base = config.spawn_max_radius + 2.0 * max_br + _HIDE_CLEARANCE
-        hide_x = cx - base - step * torch.arange(self._n_pool, device=self.device)
-        self._hide_xy = torch.stack(
-            [hide_x, torch.full((self._n_pool,), cy, device=self.device)], dim=1
+        self._hide_xy = hidden_slot_band_xy(
+            self.device,
+            self._n_pool,
+            float(self._slot_bradius.max()),
+            config.spawn_max_radius,
+            config.spawn_center,
         )
 
         # Per-world target tracking (set at reset). ``_obj_geom`` drives grasp
