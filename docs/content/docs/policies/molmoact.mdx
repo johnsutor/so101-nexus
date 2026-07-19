@@ -50,6 +50,10 @@ env.close()
 
 `MolmoActPolicy.image_keys` and `RolloutRecorder.camera_keys` are two sides of the same contract. The defaults line up: the recorder maps `("overhead_camera", "wrist_camera")` to `observation.images.overhead` and `observation.images.wrist`, and the policy reads those image keys in that order. If you customize one side, customize the other side to match or the policy will fail at inference when a requested image key is missing.
 
+### Side Video Channel
+
+Pass `record_side_video=True` to record the env's configured render view as an extra `observation.images.side` video channel alongside the rollout dataset. This requires the env to be constructed with `render_mode="rgb_array"`; pair it with `RenderConfig(camera="side")` for an angled tabletop bystander view. The side frame is visualization-only: it is rendered before each step (so it depicts the same state as the rest of the frame) and never enters policy batches, so the policy still sees exactly the overhead and wrist cameras it was trained on. Declare the channel in the dataset schema with `FieldSelection(side_image=True)` and a `"side"` entry in `follower_features` sized to the env's `RenderConfig` resolution.
+
 ## Caveats
 
 ### Action Semantics
