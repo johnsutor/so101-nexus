@@ -72,7 +72,7 @@ _validate_color_config = validate_color_config
 
 
 class RenderConfig:
-    """Render camera resolution settings (visualization only, not observations).
+    """Render camera settings (visualization only, not observations).
 
     Parameters
     ----------
@@ -80,16 +80,41 @@ class RenderConfig:
         Render image width in pixels.
     height : int
         Render image height in pixels.
+    camera : {"overhead", "side"}
+        Free-camera view used by ``render_mode="rgb_array"`` and as the initial
+        viewpoint of the ``render_mode="human"`` viewer. ``"overhead"`` looks
+        straight down at the workspace; ``"side"`` is an angled tabletop
+        bystander view. MuJoCo backend only; the Warp backend implements no
+        ``render()``.
+    side_azimuth_deg : float
+        Azimuth of the side view in degrees.
+    side_elevation_deg : float
+        Elevation of the side view in degrees, in ``[-90, 0)`` so the camera
+        looks down at the table.
     """
 
-    def __init__(self, width: int = 640, height: int = 480) -> None:
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        camera: Literal["overhead", "side"] = "overhead",
+        side_azimuth_deg: float = 160.0,
+        side_elevation_deg: float = -30.0,
+    ) -> None:
         self.width = width
         self.height = height
+        self.camera = camera
+        self.side_azimuth_deg = side_azimuth_deg
+        self.side_elevation_deg = side_elevation_deg
         if self.width <= 0 or self.height <= 0:
             raise ValueError(f"render dimensions must be > 0, got {self.width}x{self.height}")
+        if camera not in ("overhead", "side"):
+            raise ValueError(f"render camera must be 'overhead' or 'side', got {camera!r}")
+        if not -90.0 <= side_elevation_deg < 0.0:
+            raise ValueError(f"side_elevation_deg must be in [-90, 0), got {side_elevation_deg}")
 
     def __repr__(self) -> str:  # noqa: D105
-        return f"RenderConfig(width={self.width}, height={self.height})"
+        return f"RenderConfig(width={self.width}, height={self.height}, camera={self.camera!r})"
 
 
 JointSpec = float | tuple[float, float]

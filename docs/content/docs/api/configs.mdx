@@ -9,12 +9,15 @@ All configuration classes live in `so101_nexus` and are plain Python classes wit
 
 ## RenderConfig
 
-Controls image resolution for the visualization render camera (not observations).
+Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. The camera selection applies to the MuJoCo backend only, since the Warp backend does not implement `render()`.
 
 ```python
 from so101_nexus import RenderConfig
 
 render = RenderConfig(width=640, height=480)
+
+# Angled side view for render_mode="rgb_array" videos and the human viewer
+render = RenderConfig(camera="side")
 ```
 
 ### Constructor Parameters
@@ -23,6 +26,9 @@ render = RenderConfig(width=640, height=480)
 |-----------|------|---------|-------------|
 | `width` | `int` | `640` | Render image width in pixels |
 | `height` | `int` | `480` | Render image height in pixels |
+| `camera` | `"overhead" \| "side"` | `"overhead"` | View used by `render_mode="rgb_array"` and as the initial `render_mode="human"` viewpoint. `"overhead"` looks straight down; `"side"` is an angled tabletop bystander view |
+| `side_azimuth_deg` | `float` | `160.0` | Azimuth of the side view in degrees |
+| `side_elevation_deg` | `float` | `-30.0` | Elevation of the side view in degrees, in `[-90, 0)` |
 
 ---
 
@@ -206,7 +212,7 @@ config = EnvironmentConfig(obs_mode="state")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `render` | `RenderConfig \| None` | `None` | Render camera resolution settings (visualization only). Uses `RenderConfig()` defaults when `None`. |
+| `render` | `RenderConfig \| None` | `None` | Render camera settings (visualization only): resolution and overhead/side view selection. Uses `RenderConfig()` defaults when `None`. |
 | `reward` | `RewardConfig \| None` | `None` | Reward weights. Uses `RewardConfig()` defaults when `None`. |
 | `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
 | `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |

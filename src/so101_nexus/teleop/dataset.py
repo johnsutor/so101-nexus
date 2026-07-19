@@ -21,6 +21,7 @@ from so101_nexus.config import REWARD_COMPONENT_KEYS
 
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
+SIDE_KEY = "observation.images.side"
 ENV_STATE_KEY = "observation.environment_state"
 REWARD_KEY = "reward"
 SUCCESS_KEY = "success"
@@ -48,6 +49,7 @@ class FieldSelection:
 
     wrist_image: bool = True
     overhead_image: bool = True
+    side_image: bool = False
     environment_state: bool = True
     task: bool = True
 
@@ -76,6 +78,10 @@ def _with_selected_cameras(
         if "overhead" not in follower_features:
             raise ValueError("overhead image selected but follower exposes no 'overhead' camera.")
         features["overhead"] = follower_features["overhead"]
+    if selection.side_image:
+        if "side" not in follower_features:
+            raise ValueError("side image selected but follower exposes no 'side' camera.")
+        features["side"] = follower_features["side"]
     return features
 
 
@@ -149,6 +155,7 @@ def build_frame(
     env_state: np.ndarray | None = None,
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
+    side_image: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Assemble one LeRobot frame dict using only the selected fields."""
     components = reward_components or {}
@@ -185,6 +192,13 @@ def build_frame(
                 "check that the env exposes an overhead camera."
             )
         frame[OVERHEAD_KEY] = overhead_image
+    if selection.side_image:
+        if side_image is None:
+            raise ValueError(
+                "side_image selected but no side frame was recorded; "
+                "check that the env renders with render_mode='rgb_array'."
+            )
+        frame[SIDE_KEY] = side_image
     if selection.environment_state:
         if env_state is None:
             raise ValueError(

@@ -10,7 +10,7 @@ import mujoco
 import numpy as np
 from gymnasium import spaces
 
-from so101_nexus.camera_utils import compute_overhead_camera_params
+from so101_nexus.camera_utils import compute_angled_camera_params, compute_overhead_camera_params
 from so101_nexus.config import (
     SO101_JOINT_NAMES,
     ControlMode,
@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 # existing controller delta units (radians): +/-0.05 for the five arm joints
 # and +/-0.2 for the gripper. Reused by both delta control modes.
 _DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+
+def _configure_free_camera(cam: mujoco.MjvCamera, params: dict[str, Any]) -> None:
+    """Point a free camera at the lookat/distance/elevation/azimuth in ``params``."""
+    cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+    cam.lookat[:] = params["lookat"]
+    cam.distance = params["distance"]
+    cam.elevation = params["elevation"]
+    cam.azimuth = params["azimuth"]
 
 
 class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
@@ -163,6 +172,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._prev_action: np.ndarray | None = None
         self._setup_camera_renderers()
         self._renderer = None
+        self._render_cam: mujoco.MjvCamera | None = None
         self._viewer = None
 
     def _setup_camera_renderers(self) -> None:
@@ -196,11 +206,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 aspect=cam.width / cam.height,
             )
             self._overhead_obs_cam = mujoco.MjvCamera()
-            self._overhead_obs_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            self._overhead_obs_cam.lookat[:] = params["lookat"]
-            self._overhead_obs_cam.distance = params["distance"]
-            self._overhead_obs_cam.elevation = params["elevation"]
-            self._overhead_obs_cam.azimuth = params["azimuth"]
+            _configure_free_camera(self._overhead_obs_cam, params)
             self._overhead_obs_renderer = mujoco.Renderer(
                 self.model, height=cam.height, width=cam.width
             )
@@ -539,6 +545,23 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         return obs, reward, terminated, False, info
 
+    def _render_camera_params(self) -> dict[str, Any]:
+        """Free-camera params for the configured render view (overhead or side)."""
+        render = self.config.render
+        if render.camera == "side":
+            return compute_angled_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                elevation=render.side_elevation_deg,
+                azimuth=render.side_azimuth_deg,
+                aspect=render.width / render.height,
+            )
+        return compute_overhead_camera_params(
+            spawn_center=self.config.spawn_center,
+            spawn_max_radius=self.config.spawn_max_radius,
+            aspect=render.width / render.height,
+        )
+
     def render(self) -> np.ndarray | None:
         """Render the current frame and return an RGB array, or None."""
         if self.render_mode == "rgb_array":
@@ -548,23 +571,16 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                     height=self.config.render.height,
                     width=self.config.render.width,
                 )
-            if not hasattr(self, "_overhead_cam"):
-                params = compute_overhead_camera_params(
-                    spawn_center=self.config.spawn_center,
-                    spawn_max_radius=self.config.spawn_max_radius,
-                    aspect=self.config.render.width / self.config.render.height,
-                )
-                self._overhead_cam = mujoco.MjvCamera()
-                self._overhead_cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-                self._overhead_cam.lookat[:] = params["lookat"]
-                self._overhead_cam.distance = params["distance"]
-                self._overhead_cam.elevation = params["elevation"]
-                self._overhead_cam.azimuth = params["azimuth"]
-            self._renderer.update_scene(self.data, camera=self._overhead_cam)
+            if self._render_cam is None:
+                self._render_cam = mujoco.MjvCamera()
+                _configure_free_camera(self._render_cam, self._render_camera_params())
+            self._renderer.update_scene(self.data, camera=self._render_cam)
             return self._renderer.render()
         if self.render_mode == "human":
             if self._viewer is None:
                 self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+                # Open on the configured view; the user can still orbit freely.
+                _configure_free_camera(self._viewer.cam, self._render_camera_params())
             self._viewer.sync()
             return None
         return None
