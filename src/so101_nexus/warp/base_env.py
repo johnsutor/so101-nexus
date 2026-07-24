@@ -36,6 +36,7 @@ from so101_nexus.camera_utils import build_overhead_camera_mjcf
 from so101_nexus.config import (
     EE_CONTROL_MODES,
     JOINT_CONTROL_MODES,
+    SO101_ARM_JOINT_COUNT,
     SO101_JOINT_NAMES,
     SO101_TCP_SITE_NAME,
     ControlMode,
@@ -43,7 +44,6 @@ from so101_nexus.config import (
 )
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
-    EE_DELTA_ACTION_SCALE,
     EE_IK_ITERATIONS,
     ee_ik_delta_q,
     quat_multiply,
@@ -335,11 +335,13 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        self._ik_graph: torch.cuda.CUDAGraph | None = None
         if control_mode in EE_CONTROL_MODES:
             self._setup_ee_control()
         self._setup_cameras()
         self._step_graph = None
         self._capture_step_graph()
+        self._capture_ik_graph()
 
     def _setup_ee_control(self) -> None:
         """Allocate the persistent batched inverse-kinematics state for the EE modes.
@@ -347,10 +349,15 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         The Jacobian, tool-point, and body-id arrays are sized once here because
         ``mujoco_warp.jac`` writes into caller-owned arrays: allocating them per
         step would charge every control step for ``num_envs``-sized allocations.
+        The command and answer buffers are persistent for the same reason and,
+        more importantly, because the CUDA graph captured over the solve binds
+        their addresses once (see ``_capture_ik_graph``).
         """
+        robot = self.config.robot
         self._ee_delta_scale = torch.as_tensor(
-            np.asarray(EE_DELTA_ACTION_SCALE, dtype=np.float32), device=self.device
+            np.asarray(robot.ee_delta_action_scale, dtype=np.float32), device=self.device
         )
+        self._ee_orientation_weight = robot.ee_orientation_weight
         self._arm_qpos_adr = self._qpos_adr[:-1]
         nv = self.mjm.nv
         with wp.ScopedDevice(self._wp_device):
@@ -366,6 +373,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._ik_jacp_view = wp.to_torch(self._ik_jacp)  # (N, 3, nv)
         self._ik_jacr_view = wp.to_torch(self._ik_jacr)  # (N, 3, nv)
         self._ik_point_view = wp.to_torch(self._ik_point)  # (N, 3)
+        # Graph-stable solve I/O: the command goes in, the arm targets come out.
+        self._ik_target_pos = torch.zeros((self.num_envs, 3), device=self.device)
+        self._ik_target_quat = torch.zeros((self.num_envs, 4), device=self.device)
+        self._ik_arm_target = torch.zeros(
+            (self.num_envs, SO101_ARM_JOINT_COUNT), device=self.device
+        )
 
     def _setup_cameras(self) -> None:
         """Detect camera components and configure batched rendering (no-op if none).
@@ -570,6 +583,61 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             )
             self._step_graph = None
 
+    def _capture_ik_graph(self) -> None:
+        """Capture the fixed-iteration inverse-kinematics solve into a CUDA graph.
+
+        ``_solve_ee_ik`` is three iterations of small Warp kernels interleaved
+        with small torch reductions, so like ``mujoco_warp.step`` it is
+        launch-bound rather than compute-bound: replaying it as one graph removes
+        the per-launch overhead that dominates it.
+
+        Capture is driven by ``torch.cuda.graph`` rather than
+        ``wp.ScopedCapture`` because the loop allocates torch intermediates. Only
+        a capture torch itself opened routes those allocations to the graph's
+        private memory pool; under a Warp-opened capture the caching allocator
+        would reach for ``cudaMalloc`` and abort the capture. Warp launches are
+        steered onto the capturing stream with ``ScopedStream``, whose entry and
+        exit synchronization is disabled because cross-stream event waits are
+        illegal mid-capture and there is nothing outstanding to order against:
+        ``torch.cuda.graph`` synchronizes the device on entry.
+
+        Replay runs on torch's default stream, which Warp's device stream
+        implicitly synchronizes with, so it stays ordered against
+        ``_advance_physics`` exactly as the eager solve was.
+
+        CPU has no graph support, and capture failure is never fatal: both fall
+        back to calling ``_solve_ee_ik`` directly.
+        """
+        if self.control_mode not in EE_CONTROL_MODES or self.device.type != "cuda":
+            return
+        try:
+            # Warm up on the same stream the eager path uses, so lazy module
+            # loads and linear-algebra workspace allocations are done before the
+            # capture opens. Identity orientation keeps the warmup solve well
+            # posed; the values are irrelevant, only the work they trigger.
+            self._ik_target_pos.copy_(self._tcp_pos())
+            self._ik_target_quat.zero_()
+            self._ik_target_quat[:, 0] = 1.0
+            with wp.ScopedDevice(self._wp_device):
+                self._solve_ee_ik()
+            torch.cuda.synchronize()
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph, capture_error_mode="thread_local"):
+                capture_stream = wp.stream_from_torch(torch.cuda.current_stream())
+                with (
+                    wp.ScopedDevice(self._wp_device),
+                    wp.ScopedStream(capture_stream, sync_enter=False, sync_exit=False),
+                ):
+                    self._solve_ee_ik()
+            self._ik_graph = graph
+        except Exception as exc:  # capture is an optimization; never block construction
+            warnings.warn(
+                f"Inverse-kinematics CUDA graph capture failed ({exc}); using the direct solve.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._ik_graph = None
+
     def _advance_physics(self) -> None:
         """Advance ``_N_SUBSTEPS`` of physics via the captured graph or direct loop."""
         if self._step_graph is not None:
@@ -728,9 +796,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
         ``pd_ee_pose`` reads the action as an absolute world TCP pose (position
         plus rotation vector); ``pd_ee_delta_pose`` scales the normalized action
-        by ``EE_DELTA_ACTION_SCALE`` and applies it to the *measured* pose,
-        mirroring ``pd_joint_delta_pos`` rather than the held target. The gripper
-        rides along as a plain joint target in both cases.
+        by ``config.robot.ee_delta_action_scale`` and applies it to the
+        *measured* pose, mirroring ``pd_joint_delta_pos`` rather than the held
+        target. The gripper rides along as a plain joint target in both cases.
         """
         pose = self._get_tcp_pose7()
         if self.control_mode == "pd_ee_pose":
@@ -753,12 +821,34 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     ) -> torch.Tensor:
         """Batched damped-least-squares IK: ``(N, 5)`` arm joint targets.
 
+        Copies the command into the persistent solve buffers, then either
+        replays the captured CUDA graph or runs ``_solve_ee_ik`` directly. The
+        returned tensor is ``_ik_arm_target`` itself, which the next solve
+        overwrites, so callers must consume it before the next control step.
+        """
+        self._ik_target_pos.copy_(target_pos)
+        self._ik_target_quat.copy_(target_quat)
+        if self._ik_graph is not None:
+            self._ik_graph.replay()
+        else:
+            with wp.ScopedDevice(self._wp_device):
+                self._solve_ee_ik()
+        return self._ik_arm_target
+
+    def _solve_ee_ik(self) -> None:
+        """Solve ``_ik_target_pos``/``_ik_target_quat`` into ``_ik_arm_target``.
+
         Warm-starts from the current arm configuration and takes
         ``EE_IK_ITERATIONS`` steps, re-evaluating forward kinematics and the tool
         Jacobian at the working configuration each time. The arm's tool Jacobian
         is rank 5, so orientation is de-weighted rather than tracked exactly (see
-        ``so101_nexus.kinematics.EE_ORIENTATION_WEIGHT``), and targets outside the
+        ``config.robot.ee_orientation_weight``), and targets outside the
         reachable set resolve to the closest pose the joint limits allow.
+
+        Shape-static and fixed-iteration by construction, and it reads and writes
+        only persistent buffers, which is what makes ``_capture_ik_graph`` able to
+        record it. Any allocation, host synchronization, or data-dependent
+        iteration count added here breaks that capture.
 
         ``qpos`` is restored on exit, but the derived kinematics (``site_xpos``,
         ``site_xmat``, ``subtree_com``) are left at the last working
@@ -772,32 +862,38 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         start_q = self.qpos.index_select(1, self._arm_qpos_adr)
         arm_q = start_q
         low, high = self._target_low[:-1], self._target_high[:-1]
-        with wp.ScopedDevice(self._wp_device):
-            for _ in range(EE_IK_ITERATIONS):
-                self.qpos[:, self._arm_qpos_adr] = arm_q
-                # com_pos is required as well: mjw.jac reads subtree_com, and
-                # kinematics alone leaves it stale (rotational rows come out wrong).
-                mjw.kinematics(self.model, self.data)
-                mjw.com_pos(self.model, self.data)
-                pose = self._get_tcp_pose7()
-                self._ik_point_view.copy_(pose[:, :3])
-                mjw.jac(
-                    self.model,
-                    self.data,
-                    self._ik_jacp,
-                    self._ik_jacr,
-                    self._ik_point,
-                    self._ik_body,
-                )
-                jac = torch.cat([self._ik_jacp_view, self._ik_jacr_view], dim=1).index_select(
-                    2, self._arm_dof_adr
-                )
-                delta_q = ee_ik_delta_q(jac, pose[:, :3], pose[:, 3:], target_pos, target_quat)
-                arm_q = torch.clamp(arm_q + delta_q, low, high)
-            # The loop writes only the arm block, and mjw.step in _advance_physics
-            # recomputes every derived field, so restoring qpos restores the state.
-            self.qpos[:, self._arm_qpos_adr] = start_q
-        return arm_q
+        for _ in range(EE_IK_ITERATIONS):
+            self.qpos[:, self._arm_qpos_adr] = arm_q
+            # com_pos is required as well: mjw.jac reads subtree_com, and
+            # kinematics alone leaves it stale (rotational rows come out wrong).
+            mjw.kinematics(self.model, self.data)
+            mjw.com_pos(self.model, self.data)
+            pose = self._get_tcp_pose7()
+            self._ik_point_view.copy_(pose[:, :3])
+            mjw.jac(
+                self.model,
+                self.data,
+                self._ik_jacp,
+                self._ik_jacr,
+                self._ik_point,
+                self._ik_body,
+            )
+            jac = torch.cat([self._ik_jacp_view, self._ik_jacr_view], dim=1).index_select(
+                2, self._arm_dof_adr
+            )
+            delta_q = ee_ik_delta_q(
+                jac,
+                pose[:, :3],
+                pose[:, 3:],
+                self._ik_target_pos,
+                self._ik_target_quat,
+                orientation_weight=self._ee_orientation_weight,
+            )
+            arm_q = torch.clamp(arm_q + delta_q, low, high)
+        # The loop writes only the arm block, and mjw.step in _advance_physics
+        # recomputes every derived field, so restoring qpos restores the state.
+        self.qpos[:, self._arm_qpos_adr] = start_q
+        self._ik_arm_target.copy_(arm_q)
 
     def step(
         self, actions: torch.Tensor

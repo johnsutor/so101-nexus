@@ -26,13 +26,13 @@ EE_MODES = ("pd_ee_pose", "pd_ee_delta_pose")
 CROSS_BACKEND_TOL = 1e-4
 
 
-def _make(control_mode, num_envs=NUM_ENVS, seed=0):
+def _make(control_mode, num_envs=NUM_ENVS, seed=0, robot=None):
     from so101_nexus.config import PickConfig
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
     env = WarpPickLiftVectorEnv(
         num_envs=num_envs,
-        config=PickConfig(),
+        config=PickConfig(robot=robot),
         device="cpu",
         seed=seed,
         control_mode=control_mode,
@@ -286,8 +286,9 @@ def test_ee_pose_commanding_the_current_pose_is_a_fixed_point():
     assert torch.linalg.norm(env._get_tcp_pose7()[:, :3] - start, dim=1).max() < 5e-3
 
 
+@pytest.mark.parametrize("tuned_robot", [False, True], ids=["default_knobs", "tuned_knobs"])
 @pytest.mark.parametrize("mode", EE_MODES)
-def test_ik_matches_the_mujoco_backend(mode):
+def test_ik_matches_the_mujoco_backend(mode, tuned_robot):
     """Same configuration, same command, same joint targets in both backends.
 
     Driven through each backend's ``_action_to_ctrl`` seam from matched states
@@ -295,6 +296,10 @@ def test_ik_matches_the_mujoco_backend(mode):
     of two integrators that are not expected to agree step for step. Warp runs
     all configurations as a batch, MuJoCo one at a time, which also pins the
     batched Jacobian slice against the single-sample reference.
+
+    Run twice: once on the defaults, once on non-default
+    ``ee_orientation_weight`` / ``ee_delta_action_scale``, so the two backends
+    cannot read the same knob differently.
     """
     import gymnasium as gym
     import mujoco
@@ -302,11 +307,20 @@ def test_ik_matches_the_mujoco_backend(mode):
     import torch
 
     import so101_nexus.mujoco  # noqa: F401 - registers MuJoCo*-v1
+    from so101_nexus.config import PickConfig, RobotConfig
     from so101_nexus.kinematics import quat_to_rotvec
 
     n = 16
-    warp_env = _make(mode, num_envs=n)
-    mj_env = gym.make("MuJoCoPickLift-v1", control_mode=mode)
+    robot = (
+        RobotConfig(
+            ee_orientation_weight=0.2,
+            ee_delta_action_scale=(0.03, 0.03, 0.03, 0.25, 0.25, 0.25, 0.1),
+        )
+        if tuned_robot
+        else None
+    )
+    warp_env = _make(mode, num_envs=n, robot=robot)
+    mj_env = gym.make("MuJoCoPickLift-v1", control_mode=mode, config=PickConfig(robot=robot))
     mj = mj_env.unwrapped
     mj.reset(seed=0)
     try:
@@ -357,3 +371,188 @@ def test_ik_matches_the_mujoco_backend(mode):
         np.testing.assert_allclose(warp_ctrl, mj_ctrl, atol=CROSS_BACKEND_TOL)
     finally:
         mj_env.close()
+
+
+def test_ee_orientation_weight_is_a_live_knob():
+    """``RobotConfig.ee_orientation_weight`` reaches the batched solve.
+
+    A pure rotation command is the discriminating case: the weight scales both
+    sides of the damped least-squares solve, so raising it trades position
+    tracking for tool rotation authority. Two envs pinned to the same
+    configuration must therefore resolve the same command differently.
+    """
+    import torch
+
+    from so101_nexus.config import RobotConfig
+
+    qpos = [0.1, -0.9, 0.9, 0.4, 0.05, 0.6]
+    action = torch.zeros((NUM_ENVS, 7))
+    action[:, 5] = 1.0
+
+    targets = {}
+    for weight in (0.01, 0.5):
+        env = _make("pd_ee_delta_pose", robot=RobotConfig(ee_orientation_weight=weight))
+        _pin_robot(env, qpos)
+        targets[weight] = env._action_to_ctrl(action).clone()
+
+    assert (targets[0.01] - targets[0.5]).abs().max() > 1e-3, targets
+
+
+def test_ee_delta_action_scale_is_a_live_knob():
+    """``RobotConfig.ee_delta_action_scale`` sets the physical step of a +/-1 action.
+
+    Checked on the gripper channel, the one element of the seven that maps to a
+    joint target directly rather than through the solver, so the assertion is on
+    an exact number instead of a tracking tolerance.
+    """
+    import torch
+
+    from so101_nexus.config import RobotConfig
+
+    scale = (0.04, 0.04, 0.04, 0.25, 0.25, 0.25, 0.05)
+    env = _make("pd_ee_delta_pose", robot=RobotConfig(ee_delta_action_scale=scale))
+    _pin_robot(env, [0.1, -0.9, 0.9, 0.4, 0.05, 0.0])
+
+    action = torch.zeros((NUM_ENVS, 7))
+    action[:, 6] = 1.0
+    gripper = env._action_to_ctrl(action)[:, -1]
+    assert gripper[0] == pytest.approx(scale[6], abs=1e-6)
+
+
+def test_cpu_device_falls_back_to_the_direct_solve():
+    """CUDA graphs do not exist on the Warp CPU device; the eager solve must stand in."""
+    env = _make("pd_ee_delta_pose")
+    assert env._ik_graph is None
+
+
+def _cuda_env(control_mode, num_envs=16, seed=0):
+    """Build a CUDA-device env, skipping when no CUDA device is available."""
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("no CUDA device")
+
+    from so101_nexus.config import PickConfig
+    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+
+    env = WarpPickLiftVectorEnv(
+        num_envs=num_envs,
+        config=PickConfig(),
+        device="cuda",
+        seed=seed,
+        control_mode=control_mode,
+    )
+    env.reset(seed=seed)
+    return env
+
+
+@pytest.mark.parametrize("mode", EE_MODES)
+def test_captured_ik_graph_matches_the_direct_solve(mode):
+    """The captured graph is the eager loop, bit for bit, and stays replayable.
+
+    Both paths run from an identical pinned configuration with derived kinematics
+    refreshed, so any divergence is the graph rather than accumulated simulation
+    state. Replaying a second time also has to reproduce the first answer: a
+    graph that captured a stale buffer address would pass once and then freeze.
+    """
+    import numpy as np
+    import torch
+
+    env = _cuda_env(mode)
+    assert env._ik_graph is not None, "CUDA graph capture of the IK solve failed"
+
+    rng = np.random.default_rng(11)
+    n = env.num_envs
+    low = env._target_low.cpu().numpy()
+    high = env._target_high.cpu().numpy()
+    robot_qpos = torch.as_tensor(
+        rng.uniform(0.7 * low, 0.7 * high, size=(n, 6)).astype(np.float32), device=env.device
+    )
+    action = torch.as_tensor(
+        rng.uniform(-1.0, 1.0, size=(n, 7)).astype(np.float32), device=env.device
+    )
+    if mode == "pd_ee_pose":
+        action = torch.clamp(action, env._action_low, env._action_high)
+
+    def solve():
+        env.qpos[:, env._qpos_adr] = robot_qpos
+        env.qvel[:] = 0.0
+        _refresh(env)
+        return env._action_to_ctrl(action).clone()
+
+    from_graph = solve()
+    graph, env._ik_graph = env._ik_graph, None
+    from_eager = solve()
+    env._ik_graph = graph
+    replayed = solve()
+
+    assert torch.equal(from_graph, from_eager)
+    assert torch.equal(from_graph, replayed)
+
+
+def test_captured_ik_graph_leaves_qpos_bit_identical():
+    """Replay restores ``qpos`` exactly, as the eager solve does."""
+    import torch
+
+    env = _cuda_env("pd_ee_delta_pose")
+    _refresh(env)
+    before = env.qpos.clone()
+    env._action_to_ctrl(torch.full((env.num_envs, 7), 0.5, device=env.device))
+    assert torch.equal(before, env.qpos)
+    assert torch.isfinite(env.qpos).all()
+
+
+def test_captured_ik_graph_tracks_a_changing_command():
+    """Successive replays must resolve the command written before each one.
+
+    A graph that folded the warmup command into its own nodes instead of reading
+    the persistent target buffers would return the same joint targets forever.
+    """
+    import torch
+
+    env = _cuda_env("pd_ee_delta_pose")
+    _refresh(env)
+    plus = torch.zeros((env.num_envs, 7), device=env.device)
+    plus[:, 0] = 1.0
+    first = env._action_to_ctrl(plus).clone()
+    _refresh(env)
+    second = env._action_to_ctrl(-plus).clone()
+    assert (first - second).abs().max() > 1e-3
+
+
+# torch reports an empty graph because the synthetic failure aborts the capture
+# body before a single node is recorded; that is the situation under test.
+@pytest.mark.filterwarnings("ignore:The CUDA Graph is empty:UserWarning")
+def test_ik_graph_capture_failure_falls_back_to_the_direct_solve(monkeypatch):
+    """A failed capture must warn and degrade, never break construction.
+
+    Also checks that the failure does not poison the process: a later env on the
+    same device still captures. An aborted capture that left the CUDA caching
+    allocator mid-capture would take every subsequent env down with it.
+    """
+    import torch
+
+    from so101_nexus.warp import base_env as warp_base_env
+
+    original = warp_base_env.SO101NexusWarpVectorEnv._solve_ee_ik
+    calls = {"n": 0}
+
+    def flaky(self):
+        calls["n"] += 1
+        # Call 1 is the pre-capture warmup; call 2 is the one being recorded.
+        if calls["n"] == 2:
+            raise RuntimeError("synthetic capture failure")
+        return original(self)
+
+    monkeypatch.setattr(warp_base_env.SO101NexusWarpVectorEnv, "_solve_ee_ik", flaky)
+    with pytest.warns(RuntimeWarning, match="Inverse-kinematics CUDA graph capture failed"):
+        env = _cuda_env("pd_ee_delta_pose", num_envs=8)
+    monkeypatch.undo()
+
+    assert env._ik_graph is None
+    action = torch.zeros((env.num_envs, 7), device=env.device)
+    action[:, 0] = 1.0
+    assert torch.isfinite(env._action_to_ctrl(action)).all()
+
+    later = _cuda_env("pd_ee_delta_pose", num_envs=8)
+    assert later._ik_graph is not None
+    assert torch.isfinite(later._action_to_ctrl(action)).all()

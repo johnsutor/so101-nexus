@@ -77,6 +77,13 @@ joint states, normalized by the env's `_DELTA_ACTION_SCALE`. Keep the same contr
 record and train time, or the clone will be silently wrong.
 </Callout>
 
+Teleop recording is pinned to `pd_joint_pos`, so this relabeling step is the norm rather
+than a workaround: joint positions are the only label the leader produces, and every other
+action space is recomputed from them. `pd_ee_delta_pose` labels are the same kind of finite
+difference taken over the recorded `EndEffectorPose` observation, which targets the same TCP
+the end-effector modes do, so no re-recording is needed there either. See
+[Control Modes](/docs/concepts/control-modes) for the layout and the units.
+
 <Callout type="info">
 For the full RL recipe and per-task commands, continue to
 [Training with PPO](/docs/training/ppo). For the browser version of this whole stage, open

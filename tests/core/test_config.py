@@ -780,6 +780,34 @@ def test_robot_config_static_vel_threshold_default():
     assert cfg.static_vel_threshold == pytest.approx(0.2)
 
 
+class TestRobotConfigEndEffectorKnobs:
+    """The two end-effector solver knobs, their defaults, and their guards."""
+
+    def test_defaults_match_the_kinematics_module(self):
+        from so101_nexus.kinematics import EE_DELTA_ACTION_SCALE, EE_ORIENTATION_WEIGHT
+
+        cfg = RobotConfig()
+        assert cfg.ee_orientation_weight == pytest.approx(EE_ORIENTATION_WEIGHT)
+        assert cfg.ee_delta_action_scale == pytest.approx(EE_DELTA_ACTION_SCALE)
+
+    def test_delta_scale_is_normalized_to_a_float_tuple(self):
+        cfg = RobotConfig(ee_delta_action_scale=[1, 2, 3, 4, 5, 6, 7])
+        assert cfg.ee_delta_action_scale == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0)
+
+    @pytest.mark.parametrize("weight", [0.0, -0.1, 1.5])
+    def test_orientation_weight_outside_the_unit_interval_raises(self, weight):
+        with pytest.raises(ValueError, match="ee_orientation_weight must be in"):
+            RobotConfig(ee_orientation_weight=weight)
+
+    def test_delta_scale_wrong_length_raises(self):
+        with pytest.raises(ValueError, match="ee_delta_action_scale must have exactly 7"):
+            RobotConfig(ee_delta_action_scale=(0.02, 0.02, 0.02))
+
+    def test_delta_scale_non_positive_entry_raises(self):
+        with pytest.raises(ValueError, match="ee_delta_action_scale entries must be > 0"):
+            RobotConfig(ee_delta_action_scale=(0.02, 0.02, 0.02, 0.1, 0.1, 0.1, 0.0))
+
+
 class TestPose:
     def test_fixed_joints_stay_fixed(self):
         pose = Pose(
