@@ -19,7 +19,7 @@ import so101_nexus
 |------|------------|
 | `ColorName` | `Literal["red", "orange", "yellow", "green", "blue", "purple", "black", "white", "gray"]` |
 | `ColorConfig` | `ColorName \| list[ColorName]` |
-| `ControlMode` | `Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]` |
+| `ControlMode` | `Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos", "pd_ee_pose", "pd_ee_delta_pose"]` (see [Control Modes](/docs/concepts/control-modes)) |
 | `ObsMode` | `Literal["state", "visual"]` |
 | `MoveDirection` | `Literal["up", "down", "left", "right", "forward", "backward"]` |
 | `YcbModelId` | Literal union of 10 YCB object IDs (see [Assets and Geometry](/docs/api/assets-and-geometry)) |

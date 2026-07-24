@@ -116,7 +116,10 @@ and return the same type, so batched dataset or policy tensors decode directly.
 They import without the `teleop` extra (no LeRobot dependency), so a training
 repo can use them directly. The gripper limits default to the SO101 jaw travel;
 pass `gripper_limits_rad=(float(env.action_space.low[-1]), float(env.action_space.high[-1]))`
-for the exact bounds of a specific environment. The helpers assume the recording
+for the exact bounds of a specific environment. That indexing is only meaningful in
+the absolute control modes (`pd_joint_pos`, `pd_ee_pose`); every delta mode
+normalizes its action to `[-1, 1]`, so the last element carries no physical bound.
+The helpers assume the recording
 convention used by this library (synthetic calibration with `drive_mode=0`).
 
 ## Using LeRobot processors with SO101-Nexus envs
