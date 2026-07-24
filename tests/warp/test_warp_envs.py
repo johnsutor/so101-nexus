@@ -160,6 +160,32 @@ def test_reset_bad_init_qpos_shape_raises():
         env.reset(options={"init_qpos": [0.0] * 5})
 
 
+def test_every_declared_control_mode_passes_the_validation_gate():
+    """The Warp accept list tracks the shared ControlMode literal, so both
+    backends advertise the same modes rather than drifting apart."""
+    from typing import get_args
+
+    from so101_nexus.config import ControlMode
+    from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
+
+    assert set(get_args(ControlMode)) <= SO101NexusWarpVectorEnv._VALID_CONTROL_MODES
+
+
+def test_unknown_control_mode_raises():
+    """The gate still rejects modes outside the literal as the literal grows."""
+    from so101_nexus.config import MoveConfig
+    from so101_nexus.warp.move_env import WarpMoveVectorEnv
+
+    with pytest.raises(ValueError, match="control_mode must be one of"):
+        WarpMoveVectorEnv(
+            num_envs=2,
+            config=MoveConfig(),
+            control_mode="pd_ee_twist",
+            device="cpu",
+            seed=0,
+        )
+
+
 def test_move_initial_distance_equals_target():
     import torch
 
