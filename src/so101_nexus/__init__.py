@@ -13,11 +13,15 @@ except PackageNotFoundError:  # pragma: no cover - running from a source tree
 
 from so101_nexus.config import (
     DIRECTION_VECTORS,
+    EE_CONTROL_MODES,
     EXTENDED_POSE,
+    JOINT_CONTROL_MODES,
     POSES,
     REST_POSE,
     ROBOT_CAMERA_PRESETS,
     SO101_JOINT_NAMES,
+    SO101_TCP_FRAME_NAME,
+    SO101_TCP_SITE_NAME,
     ControlMode,
     EnvironmentConfig,
     LookAtConfig,
@@ -42,6 +46,11 @@ from so101_nexus.constants import (
     ColorConfig,
     ColorName,
     sample_color,
+)
+from so101_nexus.kinematics import (
+    EE_ACTION_DIM,
+    EE_DELTA_ACTION_SCALE,
+    EE_ORIENTATION_WEIGHT,
 )
 from so101_nexus.lerobot_dataset import (
     SO101_GRIPPER_LIMITS_RAD,
@@ -108,17 +117,36 @@ def get_so101_mujoco_model_path() -> Path:
     return get_so101_mujoco_model_dir() / "so101.xml"
 
 
+def get_so101_urdf_path() -> Path:
+    """Return the path to the SO101 URDF used by LeRobot kinematics tooling.
+
+    The URDF carries two tool frames. ``gripper_frame_link`` is the upstream
+    LeRobot default and sits at the fixed fingertip. ``tcp_frame_link``
+    (:data:`so101_nexus.config.SO101_TCP_FRAME_NAME`) matches the ``gripperframe``
+    site of the MJCF model the simulator backends step, so end-effector poses
+    resolve identically in simulation and on hardware.
+    """
+    return SO101_DIR / "so101_new_calib.urdf"
+
+
 __all__ = [
     "ASSETS_DIR",
     "COLOR_MAP",
     "DIRECTION_VECTORS",
+    "EE_ACTION_DIM",
+    "EE_CONTROL_MODES",
+    "EE_DELTA_ACTION_SCALE",
+    "EE_ORIENTATION_WEIGHT",
     "EXTENDED_POSE",
+    "JOINT_CONTROL_MODES",
     "POSES",
     "REST_POSE",
     "ROBOT_CAMERA_PRESETS",
     "SO101_DIR",
     "SO101_GRIPPER_LIMITS_RAD",
     "SO101_JOINT_NAMES",
+    "SO101_TCP_FRAME_NAME",
+    "SO101_TCP_SITE_NAME",
     "YCB_OBJECTS",
     "CameraObservation",
     "ColorConfig",
@@ -162,6 +190,7 @@ __all__ = [
     "get_so101_mujoco_model_dir",
     "get_so101_mujoco_model_path",
     "get_so101_simulation_dir",
+    "get_so101_urdf_path",
     "get_ycb_collision_mesh",
     "get_ycb_mesh_dir",
     "get_ycb_texture_file",
