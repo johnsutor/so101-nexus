@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test test-warp test-visual test-visual-qwen coverage docs-check
+.PHONY: format lint typecheck test test-warp test-visual test-visual-qwen coverage docs-check rocm-sync rocm-verify
 
 COV_FAIL_UNDER ?= 84
 export COV_FAIL_UNDER
@@ -18,6 +18,16 @@ test:
 
 test-warp:
 	uv run --extra warp pytest tests/warp tests/core/test_rewards_tensor.py -q
+
+rocm-sync:
+	uv sync --extra rocm --no-default-groups
+
+rocm-verify: rocm-sync
+	uv run --extra rocm --no-default-groups python -c "\
+import torch; \
+hip = getattr(torch.version, 'hip', None); \
+assert hip, 'ROCm/HIP not detected in this torch build'; \
+print(f'torch {torch.__version__}  ROCm/HIP {hip}  GPU available: {torch.cuda.is_available()}')"
 
 coverage:
 	uv run pytest --cov=so101_nexus --cov-report=term-missing --cov-report=html --cov-fail-under=$(COV_FAIL_UNDER)

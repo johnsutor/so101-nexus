@@ -28,6 +28,11 @@ for the public-API and deprecation policy.
 - `RolloutRecorder(record_side_video=True)`: record the env's configured render view as an `observation.images.side` video channel alongside policy rollout datasets (requires `render_mode="rgb_array"`); `FieldSelection` gains `side_image` (default off, existing schemas unchanged) and `teleop.dataset` exposes `SIDE_KEY`.
 - `SimCameraConfig(source="render")`: a sentinel source that reads `env.render()` instead of an observation key, so LeRobot recording flows can capture the visualization render view (e.g. the side camera) as a dataset camera.
 - Teleop stack-cube customization: `TeleopConfigOverrides.cube_a_colors`/`cube_b_colors`, UI checkbox groups ("Stack Cube A Colors" / "Stack Cube B Colors") shown for `StackCubeConfig` environments, and a `[stack_cube]` config-profile section, mirroring the existing pick-and-place cube/target color controls.
+- `so101-nexus[rocm]`: optional extra that routes the `train` extra's `torch` dependency (plus `pytorch-triton-rocm`/`triton-rocm`) to AMD's ROCm 7.2 PyTorch wheel index on Linux x86_64, via `tool.uv.sources`/`tool.uv.index`, for behavior-cloning and PPO training on the MuJoCo backend on AMD GPUs (`uv sync --extra train --extra rocm --no-default-groups`). No effect on the default CUDA/CPU install path for `train`/`warp`; the Warp backend remains NVIDIA-only (NVIDIA Warp has no ROCm support). `rocm` conflicts with `teleop`/`dev`/`test`, whose pinned `lerobot<0.6` requires `torch<2.11`, incompatible with the ROCm 7.2 build.
+
+### Removed
+
+- An earlier `examples/tdmpc2_warp.py` (demo-augmented TD-MPC2, MPPI planning over a learned world model) was built, smoke-tested, and then dropped before landing on `bc_ppo_warp.py` above. TD-MPC2's MPC planning is kernel-launch-latency-bound (many small sequential forward passes per action), so it does not benefit from GPU-batched Warp collection the way PPO's rollout collection does: measured steady-state throughput was ~17-70 env-steps/sec versus PPO's ~100k+ on identical hardware, and it never reliably solved this task even with demo BC-anchoring. Kept as a documented decision, not shipped.
 
 ### Changed
 

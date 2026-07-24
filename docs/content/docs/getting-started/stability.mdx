@@ -41,7 +41,8 @@ Before a public name or behavior is removed:
 
 - **Python**: 3.12 and 3.13, verified in continuous integration.
 - **Operating systems**: Linux and macOS are exercised in continuous integration for the MuJoCo backend.
-- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.4 for GPU execution.
+- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.4 for GPU execution. Warp has no ROCm/AMD support.
+- **Accelerators**: `so101-nexus[rocm]` installs PyTorch from AMD's ROCm 7.2 index for training on the MuJoCo backend (Linux x86_64 only); it cannot be combined with `teleop`, `dev`, or `test`, whose pinned `lerobot` version requires `torch<2.11`.
 
 ## Determinism
 
