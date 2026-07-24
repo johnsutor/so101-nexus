@@ -138,13 +138,16 @@ The **Advanced Settings** section exposes common options:
   teleop observation and recorded frame. The default is 5.
 - `Pick-and-Place Cube Colors` and `Pick-and-Place Target Colors`:
   sampled cube/target colors for pick-and-place tasks
+- `Stack Cube A Colors` and `Stack Cube B Colors`: sampled colors for the
+  two stack-cube task cubes
 - `Max Steps`: overrides the episode's step cap (default 1024)
 - `Success Hold (s)`: seconds to keep recording after the env reports success before auto-stopping (default 0.5 s, 0 = stop immediately)
 
 Options that do not apply to the selected environment are ignored after
 customization is enabled. For example, pick-object settings apply to
-`PickConfig` environments, while pick-and-place color settings apply to
-`PickAndPlaceConfig` environments.
+`PickConfig` environments, pick-and-place color settings apply to
+`PickAndPlaceConfig` environments, and stack-cube color settings apply to
+`StackCubeConfig` environments.
 
 `Reset Settle Frames` is applied to the environment config before camera
 observations are wired, so the first saved demonstration frame is captured
@@ -157,7 +160,7 @@ JSON or TOML and are merged in this order:
 
 1. flat top-level override keys
 2. `common`
-3. matching task section, either `pick` or `pick_and_place`
+3. matching task section: `pick`, `pick_and_place`, or `stack_cube`
 4. `envs.<env_id>`
 
 Later sections override earlier sections.
@@ -181,6 +184,10 @@ objects = [
 [pick_and_place]
 cube_colors = ["red", "green"]
 target_colors = ["blue"]
+
+[stack_cube]
+cube_a_colors = ["red", "orange"]
+cube_b_colors = ["blue", "green"]
 
 [envs.MuJoCoPickLift-v1]
 spawn_angle_half_range_deg = 60.0

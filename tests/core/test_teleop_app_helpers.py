@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 import so101_nexus.teleop.app as teleop_app
-from so101_nexus.config import PickAndPlaceConfig, PickConfig
+from so101_nexus.config import PickAndPlaceConfig, PickConfig, StackCubeConfig
 from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.teleop.app import (
     _build_field_selection,
@@ -431,7 +431,7 @@ def test_update_customization_for_env_updates_success_hold_seconds(
 
     outputs = teleop_app._cb_update_customization_for_env("MuJoCoTouch-v1")
 
-    assert len(outputs) == 15
+    assert len(outputs) == 18
     assert outputs[11]["value"] == 1.2
 
 
@@ -493,6 +493,8 @@ def test_normalized_init_config_includes_env_overrides() -> None:
         5,
         ["red", "green"],
         ["blue"],
+        ["green"],
+        ["purple"],
     )
 
     overrides = config["env_overrides"]
@@ -506,6 +508,8 @@ def test_normalized_init_config_includes_env_overrides() -> None:
     assert overrides.reset_settle_frames == 5
     assert overrides.cube_colors == ("red", "green")
     assert overrides.target_colors == ("blue",)
+    assert overrides.cube_a_colors == ("green",)
+    assert overrides.cube_b_colors == ("purple",)
 
 
 def test_normalized_init_config_rounds_reset_settle_frames_from_ui_float() -> None:
@@ -535,6 +539,8 @@ def test_normalized_init_config_rounds_reset_settle_frames_from_ui_float() -> No
         0.30,
         90,
         2.999,
+        ["red"],
+        ["blue"],
         ["red"],
         ["blue"],
     )
@@ -571,6 +577,8 @@ def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> No
         5,
         ["red"],
         ["blue"],
+        ["red"],
+        ["blue"],
     )
 
     assert config["env_overrides"] is None
@@ -603,6 +611,8 @@ def test_normalized_init_config_includes_success_hold_seconds() -> None:
         0.30,
         90,
         5,
+        ["red"],
+        ["blue"],
         ["red"],
         ["blue"],
         success_hold_seconds=0.8,
@@ -661,6 +671,25 @@ def test_customization_ui_state_for_pick_and_place_hides_pick_controls() -> None
     assert state.robot_colors == ["yellow", "orange"]
 
 
+def test_customization_ui_state_for_stack_cube_shows_stack_colors() -> None:
+    state = teleop_app._customization_ui_state_from_config(
+        StackCubeConfig(
+            cube_a_colors=["red", "orange"],
+            cube_b_colors="blue",
+            ground_colors="gray",
+        )
+    )
+
+    assert state.customize_visible is True
+    assert state.customize_value is True
+    assert state.common_visible is True
+    assert state.pick_visible is False
+    assert state.pick_and_place_visible is False
+    assert state.stack_visible is True
+    assert state.cube_a_colors == ["red", "orange"]
+    assert state.cube_b_colors == ["blue"]
+
+
 def test_customization_ui_state_without_config_hides_customization() -> None:
     state = teleop_app._customization_ui_state_from_config(None)
 
@@ -715,6 +744,8 @@ def test_normalized_init_config_rejects_invalid_ui_color() -> None:
             5,
             ["red"],
             ["blue"],
+            ["red"],
+            ["blue"],
         )
 
 
@@ -747,6 +778,8 @@ def test_normalized_init_config_rejects_gray_pick_and_place_ui_color() -> None:
             90,
             5,
             ["gray"],
+            ["blue"],
+            ["red"],
             ["blue"],
         )
 
