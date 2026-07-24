@@ -12,6 +12,8 @@ except PackageNotFoundError:  # pragma: no cover - running from a source tree
     __version__ = "0.0.0+unknown"
 
 from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
     DIRECTION_VECTORS,
     EE_CONTROL_MODES,
     EXTENDED_POSE,
@@ -130,8 +132,10 @@ def get_so101_urdf_path() -> Path:
 
 
 __all__ = [
+    "ABSOLUTE_CONTROL_MODES",
     "ASSETS_DIR",
     "COLOR_MAP",
+    "DELTA_CONTROL_MODES",
     "DIRECTION_VECTORS",
     "EE_ACTION_DIM",
     "EE_CONTROL_MODES",

@@ -20,6 +20,8 @@ import pytest
 
 import so101_nexus.mujoco  # noqa: F401 - registers envs
 from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
     EE_CONTROL_MODES,
     JOINT_CONTROL_MODES,
     ControlMode,
@@ -426,6 +428,29 @@ def test_control_mode_families_cover_the_literal():
     ee = set(EE_CONTROL_MODES)
     assert not joint & ee
     assert joint | ee == set(get_args(ControlMode))
+
+
+def test_absolute_and_delta_families_partition_the_literal():
+    """ABSOLUTE_CONTROL_MODES and DELTA_CONTROL_MODES partition ControlMode along the
+    axis that decides whether action-space bounds carry physical units. Anything
+    reading limits off an action space depends on this split being exhaustive."""
+    absolute = set(ABSOLUTE_CONTROL_MODES)
+    delta = set(DELTA_CONTROL_MODES)
+    assert not absolute & delta
+    assert absolute | delta == set(get_args(ControlMode))
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_modes_expose_normalized_bounds(control_mode):
+    """The property the absolute/delta split encodes: delta bounds are exactly
+    [-1, 1] and therefore carry no physical meaning."""
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
+    try:
+        space = env.action_space
+        np.testing.assert_array_equal(space.low, -np.ones_like(space.low))
+        np.testing.assert_array_equal(space.high, np.ones_like(space.high))
+    finally:
+        env.close()
 
 
 def test_every_declared_control_mode_passes_the_validation_gate():

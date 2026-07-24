@@ -33,7 +33,8 @@ for the public-API and deprecation policy.
 - `so101_nexus.kinematics`: a tensor-agnostic tool-frame kinematics module (NumPy and torch, no torch import) providing `quat_multiply`, `quat_conjugate`, `quat_to_rotvec`, `rotvec_to_quat`, `orientation_error`, `pose_error`, `damped_least_squares`, and `ee_ik_delta_q`, plus the `EE_ACTION_DIM`, `EE_DELTA_ACTION_SCALE`, `EE_ORIENTATION_WEIGHT`, `EE_IK_DAMPING`, and `EE_IK_ITERATIONS` constants. Shared by both backends so end-effector semantics cannot drift between them.
 - `so101_nexus.config` exports `JOINT_CONTROL_MODES` and `EE_CONTROL_MODES` (the two families partitioning `ControlMode`), `SO101_TCP_SITE_NAME`, and `SO101_TCP_FRAME_NAME`. `get_so101_urdf_path()` returns the vendored SO-101 URDF.
 - `so101_new_calib.urdf` gains a `tcp_frame_link` matching the simulator's `gripperframe` site exactly, so end-effector poses mean the same physical point in simulation and in a URDF-based solver such as LeRobot's `RobotKinematics`. Upstream's `gripper_frame_link` is unchanged and still sits 19.9 mm away at the fixed fingertip; a regression test locks the two models together.
-- `SimSOFollower` accepts LeRobot end-effector action features (`ee.x`, `ee.y`, `ee.z`, `ee.wx`, `ee.wy`, `ee.wz`, `ee.gripper_pos`) when the wrapped env uses `pd_ee_pose`, and reports them from `action_features`. It remains an absolute-target device: constructing it against `pd_ee_delta_pose` raises `ValueError` rather than silently mis-scaling absolute poses into a normalized delta space.
+- `SimSOFollower` accepts LeRobot end-effector action features (`ee.x`, `ee.y`, `ee.z`, `ee.wx`, `ee.wy`, `ee.wz`, `ee.gripper_pos`) when the wrapped env uses `pd_ee_pose`, and reports them from `action_features`.
+- `so101_nexus.ABSOLUTE_CONTROL_MODES` and `so101_nexus.DELTA_CONTROL_MODES`: the two families partitioning `ControlMode` by whether an action space carries physical units. Absolute modes bound physical targets; delta modes bound a normalized `[-1, 1]` increment, so nothing physical can be read off them.
 
 ### Removed
 
@@ -46,6 +47,7 @@ for the public-API and deprecation policy.
 ### Fixed
 
 - Color config fields (`cube_a_colors`, `cube_b_colors`, `cube_colors`, `target_colors`, `ground_colors`, `robot_colors`) now reject an empty list at construction with a clear `ValueError` instead of failing later with an opaque `IndexError` at env build or reset time.
+- `SimSOFollower` and the adapter's control-bound helpers no longer silently mis-scale in the delta control modes. The follower always sends an absolute joint target in radians, but `action_for_env` clipped it to whatever the env's action space advertised: in `pd_joint_delta_pos` and `pd_joint_target_delta_pos` that is the normalized `[-1, 1]` box, so a commanded 1.1 rad target was clipped to 1.0 and then applied by the env as a full-scale 0.05 rad increment, discarding the commanded pose entirely. The same bounds fed `read_gripper_limits_rad`, which reported `(-1.0, 1.0)` as the jaw travel in radians and corrupted every tick-to-radian conversion built on it, recorded observations included. `read_gripper_limits_rad`, `clip_qpos_to_env_ctrlrange`, and `action_for_env` now raise `ValueError` for delta-mode envs, and `SimSOFollower` rejects every delta mode at construction (previously only `pd_ee_delta_pose` was rejected). Record demonstrations in `pd_joint_pos` and recompute deltas offline, as the behavior-cloning workflow already does.
 
 ## [0.4.9] - 2026-07-16
 

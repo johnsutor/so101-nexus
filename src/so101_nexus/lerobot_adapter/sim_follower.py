@@ -14,7 +14,7 @@ from lerobot.robots.robot import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
-from so101_nexus.config import EE_CONTROL_MODES
+from so101_nexus.config import ABSOLUTE_CONTROL_MODES, DELTA_CONTROL_MODES, EE_CONTROL_MODES
 from so101_nexus.lerobot_adapter.normalization import (
     GRIPPER_NAME,
     GripperLimitsRad,
@@ -106,12 +106,12 @@ class SimSOFollower(Robot):
         super().__init__(config)
         self.config = config
         self._control_mode = str(config.env_kwargs.get("control_mode", DEFAULT_CONTROL_MODE))
-        if self._control_mode == "pd_ee_delta_pose":
+        if self._control_mode in DELTA_CONTROL_MODES:
             raise ValueError(
-                "SimSOFollower sends absolute targets, but env_kwargs requested "
-                "control_mode='pd_ee_delta_pose', whose action is a normalized delta. "
-                "LeRobot end-effector action features are absolute poses, so build the "
-                "env with control_mode='pd_ee_pose'."
+                f"SimSOFollower sends absolute targets, but env_kwargs requested "
+                f"control_mode={self._control_mode!r}, whose action is a normalized "
+                "[-1, 1] delta. LeRobot joint and end-effector action features are "
+                f"absolute, so build the env with one of {list(ABSOLUTE_CONTROL_MODES)}."
             )
         self._is_ee_control = self._control_mode in EE_CONTROL_MODES
         self.motors = build_so101_motors(use_degrees=config.use_degrees)

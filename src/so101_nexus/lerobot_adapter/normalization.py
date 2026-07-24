@@ -9,7 +9,11 @@ import numpy as np
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import FeetechMotorsBus
 
-from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
+    SO101_JOINT_NAMES,
+)
 from so101_nexus.lerobot_dataset import GripperLimitsRad, _validate_gripper_limits
 
 if TYPE_CHECKING:
@@ -201,8 +205,27 @@ def read_privileged_state(env: object) -> np.ndarray | None:
     return np.asarray(compute(), dtype=np.float32)
 
 
+def _reject_delta_control_mode(env: object) -> None:
+    """Raise if ``env`` runs a delta control mode, whose bounds carry no physical units.
+
+    A delta env advertises the normalized ``[-1, 1]`` action box. Reading radians off
+    it, or clipping an absolute radian target into it, silently produces nonsense, so
+    every physical-bounds reader refuses up front. Envs that declare no control mode
+    (test doubles, non-SO101 envs) are left alone.
+    """
+    control_mode = getattr(env, "control_mode", None)
+    if control_mode in DELTA_CONTROL_MODES:
+        raise ValueError(
+            f"Env uses control_mode={control_mode!r}, whose action space is the "
+            "normalized [-1, 1] delta box rather than physical control bounds. "
+            "Physical limits and absolute targets are only meaningful for "
+            f"{list(ABSOLUTE_CONTROL_MODES)}."
+        )
+
+
 def _control_bounds(env: object) -> tuple[np.ndarray, np.ndarray] | None:
     unwrapped = _unwrap_env(env)
+    _reject_delta_control_mode(unwrapped)
     if hasattr(unwrapped, "_ctrl_low") and hasattr(unwrapped, "_ctrl_high"):
         low = np.asarray(unwrapped._ctrl_low, dtype=np.float64)
         high = np.asarray(unwrapped._ctrl_high, dtype=np.float64)
@@ -218,7 +241,16 @@ def _control_bounds(env: object) -> tuple[np.ndarray, np.ndarray] | None:
 
 
 def read_gripper_limits_rad(env: object) -> GripperLimitsRad:
-    """Read gripper simulator limits from the active env control range."""
+    """Read gripper simulator limits from the active env control range.
+
+    Raises
+    ------
+    ValueError
+        If the env runs a delta control mode, whose action bounds are normalized
+        rather than physical.
+    TypeError
+        If the env exposes no control bounds at all.
+    """
     bounds = _control_bounds(env)
     if bounds is None:
         raise TypeError("Simulator env does not expose gripper control limits.")
@@ -228,7 +260,14 @@ def read_gripper_limits_rad(env: object) -> GripperLimitsRad:
 
 
 def clip_qpos_to_env_ctrlrange(env: object, qpos_rad: np.ndarray) -> np.ndarray:
-    """Clip qpos to env actuator control bounds when the env exposes them."""
+    """Clip qpos to env actuator control bounds when the env exposes them.
+
+    Raises
+    ------
+    ValueError
+        If the env runs a delta control mode, which takes a normalized increment
+        rather than the absolute target this clips.
+    """
     qpos = np.asarray(qpos_rad, dtype=np.float64)
     bounds = _control_bounds(env)
     if bounds is None:

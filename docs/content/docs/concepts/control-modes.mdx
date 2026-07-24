@@ -125,9 +125,18 @@ differ and the resulting policy will be silently wrong.
 
 ## LeRobot follower support
 
-`SimSOFollower` accepts absolute targets only. In `pd_ee_pose` it exposes the
-LeRobot end-effector action features `ee.x`, `ee.y`, `ee.z`, `ee.wx`, `ee.wy`,
-`ee.wz`, and `ee.gripper_pos`; in the joint modes it exposes `{motor}.pos` as
-before. Constructing it against `pd_ee_delta_pose` raises `ValueError`, because
-LeRobot end-effector features are absolute poses and feeding them to a normalized
-delta action space would silently mis-scale every command.
+`SimSOFollower` sends absolute targets, so it supports the absolute modes only. In
+`pd_joint_pos` it exposes `{motor}.pos`; in `pd_ee_pose` it exposes the LeRobot
+end-effector features `ee.x`, `ee.y`, `ee.z`, `ee.wx`, `ee.wy`, `ee.wz`, and
+`ee.gripper_pos`.
+
+Constructing it against any delta mode raises `ValueError`. A delta action is a
+normalized increment, so feeding it an absolute target silently reinterprets that
+target as a full-scale increment, and reading physical limits off the normalized
+action box corrupts every tick-to-radian conversion built on them, recorded
+observations included. `so101_nexus.ABSOLUTE_CONTROL_MODES` and
+`DELTA_CONTROL_MODES` name the two families.
+
+To record demonstrations for delta-mode training, record in `pd_joint_pos` and
+recompute the deltas offline; see
+[Behavior Cloning](/docs/workflow/behavior-cloning).
