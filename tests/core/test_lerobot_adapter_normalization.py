@@ -13,7 +13,7 @@ pytest.importorskip("lerobot")
 
 from lerobot.motors import MotorCalibration
 
-from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.config import DELTA_CONTROL_MODES, SO101_JOINT_NAMES
 
 
 def _calibration(*, drive_mode: int = 0) -> dict[str, MotorCalibration]:
@@ -227,6 +227,47 @@ def test_action_for_env_clips_to_control_range() -> None:
     action = action_for_env(_FakeEnv(), np.array([-2.0, 0.0, 2.0, 0.0, 0.0, 1.0]))
 
     np.testing.assert_allclose(action, np.array([-1.0, 0.0, 1.2, 0.0, 0.0, 0.75]))
+
+
+class _FakeDeltaEnv:
+    """Delta-mode env: its action space is the normalized box, not physical bounds."""
+
+    def __init__(self, control_mode: str = "pd_joint_delta_pos") -> None:
+        self.unwrapped = self
+        self.control_mode = control_mode
+        self.action_space = types.SimpleNamespace(
+            low=-np.ones(6),
+            high=np.ones(6),
+        )
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_read_gripper_limits_rad_rejects_delta_control_modes(control_mode: str) -> None:
+    """A delta env's action bounds are normalized, so reading radians off them lies.
+
+    This previously returned (-1.0, 1.0) as the jaw travel, silently corrupting every
+    tick-to-radian conversion in the follower, observations included.
+    """
+    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
+
+    with pytest.raises(ValueError, match=control_mode):
+        read_gripper_limits_rad(_FakeDeltaEnv(control_mode))
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_action_for_env_rejects_delta_control_modes(control_mode: str) -> None:
+    """Clipping an absolute radian target into [-1, 1] hands a delta controller garbage."""
+    from so101_nexus.lerobot_adapter.normalization import action_for_env
+
+    with pytest.raises(ValueError, match=control_mode):
+        action_for_env(_FakeDeltaEnv(control_mode), np.zeros(6))
+
+
+def test_control_bounds_helpers_accept_envs_without_a_control_mode() -> None:
+    """Envs that never declare a control mode keep working; only delta modes are refused."""
+    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
+
+    assert read_gripper_limits_rad(_FakeEnv()) == (0.25, 0.75)
 
 
 def test_read_sim_qpos_supports_tensor_shape() -> None:

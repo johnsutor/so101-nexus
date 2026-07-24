@@ -306,6 +306,29 @@
     <axis xyz="0 0 0"/>
   </joint>
 
+  <!-- Simulator tool-centre point (dummy link + fixed joint).
+       Matches the "gripperframe" site in assets/SO101_menagerie/so101.xml exactly,
+       so end-effector poses commanded in simulation and resolved on hardware refer
+       to the same physical point. It sits between the jaws at roughly a 0.33 rad
+       aperture, 19.9 mm along +x from gripper_frame_link, which upstream places at
+       the fixed fingertip. Both frames are kept: gripper_frame_link is the upstream
+       LeRobot default, tcp_frame_link is the simulator-consistent one. -->
+  <link name="tcp_frame_link">
+    <origin xyz="0 0 0" rpy="0 -0 0"/>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1e-9"/>
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+    </inertial>
+  </link>
+
+  <joint name="tcp_frame_joint" type="fixed">
+    <origin xyz="0.012 -0.000218 -0.098127" rpy="0 3.14159265 0"/>
+    <parent link="gripper_link"/>
+    <child link="tcp_frame_link"/>
+    <axis xyz="0 0 0"/>
+  </joint>
+
   <!-- Link moving_jaw_so101_v1 -->
   <link name="moving_jaw_so101_v1_link">
     <inertial>

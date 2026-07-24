@@ -33,7 +33,22 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 from so101_nexus.camera_utils import build_overhead_camera_mjcf
-from so101_nexus.config import SO101_JOINT_NAMES, ControlMode, EnvironmentConfig
+from so101_nexus.config import (
+    EE_CONTROL_MODES,
+    JOINT_CONTROL_MODES,
+    SO101_JOINT_NAMES,
+    SO101_TCP_SITE_NAME,
+    ControlMode,
+    EnvironmentConfig,
+)
+from so101_nexus.kinematics import (
+    EE_ACTION_DIM,
+    EE_DELTA_ACTION_SCALE,
+    EE_IK_ITERATIONS,
+    ee_ik_delta_q,
+    quat_multiply,
+    rotvec_to_quat,
+)
 from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
@@ -48,15 +63,25 @@ from so101_nexus.warp.render import unpack_rgb_uint8
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
 _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
 
+# Half-width of the pd_ee_pose position box, in metres. Sampling the reachable
+# set gives a maximum TCP reach of 0.5457 m, so 0.55 m spans the workspace
+# without admitting targets the solver could only clamp toward. Matches the
+# MuJoCo backend's _EE_WORKSPACE_RADIUS.
+_EE_WORKSPACE_RADIUS = 0.55
+
 
 def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
     """Batched rotation matrix ``(..., 3, 3)`` -> ``wxyz`` quaternion ``(..., 4)``.
 
-    Shepperd's method, computed in float64 for stability and returned in the
-    input dtype. Matches ``mujoco.mju_mat2Quat`` up to sign (validated to 1e-9 in
-    float64); the result is canonicalized to ``w >= 0``.
+    Shepperd's method, evaluated in the input dtype. Single precision is safe
+    here because the branch is chosen so the divisor is always >= 2: there is no
+    cancellation for extra precision to protect. Against ``mujoco.mju_mat2Quat``
+    the float64 path agrees to 1e-9; on the float32 ``site_xmat`` views a float64
+    interior moves the result by at most 1.5 float32 ulp while costing three
+    float64 passes per inverse-kinematics iteration on hardware that runs them at
+    1/64 rate. The result is canonicalized to ``w >= 0``.
     """
-    m = mat.to(torch.float64)
+    m = mat
     m00, m11, m22 = m[..., 0, 0], m[..., 1, 1], m[..., 2, 2]
     trace = m00 + m11 + m22
 
@@ -112,8 +137,7 @@ def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
         torch.where(cond1[..., None], q1, torch.where(cond2[..., None], q2, q3)),
     )
     quat = quat / _safe(torch.linalg.norm(quat, dim=-1, keepdim=True))
-    quat = torch.where(quat[..., 0:1] < 0.0, -quat, quat)
-    return quat.to(mat.dtype)
+    return torch.where(quat[..., 0:1] < 0.0, -quat, quat)
 
 
 def _grasp_from_contacts(
@@ -160,11 +184,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
     metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
     _N_SUBSTEPS = 4
-    _VALID_CONTROL_MODES = {
-        "pd_joint_pos",
-        "pd_joint_delta_pos",
-        "pd_joint_target_delta_pos",
-    }
+    _VALID_CONTROL_MODES = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
 
     def __init__(  # noqa: PLR0915
         self,
@@ -234,7 +254,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         )
         self._dof_adr = torch.as_tensor([mjm.jnt_dofadr[j] for j in joint_ids], device=self.device)
         self._act_ids = torch.as_tensor(act_ids, device=self.device)
-        self._tcp_site_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
+        self._tcp_site_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_SITE, SO101_TCP_SITE_NAME)
 
         ctrl_range = mjm.actuator_ctrlrange[np.asarray(act_ids)]
         jnt_range = mjm.jnt_range[np.asarray(joint_ids)]
@@ -254,12 +274,27 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             self.single_action_space = spaces.Box(low=low, high=high, dtype=np.float32)
             self._action_low = self._target_low
             self._action_high = self._target_high
+        elif control_mode == "pd_ee_pose":
+            # Absolute TCP pose: world position, orientation as a rotation
+            # vector, then the gripper joint target on pd_joint_pos's bounds.
+            ee_low = np.concatenate(
+                [np.full(3, -_EE_WORKSPACE_RADIUS), np.full(3, -np.pi), low[-1:]]
+            ).astype(np.float32)
+            ee_high = np.concatenate(
+                [np.full(3, _EE_WORKSPACE_RADIUS), np.full(3, np.pi), high[-1:]]
+            ).astype(np.float32)
+            self.single_action_space = spaces.Box(low=ee_low, high=ee_high, dtype=np.float32)
+            self._action_low = torch.as_tensor(ee_low, device=self.device)
+            self._action_high = torch.as_tensor(ee_high, device=self.device)
         else:
+            # Delta modes expose a normalized [-1, 1] box; the physical scale is
+            # _DELTA_ACTION_SCALE (joints) or EE_DELTA_ACTION_SCALE (end effector).
+            n_actions = EE_ACTION_DIM if control_mode == "pd_ee_delta_pose" else n_joints
             self.single_action_space = spaces.Box(
-                low=-1.0, high=1.0, shape=(n_joints,), dtype=np.float32
+                low=-1.0, high=1.0, shape=(n_actions,), dtype=np.float32
             )
-            self._action_low = torch.full((n_joints,), -1.0, device=self.device)
-            self._action_high = torch.full((n_joints,), 1.0, device=self.device)
+            self._action_low = torch.full((n_actions,), -1.0, device=self.device)
+            self._action_high = torch.full((n_actions,), 1.0, device=self.device)
         self.single_observation_space = spaces.Box(
             -np.inf, np.inf, shape=(self._obs_dim(),), dtype=np.float32
         )
@@ -300,9 +335,37 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        if control_mode in EE_CONTROL_MODES:
+            self._setup_ee_control()
         self._setup_cameras()
         self._step_graph = None
         self._capture_step_graph()
+
+    def _setup_ee_control(self) -> None:
+        """Allocate the persistent batched inverse-kinematics state for the EE modes.
+
+        The Jacobian, tool-point, and body-id arrays are sized once here because
+        ``mujoco_warp.jac`` writes into caller-owned arrays: allocating them per
+        step would charge every control step for ``num_envs``-sized allocations.
+        """
+        self._ee_delta_scale = torch.as_tensor(
+            np.asarray(EE_DELTA_ACTION_SCALE, dtype=np.float32), device=self.device
+        )
+        self._arm_qpos_adr = self._qpos_adr[:-1]
+        nv = self.mjm.nv
+        with wp.ScopedDevice(self._wp_device):
+            # mujoco_warp.jac writes (nworld, 3, nv); a (nworld, nv, 3) buffer is
+            # accepted but silently filled as if transposed.
+            self._ik_jacp = wp.zeros((self.num_envs, 3, nv), dtype=wp.float32)
+            self._ik_jacr = wp.zeros((self.num_envs, 3, nv), dtype=wp.float32)
+            self._ik_point = wp.zeros(self.num_envs, dtype=wp.vec3f)
+            self._ik_body = wp.array(
+                np.full(self.num_envs, self.mjm.site_bodyid[self._tcp_site_id], dtype=np.int32),
+                dtype=wp.int32,
+            )
+        self._ik_jacp_view = wp.to_torch(self._ik_jacp)  # (N, 3, nv)
+        self._ik_jacr_view = wp.to_torch(self._ik_jacr)  # (N, 3, nv)
+        self._ik_point_view = wp.to_torch(self._ik_point)  # (N, 3)
 
     def _setup_cameras(self) -> None:
         """Detect camera components and configure batched rendering (no-op if none).
@@ -650,6 +713,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def _action_to_ctrl(self, action: torch.Tensor) -> torch.Tensor:
         if self.control_mode == "pd_joint_pos":
             return torch.clamp(action, self._target_low, self._target_high)
+        if self.control_mode in EE_CONTROL_MODES:
+            return self._ee_action_to_ctrl(action)
         delta = action * self._delta_scale
         if self.control_mode == "pd_joint_delta_pos":
             return torch.clamp(self._joint_qpos() + delta, self._target_low, self._target_high)
@@ -657,6 +722,82 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             self._prev_target + delta, self._target_low, self._target_high
         )
         return self._prev_target
+
+    def _ee_action_to_ctrl(self, action: torch.Tensor) -> torch.Tensor:
+        """Resolve an ``(N, 7)`` end-effector action to ``(N, 6)`` joint targets.
+
+        ``pd_ee_pose`` reads the action as an absolute world TCP pose (position
+        plus rotation vector); ``pd_ee_delta_pose`` scales the normalized action
+        by ``EE_DELTA_ACTION_SCALE`` and applies it to the *measured* pose,
+        mirroring ``pd_joint_delta_pos`` rather than the held target. The gripper
+        rides along as a plain joint target in both cases.
+        """
+        pose = self._get_tcp_pose7()
+        if self.control_mode == "pd_ee_pose":
+            target_pos = action[:, :3]
+            target_quat = rotvec_to_quat(action[:, 3:6])
+            gripper = action[:, 6]
+        else:
+            scaled = action * self._ee_delta_scale
+            target_pos = pose[:, :3] + scaled[:, :3]
+            # Left-multiply: the rotation delta composes about the world axes, so
+            # it reads in the same frame as the position delta beside it.
+            target_quat = quat_multiply(rotvec_to_quat(scaled[:, 3:6]), pose[:, 3:])
+            gripper = self._joint_qpos()[:, -1] + scaled[:, 6]
+        arm_target = self._ee_ik_arm_targets(target_pos, target_quat)
+        gripper = torch.clamp(gripper, self._target_low[-1], self._target_high[-1])
+        return torch.cat([arm_target, gripper.unsqueeze(1)], dim=1)
+
+    def _ee_ik_arm_targets(
+        self, target_pos: torch.Tensor, target_quat: torch.Tensor
+    ) -> torch.Tensor:
+        """Batched damped-least-squares IK: ``(N, 5)`` arm joint targets.
+
+        Warm-starts from the current arm configuration and takes
+        ``EE_IK_ITERATIONS`` steps, re-evaluating forward kinematics and the tool
+        Jacobian at the working configuration each time. The arm's tool Jacobian
+        is rank 5, so orientation is de-weighted rather than tracked exactly (see
+        ``so101_nexus.kinematics.EE_ORIENTATION_WEIGHT``), and targets outside the
+        reachable set resolve to the closest pose the joint limits allow.
+
+        ``qpos`` is restored on exit, but the derived kinematics (``site_xpos``,
+        ``site_xmat``, ``subtree_com``) are left at the last working
+        configuration. ``step`` calls this immediately before ``_advance_physics``,
+        whose ``mjw.step`` recomputes them, so nothing in the env observes the
+        difference; an out-of-band caller must run ``mjw.forward`` first to get the
+        measured pose as the delta reference.
+        """
+        # index_select copies, and arm_q is rebound (never mutated in place)
+        # below, so start_q holds the entry configuration for free.
+        start_q = self.qpos.index_select(1, self._arm_qpos_adr)
+        arm_q = start_q
+        low, high = self._target_low[:-1], self._target_high[:-1]
+        with wp.ScopedDevice(self._wp_device):
+            for _ in range(EE_IK_ITERATIONS):
+                self.qpos[:, self._arm_qpos_adr] = arm_q
+                # com_pos is required as well: mjw.jac reads subtree_com, and
+                # kinematics alone leaves it stale (rotational rows come out wrong).
+                mjw.kinematics(self.model, self.data)
+                mjw.com_pos(self.model, self.data)
+                pose = self._get_tcp_pose7()
+                self._ik_point_view.copy_(pose[:, :3])
+                mjw.jac(
+                    self.model,
+                    self.data,
+                    self._ik_jacp,
+                    self._ik_jacr,
+                    self._ik_point,
+                    self._ik_body,
+                )
+                jac = torch.cat([self._ik_jacp_view, self._ik_jacr_view], dim=1).index_select(
+                    2, self._arm_dof_adr
+                )
+                delta_q = ee_ik_delta_q(jac, pose[:, :3], pose[:, 3:], target_pos, target_quat)
+                arm_q = torch.clamp(arm_q + delta_q, low, high)
+            # The loop writes only the arm block, and mjw.step in _advance_physics
+            # recomputes every derived field, so restoring qpos restores the state.
+            self.qpos[:, self._arm_qpos_adr] = start_q
+        return arm_q
 
     def step(
         self, actions: torch.Tensor

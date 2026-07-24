@@ -32,7 +32,30 @@ from so101_nexus.observations import (
 
 if TYPE_CHECKING:
     from so101_nexus.observations import Observation
-ControlMode = Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+ControlMode = Literal[
+    "pd_joint_pos",
+    "pd_joint_delta_pos",
+    "pd_joint_target_delta_pos",
+    "pd_ee_pose",
+    "pd_ee_delta_pose",
+]
+JOINT_CONTROL_MODES: tuple[ControlMode, ...] = (
+    "pd_joint_pos",
+    "pd_joint_delta_pos",
+    "pd_joint_target_delta_pos",
+)
+EE_CONTROL_MODES: tuple[ControlMode, ...] = ("pd_ee_pose", "pd_ee_delta_pose")
+
+# The absolute/delta split is orthogonal to the joint/end-effector split above.
+# Absolute modes take a physical target and their action-space bounds are physical;
+# delta modes take a normalized [-1, 1] increment, so their bounds carry no units.
+# Anything reading physical limits off an action space must check this first.
+ABSOLUTE_CONTROL_MODES: tuple[ControlMode, ...] = ("pd_joint_pos", "pd_ee_pose")
+DELTA_CONTROL_MODES: tuple[ControlMode, ...] = (
+    "pd_joint_delta_pos",
+    "pd_joint_target_delta_pos",
+    "pd_ee_delta_pose",
+)
 ObsMode = Literal["state", "visual"]
 
 YcbModelId = Literal[
@@ -56,6 +79,17 @@ SO101_JOINT_NAMES: tuple[str, ...] = (
     "wrist_roll",
     "gripper",
 )
+
+# Tool-centre point. The MJCF site and the URDF link below name the same physical
+# point (between the jaws), so end-effector poses mean the same thing in
+# simulation and in a URDF-based solver such as LeRobot's RobotKinematics. The
+# URDF also keeps upstream's "gripper_frame_link", which sits 19.9 mm away at the
+# fixed fingertip.
+SO101_TCP_SITE_NAME = "gripperframe"
+SO101_TCP_FRAME_NAME = "tcp_frame_link"
+
+# Arm joints excluded from inverse kinematics: the gripper is commanded directly.
+SO101_ARM_JOINT_COUNT = len(SO101_JOINT_NAMES) - 1
 
 MoveDirection = Literal["up", "down", "left", "right", "forward", "backward"]
 

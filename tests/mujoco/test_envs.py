@@ -10,6 +10,7 @@ of this file.
 from __future__ import annotations
 
 import os
+from typing import get_args
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -19,6 +20,11 @@ import pytest
 
 import so101_nexus.mujoco  # noqa: F401 - registers envs
 from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
+    EE_CONTROL_MODES,
+    JOINT_CONTROL_MODES,
+    ControlMode,
     LookAtConfig,
     MoveConfig,
     PickAndPlaceConfig,
@@ -27,6 +33,8 @@ from so101_nexus.config import (
     TouchConfig,
 )
 from so101_nexus.constants import CUBE_COLOR_MAP, YCB_OBJECTS
+from so101_nexus.kinematics import EE_ACTION_DIM
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.observations import (
     EndEffectorPose,
@@ -67,7 +75,11 @@ REWARD_RANGE_OVERRIDES: dict[str, tuple[float, float]] = {
 CUBE_COLORS = list(CUBE_COLOR_MAP.keys())
 YCB_MODEL_IDS = list(YCB_OBJECTS.keys())
 MOVE_DIRECTIONS = ["up", "down", "left", "right", "forward", "backward"]
-CONTROL_MODES = ["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos"]
+# Control-mode families come from so101_nexus.config so this suite cannot drift
+# from the ControlMode literal when a new mode lands. Joint modes command the six
+# actuators directly; end-effector modes command a 7-dim TCP pose.
+JOINT_DELTA_CONTROL_MODES = tuple(mode for mode in JOINT_CONTROL_MODES if "delta" in mode)
+JOINT_ACTION_DIM = 6
 
 OBS_SIZES: dict[type, int] = {
     JointPositions: 6,
@@ -384,40 +396,99 @@ def test_stack_cube_cube_b_colors(color):
 
 
 @pytest.mark.parametrize("env_id", ENV_IDS)
-@pytest.mark.parametrize("control_mode", CONTROL_MODES)
-def test_control_mode(env_id, control_mode):
+@pytest.mark.parametrize("control_mode", JOINT_CONTROL_MODES)
+def test_joint_control_mode(env_id, control_mode):
+    """Every joint-space mode drives every task and exposes one action per actuator."""
     env = gym.make(env_id, control_mode=control_mode)
     try:
+        assert env.action_space.shape == (JOINT_ACTION_DIM,)
         _run_episode(env)
     finally:
         env.close()
 
 
-DELTA_CONTROL_MODES = ["pd_joint_delta_pos", "pd_joint_target_delta_pos"]
-
-# Physical per-joint delta scale a normalized +1 action maps to (radians):
-# +/-0.05 for the five arm joints, +/-0.2 for the gripper. This mirrors
-# so101_nexus.mujoco.base_env._DELTA_ACTION_SCALE and is the cross-backend
-# delta action contract.
-_EXPECTED_DELTA_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
-
-
-@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
-def test_delta_action_space_is_normalized(control_mode):
-    """Both delta modes expose a normalized [-1, 1] action space (six joints),
-    matching the normalized delta action contract."""
-    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
+@pytest.mark.parametrize("env_id", ENV_IDS)
+@pytest.mark.parametrize("control_mode", EE_CONTROL_MODES)
+def test_ee_control_mode(env_id, control_mode):
+    """Every end-effector mode drives every task. The action is a 7-dim TCP pose
+    command rather than per-joint targets, so the joint-space dimension and
+    per-joint scaling assertions below deliberately do not apply here."""
+    env = gym.make(env_id, control_mode=control_mode)
     try:
-        space = env.action_space
-        assert space.shape == (6,)
-        np.testing.assert_allclose(space.low, [-1.0] * 6, atol=1e-6)
-        np.testing.assert_allclose(space.high, [1.0] * 6, atol=1e-6)
+        assert env.action_space.shape == (EE_ACTION_DIM,)
+        _run_episode(env)
     finally:
         env.close()
 
 
+def test_control_mode_families_cover_the_literal():
+    """JOINT_CONTROL_MODES and EE_CONTROL_MODES partition ControlMode, so a new
+    mode cannot be added to the literal without landing in a parametrized family."""
+    joint = set(JOINT_CONTROL_MODES)
+    ee = set(EE_CONTROL_MODES)
+    assert not joint & ee
+    assert joint | ee == set(get_args(ControlMode))
+
+
+def test_absolute_and_delta_families_partition_the_literal():
+    """ABSOLUTE_CONTROL_MODES and DELTA_CONTROL_MODES partition ControlMode along the
+    axis that decides whether action-space bounds carry physical units. Anything
+    reading limits off an action space depends on this split being exhaustive."""
+    absolute = set(ABSOLUTE_CONTROL_MODES)
+    delta = set(DELTA_CONTROL_MODES)
+    assert not absolute & delta
+    assert absolute | delta == set(get_args(ControlMode))
+
+
 @pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
-def test_normalized_plus_one_matches_physical_max_delta(control_mode):
+def test_delta_modes_expose_normalized_bounds(control_mode):
+    """The property the absolute/delta split encodes: delta bounds are exactly
+    [-1, 1] and therefore carry no physical meaning."""
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
+    try:
+        space = env.action_space
+        np.testing.assert_array_equal(space.low, -np.ones_like(space.low))
+        np.testing.assert_array_equal(space.high, np.ones_like(space.high))
+    finally:
+        env.close()
+
+
+def test_every_declared_control_mode_passes_the_validation_gate():
+    """The backend's accept list tracks the ControlMode literal rather than
+    lagging behind it."""
+    assert set(get_args(ControlMode)) <= SO101NexusMuJoCoBaseEnv._VALID_CONTROL_MODES
+
+
+def test_unknown_control_mode_raises():
+    """The gate still rejects modes outside the literal as the literal grows."""
+    with pytest.raises(ValueError, match="control_mode must be one of"):
+        gym.make("MuJoCoTouch-v1", control_mode="pd_ee_twist")
+
+
+# Physical per-joint delta scale a normalized +1 action maps to (radians):
+# +/-0.05 for the five arm joints, +/-0.2 for the gripper. This mirrors
+# so101_nexus.mujoco.base_env._DELTA_ACTION_SCALE and is the cross-backend
+# joint-space delta action contract. The end-effector delta mode has its own
+# task-space scale (kinematics.EE_DELTA_ACTION_SCALE) and is covered separately.
+_EXPECTED_DELTA_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+
+@pytest.mark.parametrize("control_mode", JOINT_DELTA_CONTROL_MODES)
+def test_joint_delta_action_space_is_normalized(control_mode):
+    """Both joint delta modes expose a normalized [-1, 1] action space (six
+    joints), matching the normalized delta action contract."""
+    env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
+    try:
+        space = env.action_space
+        assert space.shape == (JOINT_ACTION_DIM,)
+        np.testing.assert_allclose(space.low, [-1.0] * JOINT_ACTION_DIM, atol=1e-6)
+        np.testing.assert_allclose(space.high, [1.0] * JOINT_ACTION_DIM, atol=1e-6)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("control_mode", JOINT_DELTA_CONTROL_MODES)
+def test_joint_normalized_plus_one_matches_physical_max_delta(control_mode):
     """An all +1 normalized action moves joint targets by exactly the physical
     delta scale, i.e. the internal scaling reproduces the old physical-max
     behavior."""
@@ -436,7 +507,7 @@ def test_normalized_plus_one_matches_physical_max_delta(control_mode):
         else:
             base = unwrapped._prev_target.copy()  # type: ignore[attr-defined]
 
-        action = np.ones(6, dtype=np.float32)
+        action = np.ones(JOINT_ACTION_DIM, dtype=np.float32)
         env.step(action)
 
         after = unwrapped.data.ctrl[actuator_ids].copy()  # type: ignore[attr-defined]
@@ -448,16 +519,16 @@ def test_normalized_plus_one_matches_physical_max_delta(control_mode):
         env.close()
 
 
-@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
-def test_delta_penalty_norms_use_normalized_action(control_mode):
+@pytest.mark.parametrize("control_mode", JOINT_DELTA_CONTROL_MODES)
+def test_joint_delta_penalty_norms_use_normalized_action(control_mode):
     """Penalty norms (energy_norm) are computed on the normalized public action,
     so an all +1 action yields energy_norm == sqrt(6)."""
     env = gym.make("MuJoCoTouch-v1", control_mode=control_mode)
     try:
         env.reset(seed=0)
-        action = np.ones(6, dtype=np.float32)
+        action = np.ones(JOINT_ACTION_DIM, dtype=np.float32)
         _, _, _, _, info = env.step(action)
-        assert info["energy_norm"] == pytest.approx(np.sqrt(6.0), abs=1e-6)
+        assert info["energy_norm"] == pytest.approx(np.sqrt(JOINT_ACTION_DIM), abs=1e-6)
     finally:
         env.close()
 

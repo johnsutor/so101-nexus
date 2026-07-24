@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
-from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
+    SO101_JOINT_NAMES,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -176,6 +180,47 @@ def test_features_include_motors_and_cameras(tmp_path: Path, fake_env_id: str) -
     assert robot.action_features == {f"{name}.pos": float for name in SO101_JOINT_NAMES}
     assert robot.observation_features["shoulder_pan.pos"] is float
     assert robot.observation_features["wrist"] == (6, 8, 3)
+
+
+@pytest.mark.parametrize("control_mode", DELTA_CONTROL_MODES)
+def test_delta_control_modes_are_rejected_at_construction(
+    tmp_path: Path,
+    fake_env_id: str,
+    control_mode: str,
+) -> None:
+    """Delta modes take a normalized action, but the follower sends absolute targets.
+
+    Accepting one silently reinterpreted an absolute radian target as a full-scale
+    normalized delta and corrupted the gripper tick conversion, so construction
+    fails instead.
+    """
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    with pytest.raises(ValueError, match=control_mode):
+        SimSOFollower(
+            _make_config(tmp_path, fake_env_id, env_kwargs={"control_mode": control_mode})
+        )
+
+
+@pytest.mark.parametrize("control_mode", ABSOLUTE_CONTROL_MODES)
+def test_absolute_control_modes_construct(
+    tmp_path: Path,
+    fake_env_id: str,
+    control_mode: str,
+) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+    from so101_nexus.lerobot_adapter.sim_follower import EE_ACTION_KEYS
+
+    robot = SimSOFollower(
+        _make_config(tmp_path, fake_env_id, env_kwargs={"control_mode": control_mode})
+    )
+
+    expected = (
+        {f"{name}.pos" for name in SO101_JOINT_NAMES}
+        if control_mode == "pd_joint_pos"
+        else set(EE_ACTION_KEYS)
+    )
+    assert set(robot.action_features) == expected
 
 
 def test_connect_refuses_missing_calibration(tmp_path: Path, fake_env_id: str) -> None:

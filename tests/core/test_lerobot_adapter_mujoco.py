@@ -110,3 +110,22 @@ def test_default_gripper_limits_match_env() -> None:
 
     assert low == pytest.approx(SO101_GRIPPER_LIMITS_RAD[0], abs=1e-3)
     assert high == pytest.approx(SO101_GRIPPER_LIMITS_RAD[1], abs=1e-3)
+
+
+@pytest.mark.parametrize("control_mode", ["pd_joint_delta_pos", "pd_joint_target_delta_pos"])
+def test_gripper_limits_reject_real_delta_mode_envs(control_mode: str) -> None:
+    """Regression: a real delta-mode env used to report its normalized box as radians.
+
+    ``read_gripper_limits_rad`` returned (-1.0, 1.0) instead of the jaw travel, which
+    silently corrupted every tick-to-radian conversion built on top of it.
+    """
+    import gymnasium as gym
+
+    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
+
+    env = gym.make("MuJoCoPickLift-v1", control_mode=control_mode)
+    try:
+        with pytest.raises(ValueError, match=control_mode):
+            read_gripper_limits_rad(env)
+    finally:
+        env.close()
