@@ -12,9 +12,21 @@ from gymnasium import spaces
 
 from so101_nexus.camera_utils import compute_angled_camera_params, compute_overhead_camera_params
 from so101_nexus.config import (
+    EE_CONTROL_MODES,
+    JOINT_CONTROL_MODES,
+    SO101_ARM_JOINT_COUNT,
     SO101_JOINT_NAMES,
+    SO101_TCP_SITE_NAME,
     ControlMode,
     EnvironmentConfig,
+)
+from so101_nexus.kinematics import (
+    EE_ACTION_DIM,
+    EE_DELTA_ACTION_SCALE,
+    EE_IK_ITERATIONS,
+    ee_ik_delta_q,
+    quat_multiply,
+    rotvec_to_quat,
 )
 from so101_nexus.observations import (
     CameraObservation,
@@ -40,6 +52,18 @@ logger = logging.getLogger(__name__)
 # existing controller delta units (radians): +/-0.05 for the five arm joints
 # and +/-0.2 for the gripper. Reused by both delta control modes.
 _DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.float64)
+
+# The SO-101 arm has five actuated joints, so its tool Jacobian is rank 5: one
+# twist direction is always unreachable and full SE(3) pose control is not
+# achievable. Both end-effector modes still take a 6-DoF pose command and
+# de-weight the orientation error by kinematics.EE_ORIENTATION_WEIGHT, so
+# position tracks essentially exactly while orientation is best-effort. The Warp
+# backend diverges from the nominal 6-DoF contract in exactly the same way.
+#
+# Half-width of the pd_ee_pose position box, in metres. Sampling the reachable
+# set gives a maximum TCP reach of 0.5457 m, so 0.55 m spans the workspace
+# without admitting targets the solver could only clamp toward.
+_EE_WORKSPACE_RADIUS = 0.55
 
 
 def _configure_free_camera(cam: mujoco.MjvCamera, params: dict[str, Any]) -> None:
@@ -71,11 +95,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     _wrist_renderer: mujoco.Renderer | None
     _renderer: mujoco.Renderer | None
     _viewer: Any | None
-    _VALID_CONTROL_MODES: set[str] = {
-        "pd_joint_pos",
-        "pd_joint_delta_pos",
-        "pd_joint_target_delta_pos",
-    }
+    _VALID_CONTROL_MODES: frozenset[str] = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
     # Menagerie physics uses timestep=0.005; keep control_dt = timestep *
     # _N_SUBSTEPS = 0.02 s (unchanged from the old 0.002 * 10).
     _N_SUBSTEPS = 4
@@ -118,7 +138,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._jaw_body_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, "moving_jaw_so101_v1"
         )
-        self._tcp_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
+        self._tcp_site_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_SITE, SO101_TCP_SITE_NAME
+        )
 
         # Menagerie finger contact surfaces use condim=6 (collision_gripper and
         # collision_gripper_mesh classes); the non-finger wrist-roll box on the
@@ -128,10 +150,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._gripper_geom_ids = self._get_finger_geoms(self._gripper_body_id)
         self._jaw_geom_ids = self._get_finger_geoms(self._jaw_body_id)
 
-        arm_dof_count = len(SO101_JOINT_NAMES) - 1
+        arm_joint_ids = self._joint_ids[:SO101_ARM_JOINT_COUNT]
         self._arm_qvel_addrs = np.array(
-            [self.model.jnt_dofadr[self._joint_ids[i]] for i in range(arm_dof_count)],
-            dtype=np.int32,
+            [self.model.jnt_dofadr[jid] for jid in arm_joint_ids], dtype=np.int32
+        )
+        self._arm_qpos_addrs = np.array(
+            [self.model.jnt_qposadr[jid] for jid in arm_joint_ids], dtype=np.int32
         )
 
         ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
@@ -154,16 +178,39 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 high=self._target_high.astype(np.float32),
                 dtype=np.float32,
             )
+        elif self.control_mode == "pd_ee_pose":
+            # Absolute TCP pose: world position, orientation as a rotation
+            # vector, then the gripper joint target on pd_joint_pos's bounds.
+            ee_low = np.concatenate(
+                [np.full(3, -_EE_WORKSPACE_RADIUS), np.full(3, -np.pi), self._target_low[-1:]]
+            )
+            ee_high = np.concatenate(
+                [np.full(3, _EE_WORKSPACE_RADIUS), np.full(3, np.pi), self._target_high[-1:]]
+            )
+            self.action_space = spaces.Box(
+                low=ee_low.astype(np.float32),
+                high=ee_high.astype(np.float32),
+                dtype=np.float32,
+            )
         else:
             # Delta modes expose a normalized [-1, 1] action space (the
             # cross-backend contract). The normalized action is scaled by
-            # _DELTA_ACTION_SCALE in step() before being applied to joint targets.
-            n_joints = len(SO101_JOINT_NAMES)
+            # _DELTA_ACTION_SCALE (joints) or EE_DELTA_ACTION_SCALE (end
+            # effector) in step() before being applied to targets.
+            n_actions = (
+                EE_ACTION_DIM if self.control_mode == "pd_ee_delta_pose" else len(SO101_JOINT_NAMES)
+            )
             self.action_space = spaces.Box(
-                low=-np.ones(n_joints, dtype=np.float32),
-                high=np.ones(n_joints, dtype=np.float32),
+                low=-np.ones(n_actions, dtype=np.float32),
+                high=np.ones(n_actions, dtype=np.float32),
                 dtype=np.float32,
             )
+
+        # Scratch state so the IK loop can re-evaluate forward kinematics
+        # without perturbing the live simulation.
+        self._ik_data: mujoco.MjData | None = (
+            mujoco.MjData(self.model) if self.control_mode in EE_CONTROL_MODES else None
+        )
 
         self._prev_target: np.ndarray | None = None
         # Previous public policy action, used for the action-smoothness penalty.
@@ -378,6 +425,67 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         mujoco.mju_mat2Quat(quat, mat.flatten())
         return np.concatenate([pos, quat])
 
+    def _solve_ee_ik(
+        self, target_pos: np.ndarray, target_quat: np.ndarray, gripper_target: float
+    ) -> np.ndarray:
+        """Damped-least-squares joint targets tracking a commanded TCP pose.
+
+        Parameters
+        ----------
+        target_pos : np.ndarray
+            Target TCP position in world metres, shape ``(3,)``.
+        target_quat : np.ndarray
+            Target TCP orientation as a ``[w, x, y, z]`` quaternion, shape ``(4,)``.
+        gripper_target : float
+            Gripper joint target in radians.
+
+        Returns
+        -------
+        np.ndarray
+            Six actuator position targets (five arm joints then the gripper),
+            each clamped to the valid target bounds. Targets outside the
+            reachable workspace resolve to the closest achievable pose rather
+            than raising.
+        """
+        ik_data = self._ik_data
+        assert ik_data is not None  # allocated for EE modes in _finish_model_setup
+
+        # Scene objects carry free joints, so seed the whole configuration; the
+        # arm occupies only the first six qpos entries.
+        ik_data.qpos[:] = self.data.qpos
+        arm_qpos_addrs = self._arm_qpos_addrs
+        arm_dofs = self._arm_qvel_addrs
+        q = self.data.qpos[arm_qpos_addrs].copy()
+
+        jacp = np.zeros((3, self.model.nv))
+        jacr = np.zeros((3, self.model.nv))
+        current_quat = np.zeros(4)
+        for _ in range(EE_IK_ITERATIONS):
+            ik_data.qpos[arm_qpos_addrs] = q
+            # mj_jacSite reads subtree centre-of-mass data, so mj_kinematics
+            # alone leaves the rotational block stale; mj_comPos refreshes it.
+            mujoco.mj_kinematics(self.model, ik_data)
+            mujoco.mj_comPos(self.model, ik_data)
+            mujoco.mj_jacSite(self.model, ik_data, jacp, jacr, self._tcp_site_id)
+            mujoco.mju_mat2Quat(current_quat, ik_data.site_xmat[self._tcp_site_id])
+            # ee_ik_delta_q applies EE_ORIENTATION_WEIGHT to the rotational rows
+            # itself, so this Jacobian is handed over raw.
+            dq = ee_ik_delta_q(
+                np.vstack([jacp[:, arm_dofs], jacr[:, arm_dofs]]),
+                ik_data.site_xpos[self._tcp_site_id],
+                current_quat,
+                target_pos,
+                target_quat,
+            )
+            q = np.clip(
+                q + dq,
+                self._target_low[:SO101_ARM_JOINT_COUNT],
+                self._target_high[:SO101_ARM_JOINT_COUNT],
+            )
+
+        gripper = np.clip(gripper_target, self._target_low[-1], self._target_high[-1])
+        return np.concatenate([q, [gripper]])
+
     def _is_grasping(self) -> float:
         """Return 1.0 if the gripper and jaw are both in contact with the target object.
 
@@ -502,32 +610,67 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _refresh_reset_reference_state(self) -> None:
         """Refresh task reference state after reset settling."""
 
+    def _action_to_ctrl(self, action: np.ndarray) -> np.ndarray:
+        """Resolve a public action into six actuator position targets.
+
+        Shared seam with the Warp backend's ``_action_to_ctrl``: it clips the
+        action to the action space, applies the control mode's semantics and
+        returns joint targets without stepping physics. ``pd_joint_target_delta_pos``
+        advances its held target here, because integrating that target is the mode.
+
+        Parameters
+        ----------
+        action : np.ndarray
+            Public action shaped like this env's ``action_space``.
+
+        Returns
+        -------
+        np.ndarray
+            Six actuator position targets (five arm joints then the gripper).
+        """
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        if self.control_mode == "pd_joint_pos":
+            # action_space is already the valid target range for this mode.
+            return action
+        if self.control_mode == "pd_joint_delta_pos":
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            return np.clip(self._get_current_qpos() + delta, self._target_low, self._target_high)
+        if self.control_mode == "pd_joint_target_delta_pos":
+            # Normalized action in [-1, 1] is scaled to a physical joint delta.
+            delta = action * _DELTA_ACTION_SCALE
+            target = np.clip(self._prev_target + delta, self._target_low, self._target_high)
+            self._prev_target = target
+            return target
+
+        ee_action = np.asarray(action, dtype=np.float64)
+        if self.control_mode == "pd_ee_pose":
+            return self._solve_ee_ik(
+                ee_action[:3], rotvec_to_quat(ee_action[3:6]), float(ee_action[6])
+            )
+
+        # pd_ee_delta_pose integrates from the measured TCP pose, mirroring
+        # pd_joint_delta_pos. The rotation delta is a world-frame twist, so it
+        # left-multiplies the current TCP orientation.
+        delta = ee_action * EE_DELTA_ACTION_SCALE
+        tcp = self._get_tcp_pose()
+        return self._solve_ee_ik(
+            tcp[:3] + delta[:3],
+            quat_multiply(rotvec_to_quat(delta[3:6]), tcp[3:]),
+            float(self._get_current_qpos()[-1] + delta[6]),
+        )
+
     def step(
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
         """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
         # Penalty norms use the public action as received here, before clipping,
         # following the cross-backend convention so the penalty is comparable
-        # across backends. Clipping below only affects the control sent to physics.
+        # across backends. Clipping in _action_to_ctrl only affects the control
+        # sent to physics.
         public_action = np.asarray(action, dtype=np.float64)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-
-        if self.control_mode == "pd_joint_pos":
-            # action_space is already the valid target range for this mode.
-            ctrl = action
-        elif self.control_mode == "pd_joint_delta_pos":
-            # Normalized action in [-1, 1] is scaled to a physical joint delta.
-            delta = action * _DELTA_ACTION_SCALE
-            ctrl = np.clip(self._get_current_qpos() + delta, self._target_low, self._target_high)
-        else:
-            # Normalized action in [-1, 1] is scaled to a physical joint delta.
-            delta = action * _DELTA_ACTION_SCALE
-            self._prev_target = np.clip(
-                self._prev_target + delta, self._target_low, self._target_high
-            )
-            ctrl = self._prev_target
-
-        self.data.ctrl[self._actuator_ids] = ctrl
+        self.data.ctrl[self._actuator_ids] = self._action_to_ctrl(action)
 
         for _ in range(self._N_SUBSTEPS):
             mujoco.mj_step(self.model, self.data)
