@@ -27,6 +27,7 @@ for the public-API and deprecation policy.
 - Side camera for human rendering and rollout video collection (MuJoCo backend; the Warp backend implements no `render()`). `RenderConfig` gains `camera` (`"overhead"` default, or `"side"` for an angled tabletop bystander view), `side_azimuth_deg`, and `side_elevation_deg`; the selected view drives `render_mode="rgb_array"` frames and the initial `render_mode="human"` viewer viewpoint. The side view is visualization-only and never enters the observation space or policy inputs.
 - `RolloutRecorder(record_side_video=True)`: record the env's configured render view as an `observation.images.side` video channel alongside policy rollout datasets (requires `render_mode="rgb_array"`); `FieldSelection` gains `side_image` (default off, existing schemas unchanged) and `teleop.dataset` exposes `SIDE_KEY`.
 - `SimCameraConfig(source="render")`: a sentinel source that reads `env.render()` instead of an observation key, so LeRobot recording flows can capture the visualization render view (e.g. the side camera) as a dataset camera.
+- Teleop stack-cube customization: `TeleopConfigOverrides.cube_a_colors`/`cube_b_colors`, UI checkbox groups ("Stack Cube A Colors" / "Stack Cube B Colors") shown for `StackCubeConfig` environments, and a `[stack_cube]` config-profile section, mirroring the existing pick-and-place cube/target color controls.
 
 ### Changed
 

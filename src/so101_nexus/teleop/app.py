@@ -78,6 +78,7 @@ class CustomizationUIState:
     common_visible: bool = False
     pick_visible: bool = False
     pick_and_place_visible: bool = False
+    stack_visible: bool = False
     object_specs: list[str] = field(default_factory=lambda: ["cube:red"])
     n_distractors: int = 0
     ground_colors: list[str] = field(default_factory=lambda: ["gray"])
@@ -89,6 +90,8 @@ class CustomizationUIState:
     success_hold_seconds: float = 0.5
     cube_colors: list[str] = field(default_factory=lambda: ["red"])
     target_colors: list[str] = field(default_factory=lambda: ["blue"])
+    cube_a_colors: list[str] = field(default_factory=lambda: ["red"])
+    cube_b_colors: list[str] = field(default_factory=lambda: ["blue"])
 
 
 def _progress_text(completed: int, total: int) -> str:
@@ -201,7 +204,8 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
     common_visible = bool(common_keys & set(attrs))
     pick_visible = "objects" in attrs and "n_distractors" in attrs
     pick_and_place_visible = "cube_colors" in attrs or "target_colors" in attrs
-    customize_visible = common_visible or pick_visible or pick_and_place_visible
+    stack_visible = "cube_a_colors" in attrs or "cube_b_colors" in attrs
+    customize_visible = common_visible or pick_visible or pick_and_place_visible or stack_visible
 
     return CustomizationUIState(
         customize_visible=customize_visible,
@@ -209,6 +213,7 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         common_visible=common_visible,
         pick_visible=pick_visible,
         pick_and_place_visible=pick_and_place_visible,
+        stack_visible=stack_visible,
         object_specs=_object_specs_from_config(attrs.get("objects")),
         n_distractors=int(attrs.get("n_distractors", 0)),
         ground_colors=_color_config_to_names(attrs.get("ground_colors"), ["gray"]),
@@ -220,6 +225,8 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         success_hold_seconds=float(attrs.get("success_hold_seconds", 0.5)),
         cube_colors=_color_config_to_names(attrs.get("cube_colors"), ["red"]),
         target_colors=_color_config_to_names(attrs.get("target_colors"), ["blue"]),
+        cube_a_colors=_color_config_to_names(attrs.get("cube_a_colors"), ["red"]),
+        cube_b_colors=_color_config_to_names(attrs.get("cube_b_colors"), ["blue"]),
     )
 
 
@@ -465,6 +472,8 @@ def _normalized_init_config(
     reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
+    cube_a_color_value: list[str],
+    cube_b_color_value: list[str],
     *,
     success_hold_seconds: float = 0.5,
 ) -> dict:
@@ -502,6 +511,16 @@ def _normalized_init_config(
             target_colors=_optional_color_tuple(
                 target_color_value,
                 field_name="target_colors",
+                cube_only=True,
+            ),
+            cube_a_colors=_optional_color_tuple(
+                cube_a_color_value,
+                field_name="cube_a_colors",
+                cube_only=True,
+            ),
+            cube_b_colors=_optional_color_tuple(
+                cube_b_color_value,
+                field_name="cube_b_colors",
                 cube_only=True,
             ),
         )
@@ -603,6 +622,8 @@ def _cb_start_init(
     reset_settle_frames: float,
     cube_color_value: list[str],
     target_color_value: list[str],
+    cube_a_color_value: list[str],
+    cube_b_color_value: list[str],
     success_hold_seconds: float = 0.5,
 ):
     """Validate inputs and launch the init worker thread."""
@@ -638,6 +659,8 @@ def _cb_start_init(
         reset_settle_frames,
         cube_color_value,
         target_color_value,
+        cube_a_color_value,
+        cube_b_color_value,
         success_hold_seconds=success_hold_seconds,
     )
     if config["max_steps"] < 1:
@@ -671,6 +694,9 @@ def _cb_update_customization_for_env(env_id: str):
         gr.update(visible=state.common_visible),
         gr.update(visible=state.pick_visible),
         gr.update(visible=state.pick_and_place_visible),
+        gr.update(value=state.cube_a_colors),
+        gr.update(value=state.cube_b_colors),
+        gr.update(visible=state.stack_visible),
     )
 
 
@@ -1155,6 +1181,34 @@ def _cb_prepare_finalize_and_close():
     return gr.update(value="Finalizing dataset...", visible=True)
 
 
+def _build_cube_pair_color_group(
+    gr,
+    *,
+    visible: bool,
+    first_value: list[str],
+    first_label: str,
+    second_value: list[str],
+    second_label: str,
+):
+    """Build a visibility-gated row of two cube-color checkbox groups.
+
+    Shared by the pick-and-place (cube/target) and stack-cube (A/B) color
+    controls, which are structurally identical.
+    """
+    with gr.Group(visible=visible) as group, gr.Row():
+        first_input = gr.CheckboxGroup(
+            choices=default_cube_color_choices(),
+            value=first_value,
+            label=first_label,
+        )
+        second_input = gr.CheckboxGroup(
+            choices=default_cube_color_choices(),
+            value=second_value,
+            label=second_label,
+        )
+    return group, first_input, second_input
+
+
 def _build_setup_screen(
     gr,
     all_env_ids: list[str],
@@ -1303,22 +1357,26 @@ def _build_setup_screen(
                     step=1,
                     label="Reset Settle Frames",
                 )
-        with (
-            gr.Group(
-                visible=customization_state.pick_and_place_visible
-            ) as pick_and_place_customization_group,
-            gr.Row(),
-        ):
-            cube_colors_input = gr.CheckboxGroup(
-                choices=default_cube_color_choices(),
-                value=customization_state.cube_colors,
-                label="Pick-and-Place Cube Colors",
+        pick_and_place_customization_group, cube_colors_input, target_colors_input = (
+            _build_cube_pair_color_group(
+                gr,
+                visible=customization_state.pick_and_place_visible,
+                first_value=customization_state.cube_colors,
+                first_label="Pick-and-Place Cube Colors",
+                second_value=customization_state.target_colors,
+                second_label="Pick-and-Place Target Colors",
             )
-            target_colors_input = gr.CheckboxGroup(
-                choices=default_cube_color_choices(),
-                value=customization_state.target_colors,
-                label="Pick-and-Place Target Colors",
+        )
+        stack_customization_group, cube_a_colors_input, cube_b_colors_input = (
+            _build_cube_pair_color_group(
+                gr,
+                visible=customization_state.stack_visible,
+                first_value=customization_state.cube_a_colors,
+                first_label="Stack Cube A Colors",
+                second_value=customization_state.cube_b_colors,
+                second_label="Stack Cube B Colors",
             )
+        )
 
     init_btn = gr.Button("Initialize Session", variant="primary")
 
@@ -1357,6 +1415,9 @@ def _build_setup_screen(
         pick_and_place_customization_group,
         port_status,
         recheck_port_btn,
+        cube_a_colors_input,
+        cube_b_colors_input,
+        stack_customization_group,
     )
 
 
@@ -1667,6 +1728,9 @@ def main(
                     pick_and_place_customization_group,
                     port_status,
                     recheck_port_btn,
+                    cube_a_colors_input,
+                    cube_b_colors_input,
+                    stack_customization_group,
                 ) = _build_setup_screen(
                     gr, all_env_ids, leader_id_default, wrist_roll_offset, leader_port
                 )
@@ -1730,6 +1794,8 @@ def main(
             reset_settle_frames_input,
             cube_colors_input,
             target_colors_input,
+            cube_a_colors_input,
+            cube_b_colors_input,
             success_hold_seconds_input,
         ]
 
@@ -1759,6 +1825,9 @@ def main(
                 common_customization_group,
                 pick_customization_group,
                 pick_and_place_customization_group,
+                cube_a_colors_input,
+                cube_b_colors_input,
+                stack_customization_group,
             ],
             init_log=init_log,
             retry_btn=retry_btn,

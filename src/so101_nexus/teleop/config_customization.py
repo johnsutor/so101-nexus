@@ -43,6 +43,8 @@ class TeleopConfigOverrides:
     reset_settle_frames: int | None = None
     cube_colors: tuple[ColorName, ...] | None = None
     target_colors: tuple[ColorName, ...] | None = None
+    cube_a_colors: tuple[ColorName, ...] | None = None
+    cube_b_colors: tuple[ColorName, ...] | None = None
 
     def __post_init__(self) -> None:
         """Validate override combinations that dataclass types cannot express."""
@@ -63,7 +65,7 @@ class ConfigFactoryUpdate:
 
 
 _OVERRIDE_KEYS = {field.name for field in fields(TeleopConfigOverrides)}
-_PROFILE_SECTION_KEYS = {"common", "pick", "pick_and_place", "envs"}
+_PROFILE_SECTION_KEYS = {"common", "pick", "pick_and_place", "stack_cube", "envs"}
 
 
 def default_color_choices() -> list[str]:
@@ -161,7 +163,7 @@ def apply_config_overrides[ConfigT](
     if overrides.n_distractors is not None and "n_distractors" in attrs:
         attrs["n_distractors"] = overrides.n_distractors
 
-    for name in ("cube_colors", "target_colors"):
+    for name in ("cube_colors", "target_colors", "cube_a_colors", "cube_b_colors"):
         value = _as_color_config(getattr(overrides, name))
         if value is not None and name in attrs:
             attrs[name] = value
@@ -183,6 +185,8 @@ def load_profile_overrides(
     base_attrs = vars(base_config)
     if "cube_colors" in base_attrs:
         merged.update(_mapping_section(profile, "pick_and_place"))
+    elif "cube_a_colors" in base_attrs:
+        merged.update(_mapping_section(profile, "stack_cube"))
     elif "objects" in base_attrs and "n_distractors" in base_attrs:
         merged.update(_mapping_section(profile, "pick"))
 
@@ -208,7 +212,14 @@ def overrides_from_mapping(raw: Mapping[str, Any]) -> TeleopConfigOverrides:
         kwargs["object_specs"] = tuple(str(spec) for spec in _as_sequence(raw["object_specs"]))
     if "n_distractors" in raw:
         kwargs["n_distractors"] = _as_nonnegative_int(raw["n_distractors"], "n_distractors")
-    for key in ("ground_colors", "robot_colors", "cube_colors", "target_colors"):
+    for key in (
+        "ground_colors",
+        "robot_colors",
+        "cube_colors",
+        "target_colors",
+        "cube_a_colors",
+        "cube_b_colors",
+    ):
         if key in raw:
             kwargs[key] = _color_tuple(raw[key], key)
     for key in ("spawn_min_radius", "spawn_max_radius", "spawn_angle_half_range_deg"):
@@ -255,6 +266,8 @@ def overrides_to_mapping(overrides: TeleopConfigOverrides) -> dict[str, Any]:
         "robot_colors",
         "cube_colors",
         "target_colors",
+        "cube_a_colors",
+        "cube_b_colors",
         "spawn_min_radius",
         "spawn_max_radius",
         "spawn_angle_half_range_deg",

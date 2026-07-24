@@ -122,21 +122,35 @@ def test_apply_config_overrides_ignores_pick_specific_options_for_non_pick_confi
     assert vars(cfg) == vars(base)
 
 
-def test_apply_config_overrides_applies_common_fields_to_stack_cube() -> None:
-    """StackCubeConfig has no dedicated override keys (unlike cube_colors/target_colors
-    for PickAndPlaceConfig), but still picks up common overrides generically."""
-    base = StackCubeConfig()
-
+def test_apply_config_overrides_updates_stack_cube_colors_and_common_fields() -> None:
     cfg = apply_config_overrides(
-        base,
-        TeleopConfigOverrides(ground_colors=("white",), spawn_min_radius=0.2),
+        StackCubeConfig(),
+        TeleopConfigOverrides(
+            cube_a_colors=("green",),
+            cube_b_colors=("purple",),
+            ground_colors=("white",),
+            spawn_min_radius=0.2,
+        ),
     )
 
     assert isinstance(cfg, StackCubeConfig)
+    assert cfg.cube_a_colors == ["green"]
+    assert cfg.cube_b_colors == ["purple"]
     assert cfg.ground_colors == ["white"]
     assert cfg.spawn_min_radius == 0.2
-    assert cfg.cube_a_colors == base.cube_a_colors
-    assert cfg.cube_b_colors == base.cube_b_colors
+
+
+def test_apply_config_overrides_ignores_stack_cube_colors_for_non_stack_config() -> None:
+    """cube_a_colors/cube_b_colors only apply to configs that declare those attrs."""
+    base = PickAndPlaceConfig()
+
+    cfg = apply_config_overrides(
+        base,
+        TeleopConfigOverrides(cube_a_colors=("green",), cube_b_colors=("purple",)),
+    )
+
+    assert isinstance(cfg, PickAndPlaceConfig)
+    assert vars(cfg) == vars(base)
 
 
 def test_apply_config_overrides_rejects_negative_distractors() -> None:
@@ -201,6 +215,19 @@ def test_load_profile_toml_supports_pick_and_place(tmp_path) -> None:
 
     assert overrides.cube_colors == ("red", "green")
     assert overrides.target_colors == ("blue",)
+
+
+def test_load_profile_toml_supports_stack_cube(tmp_path) -> None:
+    path = tmp_path / "profile.toml"
+    path.write_text(
+        "[stack_cube]\ncube_a_colors=['green']\ncube_b_colors=['purple']\n",
+        encoding="utf-8",
+    )
+
+    overrides = load_profile_overrides(path, "MuJoCoStackCube-v1", StackCubeConfig())
+
+    assert overrides.cube_a_colors == ("green",)
+    assert overrides.cube_b_colors == ("purple",)
 
 
 def test_load_profile_accepts_uppercase_suffix(tmp_path) -> None:

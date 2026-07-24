@@ -65,3 +65,18 @@ def test_recording_env_kwargs_applies_pick_overrides() -> None:
     assert kwargs["config"].objects[0].color == "green"
     assert isinstance(kwargs["config"].objects[1], YCBObject)
     assert kwargs["config"].objects[1].model_id == "011_banana"
+
+
+def test_recording_env_kwargs_applies_stack_cube_overrides() -> None:
+    kwargs = _recording_env_kwargs(
+        "MuJoCoStackCube-v1",
+        (320, 240),
+        (640, 480),
+        overrides=TeleopConfigOverrides(
+            cube_a_colors=("green",),
+            cube_b_colors=("purple",),
+        ),
+    )
+
+    assert kwargs["config"].cube_a_colors == ["green"]
+    assert kwargs["config"].cube_b_colors == ["purple"]
