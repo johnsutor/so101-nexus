@@ -11,6 +11,16 @@ for the public-API and deprecation policy.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.4.12] - 2026-07-25
+
+### Added
+
 - `so101_nexus.JointVelocities`: a 6-dimensional state observation component exposing the angular velocity (rad/s) of each controlled joint, mirroring `JointPositions` over the same joints on both backends. Reads `data.qvel` (MuJoCo) / `qvel` (Warp), the same per-DOF velocity `_is_robot_static()` and the `place_task_potential` settle term already consume. Tasks whose `success` includes `is_robot_static` (pick-and-place, stack-cube) previously asked a policy to regulate a quantity it could not observe: a single-frame position snapshot cannot distinguish "approaching the target" from "already settled".
 - `so101_nexus.relabel_environment_state`: re-lay a recorded `observation.environment_state` matrix onto a newer observation component layout, matching columns by the dataset's declared per-dimension names. Missing `JointVelocities` columns are reconstructed offline as a backward finite difference of the recorded `JointPositions` columns (never across an episode boundary), the same relabeling a real SO-101 control loop performs on consecutive servo position readings. Rows must be grouped by episode and chronological within each (LeRobot's own row order); a mismatched `episode_index` length, a non-contiguous episode, a duplicated column name, or any other unreconstructible column raises rather than returning a plausible-looking wrong answer. Lets datasets recorded before this release train against the current observation layout.
 - `env.control_dt` on both backends: simulated seconds advanced by one `step()` (physics timestep times substeps, 0.02 s). This is the correct denominator for finite-differencing recorded joint positions and is deliberately unrelated to a teleop recording's wall-clock fps, since the recorder sleeps to pace the operator but advances the simulation exactly one step per recorded frame.
