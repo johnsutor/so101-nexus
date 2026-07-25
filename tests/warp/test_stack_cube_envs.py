@@ -29,7 +29,7 @@ def test_stack_cube_reset_obs_finite():
 
     env = _make_env(num_envs=6, seed=0)
     obs, info = env.reset(seed=0)
-    assert obs.shape == (6, 30)
+    assert obs.shape == (6, 36)
     assert torch.isfinite(obs).all()
     assert "task_description" in info
 

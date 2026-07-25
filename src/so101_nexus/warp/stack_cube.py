@@ -69,9 +69,9 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
     (``is_grasped < 0.5``) -- a strict superset of ManiSkill's
     ``StackCubeEnv.evaluate`` predicate, matching ``MuJoCoStackCube-v1``.
 
-    Default obs (30,): joint_positions(6) + end_effector_pose(7) + grasp_state(1)
-    + object_pose(7) + object_offset(3) + target_position(3) + target_offset(3),
-    matching ``MuJoCoStackCube-v1``.
+    Default obs (36,): joint_positions(6) + joint_velocities(6) +
+    end_effector_pose(7) + grasp_state(1) + object_pose(7) + object_offset(3) +
+    target_position(3) + target_offset(3), matching ``MuJoCoStackCube-v1``.
 
     ``cube_a_color_names`` / ``cube_b_color_names`` hold the selected colour per
     world and are resampled at every reset; ``task_descriptions`` tracks them.

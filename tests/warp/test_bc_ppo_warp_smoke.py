@@ -34,16 +34,37 @@ def test_bc_ppo_warp_shares_ppo_warp_decisive_defaults():
     assert args.target_kl is None
 
 
+def _pick_lift_control_dt() -> float:
+    """Live ``control_dt`` of the env the published demo dataset was recorded on.
+
+    Sourcing it here rather than hardcoding 0.02 keeps the relabel denominator
+    tied to the simulator, so a physics-timestep or substep change cannot
+    silently rescale every reconstructed velocity.
+    """
+    import gymnasium as gym
+
+    import so101_nexus.mujoco  # noqa: F401 - registers the MuJoCo*-v1 env IDs
+
+    env = gym.make("MuJoCoPickLift-v1")
+    try:
+        return float(env.unwrapped.control_dt)
+    finally:
+        env.close()
+
+
 def test_bc_ppo_warp_load_demo_transitions_shapes_and_units():
     import importlib
 
     import torch
 
     mod = importlib.import_module("examples.bc_ppo_warp")
-    obs, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift-v1", torch.device("cpu"))
+    obs, action = mod.load_demo_transitions(
+        "johnsutor/MuJoCoPickLift-v1", torch.device("cpu"), control_dt=_pick_lift_control_dt()
+    )
 
     assert obs.ndim == 2
-    assert obs.shape[1] == 24  # joints(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)
+    # PickConfig defaults: joints, joint velocities, ee pose, grasp, object pose, offset
+    assert obs.shape[1] == 30
     assert action.shape == (obs.shape[0], 6)
     assert obs.shape[0] > 0
     # deltas are normalized into the env's native [-1, 1] pd_joint_delta_pos frame
@@ -51,6 +72,30 @@ def test_bc_ppo_warp_load_demo_transitions_shapes_and_units():
     assert float(action.max()) <= 1.0 + 1e-6
     assert torch.isfinite(obs).all()
     assert torch.isfinite(action).all()
+
+
+def test_bc_ppo_warp_demo_joint_velocities_are_relabeled_from_positions():
+    """The published dataset predates ``JointVelocities``; the loader must
+    reconstruct those columns as a finite difference of the recorded joint
+    positions rather than emit zeros or a short vector."""
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module("examples.bc_ppo_warp")
+    control_dt = _pick_lift_control_dt()
+    obs, _ = mod.load_demo_transitions(
+        "johnsutor/MuJoCoPickLift-v1", torch.device("cpu"), control_dt=control_dt
+    )
+
+    qpos, qvel = obs[:, :6], obs[:, 6:12]
+    assert qvel.abs().max() > 1e-3, "reconstructed joint velocities are all ~zero"
+    # Within an episode, v[t] * control_dt reproduces the recorded position
+    # increment. Using the dataset's 1/fps here instead would fail by 1.67x.
+    step = qpos[1:] - qpos[:-1]
+    recon = qvel[1:] * control_dt
+    same_episode = step.abs().max(dim=1).values < 1.0  # excludes episode boundaries
+    torch.testing.assert_close(recon[same_episode], step[same_episode], atol=1e-4, rtol=1e-3)
 
 
 def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
@@ -83,7 +128,9 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
         1.0,
     )
 
-    _, action = mod.load_demo_transitions("johnsutor/MuJoCoPickLift-v1", torch.device("cpu"))
+    _, action = mod.load_demo_transitions(
+        "johnsutor/MuJoCoPickLift-v1", torch.device("cpu"), control_dt=_pick_lift_control_dt()
+    )
     np.testing.assert_allclose(action[0].numpy(), expected_first, atol=1e-5)
 
 

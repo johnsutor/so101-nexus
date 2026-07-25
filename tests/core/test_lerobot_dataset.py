@@ -11,7 +11,13 @@ import pytest
 
 from so101_nexus import (
     SO101_GRIPPER_LIMITS_RAD,
+    EndEffectorPose,
+    GraspState,
+    JointPositions,
+    JointVelocities,
     dataset_row_to_sim_qpos,
+    privileged_state_feature_names,
+    relabel_environment_state,
     sim_qpos_to_dataset_row,
 )
 
@@ -75,3 +81,150 @@ def test_decode_helpers_import_without_lerobot() -> None:
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip().endswith("ok")
+
+
+def _legacy_recording(n_frames: int, seed: int = 0):
+    """Build a pre-JointVelocities recording: JointPositions + GraspState."""
+    legacy = [JointPositions(), GraspState()]
+    names = privileged_state_feature_names(legacy)
+    rng = np.random.default_rng(seed)
+    state = rng.uniform(-1.0, 1.0, size=(n_frames, len(names))).astype(np.float32)
+    return state, names
+
+
+def test_relabel_reconstructs_joint_velocities_by_finite_difference() -> None:
+    state, names = _legacy_recording(8)
+    target = [JointPositions(), JointVelocities(), GraspState()]
+    dt = 1.0 / 30.0
+
+    out = relabel_environment_state(state, names, target, dt=dt)
+
+    assert out.shape == (8, 13)
+    assert out.dtype == np.float32
+    np.testing.assert_allclose(out[:, :6], state[:, :6], rtol=0, atol=0)
+    np.testing.assert_allclose(out[:, 12], state[:, 6], rtol=0, atol=0)
+    # First frame has no predecessor: reset zeroes qvel in both backends.
+    np.testing.assert_array_equal(out[0, 6:12], np.zeros(6, dtype=np.float32))
+    np.testing.assert_allclose(
+        out[1:, 6:12], (state[1:, :6] - state[:-1, :6]) / dt, rtol=1e-5, atol=1e-5
+    )
+
+
+def test_relabel_does_not_difference_across_episode_boundaries() -> None:
+    state, names = _legacy_recording(6, seed=1)
+    episode_index = np.array([0, 0, 0, 1, 1, 1])
+
+    out = relabel_environment_state(
+        state,
+        names,
+        [JointPositions(), JointVelocities()],
+        dt=0.05,
+        episode_index=episode_index,
+    )
+
+    np.testing.assert_array_equal(out[0, 6:12], np.zeros(6, dtype=np.float32))
+    np.testing.assert_array_equal(out[3, 6:12], np.zeros(6, dtype=np.float32))
+    np.testing.assert_allclose(
+        out[4, 6:12], (state[4, :6] - state[3, :6]) / 0.05, rtol=1e-5, atol=1e-5
+    )
+
+
+def test_relabel_reorders_recorded_columns_by_name() -> None:
+    recorded = [GraspState(), JointPositions()]
+    names = privileged_state_feature_names(recorded)
+    state = np.arange(7, dtype=np.float32)[None, :]
+
+    out = relabel_environment_state(state, names, [JointPositions(), GraspState()], dt=0.1)
+
+    np.testing.assert_array_equal(out[0], np.array([1, 2, 3, 4, 5, 6, 0], dtype=np.float32))
+
+
+def test_relabel_rejects_target_columns_it_cannot_reconstruct() -> None:
+    state, names = _legacy_recording(3)
+
+    with pytest.raises(ValueError, match="end_effector_pose_0"):
+        relabel_environment_state(state, names, [JointPositions(), EndEffectorPose()], dt=0.1)
+
+
+def test_relabel_requires_recorded_joint_positions_for_velocities() -> None:
+    recorded = [GraspState()]
+    names = privileged_state_feature_names(recorded)
+    state = np.zeros((3, 1), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="joint_positions"):
+        relabel_environment_state(state, names, [GraspState(), JointVelocities()], dt=0.1)
+
+
+@pytest.mark.parametrize("dt", [0.0, -0.1])
+def test_relabel_rejects_non_positive_dt(dt: float) -> None:
+    state, names = _legacy_recording(3)
+
+    with pytest.raises(ValueError, match="dt must be > 0"):
+        relabel_environment_state(state, names, [JointPositions(), JointVelocities()], dt=dt)
+
+
+def test_relabel_rejects_state_width_mismatch() -> None:
+    state, names = _legacy_recording(3)
+
+    with pytest.raises(ValueError, match="does not match"):
+        relabel_environment_state(state[:, :-1], names, [JointPositions()], dt=0.1)
+
+
+def test_relabel_rejects_episode_index_length_mismatch() -> None:
+    """A short episode_index used to leave the uncovered tail at zero velocity."""
+    state, names = _legacy_recording(4)
+    target = [JointPositions(), JointVelocities()]
+
+    with pytest.raises(ValueError, match="episode_index shape"):
+        relabel_environment_state(state, names, target, dt=0.02, episode_index=np.array([0, 0]))
+
+
+@pytest.mark.parametrize(
+    "episode_index",
+    [
+        pytest.param(np.array([0, 1, 0, 1]), id="interleaved"),
+        pytest.param(np.array([1, 1, 0, 1]), id="episode_resumes"),
+    ],
+)
+def test_relabel_rejects_non_contiguous_episodes(episode_index: np.ndarray) -> None:
+    """Unsorted rows used to silently difference temporally unrelated frames."""
+    state, names = _legacy_recording(4)
+    target = [JointPositions(), JointVelocities()]
+
+    with pytest.raises(ValueError, match="non-contiguous episode"):
+        relabel_environment_state(state, names, target, dt=0.02, episode_index=episode_index)
+
+
+def test_relabel_rejects_duplicate_recorded_names() -> None:
+    """Duplicate names would alias two columns onto one source index."""
+    state = np.zeros((2, 12), dtype=np.float32)
+    names = [*privileged_state_feature_names([JointPositions()])] * 2
+
+    with pytest.raises(ValueError, match="repeats"):
+        relabel_environment_state(state, names, [JointPositions()], dt=0.02)
+
+
+def test_relabel_rejects_duplicate_target_components() -> None:
+    state, names = _legacy_recording(3)
+
+    with pytest.raises(ValueError, match="repeats"):
+        relabel_environment_state(state, names, [JointPositions(), JointPositions()], dt=0.02)
+
+
+def test_relabel_output_is_c_contiguous_on_both_paths() -> None:
+    """Layout must not depend on whether any column needed reconstruction."""
+    state, names = _legacy_recording(4)
+    episode_index = np.zeros(4, dtype=np.int64)
+
+    reconstructed = relabel_environment_state(
+        state, names, [JointPositions(), JointVelocities()], dt=0.02, episode_index=episode_index
+    )
+    passthrough = relabel_environment_state(
+        state, names, [JointPositions(), GraspState()], dt=0.02, episode_index=episode_index
+    )
+
+    assert reconstructed.flags["C_CONTIGUOUS"]
+    assert passthrough.flags["C_CONTIGUOUS"]
+    # Both paths must return an independent copy, never a view on the input.
+    passthrough[0, 0] = 12345.0
+    assert state[0, 0] != 12345.0

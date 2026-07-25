@@ -549,34 +549,63 @@ def _save(agent, obs_norm, path, step, success):
 # ======================================================================================
 # Demo loading: HF teleop dataset -> flat (obs, delta_action) transitions
 # ======================================================================================
-def load_demo_transitions(demo_repo: str, device: torch.device):
+def load_demo_transitions(
+    demo_repo: str, device: torch.device, *, control_dt: float, observations=None
+):
     """Download the HF teleop dataset and build flat (obs, action) BC transitions.
 
-    ``obs`` matches the env's default all-observation state layout (24-d: joints(6) +
-    ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3), the same order ``PickConfig``'s
-    default ``observations`` list produces). ``action`` is the per-step joint-space delta
-    between consecutive recorded joint states -- the realized motion, matching what
-    ``pd_joint_delta_pos`` needs to reproduce the trajectory -- normalized by
-    ``_DELTA_ACTION_SCALE`` to the same ``[-1, 1]`` frame the env expects directly (no
-    further env-side rescale, unlike an absolute-position control mode).
+    ``obs`` matches the layout of ``observations`` (default: ``PickConfig``'s
+    default component list). Datasets recorded against an older layout are
+    re-laid by name via ``relabel_environment_state``, which reconstructs
+    ``JointVelocities`` offline as a finite difference of the recorded
+    ``JointPositions`` columns. ``control_dt`` is the simulated time between
+    consecutive recorded frames (``env.unwrapped.control_dt``, one env step),
+    NOT the dataset's wall-clock ``fps``: the teleop recorder sleeps to pace the
+    operator but steps the simulation exactly once per frame, so dividing by
+    ``1 / fps`` would scale every velocity by ``control_dt * fps``.
 
-    Returns ``(obs, action)`` float32 tensors of shape ``(N, 24)`` / ``(N, 6)`` on ``device``.
+    ``action`` is the per-step joint-space delta between consecutive recorded
+    joint states -- the realized motion, matching what ``pd_joint_delta_pos``
+    needs to reproduce the trajectory -- normalized by ``_DELTA_ACTION_SCALE`` to
+    the same ``[-1, 1]`` frame the env expects directly (no further env-side
+    rescale, unlike an absolute-position control mode).
+
+    Returns ``(obs, action)`` float32 tensors of shape ``(N, obs_dim)`` / ``(N, 6)``
+    on ``device``.
     """
+    import json
+    from pathlib import Path
+
     import pandas as pd
     from huggingface_hub import hf_hub_download
 
-    from so101_nexus import dataset_row_to_sim_qpos
+    from so101_nexus import dataset_row_to_sim_qpos, relabel_environment_state
+    from so101_nexus.config import PickConfig
+
+    env_state_key = "observation.environment_state"
+
+    layout = list(observations if observations is not None else PickConfig().observations or [])
+    if not layout:
+        raise ValueError("target observation layout is empty; pass `observations`")
 
     print(f"[demos] downloading {demo_repo} ...", flush=True)
     pq = hf_hub_download(demo_repo, "data/chunk-000/file-000.parquet", repo_type="dataset")
+    info = json.loads(
+        Path(hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset")).read_text()
+    )
     df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
 
     joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)  # [N,6]
-    # `environment_state` already includes joint_positions as its first 6 dims
-    # (PickConfig's default observations list starts with JointPositions()), so it
-    # is the full 24-d obs vector directly -- no separate joints concat needed.
-    obs_all = np.stack(df["observation.environment_state"].to_numpy()).astype(np.float32)  # [N,24]
     ep_index = df["episode_index"].to_numpy()
+    # `environment_state` is the env's full privileged state vector; its declared
+    # per-column names let an older recording be mapped onto the current layout.
+    obs_all = relabel_environment_state(
+        np.stack(df[env_state_key].to_numpy()),
+        info["features"][env_state_key]["names"],
+        layout,
+        dt=control_dt,
+        episode_index=ep_index,
+    )
 
     joints_rad = dataset_row_to_sim_qpos(joints_raw).astype(
         np.float32
@@ -587,7 +616,7 @@ def load_demo_transitions(demo_repo: str, device: torch.device):
     for e in sorted(np.unique(ep_index)):
         idx = np.nonzero(ep_index == e)[0]
         s, t = idx[0], idx[-1]  # inclusive contiguous block, L = t - s + 1 rows
-        ep_obs = obs_all[s:t]  # [L-1, 24] -- drop the last row (no outgoing transition)
+        ep_obs = obs_all[s:t]  # [L-1, obs_dim] -- drop the last row (no outgoing transition)
         ep_delta = joints_rad[s + 1 : t + 1] - joints_rad[s:t]  # [L-1, 6] realized motion
         obs_list.append(ep_obs)
         act_list.append(np.clip(ep_delta / delta_scale, -1.0, 1.0))
@@ -699,7 +728,12 @@ def train(  # noqa: PLR0915, PLR0912, C901
 
     demo_obs = demo_act = None
     if use_demos:
-        demo_obs, demo_act = load_demo_transitions(demo_repo, dev)
+        demo_obs, demo_act = load_demo_transitions(
+            demo_repo,
+            dev,
+            observations=envs.unwrapped.config.observations,
+            control_dt=envs.unwrapped.control_dt,
+        )
         obs_norm(demo_obs, update=True)  # fit running stats on demo obs before BC regression
         if bc_pretrain_updates > 0:
             print(f"[demos] BC-pretraining actor for {bc_pretrain_updates} updates ...", flush=True)

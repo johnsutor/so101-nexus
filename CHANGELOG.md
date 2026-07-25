@@ -11,7 +11,13 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `so101_nexus.JointVelocities`: a 6-dimensional state observation component exposing the angular velocity (rad/s) of each controlled joint, mirroring `JointPositions` over the same joints on both backends. Reads `data.qvel` (MuJoCo) / `qvel` (Warp), the same per-DOF velocity `_is_robot_static()` and the `place_task_potential` settle term already consume. Tasks whose `success` includes `is_robot_static` (pick-and-place, stack-cube) previously asked a policy to regulate a quantity it could not observe: a single-frame position snapshot cannot distinguish "approaching the target" from "already settled".
+- `so101_nexus.relabel_environment_state`: re-lay a recorded `observation.environment_state` matrix onto a newer observation component layout, matching columns by the dataset's declared per-dimension names. Missing `JointVelocities` columns are reconstructed offline as a backward finite difference of the recorded `JointPositions` columns (never across an episode boundary), the same relabeling a real SO-101 control loop performs on consecutive servo position readings. Rows must be grouped by episode and chronological within each (LeRobot's own row order); a mismatched `episode_index` length, a non-contiguous episode, a duplicated column name, or any other unreconstructible column raises rather than returning a plausible-looking wrong answer. Lets datasets recorded before this release train against the current observation layout.
+- `env.control_dt` on both backends: simulated seconds advanced by one `step()` (physics timestep times substeps, 0.02 s). This is the correct denominator for finite-differencing recorded joint positions and is deliberately unrelated to a teleop recording's wall-clock fps, since the recorder sleeps to pace the operator but advances the simulation exactly one step per recorded frame.
+
 ### Changed
+
+- **Breaking:** `JointVelocities()` is now part of every task config's default `observations` list, inserted immediately after `JointPositions()`. Default state dimensions grow accordingly: PickLift and Touch 24 to 30, PickAndPlace and StackCube 30 to 36, LookAt and Move 16 to 22. Policies and checkpoints trained against the old layout must be retrained; index the vector by name via `privileged_state_feature_names` rather than by fixed offset. Teleop recording picks the component up automatically, so `observation.environment_state` now carries `joint_velocities_0..5`.
 
 ### Fixed
 

@@ -29,8 +29,8 @@ Three findings are decisive (all baked into the defaults):
   escape the reaching local optimum late in training. `--stagger-resets` (default)
   desynchronizes episode phases so discovery is less seed-fragile.
 
-The training env uses the all-observation default config (24-d privileged state:
-`joints(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)`), so no custom
+The training env uses the all-observation default config (30-d privileged state:
+`joints(6) + joint_vels(6) + ee_pose(7) + grasp(1) + obj_pose(7) + obj_offset(3)`), so no custom
 observation list is needed. `best_agent.pt` (model + obs-norm stats) is saved on
 success-rate improvement.
 

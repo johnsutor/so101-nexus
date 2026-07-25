@@ -54,6 +54,7 @@ from so101_nexus.observations import (
     EndEffectorPose,
     GraspState,
     JointPositions,
+    JointVelocities,
     OverheadCamera,
     WristCamera,
 )
@@ -650,15 +651,16 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """Reject unsupported observation components at construction (fail fast).
 
         The Warp base routes the robot-generic components (``JointPositions``,
-        ``EndEffectorPose``, ``GraspState``) and camera components
-        (``WristCamera``, ``OverheadCamera``) centrally, mirroring the MuJoCo
-        base, and delegates task-specific components to ``_get_component_data`` (a
-        subclass declares those via ``_supported_obs_components``). Anything else
-        raises here rather than at the first reset, so the error names the
-        unsupported component upfront.
+        ``JointVelocities``, ``EndEffectorPose``, ``GraspState``) and camera
+        components (``WristCamera``, ``OverheadCamera``) centrally, mirroring the
+        MuJoCo base, and delegates task-specific components to
+        ``_get_component_data`` (a subclass declares those via
+        ``_supported_obs_components``). Anything else raises here rather than at
+        the first reset, so the error names the unsupported component upfront.
         """
         supported = {
             JointPositions,
+            JointVelocities,
             EndEffectorPose,
             GraspState,
             WristCamera,
@@ -672,6 +674,16 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                     f"component {comp!r} on the Warp backend"
                 )
 
+    @property
+    def control_dt(self) -> float:
+        """Simulated seconds advanced by one ``step()`` (physics timestep x substeps).
+
+        This is the time between consecutive observations, and therefore the
+        correct ``dt`` for finite-differencing recorded joint positions. It is
+        unrelated to a teleop recording's wall-clock fps.
+        """
+        return float(self.mjm.opt.timestep) * self._N_SUBSTEPS
+
     def _obs_dim(self) -> int:
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
@@ -679,6 +691,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
     def _joint_qpos(self) -> torch.Tensor:
         return self.qpos.index_select(1, self._qpos_adr)
+
+    def _joint_qvel(self) -> torch.Tensor:
+        return self.qvel.index_select(1, self._dof_adr)
 
     def _tcp_pos(self) -> torch.Tensor:
         return self.site_xpos[:, self._tcp_site_id, :]
@@ -691,6 +706,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._joint_qpos())
+            elif isinstance(comp, JointVelocities):
+                parts.append(self._joint_qvel())
             elif isinstance(comp, EndEffectorPose):
                 parts.append(self._get_tcp_pose7())
             elif isinstance(comp, GraspState):

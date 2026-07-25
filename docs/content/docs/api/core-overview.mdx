@@ -62,6 +62,7 @@ See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual 
 |-------|------|-------------|
 | `Observation` | Abstract base | Base class for all observation components |
 | `JointPositions` | State (6-dim) | Current joint angles |
+| `JointVelocities` | State (6-dim) | Current joint angular velocities (rad/s) |
 | `EndEffectorPose` | State (7-dim) | TCP position + quaternion orientation |
 | `TargetOffset` | State (3-dim) | Vector from gripper to goal |
 | `GazeDirection` | State (3-dim) | Unit vector toward target |
@@ -97,6 +98,7 @@ See [Scene Objects](/docs/api/objects) for full reference.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `privileged_state_feature_names` | `(observations: Sequence[Observation] | None) -> list[str]` | Per-dimension names for the non-camera state observation vector |
+| `relabel_environment_state` | `(env_state, recorded_names, observations, *, dt, episode_index=None) -> ndarray` | Re-lay a recorded `observation.environment_state` matrix onto a newer component layout, reconstructing `JointVelocities` by finite difference |
 | `reach_progress` | `(distance, *, scale) -> float \| ndarray \| tensor` | Tanh-shaped progress in [0, 1]: 1 at distance 0, decaying toward 0 |
 | `orientation_progress` | `(cos_similarity) -> float \| ndarray \| tensor` | Maps cosine similarity in [-1, 1] to a reward in [0, 1] |
 | `lift_progress` | `(height, *, scale, grasped) -> float \| ndarray \| tensor` | Tanh-shaped lift progress in [0, 1], zero unless grasped |

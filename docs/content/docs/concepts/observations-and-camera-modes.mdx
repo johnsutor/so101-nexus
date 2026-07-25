@@ -14,6 +14,7 @@ State components produce fixed-size slices of the observation vector.
 | Component | Dimensions | Description |
 | --- | --- | --- |
 | `JointPositions` | 6 | Current angle of each robot joint |
+| `JointVelocities` | 6 | Angular velocity of each robot joint (rad/s) |
 | `EndEffectorPose` | 7 | TCP position (3) + quaternion orientation (4) |
 | `TargetOffset` | 3 | Vector from gripper tip to goal position |
 | `GazeDirection` | 3 | Unit vector from gripper toward the target object |
@@ -54,13 +55,14 @@ Pass a list of components via the `observations` parameter on any config. Each t
 
 ```python
 from so101_nexus import (
-    PickConfig, JointPositions, EndEffectorPose, GraspState,
+    PickConfig, JointPositions, JointVelocities, EndEffectorPose, GraspState,
     ObjectPose, ObjectOffset, WristCamera,
 )
 
 # State-only observations (default for PickLift)
 config = PickConfig(observations=[
     JointPositions(),
+    JointVelocities(),
     EndEffectorPose(),
     GraspState(),
     ObjectPose(),
@@ -85,12 +87,46 @@ Each task config auto-populates `observations` if you don't provide one:
 
 | Task | Default Components | State Dimensions |
 | --- | --- | --- |
-| PickLift | JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 24 |
-| PickAndPlace | JointPositions, EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 30 |
-| StackCube | JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, TargetPosition, TargetOffset | 30 |
-| Touch | JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 24 |
-| LookAt | JointPositions, EndEffectorPose, GazeDirection | 16 |
-| Move | JointPositions, EndEffectorPose, TargetOffset | 16 |
+| PickLift | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 30 |
+| PickAndPlace | JointPositions, JointVelocities, EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 36 |
+| StackCube | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, TargetPosition, TargetOffset | 36 |
+| Touch | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 30 |
+| LookAt | JointPositions, JointVelocities, EndEffectorPose, GazeDirection | 22 |
+| Move | JointPositions, JointVelocities, EndEffectorPose, TargetOffset | 22 |
+
+### Replaying Datasets Recorded Against an Older Layout
+
+Teleop recording writes the full state vector to `observation.environment_state`, and
+the dataset declares one name per column (`joint_positions_0`, `joint_velocities_0`, ...)
+from `privileged_state_feature_names`. A dataset recorded before a component joined a
+task's defaults is therefore narrower than what the env now emits, and cannot be fed
+directly to a policy trained against the current env.
+
+`relabel_environment_state` maps the recorded columns onto the current layout by name.
+`JointVelocities` is reconstructed offline as a backward finite difference of the
+recorded `JointPositions` columns (never across an episode boundary), which is the same
+relabeling a real SO-101 control loop performs on consecutive servo position readings.
+Any other missing column raises, since it cannot be recovered from what was recorded.
+
+Pass the env's `control_dt` (simulated seconds per `step()`), not the dataset's `1 / fps`.
+The teleop recorder sleeps to pace the operator but advances the simulation exactly one
+step per recorded frame, so the wall-clock frame period would rescale every velocity.
+A finite difference is an interval average rather than the instantaneous `qvel` a live
+env reports, so relabeled velocities are unbiased but noisier than recorded ones.
+
+```python
+import numpy as np
+from so101_nexus import PickConfig, relabel_environment_state
+
+names = info["features"]["observation.environment_state"]["names"]  # from meta/info.json
+obs = relabel_environment_state(
+    np.stack(df["observation.environment_state"].to_numpy()),
+    names,
+    PickConfig().observations,
+    dt=env.unwrapped.control_dt,
+    episode_index=df["episode_index"].to_numpy(),
+)
+```
 
 ## Observation Modes
 
@@ -133,7 +169,7 @@ import so101_nexus.mujoco
 # State-only (default)
 env = gym.make("MuJoCoPickLift-v1")
 obs, info = env.reset()
-print(f"Observation shape: {obs.shape}")  # (24,)
+print(f"Observation shape: {obs.shape}")  # (30,)
 env.close()
 
 # With camera

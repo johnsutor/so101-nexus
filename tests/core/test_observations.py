@@ -9,6 +9,7 @@ from so101_nexus.observations import (
     GazeDirection,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     Observation,
@@ -38,6 +39,7 @@ class TestStateComponents:
         "cls,expected_name,expected_size",
         [
             (JointPositions, "joint_positions", 6),
+            (JointVelocities, "joint_velocities", 6),
             (EndEffectorPose, "end_effector_pose", 7),
             (TargetOffset, "target_offset", 3),
             (GazeDirection, "gaze_direction", 3),

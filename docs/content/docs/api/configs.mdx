@@ -264,6 +264,7 @@ Observation components are lightweight descriptor classes passed via the `observ
 | Class | Size | Description |
 |-------|------|-------------|
 | `JointPositions()` | 6 | Current joint angles |
+| `JointVelocities()` | 6 | Current joint angular velocities (rad/s) |
 | `EndEffectorPose()` | 7 | TCP position + quaternion |
 | `TargetOffset()` | 3 | Vector from gripper to goal |
 | `GazeDirection()` | 3 | Unit vector toward target |
@@ -339,7 +340,7 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (24 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (30 dimensions).
 
 ---
 
@@ -376,7 +377,7 @@ These are in addition to all `EnvironmentConfig` parameters.
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (30 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GraspState(), TargetPosition(), ObjectPose(), ObjectOffset(), TargetOffset()]` (36 dimensions).
 
 ---
 
@@ -413,7 +414,7 @@ cubes may be the same color in some episodes).
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset(), TargetPosition(), TargetOffset()]` (30 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset(), TargetPosition(), TargetOffset()]` (36 dimensions).
 
 ---
 
@@ -437,7 +438,7 @@ This is in addition to all `PickConfig` object-pool parameters (`objects`, `n_di
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (24 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GraspState(), ObjectPose(), ObjectOffset()]` (30 dimensions).
 
 ---
 
@@ -465,7 +466,7 @@ The `MuJoCoLookAt-v1` and `WarpLookAt-v1` registrations default `max_episode_ste
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), GazeDirection()]` (16 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GazeDirection()]` (22 dimensions).
 
 ---
 
@@ -491,4 +492,4 @@ The `MuJoCoMove-v1` and `WarpMove-v1` registrations default `max_episode_steps` 
 
 ### Default Observations
 
-When `observations` is not specified: `[JointPositions(), EndEffectorPose(), TargetOffset()]` (16 dimensions).
+When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), TargetOffset()]` (22 dimensions).

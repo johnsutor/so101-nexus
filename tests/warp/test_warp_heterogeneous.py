@@ -32,7 +32,7 @@ def test_pnp_ycb_object_target_offset_and_finite_reward():
     env = WarpPickAndPlaceVectorEnv(num_envs=4, config=config, device="cpu", seed=0)
     obs, _ = env.reset(seed=0)
     assert torch.isfinite(obs).all()
-    # TargetOffset (last 3 of the 24-dim obs) equals disc - object.
+    # TargetOffset (the trailing 3 dims of the default obs) equals disc - object.
     expected = env._target_disc_pos() - env._target_pos()
     assert torch.allclose(obs[:, -3:], expected, atol=1e-5)
     _, reward, _, _, info = env.step(torch.zeros((4, 6)))
