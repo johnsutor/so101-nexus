@@ -33,6 +33,7 @@ from so101_nexus.observations import (
     GazeDirection,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     OverheadCamera,
@@ -149,13 +150,16 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._gripper_geom_ids = self._get_finger_geoms(self._gripper_body_id)
         self._jaw_geom_ids = self._get_finger_geoms(self._jaw_body_id)
 
-        arm_joint_ids = self._joint_ids[:SO101_ARM_JOINT_COUNT]
-        self._arm_qvel_addrs = np.array(
-            [self.model.jnt_dofadr[jid] for jid in arm_joint_ids], dtype=np.int32
+        # Per-joint qpos/qvel addresses for the six controlled joints; the arm
+        # slices (gripper excluded) back the static-robot check and IK.
+        self._qpos_addrs = np.array(
+            [self.model.jnt_qposadr[jid] for jid in self._joint_ids], dtype=np.int32
         )
-        self._arm_qpos_addrs = np.array(
-            [self.model.jnt_qposadr[jid] for jid in arm_joint_ids], dtype=np.int32
+        self._qvel_addrs = np.array(
+            [self.model.jnt_dofadr[jid] for jid in self._joint_ids], dtype=np.int32
         )
+        self._arm_qpos_addrs = self._qpos_addrs[:SO101_ARM_JOINT_COUNT]
+        self._arm_qvel_addrs = self._qvel_addrs[:SO101_ARM_JOINT_COUNT]
 
         ctrl_range = self.model.actuator_ctrlrange[self._actuator_ids]
         ctrl_low = ctrl_range[:, 0]
@@ -530,12 +534,24 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
         return bool(np.all(np.abs(arm_vels) < self.config.robot.static_vel_threshold))
 
+    @property
+    def control_dt(self) -> float:
+        """Simulated seconds advanced by one ``step()`` (physics timestep x substeps).
+
+        This is the time between consecutive observations, and therefore the
+        correct ``dt`` for finite-differencing recorded joint positions. It is
+        unrelated to a teleop recording's wall-clock fps: the recorder sleeps to
+        pace the operator but advances the simulation exactly one step per frame.
+        """
+        return float(self.model.opt.timestep) * self._N_SUBSTEPS
+
     def _get_current_qpos(self) -> np.ndarray:
         """Return the current joint positions for all controlled joints."""
-        return np.array(
-            [self.data.qpos[self.model.jnt_qposadr[jid]] for jid in self._joint_ids],
-            dtype=np.float64,
-        )
+        return self.data.qpos[self._qpos_addrs]
+
+    def _get_current_qvel(self) -> np.ndarray:
+        """Return the current joint velocities (rad/s) for all controlled joints."""
+        return self.data.qvel[self._qvel_addrs]
 
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
@@ -545,6 +561,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         for comp in self.config.observations:
             if isinstance(comp, JointPositions):
                 parts.append(self._get_current_qpos())
+            elif isinstance(comp, JointVelocities):
+                parts.append(self._get_current_qvel())
             elif isinstance(comp, EndEffectorPose):
                 parts.append(self._get_tcp_pose())
             elif isinstance(comp, GraspState):

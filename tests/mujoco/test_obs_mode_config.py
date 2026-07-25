@@ -13,6 +13,7 @@ from so101_nexus.observations import (
     EndEffectorPose,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     TargetOffset,
@@ -20,10 +21,18 @@ from so101_nexus.observations import (
     WristCamera,
 )
 
-# Default state observation components for each env type (matching test_e2e.py)
-_PICK_STATE_OBS = [JointPositions, EndEffectorPose, GraspState, ObjectPose, ObjectOffset]
+# Default state observation components for each env type (matching test_envs.py)
+_PICK_STATE_OBS = [
+    JointPositions,
+    JointVelocities,
+    EndEffectorPose,
+    GraspState,
+    ObjectPose,
+    ObjectOffset,
+]
 _PICK_AND_PLACE_STATE_OBS = [
     JointPositions,
+    JointVelocities,
     EndEffectorPose,
     GraspState,
     TargetPosition,
@@ -31,11 +40,11 @@ _PICK_AND_PLACE_STATE_OBS = [
     ObjectOffset,
     TargetOffset,
 ]
-_TOUCH_STATE_OBS = [JointPositions, EndEffectorPose, ObjectOffset]
+_TOUCH_STATE_OBS = [JointPositions, JointVelocities, EndEffectorPose, ObjectOffset]
 
-_PICK_STATE_SIZE = 24
-_PICK_AND_PLACE_STATE_SIZE = 30
-_TOUCH_STATE_SIZE = 16
+_PICK_STATE_SIZE = 30
+_PICK_AND_PLACE_STATE_SIZE = 36
+_TOUCH_STATE_SIZE = 22
 
 
 class TestObsModeConfig:

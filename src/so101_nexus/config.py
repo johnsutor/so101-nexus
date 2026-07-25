@@ -29,6 +29,7 @@ from so101_nexus.observations import (
     GazeDirection,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     TargetOffset,
@@ -972,6 +973,7 @@ class PickConfig(EnvironmentConfig):
         if self.observations is None:
             self.observations = [
                 JointPositions(),
+                JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
                 ObjectPose(),
@@ -1092,6 +1094,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
         if self.observations is None:
             self.observations = [
                 JointPositions(),
+                JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
                 TargetPosition(),
@@ -1244,6 +1247,7 @@ class StackCubeConfig(EnvironmentConfig):
         if self.observations is None:
             self.observations = [
                 JointPositions(),
+                JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
                 ObjectPose(),
@@ -1340,7 +1344,12 @@ class LookAtConfig(EnvironmentConfig):
         if self.fov_deg is not None and self.fov_deg <= 0:
             raise ValueError(f"fov_deg must be > 0 or None, got {self.fov_deg}")
         if self.observations is None:
-            self.observations = [JointPositions(), EndEffectorPose(), GazeDirection()]
+            self.observations = [
+                JointPositions(),
+                JointVelocities(),
+                EndEffectorPose(),
+                GazeDirection(),
+            ]
         for obj in self.objects:
             if not isinstance(obj, CubeObject):
                 raise TypeError(
@@ -1387,7 +1396,12 @@ class MoveConfig(EnvironmentConfig):
         self.target_distance = target_distance
         self.success_threshold = success_threshold
         if self.observations is None:
-            self.observations = [JointPositions(), EndEffectorPose(), TargetOffset()]
+            self.observations = [
+                JointPositions(),
+                JointVelocities(),
+                EndEffectorPose(),
+                TargetOffset(),
+            ]
 
     @property
     def task_description(self) -> str:

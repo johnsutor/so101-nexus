@@ -12,11 +12,11 @@ _ENVS = [
     "WarpStackCube-v1",
 ]
 _DEFAULT_OBS_DIM = {
-    "WarpLookAt-v1": 16,
-    "WarpMove-v1": 16,
-    "WarpPickLift-v1": 24,
-    "WarpPickAndPlace-v1": 30,
-    "WarpStackCube-v1": 30,
+    "WarpLookAt-v1": 22,
+    "WarpMove-v1": 22,
+    "WarpPickLift-v1": 30,
+    "WarpPickAndPlace-v1": 36,
+    "WarpStackCube-v1": 36,
 }
 
 
@@ -61,6 +61,79 @@ def test_step_shapes_and_finite_reward(env_id):
     assert terminated.dtype == torch.bool
     assert truncated.shape == (4,)
     envs.close()
+
+
+def test_joint_velocities_are_the_live_batched_qvel():
+    """The JointVelocities columns are the per-world qvel gather, not a constant:
+    they grow while the arms are driven and decay once the targets are held."""
+    import torch
+
+    from so101_nexus.observations import JointVelocities
+    from so101_nexus.testing import component_slice
+
+    envs = _make("WarpPickLift-v1", num_envs=4)
+    envs.reset(seed=0)
+    inner = envs.unwrapped
+    sl = component_slice(envs, JointVelocities)
+    drive = torch.ones(envs.action_space.shape)
+    for _ in range(10):
+        obs, *_ = envs.step(drive)
+    torch.testing.assert_close(
+        obs[:, sl], inner.qvel.index_select(1, inner._dof_adr).to(torch.float32)
+    )
+    moving = float(obs[:, sl].abs().max())
+    assert moving > 1e-2
+
+    hold = torch.zeros(envs.action_space.shape)
+    for _ in range(60):
+        obs, *_ = envs.step(hold)
+    assert float(obs[:, sl].abs().max()) < moving
+    envs.close()
+
+
+def test_joint_velocities_expose_the_static_success_gate():
+    """The arm columns of JointVelocities are exactly what ``_is_robot_static``
+    reads, so a policy can observe the staticness term of the success gate."""
+    import torch
+
+    from so101_nexus.observations import JointVelocities
+    from so101_nexus.testing import component_slice
+
+    envs = _make("WarpPickAndPlace-v1", num_envs=4)
+    envs.reset(seed=0)
+    inner = envs.unwrapped
+    sl = component_slice(envs, JointVelocities)
+    threshold = inner.config.robot.static_vel_threshold
+    n_arm = int(inner._arm_dof_adr.numel())
+    seen = set()
+    actions = [torch.ones(envs.action_space.shape)] * 8 + [
+        torch.zeros(envs.action_space.shape)
+    ] * 60
+    for action in actions:
+        obs, *_ = envs.step(action)
+        from_obs = (obs[:, sl][:, :n_arm].abs() < threshold).all(dim=1)
+        assert torch.equal(from_obs, inner._is_robot_static())
+        seen.update(from_obs.tolist())
+    assert seen == {True, False}, "gate never flipped; assertion is vacuous"
+    envs.close()
+
+
+def test_control_dt_matches_the_mujoco_backend():
+    """``control_dt`` is the relabeling denominator, so a dataset recorded on one
+    backend must relabel identically against the other. Compare the two live
+    values rather than each backend against its own formula."""
+    import gymnasium as gym
+
+    import so101_nexus.mujoco  # noqa: F401 - registers the MuJoCo*-v1 env IDs
+
+    envs = _make("WarpPickLift-v1", num_envs=2)
+    mj_env = gym.make("MuJoCoPickLift-v1")
+    try:
+        assert envs.unwrapped.control_dt == pytest.approx(mj_env.unwrapped.control_dt)
+        assert envs.unwrapped.control_dt == pytest.approx(0.02)
+    finally:
+        mj_env.close()
+        envs.close()
 
 
 @pytest.mark.parametrize("env_id", _ENVS)

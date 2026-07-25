@@ -66,11 +66,12 @@ Recorded PickLift teleoperation rollout, shown from both stored camera streams.
 
 ## Observation Space
 
-The observation is a 24-dimensional vector.
+The observation is a 30-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
 | `joint_pos` | 6 | Current angle of each robot joint |
+| `joint_vel` | 6 | Angular velocity of each robot joint (rad/s) |
 | `tcp_pos` | 3 | TCP position in world frame |
 | `tcp_quat` | 4 | TCP orientation as quaternion |
 | `is_grasped` | 1 | Whether the object is currently grasped |

@@ -23,11 +23,11 @@ from so101_nexus.config import REWARD_COMPONENT_KEYS, StackCubeConfig
 
 
 def test_stack_cube_default_obs_shape():
-    """StackCube default obs is a 30-dim flat vector, matching PickAndPlace."""
+    """StackCube default obs is a 36-dim flat vector, matching PickAndPlace."""
     env = gym.make("MuJoCoStackCube-v1")
     try:
         obs, _ = env.reset()
-        assert obs.shape == (30,)
+        assert obs.shape == (36,)
     finally:
         env.close()
 

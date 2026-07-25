@@ -57,6 +57,7 @@ from so101_nexus.kinematics import (
 from so101_nexus.lerobot_dataset import (
     SO101_GRIPPER_LIMITS_RAD,
     dataset_row_to_sim_qpos,
+    relabel_environment_state,
     sim_qpos_to_dataset_row,
 )
 from so101_nexus.objects import (
@@ -71,6 +72,7 @@ from so101_nexus.observations import (
     GazeDirection,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     Observation,
@@ -162,6 +164,7 @@ __all__ = [
     "GazeDirection",
     "GraspState",
     "JointPositions",
+    "JointVelocities",
     "LookAtConfig",
     "MeshObject",
     "MoveConfig",
@@ -203,6 +206,7 @@ __all__ = [
     "orientation_progress",
     "privileged_state_feature_names",
     "reach_progress",
+    "relabel_environment_state",
     "sample_color",
     "sim_qpos_to_dataset_row",
     "simple_reward",

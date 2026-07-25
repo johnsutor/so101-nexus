@@ -8,5 +8,6 @@ Gymnasium-contract suite from their own test modules.
 from __future__ import annotations
 
 from so101_nexus.testing.contract import run_env_contract
+from so101_nexus.testing.observations import component_slice
 
-__all__ = ["run_env_contract"]
+__all__ = ["component_slice", "run_env_contract"]

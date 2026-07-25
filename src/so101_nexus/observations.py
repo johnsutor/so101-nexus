@@ -61,6 +61,25 @@ class JointPositions(Observation):
         return 6
 
 
+class JointVelocities(Observation):
+    """Angular velocity of each robot joint in rad/s (6-dim).
+
+    Mirrors :class:`JointPositions` over the same six controlled joints, so a
+    policy sees the first derivative of the state it is regulating. This matters
+    for tasks whose ``success`` predicate includes ``_is_robot_static``: without
+    it, "approaching the target" and "settled on the target" are the same
+    single-frame observation.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "joint_velocities"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 6
+
+
 class EndEffectorPose(Observation):
     """Gripper tip position and orientation in world coordinates (7-dim)."""
 

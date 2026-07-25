@@ -41,6 +41,7 @@ from so101_nexus.observations import (
     GazeDirection,
     GraspState,
     JointPositions,
+    JointVelocities,
     ObjectOffset,
     ObjectPose,
     OverheadCamera,
@@ -48,7 +49,7 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus.testing import run_env_contract
+from so101_nexus.testing import component_slice, run_env_contract
 
 ENV_MATRIX: list[tuple[str, type]] = [
     ("MuJoCoTouch-v1", TouchConfig),
@@ -83,6 +84,7 @@ JOINT_ACTION_DIM = 6
 
 OBS_SIZES: dict[type, int] = {
     JointPositions: 6,
+    JointVelocities: 6,
     EndEffectorPose: 7,
     TargetOffset: 3,
     GazeDirection: 3,
@@ -91,6 +93,7 @@ OBS_SIZES: dict[type, int] = {
     ObjectOffset: 3,
     TargetPosition: 3,
 }
+
 
 N_STEPS = 3
 
@@ -116,11 +119,12 @@ def test_gymnasium_contract(env_id: str, config_cls: type):
 
 
 _ENV_OBS_MAP: dict[str, list[type]] = {
-    "MuJoCoTouch-v1": [JointPositions, EndEffectorPose, ObjectOffset],
-    "MuJoCoLookAt-v1": [JointPositions, EndEffectorPose, GazeDirection],
-    "MuJoCoMove-v1": [JointPositions, EndEffectorPose, TargetOffset],
+    "MuJoCoTouch-v1": [JointPositions, JointVelocities, EndEffectorPose, ObjectOffset],
+    "MuJoCoLookAt-v1": [JointPositions, JointVelocities, EndEffectorPose, GazeDirection],
+    "MuJoCoMove-v1": [JointPositions, JointVelocities, EndEffectorPose, TargetOffset],
     "MuJoCoPickLift-v1": [
         JointPositions,
+        JointVelocities,
         EndEffectorPose,
         GraspState,
         ObjectPose,
@@ -128,6 +132,7 @@ _ENV_OBS_MAP: dict[str, list[type]] = {
     ],
     "MuJoCoPickAndPlace-v1": [
         JointPositions,
+        JointVelocities,
         EndEffectorPose,
         GraspState,
         TargetPosition,
@@ -137,6 +142,7 @@ _ENV_OBS_MAP: dict[str, list[type]] = {
     ],
     "MuJoCoStackCube-v1": [
         JointPositions,
+        JointVelocities,
         EndEffectorPose,
         GraspState,
         ObjectPose,
@@ -179,6 +185,93 @@ def test_all_observation_components_combined(env_id, config_cls):
         expected = sum(OBS_SIZES[cls] for cls in obs_classes)
         assert obs.shape == (expected,)
         _run_episode(env)
+    finally:
+        env.close()
+
+
+def test_joint_velocities_are_the_live_simulator_qvel():
+    """The JointVelocities slice is the per-joint qvel every step, not a constant:
+    it grows while the arm is driven and decays once the target is held."""
+    env = gym.make("MuJoCoPickLift-v1", control_mode="pd_joint_delta_pos")
+    try:
+        inner = env.unwrapped
+        env.reset(seed=0)
+        sl = component_slice(env, JointVelocities)
+        drive = np.ones(JOINT_ACTION_DIM, dtype=np.float32)
+        for _ in range(10):
+            obs, *_ = env.step(drive)
+        np.testing.assert_allclose(obs[sl], inner.data.qvel[inner._qvel_addrs], atol=1e-6)  # type: ignore[attr-defined]
+        moving = float(np.abs(obs[sl]).max())
+        assert moving > 1e-2
+
+        hold = np.zeros(JOINT_ACTION_DIM, dtype=np.float32)
+        for _ in range(60):
+            obs, *_ = env.step(hold)
+        assert float(np.abs(obs[sl]).max()) < moving
+    finally:
+        env.close()
+
+
+def test_joint_velocities_expose_the_static_success_gate():
+    """The arm dims of JointVelocities are exactly what ``_is_robot_static`` reads,
+    so a policy can observe the staticness term of the pick-and-place success gate."""
+    env = gym.make("MuJoCoPickAndPlace-v1", control_mode="pd_joint_delta_pos")
+    try:
+        inner = env.unwrapped
+        env.reset(seed=0)
+        sl = component_slice(env, JointVelocities)
+        threshold = inner.config.robot.static_vel_threshold
+        arm_dofs = len(inner._arm_qvel_addrs)  # type: ignore[attr-defined]
+        observed_states = set()
+        for action in (np.ones(JOINT_ACTION_DIM, dtype=np.float32),) * 8 + (
+            np.zeros(JOINT_ACTION_DIM, dtype=np.float32),
+        ) * 60:
+            obs, *_ = env.step(action)
+            from_obs = bool(np.all(np.abs(obs[sl][:arm_dofs]) < threshold))
+            assert from_obs == inner._is_robot_static()  # type: ignore[attr-defined]
+            observed_states.add(from_obs)
+        assert observed_states == {True, False}, "gate never flipped; assertion is vacuous"
+    finally:
+        env.close()
+
+
+def test_control_dt_is_the_simulated_step_not_the_recording_fps():
+    """``control_dt`` is the finite-difference denominator for relabeling recorded
+    joint positions. It must be physics timestep x substeps (0.02 s), not a teleop
+    recorder's wall-clock frame period: the recorder steps the sim once per frame."""
+    env = gym.make("MuJoCoPickLift-v1", control_mode="pd_joint_pos")
+    try:
+        inner = env.unwrapped
+        assert inner.control_dt == pytest.approx(inner.model.opt.timestep * inner._N_SUBSTEPS)  # type: ignore[attr-defined]
+        assert inner.control_dt == pytest.approx(0.02)
+
+        # A finite difference at control_dt tracks the reported qvel; the same
+        # difference at a 30 fps frame period is off by control_dt * fps.
+        env.reset(seed=0)
+        vel_sl = component_slice(env, JointVelocities)
+        rng = np.random.default_rng(0)
+        target = inner._get_current_qpos().astype(np.float32)  # type: ignore[attr-defined]
+        qs, vs = [], []
+        for _ in range(80):
+            target = np.clip(
+                target + rng.normal(0, 0.03, JOINT_ACTION_DIM).astype(np.float32),
+                env.action_space.low,
+                env.action_space.high,
+            )
+            obs, *_ = env.step(target)
+            qs.append(obs[:6].copy())
+            vs.append(obs[vel_sl].copy())
+        q, v = np.array(qs), np.array(vs)[1:]
+
+        def best_fit_scale(dt: float) -> float:
+            fd = (q[1:] - q[:-1]) / dt
+            return float((fd * v).sum() / (fd * fd).sum())
+
+        assert best_fit_scale(inner.control_dt) == pytest.approx(1.0, abs=0.1)
+        # Wrong denominator shrinks the difference, so the fitted scale inflates.
+        assert best_fit_scale(1.0 / 30.0) == pytest.approx(
+            1.0 / (inner.control_dt * 30.0), abs=0.15
+        )
     finally:
         env.close()
 
@@ -278,7 +371,7 @@ def test_pick_multiple_cubes_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (24,)
+        assert obs.shape == (30,)
         _run_episode(env)
     finally:
         env.close()
@@ -294,7 +387,7 @@ def test_pick_mixed_pool_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (24,)
+        assert obs.shape == (30,)
         _run_episode(env)
     finally:
         env.close()
@@ -534,11 +627,11 @@ def test_joint_delta_penalty_norms_use_normalized_action(control_mode):
 
 
 def test_pick_and_place_default_obs_shape():
-    """PickAndPlace default obs is a 30-dim flat vector."""
+    """PickAndPlace default obs is a 36-dim flat vector."""
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         obs, _ = env.reset()
-        assert obs.shape == (30,)
+        assert obs.shape == (36,)
     finally:
         env.close()
 
@@ -548,7 +641,7 @@ def test_pick_and_place_target_z_near_ground():
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         obs, _ = env.reset()
-        target_pos = obs[14:17]
+        target_pos = obs[component_slice(env, TargetPosition)]
         assert target_pos[2] < 0.01
     finally:
         env.close()
@@ -1509,8 +1602,7 @@ def test_pick_and_place_object_pose_tracks_selected_slot():
         obs, _ = inner.reset(seed=3)
         selected = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
         obj_pose = inner.data.qpos[selected.qpos_addr : selected.qpos_addr + 7]  # type: ignore[attr-defined]
-        # Default obs layout: joints(6)+ee(7)+grasp(1)+target_pos(3)+obj_pose(7)+...
-        np.testing.assert_allclose(obs[17:24], obj_pose, atol=1e-6)
+        np.testing.assert_allclose(obs[component_slice(env, ObjectPose)], obj_pose, atol=1e-6)
     finally:
         env.close()
 
