@@ -7,17 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 See [Stability and versioning](https://so101-nexus.com/docs/getting-started/stability)
 for the public-API and deprecation policy.
 
-## [0.4.10] - 2026-07-16
+## [Unreleased]
 
 ### Added
 
-- `so101_nexus.rewards.place_task_potential`, `place_reach_potential`, `place_grasp_potential`: shared, tensor-agnostic facet potentials for place tasks, now used by both pick-and-place backends instead of per-backend inline formulas.
-
 ### Changed
 
-- Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held constant once the object is placed.
+### Fixed
 
-## [Unreleased]
+### Removed
+
+## [0.4.11] - 2026-07-24
 
 ### Added
 
@@ -51,6 +51,16 @@ for the public-API and deprecation policy.
 
 - Color config fields (`cube_a_colors`, `cube_b_colors`, `cube_colors`, `target_colors`, `ground_colors`, `robot_colors`) now reject an empty list at construction with a clear `ValueError` instead of failing later with an opaque `IndexError` at env build or reset time.
 - `SimSOFollower` and the adapter's control-bound helpers no longer silently mis-scale in the delta control modes. The follower always sends an absolute joint target in radians, but `action_for_env` clipped it to whatever the env's action space advertised: in `pd_joint_delta_pos` and `pd_joint_target_delta_pos` that is the normalized `[-1, 1]` box, so a commanded 1.1 rad target was clipped to 1.0 and then applied by the env as a full-scale 0.05 rad increment, discarding the commanded pose entirely. The same bounds fed `read_gripper_limits_rad`, which reported `(-1.0, 1.0)` as the jaw travel in radians and corrupted every tick-to-radian conversion built on it, recorded observations included. `read_gripper_limits_rad`, `clip_qpos_to_env_ctrlrange`, and `action_for_env` now raise `ValueError` for delta-mode envs, and `SimSOFollower` rejects every delta mode at construction (previously only `pd_ee_delta_pose` was rejected). Record demonstrations in `pd_joint_pos` and recompute deltas offline, as the behavior-cloning workflow already does.
+
+## [0.4.10] - 2026-07-16
+
+### Added
+
+- `so101_nexus.rewards.place_task_potential`, `place_reach_potential`, `place_grasp_potential`: shared, tensor-agnostic facet potentials for place tasks, now used by both pick-and-place backends instead of per-backend inline formulas.
+
+### Changed
+
+- Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held constant once the object is placed.
 
 ## [0.4.9] - 2026-07-16
 

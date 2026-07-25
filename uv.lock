@@ -72,8 +72,8 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ca/14/787e5498cd062640f0f3d92ef4ae4063174f76f9afd29d13fc52a319daae/accelerate-1.13.0.tar.gz", hash = "sha256:d631b4e0f5b3de4aff2d7e9e6857d164810dfc3237d54d017f075122d057b236", size = 402835, upload-time = "2026-03-04T19:34:12.359Z" }
 wheels = [
@@ -722,7 +722,7 @@ name = "cuda-bindings"
 version = "12.9.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "cuda-pathfinder", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/c2/65bfd79292b8ff18be4dd7f7442cea37bcbc1a228c1886f1dea515c45b67/cuda_bindings-12.9.4-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:694ba35023846625ef471257e6b5a4bc8af690f961d197d77d34b1d1db393f56", size = 11760260, upload-time = "2025-10-21T14:51:40.79Z" },
@@ -755,21 +755,21 @@ name = "datasets"
 version = "4.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "dill", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "filelock", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "dill" },
+    { name = "filelock" },
     { name = "fsspec", extra = ["http"], marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "httpx", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "multiprocess", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "packaging", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "multiprocess" },
+    { name = "numpy" },
+    { name = "packaging" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.14' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "pyarrow", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pyyaml", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "requests", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "tqdm", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "xxhash", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "pyarrow" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tqdm" },
+    { name = "xxhash" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d7/94/eb81c6fe32e9b6ef92223141b5a553aeff2e9456968424a8533cbe88f476/datasets-4.6.1.tar.gz", hash = "sha256:140ce500bc41939ff6ce995702d66b1f4b2ee7f117bb9b07512fab6804d4070a", size = 593865, upload-time = "2026-02-27T23:26:49.482Z" }
 wheels = [
@@ -790,7 +790,7 @@ name = "deepdiff"
 version = "8.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "orderly-set", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "orderly-set" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/19/76/36c9aab3d5c19a94091f7c6c6e784efca50d87b124bf026c36e94719f33c/deepdiff-8.6.1.tar.gz", hash = "sha256:ec56d7a769ca80891b5200ec7bd41eec300ced91ebcc7797b41eb2b3f3ff643a", size = 634054, upload-time = "2025-09-03T19:40:41.461Z" }
 wheels = [
@@ -802,14 +802,14 @@ name = "diffusers"
 version = "0.35.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "importlib-metadata", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pillow", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "regex", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "requests", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "safetensors", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "filelock" },
+    { name = "huggingface-hub" },
+    { name = "importlib-metadata" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "regex" },
+    { name = "requests" },
+    { name = "safetensors" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/03/68/288ca23c7c05c73e87ffe5efffc282400ac9b017f7a9bb03883f4310ea15/diffusers-0.35.2.tar.gz", hash = "sha256:30ecd552303edfcfe1724573c3918a8462ee3ab4d529bdbd4c0045f763affded", size = 3366711, upload-time = "2025-10-15T04:05:17.213Z" }
 wheels = [
@@ -848,11 +848,11 @@ name = "draccus"
 version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mergedeep", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pyyaml", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pyyaml-include", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "toml", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "typing-inspect", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "mergedeep" },
+    { name = "pyyaml" },
+    { name = "pyyaml-include" },
+    { name = "toml" },
+    { name = "typing-inspect" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4e/e2/f5012fda17ee5d1eaf3481b6ca3e11dffa5348e5e08ab745538fdc8041bb/draccus-0.10.0.tar.gz", hash = "sha256:8dd08304219becdcd66cd16058ba98e9c3e6b7bfe48ccb9579dae39f8d37ae19", size = 62243, upload-time = "2025-02-05T07:27:48.182Z" }
 wheels = [
@@ -962,7 +962,7 @@ name = "feetech-servo-sdk"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyserial", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "pyserial" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5f/8e/c53d6f9a8bf3a86a635b58eeb675723f1b040f1665a0681467756c8989aa/feetech-servo-sdk-1.0.0.tar.gz", hash = "sha256:d4d3832e4b1b22a8222133a414db9f868224c2fb639426a1b11d96ddfe84e69c", size = 8392, upload-time = "2022-11-08T03:44:45.269Z" }
 
@@ -1084,7 +1084,7 @@ wheels = [
 
 [package.optional-dependencies]
 http = [
-    { name = "aiohttp", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "aiohttp" },
 ]
 
 [[package]]
@@ -1523,7 +1523,7 @@ name = "jsonlines"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "attrs" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/35/87/bcda8e46c88d0e34cad2f09ee2d0c7f5957bccdb9791b0b934ec84d84be4/jsonlines-4.0.0.tar.gz", hash = "sha256:0c6d2c09117550c089995247f605ae4cf77dd1533041d366351f6f298822ea74", size = 11359, upload-time = "2023-09-01T12:34:44.187Z" }
 wheels = [
@@ -1562,30 +1562,30 @@ name = "lerobot"
 version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "accelerate", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "av", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "cmake", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "datasets", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "deepdiff", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "diffusers", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "draccus", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "einops", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "gymnasium", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "accelerate" },
+    { name = "av" },
+    { name = "cmake" },
+    { name = "datasets" },
+    { name = "deepdiff" },
+    { name = "diffusers" },
+    { name = "draccus" },
+    { name = "einops" },
+    { name = "gymnasium" },
+    { name = "huggingface-hub" },
     { name = "imageio", extra = ["ffmpeg"], marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "jsonlines", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "opencv-python-headless", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "packaging", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pynput", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pyserial", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "rerun-sdk", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "setuptools", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "termcolor", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torchcodec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'armv7l' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'x86_64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "torchvision", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "wandb", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "jsonlines" },
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "packaging" },
+    { name = "pynput" },
+    { name = "pyserial" },
+    { name = "rerun-sdk" },
+    { name = "setuptools" },
+    { name = "termcolor" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" } },
+    { name = "torchcodec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'armv7l' and sys_platform == 'linux') or (platform_machine != 'x86_64' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "torchvision" },
+    { name = "wandb" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/5f/b1f02490a6cdfc513b047effe60eee2c8fb1d1be311b9e139fb293360c45/lerobot-0.5.0.tar.gz", hash = "sha256:eab3667a0b95d60b6873d56ab95f8985ac9ac8720fe0b7e0acf9393f14f8cf3e", size = 856839, upload-time = "2026-03-09T11:19:17.1Z" }
 wheels = [
@@ -1594,7 +1594,7 @@ wheels = [
 
 [package.optional-dependencies]
 feetech = [
-    { name = "feetech-servo-sdk", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "feetech-servo-sdk" },
 ]
 
 [[package]]
@@ -1899,7 +1899,7 @@ name = "multiprocess"
 version = "0.70.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "dill", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "dill" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/72/fd/2ae3826f5be24c6ed87266bc4e59c46ea5b059a103f3d7e7eb76a52aeecb/multiprocess-0.70.18.tar.gz", hash = "sha256:f9597128e6b3e67b23956da07cf3d2e5cba79e2f4e0fba8d7903636663ec6d0d", size = 1798503, upload-time = "2025-04-17T03:11:27.742Z" }
 wheels = [
@@ -2021,7 +2021,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -2034,7 +2034,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/bc/7771846d3a0272026c416fbb7e5f4c1f146d6d80704534d0b187dd6f4800/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a", size = 193109211, upload-time = "2025-03-07T01:44:56.873Z" },
@@ -2066,9 +2066,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "nvidia-cusparse-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/32/f7cd6ce8a7690544d084ea21c26e910a97e077c9b7f07bf5de623ee19981/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:db9ed69dbef9715071232caa9b69c52ac7de3a95773c2db65bdba85916e4e5c0", size = 267229841, upload-time = "2025-03-07T01:46:54.356Z" },
@@ -2081,7 +2081,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/f7/cd777c4109681367721b00a106f491e0d0d15cfa1fd59672ce580ce42a97/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc", size = 288117129, upload-time = "2025-03-07T01:47:40.407Z" },
@@ -2179,7 +2179,7 @@ name = "opencv-python-headless"
 version = "4.11.0.86"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/36/2f/5b2b3ba52c864848885ba988f24b7f105052f68da9ab0e693cc7c25b0b30/opencv-python-headless-4.11.0.86.tar.gz", hash = "sha256:996eb282ca4b43ec6a3972414de0e2331f5d9cda2b41091a49739c19fb843798", size = 95177929, upload-time = "2025-01-16T13:53:40.22Z" }
 wheels = [
@@ -2800,11 +2800,11 @@ name = "pynput"
 version = "1.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "evdev", marker = "('linux' in sys_platform and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "evdev", marker = "'linux' in sys_platform" },
     { name = "pyobjc-framework-applicationservices", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
-    { name = "python-xlib", marker = "('linux' in sys_platform and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "six", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "python-xlib", marker = "'linux' in sys_platform" },
+    { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f0/c3/dccf44c68225046df5324db0cc7d563a560635355b3e5f1d249468268a6f/pynput-1.8.1.tar.gz", hash = "sha256:70d7c8373ee98911004a7c938742242840a5628c004573d84ba849d4601df81e", size = 82289, upload-time = "2025-03-17T17:12:01.481Z" }
 wheels = [
@@ -2977,7 +2977,7 @@ name = "python-xlib"
 version = "0.33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "six", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/f5/8c0653e5bb54e0cbdfe27bf32d41f27bc4e12faa8742778c17f2a71be2c0/python-xlib-0.33.tar.gz", hash = "sha256:55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32", size = 269068, upload-time = "2022-12-25T18:53:00.824Z" }
 wheels = [
@@ -3056,7 +3056,7 @@ name = "pyyaml-include"
 version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyyaml", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "pyyaml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7f/be/2d07ad85e3d593d69640876a8686eae2c533db8cb7bf298d25c421b4d2d5/pyyaml-include-1.4.1.tar.gz", hash = "sha256:1a96e33a99a3e56235f5221273832464025f02ff3d8539309a3bf00dec624471", size = 20592, upload-time = "2024-03-25T14:56:43.748Z" }
 wheels = [
@@ -3208,11 +3208,11 @@ name = "rerun-sdk"
 version = "0.26.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pillow", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pyarrow", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "typing-extensions", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "attrs" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "pyarrow" },
+    { name = "typing-extensions" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4b/4a/767c20e1529d74d9be5b5e55c6c26b63a6918ef3c1709fc422d08a460114/rerun_sdk-0.26.2-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:3d4151c9a3484e112b53d1df90c8fa07397dc7b8bfbb420f09e011eff20f1ef2", size = 93349439, upload-time = "2025-10-27T11:34:10.745Z" },
@@ -3505,7 +3505,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus"
-version = "0.4.10"
+version = "0.4.11"
 source = { editable = "." }
 dependencies = [
     { name = "gymnasium" },
@@ -3538,8 +3538,8 @@ teleop = [
 ]
 train = [
     { name = "tensorboard" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "wandb", extra = ["media"] },
 ]
 viz = [
@@ -3547,8 +3547,8 @@ viz = [
 ]
 warp = [
     { name = "mujoco-warp" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 
 [package.dev-dependencies]
@@ -3837,6 +3837,12 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform == 'emscripten' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
     "python_full_version < '3.13' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
     "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop' and extra != 'group-11-so101-nexus-dev' and extra != 'group-11-so101-nexus-test'",
     "python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
     "python_full_version < '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
     "python_full_version >= '3.14' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
@@ -3852,10 +3858,10 @@ resolution-markers = [
 ]
 dependencies = [
     { name = "cuda-bindings", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "filelock", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "fsspec", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "jinja2", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "networkx", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "filelock", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "fsspec", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "jinja2", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "networkx", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
@@ -3871,10 +3877,10 @@ dependencies = [
     { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "nvidia-nvshmem-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "setuptools", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "sympy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "setuptools", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "sympy", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "typing-extensions", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "typing-extensions", marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/54/a2ba279afcca44bbd320d4e73675b282fcee3d81400ea1b53934efca6462/torch-2.10.0-2-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574", size = 79498202, upload-time = "2026-02-10T21:44:52.603Z" },
@@ -3913,22 +3919,16 @@ source = { registry = "https://download.pytorch.org/whl/rocm7.2" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'linux'",
     "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "filelock", marker = "extra == 'extra-11-so101-nexus-rocm'" },
-    { name = "fsspec", marker = "extra == 'extra-11-so101-nexus-rocm'" },
-    { name = "jinja2", marker = "extra == 'extra-11-so101-nexus-rocm'" },
-    { name = "networkx", marker = "extra == 'extra-11-so101-nexus-rocm'" },
-    { name = "setuptools", marker = "extra == 'extra-11-so101-nexus-rocm'" },
-    { name = "sympy", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "filelock", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "fsspec", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "jinja2", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "networkx", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "setuptools", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "sympy", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "triton-rocm", marker = "(python_full_version < '3.15' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (python_full_version >= '3.15' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.15' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (python_full_version >= '3.15' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "typing-extensions", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "typing-extensions", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/rocm7.2/torch-2.13.0%2Brocm7.2-cp312-cp312-manylinux_2_28_x86_64.whl", upload-time = "2026-07-08T11:26:11Z" },
@@ -3960,9 +3960,9 @@ name = "torchvision"
 version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "pillow", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" } },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/3a/6ea0d73f49a9bef38a1b3a92e8dd455cea58470985d25635beab93841748/torchvision-0.25.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c2abe430c90b1d5e552680037d68da4eb80a5852ebb1c811b2b89d299b10573b", size = 1874920, upload-time = "2026-01-21T16:27:45.348Z" },
@@ -4145,8 +4145,8 @@ name = "typing-inspect"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mypy-extensions", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
-    { name = "typing-extensions", marker = "extra == 'extra-11-so101-nexus-teleop' or extra == 'group-11-so101-nexus-dev' or extra == 'group-11-so101-nexus-test' or extra != 'extra-11-so101-nexus-rocm'" },
+    { name = "mypy-extensions" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/dc/74/1789779d91f1961fa9438e9a8710cdae6bd138c80d7303996933d117264a/typing_inspect-0.9.0.tar.gz", hash = "sha256:b23fc42ff6f6ef6954e4852c1fb512cdd18dbea03134f91f856a95ccc9461f78", size = 13825, upload-time = "2023-05-24T20:25:47.612Z" }
 wheels = [
