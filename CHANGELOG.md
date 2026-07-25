@@ -17,7 +17,17 @@ for the public-API and deprecation policy.
 
 - Pick-and-place facet potentials (both backends) are now monotone non-decreasing along the ideal grasp-lift-carry-lower-release-settle trajectory, so every step of forward progress pays a non-negative shaping delta (previously a perfect demonstration paid -0.09 for the mandatory 5 cm lift, ~1e-7/step for carrying toward the goal, and -0.25 for releasing the object on the goal, with only the terminal bonus showing structure). The task potential (`info["task_potential"]`) is now a staged additive sum -- transport progress measured by Chebyshev distance `max(obj_to_goal_xy, height_gap)` plus an arm-stillness term gated on `is_obj_placed` -- instead of a product of xy-proximity x height-back-near-rest x stillness factors, and the reach/grasp potentials are held constant once the object is placed.
 
+## [0.5.0] - 2026-07-24
+
 ## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
 
 ### Added
 
