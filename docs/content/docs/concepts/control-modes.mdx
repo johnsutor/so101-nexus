@@ -26,8 +26,8 @@ env = gym.make("MuJoCoPickLift-v1", control_mode="pd_ee_delta_pose")
 
 Every delta mode exposes a normalized `[-1, 1]` action space. The joint delta
 modes scale by `[0.05, 0.05, 0.05, 0.05, 0.05, 0.2]` radians; the end-effector
-delta mode scales by `EE_DELTA_ACTION_SCALE`, which is 2 cm per position axis,
-0.1 rad per rotation axis, and 0.2 rad for the gripper.
+delta mode scales by `RobotConfig.ee_delta_action_scale`, which defaults to 2 cm
+per position axis, 0.1 rad per rotation axis, and 0.2 rad for the gripper.
 
 In every mode the last action element is the gripper, so `action_space[-1]`
 always refers to the jaw.
@@ -59,16 +59,52 @@ configuration: one twist direction is always unreachable and arbitrary
 six-degree-of-freedom poses cannot be realized.
 
 Rather than expose a smaller task space, both end-effector modes accept a full
-pose and de-weight the orientation error by `EE_ORIENTATION_WEIGHT` (0.01),
-matching LeRobot's `RobotKinematics.inverse_kinematics` default. Position tracks
-closely; orientation is followed only insofar as the arm can. A commanded 0.1 rad
-rotation delta realizes roughly 0.009 rad. Treat the rotation channel as a hint,
-not a command.
+pose and de-weight the orientation error by `RobotConfig.ee_orientation_weight`,
+which defaults to 0.01, matching LeRobot's
+`RobotKinematics.inverse_kinematics` default. Position tracks closely;
+orientation is followed only insofar as the arm can. At the default weight a
+commanded 0.1 rad rotation delta realizes roughly 0.009 rad. Treat the rotation
+channel as a hint, not a command.
 
 <Callout type="warn">
 If your task needs exact tool orientation, use a joint-space mode. No solver
 setting recovers a degree of freedom the arm does not have.
 </Callout>
+
+## Tuning the solver
+
+Both end-effector parameters live on `RobotConfig`, so they travel with the env
+config on either backend:
+
+```python
+import gymnasium as gym
+
+import so101_nexus.warp  # noqa: F401
+from so101_nexus.config import PickAndPlaceConfig, RobotConfig
+
+envs = gym.make_vec(
+    "WarpPickAndPlace-v1",
+    num_envs=4096,
+    control_mode="pd_ee_delta_pose",
+    config=PickAndPlaceConfig(
+        robot=RobotConfig(
+            ee_orientation_weight=0.1,
+            ee_delta_action_scale=(0.02, 0.02, 0.02, 0.2, 0.2, 0.2, 0.2),
+        )
+    ),
+)
+```
+
+Raise `ee_orientation_weight` when a task needs the policy to actually command
+tool yaw (grasping an object spawned at a random yaw, for example): at the
+default the rotation channels are attenuated roughly elevenfold, which on a
+randomized-yaw task pins them for a large fraction of the episode and leaves a
+policy paying entropy for near-inert action dimensions. It is a trade, not a
+free win: the weight scales both sides of the least-squares solve, so buying
+rotation authority costs position-tracking accuracy. `ee_delta_action_scale`
+is the other lever, and raising the rotation entries increases the realized
+rotation per step without touching position accuracy, at the cost of a coarser
+action grid.
 
 ## Accuracy
 
@@ -100,12 +136,20 @@ float64.
 On the MuJoCo backend the solve is free: 1.2 us per iteration against a step that
 is orders of magnitude more expensive.
 
-On the Warp backend it is not free. At 4096 worlds on an RTX 5090 the inverse
-kinematics adds about 3.6 ms to a step, so an end-effector step costs roughly
-1.3x a joint-space step. The cost is nearly flat in the world count, so it is
-kernel-launch-bound rather than compute-bound and the relative overhead shrinks
-as worlds are added. If you are training at scale and do not need task-space
-actions, prefer `pd_joint_delta_pos`.
+On the Warp backend it is not free. The solve is a collection of small kernel
+launches, so like `mujoco_warp.step` it is launch-bound rather than
+compute-bound, and it is captured into a CUDA graph at construction and replayed
+per step. Measured at 4096 worlds on an RTX 5090:
+
+| Path | Solve | Full step | Against a joint step |
+|------|-------|-----------|----------------------|
+| Direct loop | 3.19 ms | 8.41 ms | 1.81x |
+| Replayed CUDA graph | 1.27 ms | 6.54 ms | 1.41x |
+
+Capture is an optimization, never a requirement: the Warp CPU device and any
+capture failure fall back to the direct loop with a `RuntimeWarning`. If you are
+training at scale and do not need task-space actions, `pd_joint_delta_pos` is
+still cheaper.
 
 ## Choosing a mode
 
@@ -123,12 +167,47 @@ Do not switch control modes between recording and training. The action semantics
 differ and the resulting policy will be silently wrong.
 </Callout>
 
+## Recording is always joint-space
+
+Teleop recording pins the env to `pd_joint_pos`, whatever the registry or a
+config profile asks for, so a dataset always stores absolute joint positions.
+Joint positions are what the leader arm actually produces; every other action
+space is a function of them, and recording one of those instead would bake a
+solver's conventions and a particular `ee_delta_action_scale` into the dataset.
+
+Convert downstream, at training time:
+
+- **Joint delta labels** are a finite difference of the recorded `action`
+  columns, divided by the joint delta scale. This is what the shipped behavior
+  cloning recipe does.
+- **`pd_ee_delta_pose` labels** are a finite difference of the recorded
+  `EndEffectorPose` observation, divided by `ee_delta_action_scale`. No
+  re-recording is needed: `EndEffectorPose` reports the same `gripperframe` TCP
+  the end-effector modes target, so the recorded columns already carry the
+  quantity the action space is defined against. Every vendored pick-and-place
+  and pick-lift dataset carries it inside `observation.environment_state`; read
+  the slice off the feature's `names` metadata (`end_effector_pose_0` through
+  `end_effector_pose_6`) rather than hardcoding an offset, because the vector's
+  layout follows the task's observation components.
+
+Mind the units on the way through. `action` and `observation.state` are LeRobot
+normalized motor values in degrees; `observation.environment_state` is raw
+simulator state, so the TCP entries are metres and a `wxyz` quaternion, the same
+units the end-effector action space uses.
+
+The end-effector relabel is also the lossier-looking of the two only on paper.
+On `johnsutor/MuJoCoPickAndPlace-v1` (10 episodes, 4357 rows) no per-step TCP
+position delta reaches the default 2 cm scale at all (0.00% of steps, 17.7 mm
+largest), while the joint-delta relabel saturates on 0.78% of steps at the
+0.05 rad arm scale.
+
 ## LeRobot follower support
 
 `SimSOFollower` sends absolute targets, so it supports the absolute modes only. In
 `pd_joint_pos` it exposes `{motor}.pos`; in `pd_ee_pose` it exposes the LeRobot
 end-effector features `ee.x`, `ee.y`, `ee.z`, `ee.wx`, `ee.wy`, `ee.wz`, and
-`ee.gripper_pos`.
+`ee.gripper_pos`. Teleop recording never takes the second path (see above); it
+exists for driving an env from LeRobot end-effector actions.
 
 Constructing it against any delta mode raises `ValueError`. A delta action is a
 normalized increment, so feeding it an absolute target silently reinterprets that
@@ -136,7 +215,3 @@ target as a full-scale increment, and reading physical limits off the normalized
 action box corrupts every tick-to-radian conversion built on them, recorded
 observations included. `so101_nexus.ABSOLUTE_CONTROL_MODES` and
 `DELTA_CONTROL_MODES` name the two families.
-
-To record demonstrations for delta-mode training, record in `pd_joint_pos` and
-recompute the deltas offline; see
-[Behavior Cloning](/docs/workflow/behavior-cloning).

@@ -25,7 +25,12 @@ from so101_nexus.config import (
     RobotConfig,
     TouchConfig,
 )
-from so101_nexus.kinematics import EE_ACTION_DIM, EE_DELTA_ACTION_SCALE, quat_to_rotvec
+from so101_nexus.kinematics import (
+    EE_ACTION_DIM,
+    EE_DELTA_ACTION_SCALE,
+    orientation_error,
+    quat_to_rotvec,
+)
 
 # Half-width of the pd_ee_pose position box, mirroring
 # so101_nexus.mujoco.base_env._EE_WORKSPACE_RADIUS. The measured maximum TCP
@@ -48,9 +53,14 @@ _WORKING_POSE = "extended"
 
 
 @contextmanager
-def _touch_env(control_mode: str, *, init_pose: str | None = None):
+def _touch_env(
+    control_mode: str,
+    *,
+    init_pose: str | None = None,
+    robot: RobotConfig | None = None,
+):
     """Yield an unwrapped Touch env in ``control_mode``, closed on exit."""
-    config = TouchConfig(robot=RobotConfig(init_pose=init_pose))
+    config = TouchConfig(robot=robot if robot is not None else RobotConfig(init_pose=init_pose))
     env = gym.make("MuJoCoTouch-v1", config=config, control_mode=control_mode)
     try:
         yield env.unwrapped
@@ -197,3 +207,55 @@ def test_joint_pos_mode_is_unaffected_by_ee_support():
         action = np.clip(env._get_current_qpos() + 0.01, env._target_low, env._target_high)
         env.step(action.astype(np.float32))
         np.testing.assert_allclose(env.data.ctrl[env._actuator_ids], action, atol=1e-6)
+
+
+def test_ee_orientation_weight_is_a_live_knob():
+    """``RobotConfig.ee_orientation_weight`` reaches the solve, not just the docs.
+
+    A pure rotation command is the discriminating case: the weight scales both
+    sides of the damped least-squares solve, so raising it buys tool rotation at
+    the cost of position tracking. Asserted on the realized TCP rotation rather
+    than on the joint targets, because the joint targets could differ for
+    reasons that never reach the tool frame.
+    """
+    action = np.zeros(EE_ACTION_DIM, dtype=np.float32)
+    action[5] = 1.0
+
+    realized = {}
+    for weight in (0.01, 0.5):
+        robot = RobotConfig(init_pose=_WORKING_POSE, ee_orientation_weight=weight)
+        with _touch_env("pd_ee_delta_pose", robot=robot) as env:
+            env.reset(seed=0)
+            before = env._get_tcp_pose()[3:].copy()
+            arm_targets = env._action_to_ctrl(action)[:-1]
+            data = mujoco.MjData(env.model)
+            data.qpos[:] = env.data.qpos
+            data.qpos[env._arm_qpos_addrs] = arm_targets
+            mujoco.mj_kinematics(env.model, data)
+            after = np.zeros(4)
+            mujoco.mju_mat2Quat(after, data.site_xmat[env._tcp_site_id])
+            realized[weight] = float(np.linalg.norm(orientation_error(before, after)))
+
+    assert realized[0.5] > 3.0 * realized[0.01], realized
+
+
+def test_ee_delta_action_scale_is_a_live_knob():
+    """``RobotConfig.ee_delta_action_scale`` sets the physical step of a +/-1 action."""
+    scale = (0.04, 0.04, 0.04, 0.1, 0.1, 0.1, 0.05)
+    robot = RobotConfig(init_pose=_WORKING_POSE, ee_delta_action_scale=scale)
+    with _touch_env("pd_ee_delta_pose", robot=robot) as env:
+        env.reset(seed=0)
+        tcp_before = env._get_tcp_pose()[:3].copy()
+        gripper_before = env._get_current_qpos()[-1]
+
+        action = np.zeros(EE_ACTION_DIM, dtype=np.float32)
+        action[0] = 1.0
+        action[6] = 1.0
+        ctrl = env._action_to_ctrl(action)
+
+        expected = tcp_before + np.array([scale[0], 0.0, 0.0])
+        error_m = float(np.linalg.norm(_tcp_at(env, ctrl[:-1]) - expected))
+        assert error_m < 1e-3, f"TCP tracking error {error_m * 1000:.4f} mm exceeds 1 mm"
+        assert ctrl[-1] == pytest.approx(
+            min(gripper_before + scale[6], env._target_high[-1]), abs=1e-6
+        )

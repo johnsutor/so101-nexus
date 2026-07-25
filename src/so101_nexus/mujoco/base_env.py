@@ -22,7 +22,6 @@ from so101_nexus.config import (
 )
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
-    EE_DELTA_ACTION_SCALE,
     EE_IK_ITERATIONS,
     ee_ik_delta_q,
     quat_multiply,
@@ -56,7 +55,7 @@ _DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.flo
 # The SO-101 arm has five actuated joints, so its tool Jacobian is rank 5: one
 # twist direction is always unreachable and full SE(3) pose control is not
 # achievable. Both end-effector modes still take a 6-DoF pose command and
-# de-weight the orientation error by kinematics.EE_ORIENTATION_WEIGHT, so
+# de-weight the orientation error by config.robot.ee_orientation_weight, so
 # position tracks essentially exactly while orientation is best-effort. The Warp
 # backend diverges from the nominal 6-DoF contract in exactly the same way.
 #
@@ -194,9 +193,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             )
         else:
             # Delta modes expose a normalized [-1, 1] action space (the
-            # cross-backend contract). The normalized action is scaled by
-            # _DELTA_ACTION_SCALE (joints) or EE_DELTA_ACTION_SCALE (end
-            # effector) in step() before being applied to targets.
+            # cross-backend contract). A normalized action is scaled in step()
+            # before it reaches the targets: joint modes by _DELTA_ACTION_SCALE,
+            # the end-effector mode by the robot config's ee delta scale.
             n_actions = (
                 EE_ACTION_DIM if self.control_mode == "pd_ee_delta_pose" else len(SO101_JOINT_NAMES)
             )
@@ -211,6 +210,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._ik_data: mujoco.MjData | None = (
             mujoco.MjData(self.model) if self.control_mode in EE_CONTROL_MODES else None
         )
+        self._ee_delta_scale = np.asarray(self.config.robot.ee_delta_action_scale, dtype=np.float64)
 
         self._prev_target: np.ndarray | None = None
         # Previous public policy action, used for the action-smoothness penalty.
@@ -468,14 +468,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             mujoco.mj_comPos(self.model, ik_data)
             mujoco.mj_jacSite(self.model, ik_data, jacp, jacr, self._tcp_site_id)
             mujoco.mju_mat2Quat(current_quat, ik_data.site_xmat[self._tcp_site_id])
-            # ee_ik_delta_q applies EE_ORIENTATION_WEIGHT to the rotational rows
-            # itself, so this Jacobian is handed over raw.
+            # ee_ik_delta_q applies the orientation weight to the rotational
+            # rows itself, so this Jacobian is handed over raw.
             dq = ee_ik_delta_q(
                 np.vstack([jacp[:, arm_dofs], jacr[:, arm_dofs]]),
                 ik_data.site_xpos[self._tcp_site_id],
                 current_quat,
                 target_pos,
                 target_quat,
+                orientation_weight=self.config.robot.ee_orientation_weight,
             )
             q = np.clip(
                 q + dq,
@@ -653,7 +654,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         # pd_ee_delta_pose integrates from the measured TCP pose, mirroring
         # pd_joint_delta_pos. The rotation delta is a world-frame twist, so it
         # left-multiplies the current TCP orientation.
-        delta = ee_action * EE_DELTA_ACTION_SCALE
+        delta = ee_action * self._ee_delta_scale
         tcp = self._get_tcp_pose()
         return self._solve_ee_ik(
             tcp[:3] + delta[:3],

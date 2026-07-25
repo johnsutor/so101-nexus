@@ -18,6 +18,11 @@ from so101_nexus.constants import (
     ColorConfig,
     validate_color_config,
 )
+from so101_nexus.kinematics import (
+    EE_ACTION_DIM,
+    EE_DELTA_ACTION_SCALE,
+    EE_ORIENTATION_WEIGHT,
+)
 from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.observations import (
     EndEffectorPose,
@@ -280,6 +285,17 @@ class RobotConfig:
         Force threshold for grasp detection.
     static_vel_threshold : float
         Velocity threshold for static detection.
+    ee_orientation_weight : float
+        Relative weight of the rotational error in the end-effector control
+        modes' inverse kinematics. The arm has five actuated joints, so its tool
+        Jacobian is rank 5 and orientation is de-weighted rather than tracked
+        exactly. Raising it buys tool rotation authority at the cost of position
+        tracking; the default matches LeRobot's ``RobotKinematics`` default.
+    ee_delta_action_scale : tuple[float, ...]
+        Physical scale of a +/-1 ``pd_ee_delta_pose`` action, seven entries:
+        ``(x, y, z)`` in metres, ``(wx, wy, wz)`` in radians, then the gripper
+        in radians. Radians rather than degrees because these scale an action
+        space whose units are LeRobot's ``ee.wx``/``ee.wy``/``ee.wz`` radians.
     """
 
     def __init__(
@@ -288,13 +304,32 @@ class RobotConfig:
         init_pose: str | Pose | None = None,
         grasp_force_threshold: float = 0.5,
         static_vel_threshold: float = 0.2,
+        ee_orientation_weight: float = EE_ORIENTATION_WEIGHT,
+        ee_delta_action_scale: tuple[float, ...] = EE_DELTA_ACTION_SCALE,
     ) -> None:
         self.rest_qpos_deg = rest_qpos_deg
         self.grasp_force_threshold = grasp_force_threshold
         self.static_vel_threshold = static_vel_threshold
+        self.ee_orientation_weight = ee_orientation_weight
+        self.ee_delta_action_scale = tuple(float(v) for v in ee_delta_action_scale)
         if len(self.rest_qpos_deg) != 6:
             raise ValueError(
                 f"rest_qpos_deg must have exactly 6 elements, got {len(self.rest_qpos_deg)}"
+            )
+        if not 0.0 < self.ee_orientation_weight <= 1.0:
+            raise ValueError(
+                "ee_orientation_weight must be in (0, 1], got "
+                f"{self.ee_orientation_weight}. Zero would drop orientation from "
+                "the solve entirely, leaving the tool frame unconstrained."
+            )
+        if len(self.ee_delta_action_scale) != EE_ACTION_DIM:
+            raise ValueError(
+                f"ee_delta_action_scale must have exactly {EE_ACTION_DIM} elements "
+                f"(x, y, z, wx, wy, wz, gripper), got {len(self.ee_delta_action_scale)}"
+            )
+        if any(v <= 0.0 for v in self.ee_delta_action_scale):
+            raise ValueError(
+                f"ee_delta_action_scale entries must be > 0, got {self.ee_delta_action_scale}"
             )
         if isinstance(init_pose, str) and init_pose not in POSES:
             raise ValueError(f"Unknown pose name {init_pose!r}. Available: {list(POSES)}")
@@ -322,7 +357,8 @@ class RobotConfig:
         return (
             f"RobotConfig(init_pose={self.init_pose!r}, "
             f"grasp_force_threshold={self.grasp_force_threshold}, "
-            f"static_vel_threshold={self.static_vel_threshold})"
+            f"static_vel_threshold={self.static_vel_threshold}, "
+            f"ee_orientation_weight={self.ee_orientation_weight})"
         )
 
 

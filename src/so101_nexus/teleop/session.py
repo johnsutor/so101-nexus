@@ -175,6 +175,17 @@ def _wire_camera_observations(
     return updated_obs
 
 
+# Teleop always records the leader's absolute joint targets, never an
+# end-effector or delta action. Joint positions are the only label the leader
+# actually produces; every other action space is a lossy function of them that a
+# consumer can recompute offline, and recording one of those instead would bake
+# a solver's conventions into the dataset. Delta labels are a finite difference
+# of the recorded columns, and pd_ee_delta_pose labels are a finite difference of
+# the EndEffectorPose observation, which reports the same TCP the end-effector
+# control modes target. See docs/concepts/control-modes.mdx.
+RECORDING_CONTROL_MODE = "pd_joint_pos"
+
+
 def _recording_env_kwargs(
     env_id: str,
     wrist_wh: tuple[int, int],
@@ -184,7 +195,13 @@ def _recording_env_kwargs(
     profile_path: str | None = None,
     factory: ConfigFactory | None = None,
 ) -> dict:
-    """Return ``gym.make`` kwargs for teleop recording with both cameras sized."""
+    """Return ``gym.make`` kwargs for teleop recording with both cameras sized.
+
+    The control mode is pinned to :data:`RECORDING_CONTROL_MODE` regardless of
+    what the registry or a profile asks for, so a recorded dataset always stores
+    absolute joint positions (in the follower's motor units, degrees by default)
+    rather than an end-effector or delta action.
+    """
     env_ctor, kwargs = _resolve_env_ctor(env_id)
     base_config = _resolve_env_config(env_ctor) if isinstance(env_ctor, type) else None
     _apply_recording_config_kwargs(
@@ -197,6 +214,7 @@ def _recording_env_kwargs(
         profile_path=profile_path,
         factory=factory,
     )
+    kwargs["control_mode"] = RECORDING_CONTROL_MODE
     return kwargs
 
 

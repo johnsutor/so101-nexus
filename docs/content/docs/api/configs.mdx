@@ -88,7 +88,7 @@ pose = POSES["rest"]   # same as REST_POSE
 
 ## RobotConfig
 
-Controls the arm rest pose and grasping thresholds.
+Controls the arm rest pose, grasping thresholds, and the end-effector solver.
 
 ```python
 from so101_nexus import RobotConfig
@@ -104,6 +104,8 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 | `init_pose` | `str \| Pose \| None` | `None` | Initial pose for resets. String looks up from `POSES`, `Pose` instance used directly, `None` uses legacy rest + noise. |
 | `grasp_force_threshold` | `float` | `0.5` | Minimum contact force to count as a grasp |
 | `static_vel_threshold` | `float` | `0.2` | Maximum velocity to consider the arm stationary |
+| `ee_orientation_weight` | `float` | `0.01` | Relative weight of the rotational error in the end-effector modes' inverse kinematics. Must be in `(0, 1]`. See [Control Modes](/docs/concepts/control-modes). |
+| `ee_delta_action_scale` | `tuple[float, ...]` | `(0.02, 0.02, 0.02, 0.1, 0.1, 0.1, 0.2)` | Physical scale of a +/-1 `pd_ee_delta_pose` action: `(x, y, z)` in metres, `(wx, wy, wz)` in radians, gripper in radians. Seven positive entries. |
 
 ### Properties and methods
 
