@@ -236,21 +236,23 @@ def place_task_potential(
     return gate * 0.5 * (transport + is_obj_placed * still)
 
 
-def cube_static_ok(lin_speed, ang_speed, *, lin_threshold, ang_threshold):
-    """Whether a cube's linear and angular speeds are below the static thresholds.
+def object_static_ok(lin_speed, ang_speed, *, lin_threshold, ang_threshold):
+    """Whether an object's linear and angular speeds are below the static thresholds.
 
     Mirrors ManiSkill's ``is_static(lin_thresh=1e-2, ang_thresh=0.5)`` check on
-    cube A in ``StackCubeEnv.evaluate``. Accepts Python floats, NumPy arrays, or
-    torch tensors for the speeds (comparisons and ``&`` overload identically
+    cube A in ``StackCubeEnv.evaluate``. Used for cube A's stability in stack-cube
+    and for the carried object's stability in pick-and-place, so it applies to any
+    free-jointed scene object, not just cubes. Accepts Python floats, NumPy arrays,
+    or torch tensors for the speeds (comparisons and ``&`` overload identically
     across all three, like ``cube_stack_offset_ok``); the caller supplies the
     speed norms, so no backend-specific linalg is needed here.
 
     Parameters
     ----------
     lin_speed : float or numpy.ndarray or torch.Tensor
-        Norm of the cube's linear velocity (m/s).
+        Norm of the object's linear velocity (m/s).
     ang_speed : float or numpy.ndarray or torch.Tensor
-        Norm of the cube's angular velocity (rad/s).
+        Norm of the object's angular velocity (rad/s).
     lin_threshold : float
         Maximum linear speed that still counts as static (m/s).
     ang_threshold : float

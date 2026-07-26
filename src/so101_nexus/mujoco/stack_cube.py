@@ -24,7 +24,7 @@ from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract
 from so101_nexus.objects import CubeObject
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
-    cube_static_ok,
+    object_static_ok,
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
@@ -138,7 +138,7 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         """
         vel = self.data.qvel[self._slot_a.dof_addr : self._slot_a.dof_addr + 6]
         return bool(
-            cube_static_ok(
+            object_static_ok(
                 float(np.linalg.norm(vel[:3])),
                 float(np.linalg.norm(vel[3:])),
                 lin_threshold=self.config.cube_static_lin_threshold,

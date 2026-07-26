@@ -11,11 +11,34 @@ path); and (2) autoreset is same-step (Brax/EnvPool style: the done step returns
 post-reset obs), not Gymnasium 1.0's default ``AutoresetMode.NEXT_STEP``. The
 ``autoreset_mode`` metadata declares the latter so ``make_vec`` does not warn.
 
-Physics diverges from the MuJoCo backend (see ``so101_nexus.scene``): mujoco_warp
-does not support ``implicitfast`` or ``noslip``, so the Warp scene uses the
-``implicit`` integrator with no noslip. Camera observations are supported through
-``WristCamera`` and ``OverheadCamera`` components; Gymnasium ``render_mode`` is
-accepted only for compatibility and ignored with a warning.
+Backend divergence from the MuJoCo backend, in both cases measurable and not
+configurable away. Task semantics, observation schema, and camera intrinsics ARE
+in parity; these two are not.
+
+**Physics** (see ``so101_nexus.scene``): mujoco_warp supports neither
+``implicitfast`` nor ``noslip``, so the Warp scene uses the ``implicit``
+integrator with no noslip. This is not a constant offset that a consumer can
+calibrate out: it is contact-model-sensitive, so it shows up on tasks whose
+success condition depends on sustained resting contact (pick-and-place, stack)
+and not on tasks that do not (pick-lift). Measured downstream, the same
+pick-and-place checkpoint loses 6-14 success points transferring Warp -> MuJoCo,
+with the LARGER drop for smoother, gentler-contact policies. Validate any
+"train in Warp, evaluate in MuJoCo" workflow on the MuJoCo backend before
+trusting Warp-side success numbers.
+
+**Rendering**: camera observations are NOT pixel-interchangeable with the MuJoCo
+backend, even at bit-identical simulator state and camera pose. Both backends
+build the same MJCF, and ``_setup_cameras`` corrects the two divergences that
+are correctable from here (shadow casting, background colour), but mujoco_warp's
+rasteriser ignores per-light ``diffuse`` and applies every active light at unit
+intensity, so the Warp image is systematically brighter than MuJoCo's and clips
+highlights. Do not train a vision policy on one backend and evaluate it on the
+other without measuring the gap first;
+``so101_nexus.testing.assert_render_parity`` exists to measure it.
+
+Camera observations are supported through ``WristCamera`` and ``OverheadCamera``
+components; Gymnasium ``render_mode`` is accepted only for compatibility and
+ignored with a warning.
 """
 
 from __future__ import annotations
@@ -69,6 +92,10 @@ _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
 # without admitting targets the solver could only clamp toward. Matches the
 # MuJoCo backend's _EE_WORKSPACE_RADIUS.
 _EE_WORKSPACE_RADIUS = 0.55
+
+# Opaque black, packed ABGR as mujoco_warp's RenderContext.background_color
+# expects. Matches the MuJoCo backend's clear colour for these skybox-free scenes.
+_BACKGROUND_COLOR_ABGR = np.uint32(0xFF000000)
 
 
 def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
@@ -389,6 +416,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         per-world camera model arrays for wrist domain randomization, and rebuilds
         the observation space as a ``Dict`` matching the MuJoCo backend. Runs
         before CUDA-graph capture so the captured step binds the per-world arrays.
+
+        The observation SCHEMA and the camera intrinsics/extrinsics match the
+        MuJoCo backend; the rendered pixels do not. See this module's docstring.
         """
         obs = self.config.observations or []
         self._wrist_cam: WristCamera | None = next(
@@ -431,6 +461,11 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         # Per-world fovy randomization (wrist DR) requires rays recomputed per world.
         use_precomputed_rays = self._wrist_cam is None
         with wp.ScopedDevice(self._wp_device):
+            # use_shadows defaults False, which silently drops the shadows the
+            # scene's key light asks for via castshadow (see SCENE_LIGHTS_XML) and
+            # is a first-order mismatch against the MuJoCo backend's image: the
+            # cast shadow under the gripper is plainly visible there and nearly
+            # absent without this. Measured cost is a few percent of step time.
             self._render_ctx = mjw.create_render_context(
                 mjm,
                 nworld=self.num_envs,
@@ -440,7 +475,13 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 render_seg=False,
                 cam_active=cam_active,
                 use_precomputed_rays=use_precomputed_rays,
+                use_shadows=True,
             )
+            # mujoco_warp clears to a hardcoded blue-tinted (0.1, 0.1, 0.2) that
+            # corresponds to nothing in the model; these scenes carry no skybox,
+            # so MuJoCo clears to black. Packed ABGR uint32, matching io.py's
+            # pack_rgba_to_uint32 at render-context construction.
+            self._render_ctx.background_color = _BACKGROUND_COLOR_ABGR
             if self._wrist_cam is not None:
                 self._reallocate_per_world_cameras(mjm)
         self._build_camera_observation_space()
@@ -539,7 +580,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         Subclasses call this before ``super().__init__`` to inject a world-fixed
         overhead camera into the scene worldbody when an ``OverheadCamera``
         observation is configured (the Warp renderer rasterizes model cameras
-        only). Framing reuses ``camera_utils`` so both backends match.
+        only). Framing reuses ``camera_utils`` so both backends frame the scene
+        identically; the shading of what they frame still differs (see the module
+        docstring).
         """
         cam = next(
             (c for c in (config.observations or []) if isinstance(c, OverheadCamera)),
@@ -939,7 +982,11 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
         info["energy_norm"] = energy_norm
         info["action_delta_norm"] = action_delta_norm
-        terminated = success
+        terminated = (
+            success
+            if self.config.terminate_on_success
+            else torch.zeros_like(success, dtype=torch.bool)
+        )
         truncated = self._elapsed >= self.max_episode_steps
         done = terminated | truncated
         # The transition's task descriptions (matching reward/terminated) are

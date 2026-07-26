@@ -38,6 +38,14 @@ class TestConstructionValidation:
         with pytest.raises(ValueError, match="cube_half_size"):
             PickAndPlaceConfig(cube_half_size=0.001)
 
+    def test_negative_object_static_lin_threshold(self):
+        with pytest.raises(ValueError, match="object_static_lin_threshold"):
+            PickAndPlaceConfig(object_static_lin_threshold=-0.01)
+
+    def test_negative_object_static_ang_threshold(self):
+        with pytest.raises(ValueError, match="object_static_ang_threshold"):
+            PickAndPlaceConfig(object_static_ang_threshold=-0.5)
+
 
 class TestSharedConstants:
     def test_default_cube_half_size_matches_core(self):

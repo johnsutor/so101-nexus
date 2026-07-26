@@ -703,7 +703,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             info["action_delta_norm"] = float(np.linalg.norm(public_action - self._prev_action))
         self._prev_action = public_action.copy()
         reward = self._compute_reward(info)
-        terminated = bool(info.get("success", False))
+        terminated = self.config.terminate_on_success and bool(info.get("success", False))
 
         return obs, reward, terminated, False, info
 

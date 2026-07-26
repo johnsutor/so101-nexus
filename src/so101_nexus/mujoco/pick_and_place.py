@@ -30,6 +30,7 @@ from so101_nexus.mujoco.spawn_utils import hide_freejoint_slot, place_freejoint_
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.rewards import (
+    object_static_ok,
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
@@ -137,6 +138,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         addr = self._slots[self._target_slot_idx].qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
+    def _get_object_vel(self) -> np.ndarray:
+        """Return the carried object's free-joint velocity ``[lin(3), ang(3)]``."""
+        addr = self._slots[self._target_slot_idx].dof_addr
+        return self.data.qvel[addr : addr + 6].copy()
+
     def _get_target_pos(self) -> np.ndarray:
         return self.data.xpos[self._target_body_id].copy()
 
@@ -175,6 +181,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         )
         return obj_to_target_dist, is_obj_placed
 
+    def _is_obj_static(self) -> bool:
+        """Return True if the carried object's speeds are below the static thresholds."""
+        vel = self._get_object_vel()
+        return bool(
+            object_static_ok(
+                float(np.linalg.norm(vel[:3])),
+                float(np.linalg.norm(vel[3:])),
+                lin_threshold=self.config.object_static_lin_threshold,
+                ang_threshold=self.config.object_static_ang_threshold,
+            )
+        )
+
     def _task_potential(
         self, obj_pos: np.ndarray, target_pos: np.ndarray, is_grasped: float, is_obj_placed: bool
     ) -> float:
@@ -207,14 +225,26 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
         obj_to_target_dist, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
         is_robot_static = self._is_robot_static()
+        is_obj_static = self._is_obj_static()
         lift_height = float(obj_pos[2] - self._initial_obj_z)
-        success = is_obj_placed and is_robot_static
+        # Completion is measured on the OBJECT, not the arm: the goal is a disc on
+        # the table, so the intended terminal behaviour is release-and-retreat and
+        # an arm-velocity gate would score the retreat itself as failure. Requiring
+        # the object to be settled and released is strictly stronger (it rejects
+        # flung placements the arm-static check never inspects, and the still-held
+        # placement the arm-static check accepts) and keeps the predicate
+        # perceivable from vision. ``is_robot_static`` stays in ``info`` as a
+        # diagnostic. Mirrors WarpPickAndPlaceVectorEnv._compute_reward_terminated;
+        # see docs/superpowers/plans/
+        # 2026-07-26-place-success-predicate-and-terminate-flag.md.
+        success = is_obj_placed and is_obj_static and is_grasped < 0.5
 
         info = {
             "obj_to_target_dist": obj_to_target_dist,
             "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
             "is_robot_static": is_robot_static,
+            "is_obj_static": is_obj_static,
             "lift_height": lift_height,
             "success": success,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),

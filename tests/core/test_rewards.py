@@ -6,7 +6,7 @@ from hypothesis import strategies as st
 
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
-    cube_static_ok,
+    object_static_ok,
     orientation_progress,
     reach_progress,
     simple_reward,
@@ -74,21 +74,21 @@ class TestSimpleReward:
         assert won >= lost - 1e-9
 
 
-class TestCubeStaticOk:
+class TestObjectStaticOk:
     """Mirrors ManiSkill StackCubeEnv.evaluate's is_cubeA_static check."""
 
     def test_below_both_thresholds_is_static(self):
-        assert cube_static_ok(0.0, 0.0, lin_threshold=0.01, ang_threshold=0.5)
-        assert cube_static_ok(0.009, 0.49, lin_threshold=0.01, ang_threshold=0.5)
+        assert object_static_ok(0.0, 0.0, lin_threshold=0.01, ang_threshold=0.5)
+        assert object_static_ok(0.009, 0.49, lin_threshold=0.01, ang_threshold=0.5)
 
     def test_at_threshold_is_static(self):
-        assert cube_static_ok(0.01, 0.5, lin_threshold=0.01, ang_threshold=0.5)
+        assert object_static_ok(0.01, 0.5, lin_threshold=0.01, ang_threshold=0.5)
 
     def test_above_lin_threshold_is_not_static(self):
-        assert not cube_static_ok(0.011, 0.0, lin_threshold=0.01, ang_threshold=0.5)
+        assert not object_static_ok(0.011, 0.0, lin_threshold=0.01, ang_threshold=0.5)
 
     def test_above_ang_threshold_is_not_static(self):
-        assert not cube_static_ok(0.0, 0.51, lin_threshold=0.01, ang_threshold=0.5)
+        assert not object_static_ok(0.0, 0.51, lin_threshold=0.01, ang_threshold=0.5)
 
     @given(
         lin=st.floats(min_value=0.0, max_value=10.0, allow_nan=False),
@@ -99,7 +99,7 @@ class TestCubeStaticOk:
     def test_matches_threshold_formula(self, lin, ang, lin_thresh, ang_thresh):
         expected = (lin <= lin_thresh) and (ang <= ang_thresh)
         assert (
-            bool(cube_static_ok(lin, ang, lin_threshold=lin_thresh, ang_threshold=ang_thresh))
+            bool(object_static_ok(lin, ang, lin_threshold=lin_thresh, ang_threshold=ang_thresh))
             == expected
         )
 

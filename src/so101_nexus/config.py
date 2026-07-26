@@ -783,6 +783,13 @@ class EnvironmentConfig:
         Robot arm color(s).
     robot_init_qpos_noise : float
         Initial joint position noise.
+    terminate_on_success : bool
+        Whether ``terminated`` is raised as soon as the task's success predicate
+        fires. ``False`` runs every episode to ``max_episode_steps`` while
+        ``info["success"]`` still reports the predicate each step, which is what
+        makes an alternative success predicate measurable offline against
+        recorded rollouts (the shipped predicate no longer truncates the very
+        episodes an alternative would need to keep observing).
     observations : list, optional
         Observation components to include in the state vector. When ``None``
         (the default), each config populates every observation applicable to
@@ -805,6 +812,7 @@ class EnvironmentConfig:
         obs_mode: ObsMode = "state",
         robot_colors: ColorConfig = "yellow",
         robot_init_qpos_noise: float = 0.02,
+        terminate_on_success: bool = True,
         observations: list[Observation] | None = None,
     ) -> None:
         self.render = render if render is not None else RenderConfig()
@@ -821,6 +829,7 @@ class EnvironmentConfig:
         self.obs_mode = obs_mode
         self.robot_colors = robot_colors
         self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.terminate_on_success = terminate_on_success
         self.observations = observations
         if self.obs_mode not in ("state", "visual"):
             raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
@@ -1018,6 +1027,13 @@ class PickAndPlaceConfig(EnvironmentConfig):
         Mass of the default cube(s) in kg (compatibility sugar).
     min_cube_target_separation : float
         Deprecated alias for ``min_object_target_separation``.
+    object_static_lin_threshold : float
+        Maximum linear speed (m/s) at which the carried object still counts as
+        static for the success check. Mirrors ManiSkill's
+        ``is_static(lin_thresh=1e-2)``.
+    object_static_ang_threshold : float
+        Maximum angular speed (rad/s) at which the carried object still counts
+        as static for the success check. Mirrors ManiSkill's ``ang_thresh=0.5``.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -1033,6 +1049,8 @@ class PickAndPlaceConfig(EnvironmentConfig):
         *,
         objects: list[SceneObject] | SceneObject | None = None,
         min_object_target_separation: float | None = None,
+        object_static_lin_threshold: float = 0.01,
+        object_static_ang_threshold: float = 0.5,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1063,6 +1081,8 @@ class PickAndPlaceConfig(EnvironmentConfig):
             if min_object_target_separation is not None
             else min_cube_target_separation
         )
+        self.object_static_lin_threshold = object_static_lin_threshold
+        self.object_static_ang_threshold = object_static_ang_threshold
 
         _validate_color_config(self.cube_colors, "cube_colors")
         _validate_color_config(self.target_colors, "target_colors")
@@ -1090,6 +1110,14 @@ class PickAndPlaceConfig(EnvironmentConfig):
         if min_object_target_separation is not None and min_object_target_separation < 0:
             raise ValueError(
                 f"min_object_target_separation must be >= 0, got {min_object_target_separation}"
+            )
+        if self.object_static_lin_threshold < 0:
+            raise ValueError(
+                f"object_static_lin_threshold must be >= 0, got {self.object_static_lin_threshold}"
+            )
+        if self.object_static_ang_threshold < 0:
+            raise ValueError(
+                f"object_static_ang_threshold must be >= 0, got {self.object_static_ang_threshold}"
             )
         if self.observations is None:
             self.observations = [
