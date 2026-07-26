@@ -141,10 +141,25 @@ def _parity_config_factory():
 def _measure_parity():
     from so101_nexus.testing import measure_render_parity
 
+    _skip_without_gl()
+    return measure_render_parity("PickAndPlace", _parity_config_factory())
+
+
+def _skip_without_gl():
+    """Skip only for a missing GL/EGL context, so real bugs still fail loudly.
+
+    Probes the renderer directly rather than wrapping the call under test: a
+    blanket ``except Exception`` around ``measure_render_parity`` would convert
+    any bug inside it into a silent skip.
+    """
+    import mujoco
+
     try:
-        return measure_render_parity("PickAndPlace", _parity_config_factory())
-    except Exception as exc:  # no GL/EGL context in this environment
+        renderer = mujoco.Renderer(mujoco.MjModel.from_xml_string("<mujoco/>"), 16, 16)
+    except Exception as exc:
         pytest.skip(f"MuJoCo camera rendering unavailable: {exc}")
+    else:
+        renderer.close()
 
 
 def test_render_parity_measures_the_backends_at_identical_state():
@@ -164,7 +179,7 @@ def test_backends_share_a_background_colour():
     import so101_nexus.warp  # noqa: F401
 
     factory = _parity_config_factory()
-    envs = gymnasium.make_vec("WarpPickAndPlace-v1", num_envs=1, config=factory())
+    envs = gymnasium.make_vec("WarpPickAndPlace-v1", num_envs=1, config=factory(), device="cpu")
     try:
         obs, _ = envs.reset(seed=0)
         # Top-right corner of the wrist view looks past the table edge at nothing.
@@ -187,3 +202,21 @@ def test_render_parity_assertion_reports_the_measured_gap():
     assert_render_parity("PickAndPlace", _parity_config_factory(), max_mean_abs_diff=gap + 1.0)
     with pytest.raises(AssertionError, match="mean abs pixel difference"):
         assert_render_parity("PickAndPlace", _parity_config_factory(), max_mean_abs_diff=gap / 2.0)
+
+
+def test_render_parity_assertion_enforces_the_differing_pixel_fraction():
+    """The second tolerance is load-bearing too: it defaults to unconstrained, so
+    nothing else in the suite would notice if this branch stopped firing."""
+    from so101_nexus.testing import assert_render_parity
+
+    report = _measure_parity()
+    frac = report.cameras[0].frac_pixels_differing
+    assert frac > 0.0, "backends rendered identical pixels; this test is vacuous"
+
+    with pytest.raises(AssertionError, match="of pixels differ by"):
+        assert_render_parity(
+            "PickAndPlace",
+            _parity_config_factory(),
+            max_mean_abs_diff=float("inf"),
+            max_frac_pixels_differing=frac / 2.0,
+        )

@@ -83,21 +83,26 @@ def test_arm_velocity_does_not_decide_success(robot_static):
         env.close()
 
 
-def test_object_static_thresholds_are_live_knobs():
-    """The two config fields must change what counts as settled at runtime."""
+@pytest.mark.parametrize(
+    ("field", "dof_offset"),
+    [("object_static_lin_threshold", 0), ("object_static_ang_threshold", 3)],
+)
+def test_object_static_thresholds_are_live_knobs(field, dof_offset):
+    """Both config fields must change what counts as settled at runtime, each
+    against the velocity component it governs (linear DOFs 0-2, angular 3-5)."""
+    import torch
+
     speed = 0.05
-    loose = _placed_env(object_static_lin_threshold=speed * 2.0)
-    strict = _placed_env(object_static_lin_threshold=speed / 2.0)
+    loose = _placed_env(**{field: speed * 2.0})
+    strict = _placed_env(**{field: speed / 2.0})
     try:
         for env in (loose, strict):
-            import torch
-
             env._is_grasping = lambda: torch.zeros(NUM_ENVS)
             dof = env._target_dadr
             for world in range(NUM_ENVS):
                 base = int(dof[world])
                 env.qvel[world, base : base + 6] = 0.0
-                env.qvel[world, base] = speed
+                env.qvel[world, base + dof_offset] = speed
 
         assert loose._is_obj_static().all()
         assert not strict._is_obj_static().any()

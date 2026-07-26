@@ -68,17 +68,22 @@ def test_arm_velocity_does_not_decide_success(robot_static):
         env.close()
 
 
-def test_object_static_thresholds_are_live_knobs():
-    """The two config fields must change what counts as settled at runtime."""
+@pytest.mark.parametrize(
+    ("field", "dof_offset"),
+    [("object_static_lin_threshold", 0), ("object_static_ang_threshold", 3)],
+)
+def test_object_static_thresholds_are_live_knobs(field, dof_offset):
+    """Both config fields must change what counts as settled at runtime, each
+    against the velocity component it governs (linear DOFs 0-2, angular 3-5)."""
     speed = 0.05
-    env, inner = _placed_env(object_static_lin_threshold=speed * 2.0)
-    strict_env, strict = _placed_env(object_static_lin_threshold=speed / 2.0)
+    env, inner = _placed_env(**{field: speed * 2.0})
+    strict_env, strict = _placed_env(**{field: speed / 2.0})
     try:
         for target in (inner, strict):
             target._is_grasping = lambda: 0.0
             addr = target._slots[target._target_slot_idx].dof_addr
             target.data.qvel[addr : addr + 6] = 0.0
-            target.data.qvel[addr] = speed
+            target.data.qvel[addr + dof_offset] = speed
 
         assert inner._is_obj_static() is True
         assert strict._is_obj_static() is False
@@ -87,6 +92,33 @@ def test_object_static_thresholds_are_live_knobs():
     finally:
         env.close()
         strict_env.close()
+
+
+def test_placement_and_success_are_plain_bools():
+    """``is_obj_placed`` compares a numpy.float64, so without an explicit cast the
+    predicate leaks a numpy.bool_ into ``info`` and breaks JSON encoding for any
+    consumer logging raw rollout info."""
+    import json
+
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    inner = env.unwrapped
+    try:
+        env.reset(seed=0)
+        # Object laterally over the goal but too high: the height term decides,
+        # which is exactly the state that leaked a numpy.bool_.
+        target = inner._get_target_pos()
+        info = inner._get_info()
+        assert type(info["is_obj_placed"]) is bool
+        assert type(info["success"]) is bool
+        json.dumps({k: v for k, v in info.items() if k in ("is_obj_placed", "success")})
+
+        dist, placed = inner._obj_placement_state(
+            np.array([target[0], target[1], inner._initial_obj_z + 1.0]), target
+        )
+        assert type(placed) is bool
+        assert isinstance(dist, float)
+    finally:
+        env.close()
 
 
 def test_info_reports_object_staticness_alongside_robot_staticness():

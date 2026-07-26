@@ -21,6 +21,7 @@ module exists to break.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
@@ -90,6 +91,7 @@ def measure_render_parity(
     *,
     seed: int = 0,
     diff_threshold: int = 25,
+    device: str = "cpu",
 ) -> RenderParityReport:
     """Compare MuJoCo and Warp camera images at bit-identical simulator state.
 
@@ -98,8 +100,10 @@ def measure_render_parity(
     per-world pose and field of view are copied across, so geometry, camera
     intrinsics and camera extrinsics are eliminated as sources of difference and
     only the rasterizer remains. Caller-supplied configs should collapse the
-    wrist camera's domain-randomization ranges to single points; otherwise the
-    two backends sample different cameras and the result measures that instead.
+    wrist camera's domain-randomization ranges to single points: the pose copy
+    already makes both backends render the same camera, but with wide ranges the
+    sampled pose, and so the measured gap, becomes an arbitrary function of
+    ``seed``, and a tolerance pinned against one seed will not hold on another.
 
     Parameters
     ----------
@@ -115,6 +119,10 @@ def measure_render_parity(
     diff_threshold : int
         Per-channel difference in 0-255 units above which a pixel counts as
         differing, for ``frac_pixels_differing``.
+    device : str
+        Warp device for the batched backend. Defaults to ``"cpu"`` so the
+        measurement runs without a CUDA GPU, matching the rest of the suite; pass
+        ``"cuda"`` to measure the device a consumer actually trains on.
 
     Returns
     -------
@@ -135,9 +143,11 @@ def measure_render_parity(
     if not camera_names:
         raise ValueError("config_factory must produce a config with a camera observation")
 
-    m_env = gym.make(f"MuJoCo{task}-v1", config=m_config)
-    w_env = gym.make_vec(f"Warp{task}-v1", num_envs=1, config=config_factory())
+    m_env = None
+    w_env = None
     try:
+        m_env = gym.make(f"MuJoCo{task}-v1", config=m_config)
+        w_env = gym.make_vec(f"Warp{task}-v1", num_envs=1, config=config_factory(), device=device)
         m = cast("Any", m_env.unwrapped)
         w = cast("Any", w_env.unwrapped)
         m.reset(seed=seed)
@@ -177,8 +187,12 @@ def measure_render_parity(
             )
         return RenderParityReport(cameras=tuple(cameras), max_qpos_diff=max_qpos_diff)
     finally:
-        w_env.close()
-        m_env.close()
+        # Close both even if one raises, and never let a close-time error replace
+        # the in-flight exception that actually explains the failure.
+        for env in (w_env, m_env):
+            if env is not None:
+                with contextlib.suppress(Exception):
+                    env.close()
 
 
 def assert_render_parity(
@@ -189,6 +203,7 @@ def assert_render_parity(
     max_frac_pixels_differing: float = 1.0,
     seed: int = 0,
     diff_threshold: int = 25,
+    device: str = "cpu",
 ) -> RenderParityReport:
     """Assert every camera's cross-backend image difference is within tolerance.
 
@@ -214,13 +229,17 @@ def assert_render_parity(
         Reset seed used for both backends.
     diff_threshold : int
         Per-channel difference above which a pixel counts as differing.
+    device : str
+        Warp device for the batched backend; see ``measure_render_parity``.
 
     Returns
     -------
     RenderParityReport
         The measurement, so callers can log or further inspect it.
     """
-    report = measure_render_parity(task, config_factory, seed=seed, diff_threshold=diff_threshold)
+    report = measure_render_parity(
+        task, config_factory, seed=seed, diff_threshold=diff_threshold, device=device
+    )
     assert report.max_qpos_diff == 0.0, (
         f"backends were not pinned to identical state (max|qpos diff| = "
         f"{report.max_qpos_diff}); the parity numbers would measure state, not shading"

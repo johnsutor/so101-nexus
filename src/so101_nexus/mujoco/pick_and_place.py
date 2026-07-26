@@ -175,7 +175,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     ) -> tuple[float, bool]:
         """Return ``(obj_to_target_xy_dist, is_obj_placed)`` for the given pose."""
         obj_to_target_dist = float(np.linalg.norm(obj_pos[:2] - target_pos[:2]))
-        is_obj_placed = (
+        # bool(): the height term compares a numpy.float64, so without this the
+        # declared -> bool return would actually be a numpy.bool_ whenever that
+        # term decides the result, leaking into info and breaking JSON encoding.
+        is_obj_placed = bool(
             obj_to_target_dist <= self.config.goal_thresh
             and obj_pos[2] < self._initial_obj_z + _PLACE_Z_SLACK
         )
