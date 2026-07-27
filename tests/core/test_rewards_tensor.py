@@ -3,22 +3,22 @@
 import numpy as np
 import pytest
 
-from so101_nexus.rewards import cube_static_ok, reach_progress, simple_reward
+from so101_nexus.rewards import object_static_ok, reach_progress, simple_reward
 
 
 def test_cube_static_ok_numpy_and_torch_match_scalar():
     lin = [0.0, 0.005, 0.02, 0.0]
     ang = [0.0, 0.6, 0.0, 0.49]
     scalar = [
-        cube_static_ok(lin_v, ang_v, lin_threshold=0.01, ang_threshold=0.5)
+        object_static_ok(lin_v, ang_v, lin_threshold=0.01, ang_threshold=0.5)
         for lin_v, ang_v in zip(lin, ang, strict=True)
     ]
-    out_np = cube_static_ok(np.array(lin), np.array(ang), lin_threshold=0.01, ang_threshold=0.5)
+    out_np = object_static_ok(np.array(lin), np.array(ang), lin_threshold=0.01, ang_threshold=0.5)
     np.testing.assert_array_equal(out_np, scalar)
-    assert isinstance(cube_static_ok(0.0, 0.0, lin_threshold=0.01, ang_threshold=0.5), bool)
+    assert isinstance(object_static_ok(0.0, 0.0, lin_threshold=0.01, ang_threshold=0.5), bool)
 
     torch = pytest.importorskip("torch")
-    out_t = cube_static_ok(
+    out_t = object_static_ok(
         torch.tensor(lin, dtype=torch.float64),
         torch.tensor(ang, dtype=torch.float64),
         lin_threshold=0.01,

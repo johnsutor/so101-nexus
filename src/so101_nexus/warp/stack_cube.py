@@ -26,7 +26,7 @@ from so101_nexus.objects import CubeObject
 from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
-    cube_static_ok,
+    object_static_ok,
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
@@ -212,7 +212,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         ManiSkill's ``is_cubeA_static`` check on the per-world selected slot.
         """
         vel = self._gather(self.qvel, self._a_dadr, 6)  # (N, 6)
-        return cube_static_ok(
+        return object_static_ok(
             torch.linalg.norm(vel[:, :3], dim=1),
             torch.linalg.norm(vel[:, 3:], dim=1),
             lin_threshold=self.config.cube_static_lin_threshold,

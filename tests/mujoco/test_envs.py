@@ -301,6 +301,7 @@ def test_pick_and_place_info_keys_exact():
     expected = {
         "obj_to_target_dist",
         "is_obj_placed",
+        "is_obj_static",
         "is_grasped",
         "is_robot_static",
         "lift_height",
@@ -1614,6 +1615,7 @@ def test_pick_and_place_info_keys_with_object_pool():
     expected = {
         "obj_to_target_dist",
         "is_obj_placed",
+        "is_obj_static",
         "is_grasped",
         "is_robot_static",
         "lift_height",

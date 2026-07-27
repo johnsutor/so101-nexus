@@ -19,6 +19,7 @@ from so101_nexus.constants import COLOR_MAP
 from so101_nexus.objects import CubeObject
 from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
 from so101_nexus.rewards import (
+    object_static_ok,
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
@@ -116,6 +117,16 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             obj_pos[:, 2] < self._initial_obj_z + _PLACE_Z_SLACK
         )
         return obj_to_target, is_obj_placed
+
+    def _is_obj_static(self) -> torch.Tensor:
+        """Return ``(N,)`` bool: the carried object's speeds below the static thresholds."""
+        vel = self._target_vel()  # (N, 6)
+        return object_static_ok(
+            torch.linalg.norm(vel[:, :3], dim=1),
+            torch.linalg.norm(vel[:, 3:], dim=1),
+            lin_threshold=self.config.object_static_lin_threshold,
+            ang_threshold=self.config.object_static_ang_threshold,
+        )
 
     def _task_potential(
         self,
@@ -231,7 +242,18 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         obj_to_target, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
         is_grasped = self._is_grasping()
         is_robot_static = self._is_robot_static()
-        success = is_obj_placed & is_robot_static
+        is_obj_static = self._is_obj_static()
+        # Completion is measured on the OBJECT, not the arm: the goal is a disc on
+        # the table, so the intended terminal behaviour is release-and-retreat and
+        # an arm-velocity gate would score the retreat itself as failure. Requiring
+        # the object to be settled and released is strictly stronger (it rejects
+        # flung placements the arm-static check never inspects, and the still-held
+        # placement the arm-static check accepts) and keeps the predicate
+        # perceivable from vision. ``is_robot_static`` stays in ``info`` as a
+        # diagnostic. Mirrors PickAndPlaceEnv._get_info (MuJoCo); see
+        # docs/superpowers/plans/
+        # 2026-07-26-place-success-predicate-and-terminate-flag.md.
+        success = is_obj_placed & is_obj_static & (is_grasped < 0.5)
         scale = self.config.reward.tanh_shaping_scale
         # reaching/grasping are potential-shaped deltas, not raw state values
         # (dwelling at "reached and grasped, never placed" must pay ~0/step, see
@@ -265,6 +287,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             "is_obj_placed": is_obj_placed,
             "is_grasped": is_grasped,
             "is_robot_static": is_robot_static,
+            "is_obj_static": is_obj_static,
             "lift_height": obj_pos[:, 2] - self._initial_obj_z,
             "success": success,
             "tcp_to_obj_dist": tcp_to_obj,

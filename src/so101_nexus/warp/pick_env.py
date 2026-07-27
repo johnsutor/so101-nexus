@@ -178,6 +178,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # detection in the base; ``_target_qadr`` indexes the selected slot pose.
         self._obj_geom = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_qadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+        self._target_dadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_slot = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._initial_obj_z = torch.zeros(num_envs, device=self.device)
         self._prev_task_potential = torch.zeros(num_envs, device=self.device)
@@ -205,6 +206,11 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
 
     def _target_pos(self) -> torch.Tensor:
         return self._gather(self._target_qadr, 3)
+
+    def _target_vel(self) -> torch.Tensor:
+        """Return ``(N, 6)`` target free-joint velocity ``[lin(3), ang(3)]`` per world."""
+        cols = self._target_dadr[:, None] + torch.arange(6, device=self.device)
+        return self.qvel[self._world_rows[:, None], cols]
 
     def _target_bounding_radius(self) -> torch.Tensor:
         return self._slot_bradius[self._target_slot]
@@ -257,6 +263,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         assert obj_geom is not None  # set to a tensor in _build_slot_model
         obj_geom[idx] = self._slot_geom[target]
         self._target_qadr[idx] = self._slot_qadr[target]
+        self._target_dadr[idx] = self._slot_dadr[target]
         self._initial_obj_z[idx] = self._slot_spawn_z[target]
         for i in range(int(idx.numel())):
             self.task_descriptions[int(idx[i])] = self._describe_target(

@@ -11,7 +11,16 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `terminate_on_success` on every environment config (default `True`, both backends): set `False` to keep an episode running to `max_episode_steps` while `info["success"]` still reports the shipped predicate every step. Previously `terminated = success` was hardcoded, so an alternative success predicate could not be evaluated offline against recorded rollouts (the shipped predicate ended the very episodes an alternative needed to keep observing).
+- `object_static_lin_threshold` (default `0.01` m/s) and `object_static_ang_threshold` (default `0.5` rad/s) on `PickAndPlaceConfig`: the speeds below which the carried object counts as settled for the success check, matching `StackCubeConfig`'s corresponding fields and ManiSkill's `is_static` defaults.
+- `so101_nexus.testing.assert_render_parity` / `measure_render_parity` (plus the `RenderParityReport` / `CameraParity` result types): compare MuJoCo and Warp camera observations at bit-identical simulator state and camera pose, so the backends' rendering divergence is measurable from the contract suite rather than from a failed training run. Tolerances are required arguments, not defaults, because the shipped backends are not pixel-interchangeable.
+- `info["is_obj_static"]` on both pick-and-place backends.
+
 ### Changed
+
+- **Breaking:** pick-and-place `success` is now `is_obj_placed and is_obj_static and not is_grasped`, replacing `is_obj_placed and is_robot_static` on both backends. The old predicate measured the arm rather than the object: the goal is a disc on the table, so the intended terminal behaviour is release-and-retreat, and gating on arm velocity scored the retreat itself as failure while still accepting a placement held motionless in a closed gripper. The new predicate is strictly stronger (it rejects flung placements the arm-velocity check never inspected, and adds the missing release check) and removes an unobservable variable from the objective, since object persistence is perceivable from a camera and arm velocity is not. `is_robot_static` remains in `info` as a diagnostic. Success rates reported against the old predicate are not comparable; no checkpoint can warm-start the change.
+- **Breaking:** `so101_nexus.rewards.cube_static_ok` is renamed `object_static_ok`. It is now load-bearing for the arbitrary scene objects in the pick-and-place object pool (which includes YCB meshes), not just cubes.
+- The Warp backend renders with shadow casting enabled and clears to MuJoCo's black background instead of mujoco_warp's blue-tinted default, closing the two render divergences that are correctable from this library. Camera observations are still not pixel-interchangeable across backends: mujoco_warp's rasteriser ignores per-light `diffuse` and applies every active light at unit intensity, so the Warp image remains brighter than MuJoCo's. This residual gap, and the contact-model divergence that costs a pick-and-place policy 6-14 success points transferring Warp to MuJoCo, are now documented in the Warp backend's module docstring instead of being contradicted by docstrings claiming parity.
 
 ### Fixed
 

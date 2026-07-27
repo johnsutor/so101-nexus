@@ -9,5 +9,18 @@ from __future__ import annotations
 
 from so101_nexus.testing.contract import run_env_contract
 from so101_nexus.testing.observations import component_slice
+from so101_nexus.testing.render_parity import (
+    CameraParity,
+    RenderParityReport,
+    assert_render_parity,
+    measure_render_parity,
+)
 
-__all__ = ["component_slice", "run_env_contract"]
+__all__ = [
+    "CameraParity",
+    "RenderParityReport",
+    "assert_render_parity",
+    "component_slice",
+    "measure_render_parity",
+    "run_env_contract",
+]
