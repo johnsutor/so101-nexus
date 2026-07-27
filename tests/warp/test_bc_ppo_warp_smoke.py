@@ -74,28 +74,70 @@ def test_bc_ppo_warp_load_demo_transitions_shapes_and_units():
     assert torch.isfinite(action).all()
 
 
-def test_bc_ppo_warp_demo_joint_velocities_are_relabeled_from_positions():
-    """The published dataset predates ``JointVelocities``; the loader must
-    reconstruct those columns as a finite difference of the recorded joint
-    positions rather than emit zeros or a short vector."""
+def _pick_lift_frames():
+    """Published PickLift demo frames, plus the dataset's declared state column names.
+
+    Rows come back in LeRobot's own order (sorted by ``index``). The
+    ``observation.environment_state`` names are what decide whether the loader can
+    read a target column straight off the recording or has to reconstruct it, so a
+    test that wants to predict the loader's output has to consult them too.
+    """
+    import json
+    from pathlib import Path
+
+    import pandas as pd
+    from huggingface_hub import hf_hub_download
+
+    repo = "johnsutor/MuJoCoPickLift-v1"
+    pq = hf_hub_download(repo, "data/chunk-000/file-000.parquet", repo_type="dataset")
+    info = json.loads(
+        Path(hf_hub_download(repo, "meta/info.json", repo_type="dataset")).read_text()
+    )
+    df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
+    return df, info["features"]["observation.environment_state"]["names"]
+
+
+def test_bc_ppo_warp_demo_joint_velocities_match_the_dataset():
+    """``JointVelocities`` must fill the layout's velocity slots for every row the
+    loader keeps: verbatim when the dataset records the columns, otherwise
+    reconstructed as a finite difference of the recorded positions over ``control_dt``
+    (not the dataset's ``1 / fps``, which would rescale every velocity by 1.67x).
+
+    The expectation is derived from the dataset's own declared names rather than
+    assuming one vintage of the published recording, which has since been re-recorded
+    with velocities included. Exact reconstruction arithmetic is covered hermetically
+    in ``tests/core/test_lerobot_dataset.py``; what is under test here is the loader's
+    wiring -- column placement and which rows survive.
+    """
     import importlib
 
     import torch
 
     mod = importlib.import_module("examples.bc_ppo_warp")
     control_dt = _pick_lift_control_dt()
+    df, names = _pick_lift_frames()
+    state = np.stack(df["observation.environment_state"].to_numpy()).astype(np.float32)
+    episode = df["episode_index"].to_numpy()
+    velocity_names = [f"joint_velocities_{i}" for i in range(6)]
+
+    if all(name in names for name in velocity_names):
+        expected = state[:, [names.index(name) for name in velocity_names]]
+    else:
+        qpos = state[:, [names.index(f"joint_positions_{i}") for i in range(6)]]
+        expected = np.zeros_like(qpos)
+        expected[1:] = (qpos[1:] - qpos[:-1]) / control_dt
+        # Reset zeroes qvel, and a difference must never span two episodes.
+        expected[np.flatnonzero(np.diff(episode, prepend=episode[0] - 1))] = 0.0
+
     obs, _ = mod.load_demo_transitions(
         "johnsutor/MuJoCoPickLift-v1", torch.device("cpu"), control_dt=control_dt
     )
 
-    qpos, qvel = obs[:, :6], obs[:, 6:12]
-    assert qvel.abs().max() > 1e-3, "reconstructed joint velocities are all ~zero"
-    # Within an episode, v[t] * control_dt reproduces the recorded position
-    # increment. Using the dataset's 1/fps here instead would fail by 1.67x.
-    step = qpos[1:] - qpos[:-1]
-    recon = qvel[1:] * control_dt
-    same_episode = step.abs().max(dim=1).values < 1.0  # excludes episode boundaries
-    torch.testing.assert_close(recon[same_episode], step[same_episode], atol=1e-4, rtol=1e-3)
+    # Every frame survives but each episode's last, which has no outgoing transition.
+    kept = np.concatenate([np.flatnonzero(episode == e)[:-1] for e in np.unique(episode)])
+    assert obs.shape[0] == kept.size
+    assert obs[:, 6:12].abs().max() > 1e-3, "joint velocity columns are all ~zero"
+    torch.testing.assert_close(obs[:, 6:12], torch.from_numpy(expected[kept]))
 
 
 def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
@@ -104,7 +146,6 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
     column), normalized by `_DELTA_ACTION_SCALE` and clipped to [-1, 1]."""
     import importlib
 
-    import pandas as pd
     import torch
 
     from so101_nexus import dataset_row_to_sim_qpos
@@ -112,12 +153,7 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
 
     mod = importlib.import_module("examples.bc_ppo_warp")
 
-    from huggingface_hub import hf_hub_download
-
-    pq = hf_hub_download(
-        "johnsutor/MuJoCoPickLift-v1", "data/chunk-000/file-000.parquet", repo_type="dataset"
-    )
-    df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
+    df, _ = _pick_lift_frames()
     df = df[df["episode_index"] == df["episode_index"].iloc[0]].reset_index(drop=True)
     joints_rad = dataset_row_to_sim_qpos(
         np.stack(df["observation.state"].to_numpy()).astype(np.float32)
