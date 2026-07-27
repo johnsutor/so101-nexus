@@ -11,6 +11,16 @@ for the public-API and deprecation policy.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.4.13] - 2026-07-26
+
+### Added
+
 - `terminate_on_success` on every environment config (default `True`, both backends): set `False` to keep an episode running to `max_episode_steps` while `info["success"]` still reports the shipped predicate every step. Previously `terminated = success` was hardcoded, so an alternative success predicate could not be evaluated offline against recorded rollouts (the shipped predicate ended the very episodes an alternative needed to keep observing).
 - `object_static_lin_threshold` (default `0.01` m/s) and `object_static_ang_threshold` (default `0.5` rad/s) on `PickAndPlaceConfig`: the speeds below which the carried object counts as settled for the success check, matching `StackCubeConfig`'s corresponding fields and ManiSkill's `is_static` defaults.
 - `so101_nexus.testing.assert_render_parity` / `measure_render_parity` (plus the `RenderParityReport` / `CameraParity` result types): compare MuJoCo and Warp camera observations at bit-identical simulator state and camera pose, so the backends' rendering divergence is measurable from the contract suite rather than from a failed training run. Tolerances are required arguments, not defaults, because the shipped backends are not pixel-interchangeable.
@@ -360,7 +370,11 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.9...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...HEAD
+[0.4.13]: https://github.com/johnsutor/so101-nexus/compare/0.4.12...0.4.13
+[0.4.12]: https://github.com/johnsutor/so101-nexus/compare/0.4.11...0.4.12
+[0.4.11]: https://github.com/johnsutor/so101-nexus/compare/0.4.10...0.4.11
+[0.4.10]: https://github.com/johnsutor/so101-nexus/compare/0.4.9...0.4.10
 [0.4.9]: https://github.com/johnsutor/so101-nexus/compare/0.4.8...0.4.9
 [0.4.8]: https://github.com/johnsutor/so101-nexus/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/johnsutor/so101-nexus/compare/0.4.5...0.4.7
