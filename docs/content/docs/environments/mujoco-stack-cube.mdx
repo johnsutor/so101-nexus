@@ -38,7 +38,7 @@ bumping cube B during the episode updates it).
 
 ## Objects
 
-The scene always contains exactly two active cubes: cube A (the one picked up
+The scene contains two task cubes: cube A (the one picked up
 and stacked) and cube B (the stationary base). Colors for both are
 configurable through `StackCubeConfig` (`cube_a_colors` / `cube_b_colors`,
 each a single color or a list sampled uniformly) and default to disjoint
@@ -48,6 +48,21 @@ in both backends: MuJoCo recolors the two cube geoms directly, while
 `WarpStackCube-v1` compiles one cube slot per configured color and selects one
 slot per role per world at reset, exposing the per-world choice as
 `cube_a_color_names` / `cube_b_color_names`.
+
+Set `n_distractors` to place additional non-target objects alongside the two
+cubes. They are drawn without replacement each episode from the `distractors`
+pool (green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` by
+default, so only color sets them apart from the task cubes) and are separated from the
+task cubes by `min_cube_separation` plus their bounding radii. Distractors
+never enter the observation or the task description, so obs width and success
+condition are unchanged; the unused pool slots are parked off-world.
+
+```python
+config = StackCubeConfig(n_distractors=2)
+```
+
+A distractor cube sharing a color with cube A or cube B warns, since the task
+description identifies cubes by color alone.
 
 ## Success Condition
 

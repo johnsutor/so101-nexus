@@ -677,6 +677,7 @@ def test_customization_ui_state_for_stack_cube_shows_stack_colors() -> None:
             cube_a_colors=["red", "orange"],
             cube_b_colors="blue",
             ground_colors="gray",
+            n_distractors=2,
         )
     )
 
@@ -688,6 +689,10 @@ def test_customization_ui_state_for_stack_cube_shows_stack_colors() -> None:
     assert state.stack_visible is True
     assert state.cube_a_colors == ["red", "orange"]
     assert state.cube_b_colors == ["blue"]
+    # Stack-cube exposes the distractor count but no object pool.
+    assert state.distractors_visible is True
+    assert state.pick_group_visible is True
+    assert state.n_distractors == 2
 
 
 def test_customization_ui_state_without_config_hides_customization() -> None:

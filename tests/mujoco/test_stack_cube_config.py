@@ -17,6 +17,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import so101_nexus.mujoco  # noqa: F401
 from so101_nexus.config import StackCubeConfig
 from so101_nexus.mujoco.stack_cube import StackCubeEnv
+from so101_nexus.objects import CubeObject
 
 _CFG = StackCubeConfig()
 
@@ -89,6 +90,44 @@ class TestDefaults:
 
     def test_default_cube_b_color_is_blue(self):
         assert _CFG.cube_b_colors == "blue"
+
+    def test_default_has_no_distractors(self):
+        assert _CFG.n_distractors == 0
+
+    def test_default_distractor_pool_avoids_target_colors(self):
+        colors = {obj.color for obj in _CFG.distractors}
+        assert colors.isdisjoint({_CFG.cube_a_colors, _CFG.cube_b_colors})
+
+    def test_default_distractor_pool_matches_configured_cube_geometry(self):
+        cfg = StackCubeConfig(cube_half_size=0.02, cube_mass=0.05)
+        assert [(o.half_size, o.mass) for o in cfg.distractors] == [(0.02, 0.05)] * 3
+
+
+class TestDistractorValidation:
+    def test_negative_distractors_raises(self):
+        with pytest.raises(ValueError, match="n_distractors must be >= 0"):
+            StackCubeConfig(n_distractors=-1)
+
+    def test_more_distractors_than_pool_raises(self):
+        with pytest.raises(ValueError, match="distractors pool must have at least"):
+            StackCubeConfig(distractors=[CubeObject(color="green")], n_distractors=2)
+
+    def test_empty_distractor_pool_raises(self):
+        with pytest.raises(ValueError, match="distractors must not be empty"):
+            StackCubeConfig(distractors=[])
+
+    def test_single_distractor_wrapped_in_list(self):
+        cfg = StackCubeConfig(distractors=CubeObject(color="green"), n_distractors=1)
+        assert len(cfg.distractors) == 1
+        assert cfg.distractors[0].color == "green"
+
+    def test_distractor_color_matching_target_warns(self):
+        with pytest.warns(UserWarning, match="ambiguous"):
+            StackCubeConfig(distractors=[CubeObject(color="red")], n_distractors=1)
+
+    def test_unused_distractor_pool_does_not_warn(self, recwarn):
+        StackCubeConfig(distractors=[CubeObject(color="red")], n_distractors=0)
+        assert len(recwarn) == 0
 
 
 class TestSharedConstants:

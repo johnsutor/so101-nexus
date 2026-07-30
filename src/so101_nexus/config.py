@@ -37,6 +37,8 @@ from so101_nexus.observations import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from so101_nexus.observations import Observation
 ControlMode = Literal[
     "pd_joint_pos",
@@ -878,21 +880,59 @@ class EnvironmentConfig:
 
 def _normalize_objects(
     objects: list[SceneObject] | SceneObject | None,
-    default: SceneObject,
+    default: SceneObject | list[SceneObject],
+    field_name: str = "objects",
 ) -> list[SceneObject]:
     """Return a non-empty scene object list from a flexible object input."""
     if objects is None:
-        return [default]
+        return [default] if isinstance(default, SceneObject) else list(default)
     if isinstance(objects, SceneObject):
         return [objects]
     normalized = list(objects)
     if not normalized:
-        raise ValueError("objects must not be empty")
+        raise ValueError(f"{field_name} must not be empty")
     non_objects = [o for o in normalized if not isinstance(o, SceneObject)]
     if non_objects:
         names = [type(o).__name__ for o in non_objects]
-        raise TypeError(f"objects must all be SceneObject instances, got {names}")
+        raise TypeError(f"{field_name} must all be SceneObject instances, got {names}")
     return normalized
+
+
+def _default_stack_distractors(half_size: float, mass: float) -> list[SceneObject]:
+    """Return the default stack-cube distractor pool.
+
+    The cubes share the task cubes' geometry and differ only in color (disjoint
+    from the default cube A/B colors), so a distractor cannot be told apart from
+    a task cube by size alone.
+    """
+    return [
+        CubeObject(half_size=half_size, mass=mass, color=color)
+        for color in ("green", "yellow", "purple")
+    ]
+
+
+def _validate_distractor_pool(
+    distractors: list[SceneObject],
+    n_distractors: int,
+    target_colors: Collection[str],
+) -> None:
+    """Validate a distractor count against its pool and the target cube colors."""
+    if n_distractors < 0:
+        raise ValueError(f"n_distractors must be >= 0, got {n_distractors}")
+    if n_distractors > len(distractors):
+        raise ValueError(
+            f"distractors pool must have at least n_distractors={n_distractors} "
+            f"entries, got {len(distractors)}"
+        )
+    # The task string names cubes by color only, so a distractor cube sharing a
+    # target color makes the instruction ambiguous.
+    ambiguous = {o.color for o in distractors if isinstance(o, CubeObject)} & set(target_colors)
+    if n_distractors > 0 and ambiguous:
+        warnings.warn(
+            f"distractor cubes share {ambiguous} with cube_a_colors/cube_b_colors; "
+            "the task description may be ambiguous in some episodes",
+            stacklevel=3,
+        )
 
 
 def describe_pick_target(target: object) -> str:
@@ -1213,6 +1253,15 @@ class StackCubeConfig(EnvironmentConfig):
     cube_static_ang_threshold : float
         Maximum angular speed (rad/s) at which cube A still counts as static
         for the success check. Mirrors ManiSkill's ``ang_thresh=0.5``.
+    distractors : list[SceneObject] | SceneObject | None
+        Pool of non-target objects to sample distractors from. Defaults to
+        green, yellow, and purple cubes sharing ``cube_half_size`` /
+        ``cube_mass`` (colors disjoint from the default cube A/B colors). Only
+        compiled into the scene when ``n_distractors > 0``.
+    n_distractors : int
+        Number of distractor objects placed alongside cubes A and B each
+        episode, drawn without replacement from ``distractors``. 0 means the
+        two-cube scene.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -1227,6 +1276,8 @@ class StackCubeConfig(EnvironmentConfig):
         stack_alignment_margin: float = 0.005,
         cube_static_lin_threshold: float = 0.01,
         cube_static_ang_threshold: float = 0.5,
+        distractors: list[SceneObject] | SceneObject | None = None,
+        n_distractors: int = 0,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1272,6 +1323,15 @@ class StackCubeConfig(EnvironmentConfig):
             raise ValueError(
                 f"cube_static_ang_threshold must be >= 0, got {self.cube_static_ang_threshold}"
             )
+        # Built after the cube checks so an invalid cube_half_size/cube_mass is
+        # reported against its own field, not against the default pool's cubes.
+        self.distractors = _normalize_objects(
+            distractors,
+            _default_stack_distractors(cube_half_size, cube_mass),
+            field_name="distractors",
+        )
+        self.n_distractors = n_distractors
+        _validate_distractor_pool(self.distractors, self.n_distractors, a_set | b_set)
         if self.observations is None:
             self.observations = [
                 JointPositions(),
@@ -1287,7 +1347,8 @@ class StackCubeConfig(EnvironmentConfig):
     def __repr__(self) -> str:  # noqa: D105
         return (
             f"StackCubeConfig(cube_a_colors={self.cube_a_colors!r}, "
-            f"cube_b_colors={self.cube_b_colors!r}, cube_half_size={self.cube_half_size})"
+            f"cube_b_colors={self.cube_b_colors!r}, cube_half_size={self.cube_half_size}, "
+            f"n_distractors={self.n_distractors})"
         )
 
     @property

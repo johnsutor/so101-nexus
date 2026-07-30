@@ -5,6 +5,11 @@ movable cube) and cube B (the stacking base). Colors for both are resampled
 every reset via ``model.geom_rgba`` -- the same per-geom recolor trick
 ``PickAndPlaceEnv`` uses for its goal disc -- so both cubes vary color
 independently and per episode without rebuilding the model.
+
+When ``StackCubeConfig.n_distractors > 0``, one freejoint slot per pool entry in
+``StackCubeConfig.distractors`` is compiled as well; each reset activates
+``n_distractors`` of them and parks the remainder off-world with collisions
+disabled, matching ``PickEnv``'s slot machinery.
 """
 
 from __future__ import annotations
@@ -15,13 +20,21 @@ from typing import ClassVar, cast
 import mujoco
 import numpy as np
 
-from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
+from so101_nexus import (
+    ensure_ycb_assets,
+    get_so101_mujoco_model_dir,
+    get_so101_mujoco_model_path,
+)
 from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
 from so101_nexus.constants import COLOR_MAP, ColorName, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.mujoco.spawn_utils import place_freejoint_slot, sample_separated_positions
+from so101_nexus.mujoco.spawn_utils import (
+    hide_freejoint_slot,
+    place_freejoint_slot,
+    sample_separated_positions,
+)
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject
+from so101_nexus.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
     object_static_ok,
@@ -95,9 +108,20 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
             if isinstance(config.ground_colors, str)
             else config.ground_colors[0]
         )
+        # Distractor slots are only compiled when requested, so the default
+        # two-cube scene stays identical.
+        distractor_pool = list(config.distractors) if config.n_distractors else []
+        for obj in distractor_pool:
+            if isinstance(obj, YCBObject):
+                ensure_ycb_assets(obj.model_id)
+        scene_objects: list[SceneObject] = [cube_a_obj, cube_b_obj, *distractor_pool]
+        slot_names = ["cube_a", "cube_b"] + [
+            f"distractor_slot_{i}" for i in range(len(distractor_pool))
+        ]
+
         xml_string = build_object_scene_xml(
-            [cube_a_obj, cube_b_obj],
-            ["cube_a", "cube_b"],
+            scene_objects,
+            slot_names,
             COLOR_MAP[ground_name],
             option_xml=MUJOCO_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
@@ -109,10 +133,10 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        slots: list[ObjectSlot] = extract_object_slots(
-            self.model, ["cube_a", "cube_b"], [cube_a_obj, cube_b_obj]
-        )
-        self._slot_a, self._slot_b = slots
+        slots: list[ObjectSlot] = extract_object_slots(self.model, slot_names, scene_objects)
+        self._slot_a, self._slot_b = slots[0], slots[1]
+        self._distractor_slots = slots[2:]
+        self._n_distractors = config.n_distractors
         # Grasp detection always targets cube A; cube B is never picked up.
         self._obj_geom_id = self._slot_a.geom_id
 
@@ -289,6 +313,24 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_reach_progress = place_reach_potential(tcp_to_obj_dist, is_stacked, scale=scale)
         self._prev_grasp_progress = place_grasp_potential(is_grasped, is_stacked)
 
+    def _sample_distractor_slots(self, rng: np.random.Generator) -> list[ObjectSlot]:
+        """Activate ``config.n_distractors`` pool slots and park the rest off-world."""
+        if not self._distractor_slots:
+            return []
+        for slot in self._distractor_slots:
+            self.model.geom_contype[slot.geom_id] = 1
+            self.model.geom_conaffinity[slot.geom_id] = 1
+        chosen = {
+            int(i)
+            for i in rng.choice(
+                len(self._distractor_slots), size=self._n_distractors, replace=False
+            )
+        }
+        for idx, slot in enumerate(self._distractor_slots):
+            if idx not in chosen:
+                hide_freejoint_slot(self.model, self.data, slot)
+        return [self._distractor_slots[idx] for idx in sorted(chosen)]
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
@@ -300,19 +342,19 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self.model.geom_rgba[self._slot_a.geom_id] = COLOR_MAP[self.cube_a_color_name]
         self.model.geom_rgba[self._slot_b.geom_id] = COLOR_MAP[self.cube_b_color_name]
 
-        radii = [self._slot_a.bounding_radius, self._slot_b.bounding_radius]
+        active_slots = [self._slot_a, self._slot_b, *self._sample_distractor_slots(rng)]
         positions = sample_separated_positions(
             rng,
-            2,
+            len(active_slots),
             min_r,
             max_r,
             angle_half,
             self.config.min_cube_separation,
-            radii,
+            [slot.bounding_radius for slot in active_slots],
             center=self.config.spawn_center,
         )
-        place_freejoint_slot(self.model, self.data, self._slot_a, rng, positions[0])
-        place_freejoint_slot(self.model, self.data, self._slot_b, rng, positions[1])
+        for slot, xy in zip(active_slots, positions, strict=True):
+            place_freejoint_slot(self.model, self.data, slot, rng, xy)
 
         self.task_description = describe_stack_target(
             CubeObject(color=cast("ColorName", self.cube_a_color_name)),

@@ -351,3 +351,67 @@ def test_stack_cube_reward_nonnegative_along_ideal_trajectory():
         assert infos["release"]["reward_components"]["grasping"] == pytest.approx(0.0, abs=1e-9)
     finally:
         env.close()
+
+
+def test_stack_cube_default_scene_compiles_no_distractor_slots():
+    """n_distractors=0 keeps the two-cube scene: no extra freejoint bodies."""
+    env = gym.make("MuJoCoStackCube-v1")
+    try:
+        env.reset(seed=0)
+        assert env.unwrapped._distractor_slots == []  # type: ignore[attr-defined]
+    finally:
+        env.close()
+
+
+def test_stack_cube_distractors_active_on_table_and_separated():
+    """``n_distractors`` pool slots rest in the spawn annulus, clear of the cubes;
+    the unchosen pool slots are parked below the floor with collisions off."""
+    cfg = StackCubeConfig(n_distractors=2)
+    env = gym.make("MuJoCoStackCube-v1", config=cfg)
+    try:
+        cx, cy = cfg.spawn_center
+        for seed in range(5):
+            env.reset(seed=seed)
+            inner = env.unwrapped
+            pool = inner._distractor_slots  # type: ignore[attr-defined]
+            assert len(pool) == len(cfg.distractors)
+            active = [s for s in pool if inner.data.qpos[s.qpos_addr + 2] > 0.0]
+            hidden = [s for s in pool if inner.data.qpos[s.qpos_addr + 2] <= 0.0]
+            assert len(active) == cfg.n_distractors
+            for slot in hidden:
+                assert inner.model.geom_contype[slot.geom_id] == 0
+                assert inner.model.geom_conaffinity[slot.geom_id] == 0
+
+            placed = [
+                (inner._get_cube_a_pose()[:2], inner._slot_a.bounding_radius),  # type: ignore[attr-defined]
+                (inner._get_cube_b_pose()[:2], inner._slot_b.bounding_radius),  # type: ignore[attr-defined]
+            ]
+            for slot in active:
+                # A slot parked on an earlier reset must regain collisions when
+                # it becomes active again.
+                assert inner.model.geom_contype[slot.geom_id] == 1
+                assert inner.model.geom_conaffinity[slot.geom_id] == 1
+                xy = inner.data.qpos[slot.qpos_addr : slot.qpos_addr + 2]
+                r = float(np.hypot(xy[0] - cx, xy[1] - cy))
+                assert cfg.spawn_min_radius - 1e-6 <= r <= cfg.spawn_max_radius + 1e-6
+                placed.append((xy, slot.bounding_radius))
+            for i, (xy_i, r_i) in enumerate(placed):
+                for xy_j, r_j in placed[i + 1 :]:
+                    dist = float(np.linalg.norm(np.asarray(xy_i) - np.asarray(xy_j)))
+                    assert dist >= cfg.min_cube_separation + r_i + r_j - 1e-6
+    finally:
+        env.close()
+
+
+def test_stack_cube_distractors_do_not_change_obs_or_task():
+    """Distractors are scene clutter only: obs width and task string are unchanged."""
+    env = gym.make("MuJoCoStackCube-v1", config=StackCubeConfig(n_distractors=3))
+    try:
+        obs, _ = env.reset(seed=1)
+        assert obs.shape == (36,)
+        assert env.unwrapped.task_description.startswith("Stack the red cube")  # type: ignore[attr-defined]
+        for _ in range(5):
+            _, reward, _, _, _ = env.step(env.action_space.sample())
+            assert np.isfinite(reward)
+    finally:
+        env.close()

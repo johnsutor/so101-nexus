@@ -81,6 +81,13 @@ def test_apply_config_overrides_updates_pick_objects_and_distractors() -> None:
     assert cfg.objects[1].model_id == "011_banana"
 
 
+def test_apply_config_overrides_updates_stack_cube_distractors() -> None:
+    cfg = apply_config_overrides(StackCubeConfig(), TeleopConfigOverrides(n_distractors=2))
+
+    assert isinstance(cfg, StackCubeConfig)
+    assert cfg.n_distractors == 2
+
+
 def test_apply_config_overrides_accepts_parsed_mesh_objects() -> None:
     mesh = MeshObject(
         collision_mesh_path="/tmp/collision.stl",
