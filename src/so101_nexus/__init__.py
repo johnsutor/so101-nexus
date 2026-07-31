@@ -91,6 +91,7 @@ from so101_nexus.observations import (
     TargetOffset,
     TargetPosition,
     WristCamera,
+    component_slice,
     observations_from_feature_names,
     privileged_state_feature_names,
 )
@@ -206,6 +207,7 @@ __all__ = [
     "YCBObject",
     "YcbModelId",
     "__version__",
+    "component_slice",
     "dataset_row_to_sim_qpos",
     "describe_pick_target",
     "direction_to_object",

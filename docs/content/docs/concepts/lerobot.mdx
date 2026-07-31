@@ -12,6 +12,54 @@ SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosyst
 - **Hardware drivers.** SO leader and follower configs come straight from `lerobot.teleoperators.so_leader` and `lerobot.robots.so_follower`. We do not wrap or re-export them.
 - **Datasets.** Recordings use `LeRobotDataset` directly. The Gradio teleop recorder and the LeRobot CLI adapter both use the simulated SO follower conventions for action/state units and camera keys.
 
+## Loading the environments from the Hub (EnvHub)
+
+Every registered environment is published as a [LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub) package at [johnsutor/so101-nexus-envs](https://huggingface.co/johnsutor/so101-nexus-envs), so a LeRobot user reaches them with one call and no import of their own. The Hub files are shims over this library, so `pip install so101-nexus` remains the prerequisite:
+
+```python
+from lerobot.envs.factory import make_env
+
+envs = make_env(
+    "johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
+    n_envs=4,
+    trust_remote_code=True,
+)
+env = envs["MuJoCoPickLift-v1"][0]
+```
+
+The Hub repository holds entry points only: one file per environment id under `envs/`, plus a root `env.py` serving `MuJoCoPickLift-v1`. Each file is a shim over `so101_nexus.envhub.make_env`, so the physics and reward code is whichever release you have installed rather than a copy living on the Hub. `requirements.txt` records the minimum version those shims need; LeRobot downloads only the named `.py` and does not install it for you. Publish an update with `python scripts/publish_envhub.py`.
+
+Call `so101_nexus.envhub.make_env` directly when you already depend on this library:
+
+```python
+from so101_nexus.envhub import make_env
+
+envs = make_env(
+    n_envs=4,
+    env_id="MuJoCoStackCube-v1",
+    obs_type="pixels_agent_pos",
+    observation_width=224,
+    observation_height=224,
+    control_mode="pd_joint_delta_pos",
+)
+```
+
+It returns LeRobot's `{env_id: {0: vector_env}}` mapping. Observations use the gym-side keys `lerobot.envs.utils.preprocess_observation` consumes, deliberately not the `observation.state` / `observation.images.*` keys that [`LeRobotEnvWrapper`](#using-lerobot-processors-with-so101-nexus-envs) produces further down this page. LeRobot converts the former into the latter itself, so an environment published for LeRobot emits these:
+
+| Key                 | Contents                                     | obs_type            |
+| ------------------- | -------------------------------------------- | ------------------- |
+| `agent_pos`         | Six joint positions, radians                  | both                |
+| `environment_state` | Full state vector                             | `state`             |
+| `pixels`            | `{"wrist": ..., "overhead": ...}`, HWC uint8 | `pixels_agent_pos`  |
+
+Units are the simulator's own, matching the gym action space. A recorded dataset is in LeRobot motor units instead (see the decoding section below); convert with `so101_nexus.dataset_row_to_sim_qpos` before replaying a recorded row against one of these envs.
+
+`pixels_agent_pos` withholds `environment_state` on purpose: the full task state stays in `info["privileged_state"]`, the privileged half of the asymmetric actor-critic split, so a pixels policy cannot read it out of its observation. The camera config keeps the task's default state components precisely so that channel stays intact.
+
+LeRobot's rollout reads two things off the environment itself: `add_envs_task` pulls the per-episode instruction from each sub-environment's `task_description`, and the rollout pulls per-episode success from `info["final_info"]["is_success"]`, which Gymnasium fills on the terminating step.
+
+Warp ids work the same way, with `device` selecting the simulator device. Their worlds are batched inside one process, so `n_envs` becomes the world count and `use_async_envs` is ignored. The adapter copies observations to host NumPy every step because that is LeRobot's contract; keep the batch on the GPU with `gymnasium.make_vec` when you are training rather than evaluating. On the MuJoCo ids `use_async_envs` is honored, but LeRobot's rollout indexes `VectorEnv.envs`, which Gymnasium's `AsyncVectorEnv` does not expose, so leave it off there too whenever LeRobot drives the environment.
+
 ## Recording with `lerobot-record`
 
 Install SO101-Nexus with the `teleop` extra so `lerobot[feetech]` is available, then load the adapter explicitly with LeRobot's plugin import hook:

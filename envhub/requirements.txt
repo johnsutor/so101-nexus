@@ -1,0 +1,4 @@
+# so101_nexus.envhub ships from 0.5.0 onwards.
+# The Warp environments (Warp*-v1) additionally need the warp extra:
+#   pip install "so101-nexus[warp]>=0.5.0"
+so101-nexus>=0.5.0
