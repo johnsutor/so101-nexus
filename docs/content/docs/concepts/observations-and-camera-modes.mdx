@@ -15,10 +15,12 @@ State components produce fixed-size slices of the observation vector.
 | --- | --- | --- |
 | `JointPositions` | 6 | Current angle of each robot joint |
 | `JointVelocities` | 6 | Angular velocity of each robot joint (rad/s) |
+| `JointEfforts` | 6 | Actuator force on each robot joint (N*m) |
+| `GripperContactForce` | 3 | World-frame resultant contact force on the two fingers (N) |
 | `EndEffectorPose` | 7 | TCP position (3) + quaternion orientation (4) |
-| `TargetOffset` | 3 | Vector from gripper tip to goal position |
+| `TargetOffset` | 3 | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
 | `GazeDirection` | 3 | Unit vector from gripper toward the target object |
-| `GraspState` | 1 | Binary grasp flag (1.0 = grasping, 0.0 = not) |
+| `GraspState` | 1 | Binary grasp flag (1.0 = grasping, 0.0 = not); requires two-sided contact with opposing normals |
 | `ObjectPose` | 7 | Target object position (3) + quaternion orientation (4) |
 | `ObjectOffset` | 3 | Vector from gripper tip to target object |
 | `TargetPosition` | 3 | Absolute goal position (x, y, z) |

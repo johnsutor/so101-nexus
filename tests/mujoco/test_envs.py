@@ -307,6 +307,8 @@ def test_pick_and_place_info_keys_exact():
         "lift_height",
         "success",
         "tcp_to_obj_dist",
+        "target_index",
+        "target_object",
         "task_potential",
     }
     env = gym.make("MuJoCoPickAndPlace-v1")
@@ -1621,6 +1623,8 @@ def test_pick_and_place_info_keys_with_object_pool():
         "lift_height",
         "success",
         "tcp_to_obj_dist",
+        "target_index",
+        "target_object",
         "task_potential",
     }
     try:

@@ -67,6 +67,19 @@ class CubeObject(SceneObject):
 class YCBObject(SceneObject):
     """YCB dataset object identified by model_id (e.g. '003_cracker_box').
 
+    The visual mesh is the original YCB scan, but the **collision geometry is a
+    single convex hull** of it (see ``ensure_ycb_assets``). Physics therefore
+    sees the hull, not the shape you see rendered, and the two differ a lot for
+    concave or elongated models: a fork is a wedge, a banana is a solid crescent
+    hull. Two consequences for manipulation tasks:
+
+    - The feature that makes an object graspable in reality (a fork's handle, a
+      banana's taper) is buried inside the hull, so the fingers never touch it.
+    - A model whose hull is wider than the gripper can close on cannot be
+      grasped at all, no matter how good the policy is. Measure a candidate
+      before building a task around it: ``get_ycb_collision_mesh(model_id)``
+      returns the hull that physics uses.
+
     Parameters
     ----------
     model_id : str

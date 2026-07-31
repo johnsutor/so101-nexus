@@ -215,14 +215,33 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     def _target_bounding_radius(self) -> torch.Tensor:
         return self._slot_bradius[self._target_slot]
 
-    def _select_active_slots(self, n: int) -> torch.Tensor:
-        """Return ``(n, n_active)`` distinct pool indices (col 0 = target)."""
+    def _select_active_slots(self, idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return ``(n, n_active)`` distinct pool indices and the ``(n,)`` target.
+
+        The active set is one seeded draw, unchanged by
+        ``reset(options={"target_index": k})``. Worlds whose pin is already in
+        the draw only relabel their target, so the placements stay byte-identical
+        and the pair of episodes differs solely in which object the task names -
+        the counterfactual a language-conditioned policy needs to prove it reads
+        the instruction. A pin outside the draw displaces column 0 instead, which
+        does move objects.
+        """
+        n = int(idx.numel())
         if self._n_active == 1:
-            return torch.randint(
+            sel = torch.randint(
                 0, self._n_pool, (n, 1), generator=self._generator, device=self.device
             )
-        perm = torch.rand(n, self._n_pool, generator=self._generator, device=self.device)
-        return perm.argsort(dim=1)[:, : self._n_active]
+        else:
+            perm = torch.rand(n, self._n_pool, generator=self._generator, device=self.device)
+            sel = perm.argsort(dim=1)[:, : self._n_active]
+        override = self._target_index_override
+        if override is None:
+            return sel, sel[:, 0]
+        forced = override[idx]
+        present = (sel == forced[:, None]).any(dim=1)
+        sel = sel.clone()
+        sel[:, 0] = torch.where(present, sel[:, 0], forced)
+        return sel, forced
 
     def _hide_all_slots(self, idx: torch.Tensor) -> None:
         """Park every slot at its hidden resting pose for the reset worlds.
@@ -255,9 +274,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             )
             self.qpos[rows, base[:, None] + 3 + torch.arange(4, device=self.device)] = quat
 
-    def _set_target_tracking(self, idx: torch.Tensor, sel: torch.Tensor) -> None:
-        """Record the rank-0 slot as the per-world target and update descriptions."""
-        target = sel[:, 0]
+    def _set_target_tracking(self, idx: torch.Tensor, target: torch.Tensor) -> None:
+        """Record the per-world target slot and refresh its task description."""
         self._target_slot[idx] = target
         obj_geom = self._obj_geom
         assert obj_geom is not None  # set to a tensor in _build_slot_model
@@ -267,7 +285,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._initial_obj_z[idx] = self._slot_spawn_z[target]
         for i in range(int(idx.numel())):
             self.task_descriptions[int(idx[i])] = self._describe_target(
-                self._slot_objs[int(sel[i, 0])]
+                self._slot_objs[int(target[i])]
             )
 
     def _task_reset(self, mask: torch.Tensor) -> None:
@@ -275,7 +293,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         n = int(idx.numel())
         if n == 0:
             return
-        sel = self._select_active_slots(n)  # (n, n_active)
+        sel, target = self._select_active_slots(idx)  # (n, n_active), (n,)
         self._hide_all_slots(idx)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
@@ -289,7 +307,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             self.config.spawn_center,
         )
         self._place_active_slots(idx, sel, positions)
-        self._set_target_tracking(idx, sel)
+        self._set_target_tracking(idx, target)
 
     def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:
         idx = mask.nonzero(as_tuple=True)[0]
@@ -354,5 +372,6 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             "lift_height": lift_height,
             "tcp_to_obj_dist": tcp_to_obj,
             "success": success,
+            "target_index": self._target_slot.clone(),
         }
         return reward.to(torch.float32), success, info

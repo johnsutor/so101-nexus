@@ -20,6 +20,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
     EE_IK_ITERATIONS,
@@ -32,6 +33,8 @@ from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
     GraspState,
+    GripperContactForce,
+    JointEfforts,
     JointPositions,
     JointVelocities,
     ObjectOffset,
@@ -90,6 +93,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     data: mujoco.MjData
     config: EnvironmentConfig
     _obj_geom_id: int
+    # Options dict of the current episode's reset(), for _task_reset to read.
+    _reset_options: dict[str, Any] = {}
     action_space: spaces.Box
     observation_space: spaces.Space
     _wrist_renderer: mujoco.Renderer | None
@@ -492,17 +497,24 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return np.concatenate([q, [gripper]])
 
     def _is_grasping(self) -> float:
-        """Return 1.0 if the gripper and jaw are both in contact with the target object.
+        """Return 1.0 when the two finger sets pinch the target object.
 
-        Uses ``config.robot.grasp_force_threshold`` to filter low-force contacts.
+        Both finger sets must contact the target with normal force at or above
+        ``config.robot.grasp_force_threshold``, and the force-weighted mean
+        contact normals of the two sides must oppose each other by at least
+        ``config.robot.grasp_opposing_normal_threshold`` (see
+        ``so101_nexus.grasp.opposing_normals_ok``). The opposition term is what
+        rejects a straddle: an object too wide for the jaw to close on is
+        touched by both finger sets from the same side while it rests on the
+        table, which satisfies bilateral contact but bears no load.
 
         Returns
         -------
         float
-            1.0 when a two-sided grasp is detected, 0.0 otherwise.
+            1.0 when a pinching two-sided grasp is detected, 0.0 otherwise.
         """
-        gripper_contact = False
-        jaw_contact = False
+        gripper_normal = np.zeros(3)
+        jaw_normal = np.zeros(3)
 
         force_buf = np.zeros(6)
         for i in range(self.data.ncon):
@@ -514,17 +526,33 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 continue
 
             other = g2 if g1 == self._obj_geom_id else g1
+            if other in self._gripper_geom_ids:
+                accum = gripper_normal
+            elif other in self._jaw_geom_ids:
+                accum = jaw_normal
+            else:
+                continue
 
             mujoco.mj_contactForce(self.model, self.data, i, force_buf)
             normal_force = abs(force_buf[0])
+            if normal_force < self.config.robot.grasp_force_threshold:
+                continue
 
-            if normal_force >= self.config.robot.grasp_force_threshold:
-                if other in self._gripper_geom_ids:
-                    gripper_contact = True
-                if other in self._jaw_geom_ids:
-                    jaw_contact = True
+            # contact.frame's first row is the normal pointing from geom1 to
+            # geom2; flip it when the object is geom1 so it points into the
+            # object for both orderings.
+            normal = contact.frame[:3] if g2 == self._obj_geom_id else -contact.frame[:3]
+            accum += normal_force * normal
 
-        return 1.0 if (gripper_contact and jaw_contact) else 0.0
+        if not (gripper_normal.any() and jaw_normal.any()):
+            return 0.0
+        return float(
+            opposing_normals_ok(
+                gripper_normal,
+                jaw_normal,
+                threshold=self.config.robot.grasp_opposing_normal_threshold,
+            )
+        )
 
     def _is_robot_static(self) -> bool:
         """Return True if all arm joints are below the static velocity threshold.
@@ -553,18 +581,54 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """Return the current joint velocities (rad/s) for all controlled joints."""
         return self.data.qvel[self._qvel_addrs]
 
+    def _get_current_qfrc_actuator(self) -> np.ndarray:
+        """Return the actuator generalized force (N*m) for all controlled joints."""
+        return self.data.qfrc_actuator[self._qvel_addrs]
+
+    def _get_gripper_contact_force(self) -> np.ndarray:
+        """Return the world-frame resultant contact force applied to the fingers.
+
+        Sums every contact involving a finger contact geom, with the sign chosen
+        so the result is the force acting *on* the gripper. Unlike
+        ``_is_grasping`` this needs no target object, so primitive envs can use
+        it too.
+        """
+        total = np.zeros(3)
+        force_buf = np.zeros(6)
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            g1, g2 = contact.geom1, contact.geom2
+            g1_finger = g1 in self._gripper_geom_ids or g1 in self._jaw_geom_ids
+            g2_finger = g2 in self._gripper_geom_ids or g2 in self._jaw_geom_ids
+            if g1_finger == g2_finger:
+                continue  # neither side is a finger, or a finger touching itself
+            mujoco.mj_contactForce(self.model, self.data, i, force_buf)
+            # mj_contactForce reports the force on geom2 in the contact frame,
+            # whose rows are the normal and the two tangents.
+            world = contact.frame.reshape(3, 3).T @ force_buf[:3]
+            total += world if g2_finger else -world
+        return total
+
+    #: Robot-generic components the base reads directly, by reader method name.
+    #: Everything else is either a camera or a task component routed through
+    #: ``_get_component_data``.
+    _BASE_COMPONENT_READERS: dict[type, str] = {
+        JointPositions: "_get_current_qpos",
+        JointVelocities: "_get_current_qvel",
+        JointEfforts: "_get_current_qfrc_actuator",
+        GripperContactForce: "_get_gripper_contact_force",
+        EndEffectorPose: "_get_tcp_pose",
+    }
+
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
         parts: list[np.ndarray] = []
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         for comp in self.config.observations:
-            if isinstance(comp, JointPositions):
-                parts.append(self._get_current_qpos())
-            elif isinstance(comp, JointVelocities):
-                parts.append(self._get_current_qvel())
-            elif isinstance(comp, EndEffectorPose):
-                parts.append(self._get_tcp_pose())
+            reader = self._BASE_COMPONENT_READERS.get(type(comp))
+            if reader is not None:
+                parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
                 parts.append(np.array([self._is_grasping()]))
             elif isinstance(
@@ -577,6 +641,23 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             else:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
         return np.concatenate(parts).astype(np.float32, copy=False)
+
+    def _resolve_target_index(self, n_pool: int) -> int | None:
+        """Return this reset's ``options['target_index']`` override, or ``None``.
+
+        Tasks that pick a target object out of a pool call this from
+        ``_task_reset`` so a caller can hold the scene layout fixed and vary only
+        the target, which one seeded RNG draw cannot express.
+        """
+        raw = self._reset_options.get("target_index")
+        if raw is None:
+            return None
+        index = int(raw)
+        if not 0 <= index < n_pool:
+            raise ValueError(
+                f"target_index must be in [0, {n_pool}) for this object pool, got {raw!r}"
+            )
+        return index
 
     def _get_component_data(self, component: object) -> np.ndarray:
         """Return data for a task-specific observation component.
@@ -591,8 +672,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
-        """Reset the environment and return the initial observation and info."""
+        """Reset the environment and return the initial observation and info.
+
+        Recognised ``options`` keys: ``init_qpos`` (explicit reset joint angles)
+        and any task-specific key a subclass reads from ``_reset_options``
+        during ``_task_reset`` (``target_index`` on the pick tasks).
+        """
         super().reset(seed=seed, options=options)
+        self._reset_options = {} if options is None else dict(options)
         mujoco.mj_resetData(self.model, self.data)
 
         init_qpos: np.ndarray | None = None

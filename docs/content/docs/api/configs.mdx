@@ -265,10 +265,12 @@ Observation components are lightweight descriptor classes passed via the `observ
 |-------|------|-------------|
 | `JointPositions()` | 6 | Current joint angles |
 | `JointVelocities()` | 6 | Current joint angular velocities (rad/s) |
+| `JointEfforts()` | 6 | Actuator force on each joint (N*m) |
+| `GripperContactForce()` | 3 | World-frame resultant contact force on the fingers (N) |
 | `EndEffectorPose()` | 7 | TCP position + quaternion |
-| `TargetOffset()` | 3 | Vector from gripper to goal |
+| `TargetOffset()` | 3 | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
 | `GazeDirection()` | 3 | Unit vector toward target |
-| `GraspState()` | 1 | Binary grasp flag |
+| `GraspState()` | 1 | Binary grasp flag (two-sided, opposing-normal contact) |
 | `ObjectPose()` | 7 | Object position + quaternion |
 | `ObjectOffset()` | 3 | Vector from gripper to object |
 | `TargetPosition()` | 3 | Absolute goal position |

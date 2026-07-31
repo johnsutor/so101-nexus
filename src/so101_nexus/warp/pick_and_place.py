@@ -180,7 +180,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         n = int(idx.numel())
         if n == 0:
             return
-        sel = self._select_active_slots(n)  # (n, 1)
+        sel, target = self._select_active_slots(idx)  # (n, 1), (n,)
         self._hide_all_slots(idx)
 
         cfg = self.config
@@ -224,7 +224,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         self._mocap_pos[idx, self._target_mocap_id, 1] = disc_xy[:, 1]
         self._mocap_pos[idx, self._target_mocap_id, 2] = _TARGET_Z
         self._place_active_slots(idx, sel, obj_xy[:, None, :])
-        self._set_target_tracking(idx, sel)
+        self._set_target_tracking(idx, target)
 
     def _get_component_data(self, component: object) -> torch.Tensor:
         if isinstance(component, TargetPosition):
@@ -291,5 +291,6 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             "lift_height": obj_pos[:, 2] - self._initial_obj_z,
             "success": success,
             "tcp_to_obj_dist": tcp_to_obj,
+            "target_index": self._target_slot.clone(),
         }
         return reward.to(torch.float32), success, info

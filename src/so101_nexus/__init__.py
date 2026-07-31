@@ -49,6 +49,7 @@ from so101_nexus.constants import (
     ColorName,
     sample_color,
 )
+from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
     EE_DELTA_ACTION_SCALE,
@@ -71,6 +72,8 @@ from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
     GraspState,
+    GripperContactForce,
+    JointEfforts,
     JointPositions,
     JointVelocities,
     ObjectOffset,
@@ -163,6 +166,8 @@ __all__ = [
     "EnvironmentConfig",
     "GazeDirection",
     "GraspState",
+    "GripperContactForce",
+    "JointEfforts",
     "JointPositions",
     "JointVelocities",
     "LookAtConfig",
@@ -203,6 +208,7 @@ __all__ = [
     "get_ycb_texture_file",
     "get_ycb_visual_mesh",
     "lift_progress",
+    "opposing_normals_ok",
     "orientation_progress",
     "privileged_state_feature_names",
     "reach_progress",

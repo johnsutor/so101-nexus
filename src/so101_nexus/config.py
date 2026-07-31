@@ -285,7 +285,17 @@ class RobotConfig:
         a ``Pose`` instance is used directly, ``None`` uses the legacy
         ``rest_qpos_deg`` + noise path.
     grasp_force_threshold : float
-        Force threshold for grasp detection.
+        Minimum contact normal force (N) for a finger contact to count toward
+        grasp detection.
+    grasp_opposing_normal_threshold : float
+        How strongly the two finger sets must push against each other for
+        ``GraspState`` to fire. The force-weighted mean contact normal is
+        computed per finger set, oriented into the object, and the grasp
+        requires ``dot(n_gripper, n_jaw) <= -grasp_opposing_normal_threshold``.
+        At the default 0.3 the two sides must be more than ~107 degrees apart,
+        which admits a pinch and rejects two same-side pushes on an object too
+        wide for the jaw to close on. ``-1.0`` disables the test and restores
+        the pre-0.4.14 bilateral-contact-only predicate.
     static_vel_threshold : float
         Velocity threshold for static detection.
     ee_orientation_weight : float
@@ -306,18 +316,25 @@ class RobotConfig:
         rest_qpos_deg: tuple[float, ...] = (0.0, -90.0, 90.0, 37.8152144786, 0.0, -63.0253574644),
         init_pose: str | Pose | None = None,
         grasp_force_threshold: float = 0.5,
+        grasp_opposing_normal_threshold: float = 0.3,
         static_vel_threshold: float = 0.2,
         ee_orientation_weight: float = EE_ORIENTATION_WEIGHT,
         ee_delta_action_scale: tuple[float, ...] = EE_DELTA_ACTION_SCALE,
     ) -> None:
         self.rest_qpos_deg = rest_qpos_deg
         self.grasp_force_threshold = grasp_force_threshold
+        self.grasp_opposing_normal_threshold = grasp_opposing_normal_threshold
         self.static_vel_threshold = static_vel_threshold
         self.ee_orientation_weight = ee_orientation_weight
         self.ee_delta_action_scale = tuple(float(v) for v in ee_delta_action_scale)
         if len(self.rest_qpos_deg) != 6:
             raise ValueError(
                 f"rest_qpos_deg must have exactly 6 elements, got {len(self.rest_qpos_deg)}"
+            )
+        if not -1.0 <= self.grasp_opposing_normal_threshold <= 1.0:
+            raise ValueError(
+                "grasp_opposing_normal_threshold must be in [-1, 1], got "
+                f"{self.grasp_opposing_normal_threshold}"
             )
         if not 0.0 < self.ee_orientation_weight <= 1.0:
             raise ValueError(
@@ -360,6 +377,7 @@ class RobotConfig:
         return (
             f"RobotConfig(init_pose={self.init_pose!r}, "
             f"grasp_force_threshold={self.grasp_force_threshold}, "
+            f"grasp_opposing_normal_threshold={self.grasp_opposing_normal_threshold}, "
             f"static_vel_threshold={self.static_vel_threshold}, "
             f"ee_orientation_weight={self.ee_orientation_weight})"
         )
@@ -780,7 +798,14 @@ class EnvironmentConfig:
     spawn_angle_half_range_deg : float
         Half angular range for spawn angle in degrees.
     obs_mode : ObsMode
-        Observation mode (state or visual).
+        Observation mode. ``"state"`` returns the flat state vector built from
+        ``observations``. ``"visual"`` returns a dict of camera images plus a
+        ``"state"`` entry holding only the joint positions, and moves the full
+        non-camera vector to ``info["privileged_state"]`` - the
+        asymmetric-actor-critic split, where the actor sees pixels and the
+        critic sees ground truth. Index ``info["privileged_state"]`` by name via
+        ``so101_nexus.privileged_state_feature_names(config.observations)``;
+        positional indexing into it breaks whenever ``observations`` changes.
     robot_colors : ColorConfig
         Robot arm color(s).
     robot_init_qpos_noise : float
@@ -980,6 +1005,9 @@ class PickConfig(EnvironmentConfig):
         Pool of scene objects to sample from. Accepts a single ``SceneObject``,
         a list of ``SceneObject``, or ``None`` (defaults to ``[CubeObject()]``).
         A single object is automatically wrapped in a list.
+        ``YCBObject`` entries collide as a single convex hull of the scan, which
+        makes several YCB models ungraspable regardless of the policy; read
+        ``YCBObject``'s docstring before putting one in a grasping task's pool.
     n_distractors : int
         Number of distractor objects to place. 0 means single-object scene.
     lift_threshold : float

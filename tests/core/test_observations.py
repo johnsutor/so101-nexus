@@ -8,6 +8,8 @@ from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
     GraspState,
+    GripperContactForce,
+    JointEfforts,
     JointPositions,
     JointVelocities,
     ObjectOffset,
@@ -40,6 +42,8 @@ class TestStateComponents:
         [
             (JointPositions, "joint_positions", 6),
             (JointVelocities, "joint_velocities", 6),
+            (JointEfforts, "joint_efforts", 6),
+            (GripperContactForce, "gripper_contact_force", 3),
             (EndEffectorPose, "end_effector_pose", 7),
             (TargetOffset, "target_offset", 3),
             (GazeDirection, "gaze_direction", 3),

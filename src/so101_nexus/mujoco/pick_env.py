@@ -167,6 +167,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             "is_robot_static": self._is_robot_static(),
             "lift_height": lift_height,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
+            "target_index": self._target_slot_idx,
+            "target_object": repr(self._slots[self._target_slot_idx].obj),
         }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state
@@ -193,6 +195,27 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_reach_progress = reach_progress(tcp_to_obj_dist, scale=scale)
         self._prev_grasp_progress = self._is_grasping()
 
+    def _choose_slots(
+        self, rng: np.random.Generator, n_pool: int, n_slots: int
+    ) -> tuple[list[int], int]:
+        """Return the active pool indices and which of them is the target.
+
+        The active set is one seeded draw, unchanged by
+        ``reset(options={"target_index": k})``. When slot ``k`` is already in
+        that draw the pin only relabels the target, so two resets on the same
+        seed produce byte-identical scenes differing solely in which object the
+        task names - the counterfactual pair a language-conditioned policy needs
+        to prove it reads the instruction. Slot ``k`` outside the draw has to
+        displace rank 0, which does move objects.
+        """
+        chosen = [int(i) for i in rng.choice(n_pool, size=n_slots, replace=False)]
+        target = self._resolve_target_index(n_pool)
+        if target is None:
+            return chosen, chosen[0]
+        if target not in chosen:
+            chosen[0] = target
+        return chosen, target
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
@@ -210,11 +233,10 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             self.model.geom_conaffinity[slot.geom_id] = 1
 
         # Sample n_slots distinct slot indices from the pool without replacement.
-        chosen_indices = list(rng.choice(n_pool, size=n_slots, replace=False))
-        target_pool_idx = int(chosen_indices[0])
+        chosen_indices, target_pool_idx = self._choose_slots(rng, n_pool, n_slots)
         target_obj = self._slots[target_pool_idx].obj
 
-        # The first chosen slot becomes the target; the rest are distractors.
+        # One chosen slot is the target; the rest are distractors.
         self._target_slot_idx = target_pool_idx
         self._obj_geom_id = self._slots[target_pool_idx].geom_id
 

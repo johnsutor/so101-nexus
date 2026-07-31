@@ -80,6 +80,50 @@ class JointVelocities(Observation):
         return 6
 
 
+class JointEfforts(Observation):
+    """Actuator generalized force on each robot joint in N*m (6-dim).
+
+    Reads the simulator's actuator force (MuJoCo ``data.qfrc_actuator``, Warp
+    ``qfrc_actuator``) for the same six controlled joints as
+    :class:`JointPositions`. Under position control the applied force grows with
+    the unrealised tracking error, so this is the channel that tells a policy it
+    is pressing into something it cannot move: a blocked arm commands large
+    effort while :class:`JointVelocities` stays near zero. Without it, "holding
+    a pose" and "jammed against an obstruction" are the same observation.
+
+    On real SO-101 hardware the servos report present load, which is the same
+    quantity up to a gear-ratio scale factor.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "joint_efforts"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 6
+
+
+class GripperContactForce(Observation):
+    """World-frame resultant contact force on the two gripper fingers (3-dim).
+
+    Sums the normal-plus-friction contact force of every contact involving a
+    finger contact geom (the same ``condim == 6`` surfaces :class:`GraspState`
+    keys on), oriented as the force applied *to* the gripper, in newtons. Unlike
+    :class:`GraspState` this is a continuous signal and is defined with no
+    graspable object in the scene, so it also reports collisions with the table
+    or a distractor.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "gripper_contact_force"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 3
+
+
 class EndEffectorPose(Observation):
     """Gripper tip position and orientation in world coordinates (7-dim)."""
 
@@ -93,7 +137,19 @@ class EndEffectorPose(Observation):
 
 
 class TargetOffset(Observation):
-    """3D vector pointing from the gripper tip to the goal position (3-dim)."""
+    """3D vector pointing at the goal position, in the task's own frame (3-dim).
+
+    The reference frame is task-dependent, and it is not the gripper tip
+    everywhere:
+
+    - Manipulation tasks that carry an object to a goal (pick-and-place,
+      stack-cube, both backends) return ``goal - object``, so the vector is
+      object-relative and goes to zero when the object is on the goal.
+    - Tasks with no carried object (move) return ``goal - tcp``.
+
+    Use :class:`ObjectOffset` when you specifically want ``object - tcp``; that
+    one is gripper-relative in every task.
+    """
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -117,7 +173,17 @@ class GazeDirection(Observation):
 
 
 class GraspState(Observation):
-    """Whether the robot is currently holding an object: 1.0 = yes, 0.0 = no (1-dim)."""
+    """Whether the robot is currently holding an object: 1.0 = yes, 0.0 = no (1-dim).
+
+    Contact-based, not force-closure: it fires when both finger sets touch the
+    target above ``RobotConfig.grasp_force_threshold`` *and* the two sides push
+    from opposing directions (see
+    ``RobotConfig.grasp_opposing_normal_threshold``). The opposing-normal term
+    is what separates a pinch from two same-side pushes, which is how an object
+    too wide for the jaw used to register as grasped while resting on the table.
+    It is still not a proof of load bearing: a caged object the fingers only
+    surround loosely can read 1.0 without being liftable.
+    """
 
     @property
     def name(self) -> str:  # noqa: D102

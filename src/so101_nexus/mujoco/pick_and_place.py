@@ -251,6 +251,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             "lift_height": lift_height,
             "success": success,
             "tcp_to_obj_dist": float(np.linalg.norm(obj_pos - tcp_pos)),
+            "target_index": self._target_slot_idx,
+            "target_object": repr(self._slots[self._target_slot_idx].obj),
             "task_potential": self._task_potential(obj_pos, target_pos, is_grasped, is_obj_placed),
         }
         if self._privileged_state is not None:
@@ -307,6 +309,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         )
         self._prev_grasp_progress = place_grasp_potential(is_grasped, is_obj_placed)
 
+    def _choose_target_index(self, rng: np.random.Generator, n_pool: int) -> int:
+        """Return the carried object's pool index, honouring ``target_index``."""
+        override = self._resolve_target_index(n_pool)
+        return int(rng.choice(n_pool)) if override is None else override
+
     def _task_reset(self) -> None:
         rng = self.np_random
         n_pool = len(self._slots)
@@ -317,7 +324,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             self.model.geom_contype[slot.geom_id] = 1
             self.model.geom_conaffinity[slot.geom_id] = 1
 
-        target_idx = int(rng.choice(n_pool))
+        target_idx = self._choose_target_index(rng, n_pool)
         target_slot = self._slots[target_idx]
         target_obj = target_slot.obj
         self._target_slot_idx = target_idx

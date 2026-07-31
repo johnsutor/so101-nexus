@@ -63,10 +63,12 @@ See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual 
 | `Observation` | Abstract base | Base class for all observation components |
 | `JointPositions` | State (6-dim) | Current joint angles |
 | `JointVelocities` | State (6-dim) | Current joint angular velocities (rad/s) |
+| `JointEfforts` | State (6-dim) | Actuator force on each joint (N*m) |
+| `GripperContactForce` | State (3-dim) | World-frame resultant contact force on the fingers (N) |
 | `EndEffectorPose` | State (7-dim) | TCP position + quaternion orientation |
-| `TargetOffset` | State (3-dim) | Vector from gripper to goal |
+| `TargetOffset` | State (3-dim) | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
 | `GazeDirection` | State (3-dim) | Unit vector toward target |
-| `GraspState` | State (1-dim) | Binary grasp flag |
+| `GraspState` | State (1-dim) | Binary grasp flag (two-sided, opposing-normal contact) |
 | `ObjectPose` | State (7-dim) | Object position + quaternion orientation |
 | `ObjectOffset` | State (3-dim) | Vector from gripper to object |
 | `TargetPosition` | State (3-dim) | Absolute goal position |
