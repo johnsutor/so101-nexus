@@ -87,7 +87,8 @@ six as GPU-parallel batched vector environments for large-scale RL. See the
 
 The same environments are published as a
 [LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub) package, so a LeRobot user
-can load them without importing this library:
+reaches them with one call and no import of their own. The Hub files are shims over this
+library, so `pip install so101-nexus` is still the prerequisite:
 
 ```python
 from lerobot.envs.factory import make_env
@@ -97,6 +98,7 @@ envs = make_env(
     n_envs=4,
     trust_remote_code=True,
 )
+env = envs["MuJoCoPickLift-v1"][0]
 ```
 
 ## Why

@@ -93,7 +93,9 @@ def make_env(
         Number of parallel environments.
     use_async_envs
         Use ``AsyncVectorEnv`` instead of ``SyncVectorEnv``. Ignored by the Warp
-        backend, whose environments are natively batched in one process.
+        backend, whose environments are natively batched in one process. LeRobot's
+        own rollout indexes ``VectorEnv.envs``, which Gymnasium's ``AsyncVectorEnv``
+        does not expose, so leave this off when LeRobot drives the environment.
     cfg
         Optional LeRobot ``EnvConfig``. ``task`` selects the environment id,
         ``obs_type`` picks ``"state"`` or ``"pixels_agent_pos"``,
@@ -124,7 +126,9 @@ def make_env(
     env_id = options["env_id"]
     backend = backend_for_env_id(env_id)
     importlib.import_module(f"so101_nexus.{backend}")  # registers the gym ids
-    config = options["config"] or _task_config(env_id, options)
+    config = options["config"]
+    if config is None:
+        config = _task_config(env_id, options)
     if backend == "warp":
         env = _make_warp_env(env_id, n_envs, config, options)
     else:
@@ -154,14 +158,23 @@ def _resolve_options(cfg: Any, overrides: dict[str, Any]) -> dict[str, Any]:
 
 
 def _task_config(env_id: str, options: dict[str, Any]) -> EnvironmentConfig | None:
-    """Return the task config for ``options``, or ``None`` to use the env default."""
+    """Return the task config for ``options``, or ``None`` to use the env default.
+
+    The visual config keeps the task's default state components so
+    ``info["privileged_state"]`` still carries the full ground truth: in
+    ``obs_mode="visual"`` those components are exactly the privileged half of the
+    asymmetric actor-critic split, and the observation itself is unaffected
+    (visual mode's ``state`` entry is the joint positions whatever the list holds).
+    """
     if options["obs_type"] == STATE_OBS_TYPE:
         return None
     width, height = options["observation_width"], options["observation_height"]
-    return _default_config_cls(env_id)(
+    config_cls = _default_config_cls(env_id)
+    defaults = config_cls().observations or []
+    return config_cls(
         obs_mode="visual",
         observations=[
-            JointPositions(),
+            *defaults,
             WristCamera(width=width, height=height),
             OverheadCamera(width=width, height=height),
         ],
@@ -233,6 +246,8 @@ def _joint_positions_slice(observations: Sequence[Any] | None) -> slice | None:
 
 def _adapt_space(space: gym.Space, joint_slice: slice | None) -> gym.spaces.Dict:
     """Return the LeRobot-convention observation space for a SO101-Nexus space."""
+    # A visual-mode env already splits proprioception out: its "state" entry is
+    # the joint positions, so only the flat-vector branch needs joint_slice.
     if isinstance(space, gym.spaces.Dict):
         spaces: dict[str, gym.Space] = {"agent_pos": space["state"]}
         pixels = {
@@ -412,8 +427,8 @@ class WarpEnvHubAdapter(gym.vector.VectorWrapper):
         done = terminated | truncated
         if done.any():
             success = info.get("success")
-            reported = done if success is None else np.asarray(success, dtype=bool) & done
-            info["final_info"] = {"is_success": reported}
+            reported = np.zeros_like(done) if success is None else np.asarray(success, bool)
+            info["final_info"] = {"is_success": reported & done}
         return self._observation(observation), _to_numpy(reward), terminated, truncated, info
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> tuple[Any, ...]:
@@ -425,6 +440,10 @@ class WarpEnvHubAdapter(gym.vector.VectorWrapper):
             return (inner.max_episode_steps,) * self.num_envs
         attribute = getattr(inner, name)
         value = attribute(*args, **kwargs) if callable(attribute) else attribute
+        # A per-world value is already one entry per world; a scalar describes the
+        # whole batch, so it is what every world reports.
+        if not isinstance(value, str) and hasattr(value, "__len__") and len(value) == self.num_envs:
+            return tuple(value)
         return (value,) * self.num_envs
 
     def _observation(self, observation: Any) -> dict[str, Any]:

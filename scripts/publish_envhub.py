@@ -32,8 +32,11 @@ def _check_requirement_pin() -> None:
 
     from so101_nexus import __version__
 
-    pin = re.search(r"^so101-nexus>=(\S+)$", (ENVHUB_DIR / "requirements.txt").read_text(), re.M)
-    if pin and Version(__version__.split("+")[0]) < Version(pin.group(1)):
+    requirements = (ENVHUB_DIR / "requirements.txt").read_text()
+    pin = re.search(r"^so101-nexus\S*\s*>=\s*(\S+)$", requirements, re.M)
+    if pin is None:
+        print(f"warning: no so101-nexus>= pin found in {ENVHUB_DIR / 'requirements.txt'}")
+    elif Version(__version__.split("+")[0]) < Version(pin.group(1)):
         print(
             f"warning: requirements.txt pins so101-nexus>={pin.group(1)} but the installed "
             f"version is {__version__}. Publish after that release."
@@ -44,8 +47,8 @@ def main(args: Args) -> None:
     """Create the repository if needed and upload ``envhub/``."""
     files = sorted(
         path.relative_to(ENVHUB_DIR).as_posix()
-        for path in ENVHUB_DIR.rglob("*.*")
-        if "__pycache__" not in path.parts
+        for path in ENVHUB_DIR.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
     )
     print(f"uploading {len(files)} files from {ENVHUB_DIR} to {args.repo_id}:")
     for name in files:
@@ -64,6 +67,9 @@ def main(args: Args) -> None:
         repo_type="model",
         commit_message=args.commit_message,
         ignore_patterns=IGNORE_PATTERNS,
+        # Mirror the folder: a retired env id must not keep serving a broken
+        # entry point from the Hub after its shim is deleted here.
+        delete_patterns=["*"],
     )
     print(f"published https://huggingface.co/{args.repo_id}")
 

@@ -98,7 +98,7 @@ def test_max_episode_steps_documented_as_make_kwarg_not_config_field() -> None:
     offenders = []
     for path in TEXT_DOCS:
         for lineno, line in enumerate(_read(path).splitlines(), start=1):
-            if "max_episode_steps=" in line and "gym.make" not in line:
+            if "max_episode_steps=" in line and not re.search(r"gym(?:nasium)?\.make", line):
                 offenders.append((str(path.relative_to(ROOT)), lineno, line.strip()))
             if re.match(r"\|\s*`?max_episode_steps", line):
                 offenders.append((str(path.relative_to(ROOT)), lineno, line.strip()))
@@ -185,7 +185,7 @@ def test_docs_reference_only_registered_env_ids() -> None:
     assert registered, "could not parse any registered env ids from backend modules"
 
     offenders: list[tuple[str, str]] = []
-    docs = set(DOCS.rglob("*.mdx")) | {ROOT / "README.md", ROOT / "examples" / "README.md"}
+    docs = set(DOCS.rglob("*.mdx")) | set(TEXT_DOCS)
     pattern = re.compile(r"\b(?:MuJoCo|Warp)[A-Za-z]*-v\d+\b")
     for path in docs:
         for found in pattern.finditer(_read(path)):

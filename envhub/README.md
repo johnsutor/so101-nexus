@@ -64,8 +64,10 @@ observation layouts are versioned and tested with the package.
 
 State dimensions are the default observation layout; they change with the
 `observations` component list. Task semantics are identical across the two
-backends. The MuJoCo backend vectorizes as `n_envs` independent processes or
-threads; the Warp backend runs `n_envs` worlds inside one batched simulator.
+backends. The MuJoCo backend builds `n_envs` independent copies, stepped one
+after another in the calling process by default or in worker processes with
+`use_async_envs=True`; the Warp backend runs `n_envs` worlds inside one batched
+simulator.
 
 ## Observations and actions
 
@@ -78,6 +80,10 @@ threads; the Warp backend runs `n_envs` worlds inside one batched simulator.
 
 - `agent_pos`: `(n_envs, 6)` joint positions, in radians
 - `pixels`: `{"wrist": ..., "overhead": ...}`, HWC uint8 images
+
+`pixels_agent_pos` carries no `environment_state`: the full task state stays in
+`info["privileged_state"]`, the privileged half of the asymmetric actor-critic
+split, so a pixels policy cannot read it out of its observation.
 
 LeRobot's `preprocess_observation` maps these to `observation.state`,
 `observation.environment_state`, and `observation.images.<camera>`. The language
@@ -105,10 +111,14 @@ cfg = HubEnvConfig(hub_path="johnsutor/so101-nexus-envs", task="MuJoCoStackCube-
 envs = make_env(cfg, n_envs=2, trust_remote_code=True)
 ```
 
-`obs_type`, `observation_width`, `observation_height` and `episode_length` are
-read off the config too when it carries them (LeRobot's `LiberoEnv` and
-`IsaaclabArenaEnv` do), as is a free-form `kwargs` dict. For the full option set
-without a config class, call the library entry point directly:
+A file under `envs/` pins its own id, so `task` is ignored when the hub path
+names one; select by `task` through the root `env.py`.
+
+`obs_type`, `observation_width`, `observation_height`, `episode_length` and
+`disable_env_checker` are read off the config too when it carries them
+(LeRobot's `LiberoEnv` carries the first four), as is a free-form `kwargs` dict
+(`IsaaclabArenaEnv` carries one). For the full option set without a config
+class, call the library entry point directly:
 
 ```python
 from so101_nexus.envhub import make_env
@@ -140,6 +150,10 @@ every step. For GPU-resident training loops, use
 `gymnasium.make_vec("WarpPickLift-v1", num_envs=...)` directly. They also seed
 one generator for the whole batch, so a per-world seed list collapses to its
 first entry.
+
+`use_async_envs` is ignored here. On the MuJoCo ids it is honored, but LeRobot's
+own rollout indexes `VectorEnv.envs`, which Gymnasium's `AsyncVectorEnv` does not
+expose, so leave it off whenever LeRobot drives the environment.
 
 ## Links
 
