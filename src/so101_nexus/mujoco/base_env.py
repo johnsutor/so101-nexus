@@ -94,7 +94,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     config: EnvironmentConfig
     _obj_geom_id: int
     # Options dict of the current episode's reset(), for _task_reset to read.
-    _reset_options: dict[str, Any] = {}
+    # Declared, never assigned at class level: a mutable class default would be
+    # shared by every instance the moment someone mutates it in place.
+    _reset_options: dict[str, Any]
+    _target_index_consumed: bool
     action_space: spaces.Box
     observation_space: spaces.Space
     _wrist_renderer: mujoco.Renderer | None
@@ -610,8 +613,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         return total
 
     #: Robot-generic components the base reads directly, by reader method name.
-    #: Everything else is either a camera or a task component routed through
-    #: ``_get_component_data``.
+    #: Resolved through the MRO so a user subclass of a component behaves like
+    #: the component it derives from, matching the ``isinstance`` dispatch used
+    #: for the remaining branches. Everything else is either a camera or a task
+    #: component routed through ``_get_component_data``.
     _BASE_COMPONENT_READERS: dict[type, str] = {
         JointPositions: "_get_current_qpos",
         JointVelocities: "_get_current_qvel",
@@ -626,7 +631,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         for comp in self.config.observations:
-            reader = self._BASE_COMPONENT_READERS.get(type(comp))
+            reader = self._base_component_reader(type(comp))
             if reader is not None:
                 parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
@@ -642,16 +647,28 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 raise ValueError(f"Unsupported observation component: {comp!r}")
         return np.concatenate(parts).astype(np.float32, copy=False)
 
+    @classmethod
+    def _base_component_reader(cls, component_type: type) -> str | None:
+        """Return the base reader method for a component type, or ``None``."""
+        readers = cls._BASE_COMPONENT_READERS
+        return next((readers[k] for k in component_type.__mro__ if k in readers), None)
+
     def _resolve_target_index(self, n_pool: int) -> int | None:
         """Return this reset's ``options['target_index']`` override, or ``None``.
 
         Tasks that pick a target object out of a pool call this from
         ``_task_reset`` so a caller can hold the scene layout fixed and vary only
-        the target, which one seeded RNG draw cannot express.
+        the target, which one seeded RNG draw cannot express. Calling it is what
+        marks the option consumed; ``reset`` rejects a ``target_index`` no task
+        consumed, so a pin aimed at a poolless task fails loudly instead of
+        silently collecting mislabelled data (matching the Warp backend).
         """
         raw = self._reset_options.get("target_index")
         if raw is None:
             return None
+        self._target_index_consumed = True
+        if isinstance(raw, bool) or not isinstance(raw, (int, np.integer)):
+            raise ValueError(f"target_index must be an integer, got {raw!r}")
         index = int(raw)
         if not 0 <= index < n_pool:
             raise ValueError(
@@ -676,10 +693,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
         Recognised ``options`` keys: ``init_qpos`` (explicit reset joint angles)
         and any task-specific key a subclass reads from ``_reset_options``
-        during ``_task_reset`` (``target_index`` on the pick tasks).
+        during ``_task_reset`` (``target_index`` on the pick tasks). A
+        ``target_index`` that the task never consumes raises, so a pin aimed at
+        a task with no object pool cannot silently mislabel collected data.
         """
         super().reset(seed=seed, options=options)
         self._reset_options = {} if options is None else dict(options)
+        self._target_index_consumed = False
         mujoco.mj_resetData(self.model, self.data)
 
         init_qpos: np.ndarray | None = None
@@ -695,6 +715,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._prev_action = None
         applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
+        if "target_index" in self._reset_options and not self._target_index_consumed:
+            raise ValueError(f"{type(self).__name__} has no object pool to target")
         self._randomize_wrist_camera()
 
         self._prev_target = applied_qpos.copy()

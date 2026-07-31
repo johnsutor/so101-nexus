@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 import so101_nexus.mujoco  # noqa: F401 - registers envs
-from so101_nexus.config import PickConfig, RobotConfig
+from so101_nexus.config import PickAndPlaceConfig, PickConfig, RobotConfig
 from so101_nexus.objects import CubeObject
 from so101_nexus.observations import (
     GraspState,
@@ -74,10 +74,13 @@ def _straddle_the_target(env, penetration=0.04):
     """Press both finger sets into the same face of an over-wide target.
 
     Reproduces the reported defect geometry: an object the jaw cannot close on
-    is contacted bilaterally, but every contact normal points the same way. The
-    penetration is deep because MuJoCo's solve concentrates the reaction on a
-    single contact until both finger sets are firmly loaded, and the predicate
-    is only interesting once both sides carry force.
+    is contacted bilaterally, but the two sides push it the same way rather than
+    pinching it, so their force-weighted mean normals fail to oppose. (They are
+    not all parallel: at this depth one jaw geom reaches the cube's top face and
+    dominates that side's mean, which is still nowhere near opposing the
+    gripper's.) The penetration is deep because MuJoCo's solve concentrates the
+    reaction on a single contact until both finger sets are firmly loaded; below
+    about 0.03 m only one side carries force and the predicate is uninteresting.
     """
     half = _OVER_WIDE_HALF_SIZE
     fingers = list(env._gripper_geom_ids) + list(env._jaw_geom_ids)
@@ -172,6 +175,25 @@ def test_gripper_contact_force_tracks_the_squeeze():
         env.close()
 
 
+def test_gripper_contact_force_points_away_from_what_the_fingers_push():
+    """Magnitude alone would pass a flipped sign or a transposed contact frame.
+
+    The over-wide cube sits on the +x side of the fingers, so Newton's third law
+    puts the resultant *on the gripper* along -x.
+    """
+    env = _pick_env(
+        half_size=_OVER_WIDE_HALF_SIZE,
+        observations=[JointPositions(), GripperContactForce()],
+    )
+    try:
+        env.reset(seed=0)
+        _straddle_the_target(env)
+        force = env._get_gripper_contact_force()
+        assert force[0] < -1.0, force
+    finally:
+        env.close()
+
+
 def test_joint_efforts_are_the_live_actuator_forces():
     """The effort slice tracks data.qfrc_actuator, not a constant."""
     env = _pick_env(observations=[JointPositions(), JointEfforts()])
@@ -213,18 +235,51 @@ def test_target_index_pins_the_target_without_moving_the_scene():
 
     This is the recipe the option exists for - one seeded draw entangles layout
     and target, so a language-conditioned policy can never be shown two episodes
-    that differ only in which object is named.
+    that differ only in which object is named. The unpinned reset is the
+    baseline on purpose: comparing two pinned resets to each other would still
+    pass if the pin shifted the RNG stream by the same amount every time.
     """
     env = _pick_env(objects=_POOL, n_distractors=2)
     try:
-        env.reset(seed=5, options={"target_index": 0})
-        first = env.data.qpos.copy()
-        first_target = env._target_slot_idx
-        env.reset(seed=5, options={"target_index": 1})
-        second_target = env._target_slot_idx
-        assert first_target == 0
-        assert second_target == 1
-        np.testing.assert_allclose(env.data.qpos, first, atol=1e-9)
+        _, info = env.reset(seed=5)
+        baseline = env.data.qpos.copy()
+        drawn = info["target_index"]
+
+        _, pinned = env.reset(seed=5, options={"target_index": drawn})
+        assert pinned["target_index"] == drawn
+        np.testing.assert_array_equal(env.data.qpos, baseline)
+
+        other = (drawn + 1) % len(_POOL)
+        _, relabelled = env.reset(seed=5, options={"target_index": other})
+        assert relabelled["target_index"] == other
+        np.testing.assert_array_equal(env.data.qpos, baseline)
+    finally:
+        env.close()
+
+
+def test_pick_and_place_target_index_pins_without_moving_the_scene():
+    """The carried-object pin must leave the disc pose and colour untouched too.
+
+    Pick-and-place draws the disc colour, the disc pose, and the object pose
+    from the same generator after the target draw, so a pin that skips the draw
+    shifts every one of them.
+    """
+    config = PickAndPlaceConfig(objects=_POOL)
+    env = gym.make("MuJoCoPickAndPlace-v1", config=config).unwrapped
+    try:
+        _, info = env.reset(seed=7)
+        baseline = env.data.qpos.copy()
+        disc = env.model.body_pos[env._target_body_id].copy()
+        colour = env.target_color_name
+        drawn = info["target_index"]
+
+        for k in range(len(_POOL)):
+            _, pinned = env.reset(seed=7, options={"target_index": k})
+            assert pinned["target_index"] == k
+            np.testing.assert_array_equal(env.model.body_pos[env._target_body_id], disc)
+            assert env.target_color_name == colour
+            if k == drawn:
+                np.testing.assert_array_equal(env.data.qpos, baseline)
     finally:
         env.close()
 
@@ -245,5 +300,20 @@ def test_omitting_target_index_keeps_the_seeded_random_target():
         _, first = env.reset(seed=9)
         _, again = env.reset(seed=9)
         assert first["target_index"] == again["target_index"]
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize("env_id", ["MuJoCoStackCube-v1", "MuJoCoMove-v1", "MuJoCoLookAt-v1"])
+def test_target_index_on_a_poolless_task_raises(env_id):
+    """Matches the Warp backend: a pin no task consumes is an error, not a no-op.
+
+    Silently ignoring it would let a data-collection script record every episode
+    under the wrong target label with nothing to signal the mistake.
+    """
+    env = gym.make(env_id)
+    try:
+        with pytest.raises(ValueError, match="no object pool"):
+            env.reset(seed=0, options={"target_index": 0})
     finally:
         env.close()

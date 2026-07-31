@@ -77,8 +77,9 @@ class YCBObject(SceneObject):
       banana's taper) is buried inside the hull, so the fingers never touch it.
     - A model whose hull is wider than the gripper can close on cannot be
       grasped at all, no matter how good the policy is. Measure a candidate
-      before building a task around it: ``get_ycb_collision_mesh(model_id)``
-      returns the hull that physics uses.
+      before building a task around it: ``ensure_ycb_assets(model_id)`` then
+      ``get_ycb_collision_mesh(model_id)`` gives the path to the collision OBJ
+      physics uses; load it to measure the hull.
 
     Parameters
     ----------

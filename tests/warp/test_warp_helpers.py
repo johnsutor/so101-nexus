@@ -113,6 +113,37 @@ def test_grasp_from_contacts_rejects_same_side_straddle():
     assert grasp.tolist() == [0.0, 1.0]
 
 
+def test_grasp_from_contacts_one_sided_contact_is_never_a_grasp():
+    """The both-sides guard is what carries this at ``opposing_threshold <= 0``.
+
+    At the default threshold a single side is already rejected by the dot test
+    (a zero resultant gives dot 0), so only a non-positive threshold exercises
+    the guard: without it, one finger touching would read as grasped.
+    """
+    import torch
+
+    from so101_nexus.warp.base_env import _grasp_from_contacts
+
+    gripper = torch.zeros(60, dtype=torch.bool)
+    gripper[30] = True
+    jaw = torch.zeros(60, dtype=torch.bool)
+    jaw[41] = True
+    grasp = _grasp_from_contacts(
+        contact_geom=torch.tensor([[49, 30]]),
+        contact_world=torch.tensor([0]),
+        contact_frame=_frames([[0.0, 0.0, 1.0]]),
+        normal_force=torch.ones(1),
+        nacon=1,
+        obj_geom=torch.tensor([49]),
+        gripper_mask=gripper,
+        jaw_mask=jaw,
+        threshold=0.5,
+        opposing_threshold=-1.0,
+        num_envs=1,
+    )
+    assert grasp.tolist() == [0.0]
+
+
 def test_grasp_from_contacts_opposing_threshold_minus_one_is_contact_only():
     """``-1.0`` restores the pre-0.4.14 bilateral-contact-only predicate."""
     import torch

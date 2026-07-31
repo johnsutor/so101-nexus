@@ -238,4 +238,5 @@ MJLAB-FEASIBILITY.md
 # Agent configs
 AGENTS.md
 CLAUDE.md
-.claude/MUJOCO_LOG.TXT
+.claude/
+MUJOCO_LOG.TXT

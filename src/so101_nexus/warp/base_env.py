@@ -220,7 +220,11 @@ def _grasp_from_contacts(
     jaw_n = torch.zeros((num_envs, 3), device=device)
     grip_n.scatter_add_(0, index, weighted * gripper_mask[other].unsqueeze(1))
     jaw_n.scatter_add_(0, index, weighted * jaw_mask[other].unsqueeze(1))
-
+    # The guard is on each side's RESULTANT, not its contact count, so two
+    # contacts on one finger set with opposing normals and equal force cancel
+    # and read as absent. Accepted: it is the same failure mode the MuJoCo
+    # base's ``gripper_normal.any()`` has, and the force-weighted mean is what
+    # makes the opposition test meaningful in the first place.
     both_sides = (grip_n.abs().sum(1) > 0.0) & (jaw_n.abs().sum(1) > 0.0)
     opposing = opposing_normals_ok(grip_n, jaw_n, threshold=opposing_threshold)
     return (both_sides & opposing).to(torch.float32)
@@ -375,8 +379,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         # Per-world target geom for grasp detection; manipulation tasks set this to
         # a (num_envs,) long tensor. None means no graspable object (primitives).
         self._obj_geom: torch.Tensor | None = None
-        # Zero-copy contact views; the force buffer is allocated lazily on first
-        # grasp query so primitive envs pay nothing.
+        # Zero-copy contact views; the force buffer is allocated lazily on the
+        # first contact-force query (grasp state or gripper contact force), so a
+        # task that reads neither pays nothing.
         self._contact_geom_view = wp.to_torch(self.data.contact.geom)  # (naconmax, 2)
         self._contact_frame_view = wp.to_torch(self.data.contact.frame)  # (naconmax, 3, 3)
         self._contact_world_view = wp.to_torch(self.data.contact.worldid)  # (naconmax,)
@@ -768,7 +773,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         return self.site_xpos[:, self._tcp_site_id, :]
 
     #: Robot-generic components the base reads directly, by reader method name.
-    #: Mirrors the MuJoCo base's ``_BASE_COMPONENT_READERS``.
+    #: Resolved through the MRO, mirroring the MuJoCo base's
+    #: ``_BASE_COMPONENT_READERS`` and matching ``_validate_obs_components``,
+    #: which admits subclasses via ``isinstance``.
     _BASE_COMPONENT_READERS: dict[type, str] = {
         JointPositions: "_joint_qpos",
         JointVelocities: "_joint_qvel",
@@ -777,13 +784,19 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         EndEffectorPose: "_get_tcp_pose7",
     }
 
+    @classmethod
+    def _base_component_reader(cls, component_type: type) -> str | None:
+        """Return the base reader method for a component type, or ``None``."""
+        readers = cls._BASE_COMPONENT_READERS
+        return next((readers[k] for k in component_type.__mro__ if k in readers), None)
+
     def _compute_state_vector(self) -> torch.Tensor:
         """Concatenate the flat state components (camera components are skipped)."""
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         parts: list[torch.Tensor] = []
         for comp in self.config.observations:
-            reader = self._BASE_COMPONENT_READERS.get(type(comp))
+            reader = self._base_component_reader(type(comp))
             if reader is not None:
                 parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
@@ -1077,7 +1090,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         arm_vel = self.qvel.index_select(1, self._arm_dof_adr)
         return (arm_vel.abs() < self.config.robot.static_vel_threshold).all(dim=1)
 
-    def _ensure_grasp_buffers(self) -> None:
+    def _ensure_contact_force_buffers(self) -> None:
         if self._force_buf is not None:
             return
         naconmax = self.data.naconmax
@@ -1088,8 +1101,14 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._force_view = wp.to_torch(self._force_buf)  # (naconmax, 6)
 
     def _contact_forces(self) -> tuple[torch.Tensor, int]:
-        """Return the ``(naconmax, 6)`` contact-frame force view and live ``nacon``."""
-        self._ensure_grasp_buffers()
+        """Return the ``(naconmax, 6)`` contact-frame force view and live ``nacon``.
+
+        The view aliases one shared buffer that the next call overwrites, so a
+        caller must consume it before calling again. ``int(self._nacon_view[0])``
+        also forces a host synchronization, which is why callers read the forces
+        once rather than per contact.
+        """
+        self._ensure_contact_force_buffers()
         force_view = self._force_view
         assert force_view is not None
         with wp.ScopedDevice(self._wp_device):

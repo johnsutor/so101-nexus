@@ -26,7 +26,7 @@ MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.Sync
 
 The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")` (env IDs `WarpTouch-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`, `WarpStackCube-v1`); reset and step return torch CUDA tensors of shape `(num_envs, ...)`.
 
-Warp envs route the same composable state observation components as MuJoCo (joint positions, end-effector pose, grasp state, object and target offsets, gaze direction). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Camera observations return `uint8` image tensors of shape `(num_envs, height, width, 3)`, with per-world wrist-camera domain randomization.
+Warp envs route the same composable state observation components as MuJoCo (see the [component table](/docs/concepts/observations-and-camera-modes) for the full list, which the two backends share). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Camera observations return `uint8` image tensors of shape `(num_envs, height, width, 3)`, with per-world wrist-camera domain randomization.
 
 ## Render Modes
 

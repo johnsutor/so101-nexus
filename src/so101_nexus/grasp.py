@@ -37,7 +37,10 @@ def opposing_normals_ok(gripper_normal, jaw_normal, *, threshold):
     gripper_normal : numpy.ndarray or torch.Tensor
         ``(..., 3)`` inward contact normal for the fixed gripper finger,
         typically the force-weighted mean over that side's contacts. Need not be
-        unit length; the zero vector (no contact) never satisfies the test.
+        unit length. A zero vector (no contact) normalizes to zero and gives a
+        dot of 0, so it is rejected for any positive ``threshold``; callers must
+        still reject an empty side themselves, because ``threshold <= 0``
+        accepts it.
     jaw_normal : numpy.ndarray or torch.Tensor
         ``(..., 3)`` inward contact normal for the moving jaw finger.
     threshold : float

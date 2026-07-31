@@ -23,7 +23,8 @@ def test_magnitude_does_not_change_the_verdict():
     """The test is on direction only, so force-weighted sums need no normalization."""
     weak = opposing_normals_ok(_UP * 1e-3, _DOWN * 1e-3, threshold=0.3)
     strong = opposing_normals_ok(_UP * 1e3, _DOWN * 1e3, threshold=0.3)
-    assert bool(weak) == bool(strong) is True
+    assert bool(weak) is True
+    assert bool(strong) is True
 
 
 @pytest.mark.parametrize(
@@ -57,15 +58,20 @@ def test_batched_numpy_matches_scalar_calls():
     assert got.tolist() == [True, False, False]
 
 
-def test_torch_and_numpy_agree():
-    """Tensor and array paths are the same function, per the tensor-friendly rule."""
+@pytest.mark.parametrize("dtype_name", ["float32", "float64"])
+def test_torch_and_numpy_agree(dtype_name):
+    """Tensor and array paths are the same function, per the tensor-friendly rule.
+
+    float32 is the dtype the Warp backend actually passes.
+    """
     torch = pytest.importorskip("torch")
+    dtype = getattr(torch, dtype_name)
     grip = np.stack([_UP, _DOWN])
     jaw = np.stack([_DOWN, _DOWN])
     np_out = opposing_normals_ok(grip, jaw, threshold=0.3)
     torch_out = opposing_normals_ok(
-        torch.tensor(grip, dtype=torch.float64),
-        torch.tensor(jaw, dtype=torch.float64),
+        torch.tensor(grip, dtype=dtype),
+        torch.tensor(jaw, dtype=dtype),
         threshold=0.3,
     )
     assert torch_out.tolist() == np_out.tolist()

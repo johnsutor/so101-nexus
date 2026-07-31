@@ -310,9 +310,17 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_grasp_progress = place_grasp_potential(is_grasped, is_obj_placed)
 
     def _choose_target_index(self, rng: np.random.Generator, n_pool: int) -> int:
-        """Return the carried object's pool index, honouring ``target_index``."""
+        """Return the carried object's pool index, honouring ``target_index``.
+
+        The draw is consumed even when a pin overrides it, so a pinned reset
+        leaves the rest of the episode's RNG stream (disc colour, disc pose,
+        object pose, yaw) exactly where an unpinned reset on the same seed would
+        leave it. Skipping the draw would shift every later consumer and move
+        the whole scene, defeating the counterfactual pair the pin exists for.
+        """
+        drawn = int(rng.choice(n_pool))
         override = self._resolve_target_index(n_pool)
-        return int(rng.choice(n_pool)) if override is None else override
+        return drawn if override is None else override
 
     def _task_reset(self) -> None:
         rng = self.np_random

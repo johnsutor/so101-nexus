@@ -107,9 +107,11 @@ class JointEfforts(Observation):
 class GripperContactForce(Observation):
     """World-frame resultant contact force on the two gripper fingers (3-dim).
 
-    Sums the normal-plus-friction contact force of every contact involving a
-    finger contact geom (the same ``condim == 6`` surfaces :class:`GraspState`
-    keys on), oriented as the force applied *to* the gripper, in newtons. Unlike
+    Sums the normal-plus-friction contact force of every contact with exactly
+    one finger contact geom (the same ``condim == 6`` surfaces
+    :class:`GraspState` keys on), oriented as the force applied *to* the
+    gripper, in newtons. Finger-on-finger contacts cancel and are excluded, so
+    a gripper closed on itself reads zero. Unlike
     :class:`GraspState` this is a continuous signal and is defined with no
     graspable object in the scene, so it also reports collisions with the table
     or a distractor.
@@ -176,8 +178,8 @@ class GraspState(Observation):
     """Whether the robot is currently holding an object: 1.0 = yes, 0.0 = no (1-dim).
 
     Contact-based, not force-closure: it fires when both finger sets touch the
-    target above ``RobotConfig.grasp_force_threshold`` *and* the two sides push
-    from opposing directions (see
+    target at or above ``RobotConfig.grasp_force_threshold`` *and* the two sides
+    push from opposing directions (see
     ``RobotConfig.grasp_opposing_normal_threshold``). The opposing-normal term
     is what separates a pinch from two same-side pushes, which is how an object
     too wide for the jaw used to register as grasped while resting on the table.

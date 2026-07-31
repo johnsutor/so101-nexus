@@ -291,6 +291,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             "lift_height": obj_pos[:, 2] - self._initial_obj_z,
             "success": success,
             "tcp_to_obj_dist": tcp_to_obj,
+            # target_object is MuJoCo-only; see WarpPickLiftVectorEnv's info dict.
             "target_index": self._target_slot.clone(),
         }
         return reward.to(torch.float32), success, info

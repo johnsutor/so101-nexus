@@ -58,7 +58,12 @@ class TouchEnv(PickEnv):
         obj_pos = self._get_target_pose()[:3]
         dist = float(np.linalg.norm(obj_pos - tcp_pos))
         threshold = self._target_bounding_radius() + self.config.touch_margin
-        info = {"tcp_to_obj_dist": dist, "success": dist < threshold}
+        info = {
+            "tcp_to_obj_dist": dist,
+            "success": dist < threshold,
+            "target_index": self._target_slot_idx,
+            "target_object": repr(self._slots[self._target_slot_idx].obj),
+        }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state
         return info

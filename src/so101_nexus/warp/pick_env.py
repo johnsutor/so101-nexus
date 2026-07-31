@@ -372,6 +372,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             "lift_height": lift_height,
             "tcp_to_obj_dist": tcp_to_obj,
             "success": success,
+            # No target_object counterpart to the MuJoCo backend's: info values
+            # here are per-world batched tensors, so the object identity travels
+            # as a string tuple in info["task_description"] instead.
             "target_index": self._target_slot.clone(),
         }
         return reward.to(torch.float32), success, info
