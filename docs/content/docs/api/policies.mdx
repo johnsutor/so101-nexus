@@ -1,6 +1,6 @@
 ---
-title: MolmoAct2
-description: Running the AllenAI MolmoAct2 SO100/SO101 checkpoint in SO101-Nexus environments.
+title: Policy adapters
+description: MolmoActPolicy, the chunked-action adapter for the AllenAI MolmoAct2 SO100/SO101 checkpoint, and RolloutRecorder for capturing its rollouts as a LeRobot dataset.
 ---
 
 `MolmoActPolicy` is a chunked-action adapter around `allenai/MolmoAct2-SO100_101`. It exposes the same `select_action(batch)` and `reset()` shape as a LeRobot policy, so it can drive the same rollout recorder that future chunked policies can use.
@@ -52,7 +52,7 @@ env.close()
 
 ### Side Video Channel
 
-Pass `record_side_video=True` to record the env's configured render view as an extra `observation.images.side` video channel alongside the rollout dataset. This requires the env to be constructed with `render_mode="rgb_array"`; pair it with `RenderConfig(camera="side")` for an angled tabletop bystander view. The side frame is visualization-only: it is rendered before each step (so it depicts the same state as the rest of the frame) and never enters policy batches, so the policy still sees exactly the overhead and wrist cameras it was trained on. Declare the channel in the dataset schema with `FieldSelection(side_image=True)` and a `"side"` entry in `follower_features` sized to the env's `RenderConfig` resolution.
+Pass `record_side_video=True` to record the env's configured render view as an extra `observation.images.side` video channel alongside the rollout dataset. This requires the env to be constructed with `render_mode="rgb_array"`; pair it with [`RenderConfig(camera="side")`](/docs/api/configs#renderconfig) for an angled tabletop bystander view. The side frame is visualization-only: it is rendered before each step (so it depicts the same state as the rest of the frame) and never enters policy batches, so the policy still sees exactly the overhead and wrist cameras it was trained on. Declare the channel in the dataset schema with `FieldSelection(side_image=True)` and a `"side"` entry in `follower_features` sized to the env's `RenderConfig` resolution.
 
 ## Caveats
 

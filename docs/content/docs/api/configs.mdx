@@ -3,8 +3,6 @@ title: Configuration Classes
 description: Reference for all configuration classes.
 ---
 
-# Configuration Classes
-
 All configuration classes live in `so101_nexus` and are plain Python classes with default constructor arguments. They control rendering, robot parameters, reward shaping, observation composition, and environment behavior.
 
 ## RenderConfig
@@ -34,7 +32,7 @@ render = RenderConfig(camera="side")
 
 ## Pose
 
-Defines a named robot arm configuration with fixed and free joints. See [Initial Poses](/docs/concepts/poses) for a conceptual overview.
+Defines a named robot arm configuration with fixed and free joints. See [Customization](/docs/concepts/customization) for a conceptual overview.
 
 ```python
 from so101_nexus import Pose
@@ -106,7 +104,7 @@ robot = RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.82, 0.0, -63.03))
 | `grasp_opposing_normal_threshold` | `float` | `0.3` | How strongly the two finger sets must oppose for `GraspState` to fire: the force-weighted mean inward contact normals must satisfy `dot(n_gripper, n_jaw) <= -threshold`. Must be in `[-1, 1]`; `-1.0` disables the test and accepts any two-sided contact |
 | `static_vel_threshold` | `float` | `0.2` | Maximum velocity to consider the arm stationary |
 | `ee_orientation_weight` | `float` | `0.01` | Relative weight of the rotational error in the end-effector modes' inverse kinematics. Must be in `(0, 1]`. See [Control Modes](/docs/concepts/control-modes). |
-| `ee_delta_action_scale` | `tuple[float, ...]` | `(0.02, 0.02, 0.02, 0.1, 0.1, 0.1, 0.2)` | Physical scale of a +/-1 `pd_ee_delta_pose` action: `(x, y, z)` in metres, `(wx, wy, wz)` in radians, gripper in radians. Seven positive entries. |
+| `ee_delta_action_scale` | `tuple[float, ...]` | `(0.02, 0.02, 0.02, 0.1, 0.1, 0.1, 0.2)` | Physical scale of a +/-1 `pd_ee_delta_pose` action: `(x, y, z)` in meters, `(wx, wy, wz)` in radians, gripper in radians. Seven positive entries. |
 
 ### Properties and methods
 
@@ -163,9 +161,9 @@ reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.25, complet
 
 A "potential-shaped delta" pays the *change* in progress since the previous
 step rather than the raw value, so dwelling at a fixed state (e.g. holding an
-object without lifting it) earns no further reward. See
-`so101_nexus.rewards.potential_shaping` and `docs/superpowers/skills/
-reward-engineering/SKILL.md` in the source repo for the full rationale.
+object without lifting it) earns no further reward. The implementation is
+`so101_nexus.rewards.potential_shaping`; see
+[Rewards](/docs/environments#rewards) for which tasks use it.
 
 ### Validation
 
@@ -258,7 +256,7 @@ Registered defaults: PickLift, PickAndPlace, and StackCube 1024, Touch 512, Look
 
 ## Observation Components
 
-Observation components are lightweight descriptor classes passed via the `observations` parameter. See [Observations](/docs/concepts/observations-and-camera-modes) for a conceptual overview.
+Observation components are lightweight descriptor classes passed via the `observations` parameter. See [Observations](/docs/concepts/observations) for a conceptual overview.
 
 ### State Components
 
@@ -352,13 +350,13 @@ When `observations` is not specified: `[JointPositions(), JointVelocities(), End
 ## PickAndPlaceConfig
 
 Extends `EnvironmentConfig` with parameters for pick-and-place tasks. The carried
-object is chosen per episode from an object pool: by default one cube per colour
+object is chosen per episode from an object pool: by default one cube per color
 in `cube_colors`, or pass `objects` to carry `YCBObject` / `MeshObject` instead.
 
 ```python
 from so101_nexus import PickAndPlaceConfig, YCBObject
 
-# Default cube path (carries a coloured cube onto the disc):
+# Default cube path (carries a colored cube onto the disc):
 config = PickAndPlaceConfig(cube_colors="blue", target_colors="green")
 
 # Object-pool path (carries a YCB object):
@@ -496,7 +494,7 @@ config = MoveConfig(direction="up", target_distance=0.10)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `direction` | `MoveDirection` | `"up"` | Cardinal direction: `"up"`, `"down"`, `"left"`, `"right"`, `"forward"`, `"backward"` |
-| `target_distance` | `float` | `0.10` | Distance in metres to travel from the initial TCP position |
+| `target_distance` | `float` | `0.10` | Distance in meters to travel from the initial TCP position |
 | `success_threshold` | `float` | `0.01` | Max residual distance (m) to count as success |
 
 The `MuJoCoMove-v1` and `WarpMove-v1` registrations default `max_episode_steps` to 256; override it at construction via `gym.make(..., max_episode_steps=N)` (MuJoCo) or `gym.make_vec(..., max_episode_steps=N)` (Warp).

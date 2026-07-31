@@ -2,7 +2,7 @@
   "title": "Workflow",
   "pages": [
     "overview",
-    "behavior-cloning",
-    "no-hardware"
+    "teleoperation",
+    "training"
   ]
 }

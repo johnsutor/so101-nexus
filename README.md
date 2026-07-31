@@ -3,7 +3,7 @@
 <img src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/assets/so101.png" width="250" alt="SO-101 Arm">
 
 <h3 align="center">
-    <p>SO101-Nexus: SO-101 robot learning, from demos to policies</p>
+    <p>SO101-Nexus: full-stack robot learning for the SO-101 arm</p>
 </h3>
 
 <p align="center">
@@ -20,153 +20,92 @@
 
 </div>
 
-SO101-Nexus is an end-to-end Python library for taking an SO-101 robot from demonstrations to a trained policy. It combines physical leader-arm teleoperation, LeRobot-compatible dataset recording, Gymnasium/MuJoCo manipulation environments, and training/evaluation hooks in one installable package.
+Full-stack robot learning for the SO-101 arm: teleoperation, imitation learning, and RL in
+MuJoCo. One installable library that takes a robot from demonstrations to a trained policy,
+built on [LeRobot](https://github.com/huggingface/lerobot) and Gymnasium.
 
-For full documentation, visit [so101-nexus.com/docs](https://so101-nexus.com/docs).
+```bash
+pip install so101-nexus
+```
 
-## Demo Rollouts
+Full documentation: **[so101-nexus.com/docs](https://so101-nexus.com/docs)**.
 
 <div align="center">
   <video controls muted playsinline width="720" aria-label="MuJoCo PickAndPlace teleoperation rollout">
     <source src="https://raw.githubusercontent.com/johnsutor/so101-nexus/main/docs/public/videos/pick-it-up.mp4" type="video/mp4">
     Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace episode viewer</a> instead.
   </video>
-  <p>
-    <a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1">PickAndPlace dataset</a>
-    ·
-    <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace viewer</a>
-  </p>
 </div>
 
-Recorded MuJoCo teleoperation datasets are available on Hugging Face:
+## The workflow
 
-<table align="center">
-  <thead>
-    <tr><th>Task</th><th>Dataset</th><th>Example Rollout</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>PickLift</td>
-      <td><a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1">johnsutor/MuJoCoPickLift-v1</a></td>
-      <td><a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0">Example Rollout</a></td>
-    </tr>
-    <tr>
-      <td>PickAndPlace</td>
-      <td><a href="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1">johnsutor/MuJoCoPickAndPlace-v1</a></td>
-      <td><a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">Example Rollout</a></td>
-    </tr>
-  </tbody>
-</table>
+Record, then clone, then reinforce. Each stage hands one artifact to the next.
 
-## Why
-
-There are useful SO-101 tools, but few packages connect teleoperation, LeRobot datasets, environments, and training loops in one workflow, all using simulations. SO101-Nexus is built around the record -> clone -> reinforce path: collect demonstrations, replay and evaluate in matching SO-101 environments, bootstrap with imitation learning, then fine-tune with RL.
-
-MuJoCo is the default backend. An optional MuJoCo Warp backend (`so101-nexus[warp]`) adds GPU-parallel, batched environments for large-scale RL.
-
-## What You Get
-
-- **Teleoperation recorder**: drive a simulated follower with a physical SO-100 or SO-101 leader arm.
-- **LeRobot dataset output**: save demonstrations with SO follower state/action units and wrist/overhead camera fields.
-- **Gymnasium environments**: run SO-101 MuJoCo tasks for touch, look-at, move, pick-lift, pick-and-place, and stack-cube.
-- **Configurable curricula**: swap objects, add distractors, randomize colors, tune rewards, and choose observation components.
-- **Training and evaluation hooks**: start with the PPO baseline, LeRobot processors, and policy adapters for real-policy evaluation.
-- **GPU-parallel Warp backend** (optional, experimental): batched `Warp*-v1` vector environments for large-scale RL, installed with `so101-nexus[warp]` (NVIDIA/CUDA only).
-- **ROCm training** (optional): install PyTorch from AMD's ROCm 7.2 wheel index instead of CUDA with `so101-nexus[rocm]`, for behavior cloning and PPO on the MuJoCo backend.
-
-## Installation
+**1. Record.** Drive a simulated follower with a physical SO-100 or SO-101 leader arm and
+save LeRobot v3 datasets.
 
 ```bash
-pip install so101-nexus
+uvx --from "so101-nexus[teleop]" so101-nexus teleop --leader-port /dev/ttyACM0
 ```
 
-### From source
+**2. Clone.** Bootstrap a policy from those demonstrations with behavior cloning.
+
+**3. Reinforce.** Fine-tune with PPO on the GPU-parallel Warp backend, anchored to the demos.
+
+Stages 2 and 3 are one command. No leader arm? It defaults to a published dataset, so this
+runs end to end on its own:
 
 ```bash
-git clone https://github.com/johnsutor/so101-nexus.git
-cd so101-nexus
-uv sync
+uv run --extra warp --extra train python examples/bc_ppo_warp.py
 ```
 
-## Start with the Workflow
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
 
-### Record demonstrations
+See the [workflow walkthrough](https://so101-nexus.com/docs/workflow/overview) for the full path.
 
-```bash
-uvx --from "so101-nexus[teleop]" so101-nexus teleop \
-    --leader-port /dev/ttyACM0
-```
-
-See the [teleoperation docs](https://so101-nexus.com/docs/teleoperation/overview) for hardware setup, camera fields, environment customization, and Hub upload.
-
-### Run an environment
+## Run an environment
 
 ```python
 import gymnasium as gym
-import so101_nexus.mujoco  # noqa: F401
+import so101_nexus.mujoco  # registers the MuJoCo env ids
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array")
 obs, info = env.reset()
 
 for _ in range(256):
-    action = env.action_space.sample()
-    obs, reward, terminated, truncated, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
     if terminated or truncated:
         obs, info = env.reset()
 
 env.close()
 ```
 
-See the [environment reference](https://so101-nexus.com/docs/environments) for all task IDs.
+Six SO-101 manipulation tasks ship on MuJoCo: PickLift, PickAndPlace, StackCube, Touch,
+LookAt, and Move. The optional MuJoCo Warp backend (`so101-nexus[warp]`) registers the same
+six as GPU-parallel batched vector environments for large-scale RL. See the
+[environment reference](https://so101-nexus.com/docs/environments).
 
-### Run the GPU-parallel Warp backend
+## Why
 
-> **Experimental**: The Warp backend's API and physics may change between minor releases while the MuJoCo backend is stable. See [Stability and versioning](https://so101-nexus.com/docs/getting-started/stability).
+Plenty of SO-101 tooling exists, but little of it connects teleoperation, LeRobot datasets,
+simulated environments, and training loops into one workflow. SO101-Nexus is that connection:
+collect demonstrations, replay and evaluate them in matching SO-101 environments, bootstrap
+with imitation learning, then fine-tune with RL.
 
-Install the optional extra and create a batched vector environment:
+- **Teleoperation recorder** with a Gradio UI, writing LeRobot v3 datasets with SO follower
+  state and action units plus wrist and overhead camera fields.
+- **Gymnasium environments** with configurable objects, distractors, colors, spawn regions,
+  rewards, and observation components.
+- **Training baselines** for behavior cloning and PPO, plus LeRobot processors and policy
+  adapters for evaluating real policies.
+- **Optional GPU-parallel Warp backend** (experimental, NVIDIA and CUDA only) for batched RL,
+  and an optional ROCm extra for training on AMD hardware.
 
-```bash
-pip install "so101-nexus[warp]"
-```
-
-```python
-import gymnasium as gym
-import so101_nexus.warp  # noqa: F401
-
-envs = gym.make_vec("WarpTouch-v1", num_envs=4096, device="cuda")
-obs, info = envs.reset(seed=0)
-obs, reward, terminated, truncated, info = envs.step(envs.action_space.sample())
-envs.close()
-```
-
-### Train on an AMD GPU (ROCm)
-
-`so101-nexus[rocm]` installs PyTorch from the [ROCm 7.2 wheel index](https://download.pytorch.org/whl/rocm7.2) instead of the default CUDA build, for behavior-cloning and PPO training on the (CPU-simulated) MuJoCo backend on Linux x86_64. It targets the `train` extra's torch dependency, not the GPU-parallel Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.
-
-```bash
-uv sync --extra train --extra rocm --no-default-groups
-```
-
-`--no-default-groups` skips the `dev` dependency group, which pins `lerobot<0.6` (and therefore `torch<2.11`) for the test suite, a version range incompatible with the ROCm 7.2 torch build. `uv` rejects combining `rocm` with `teleop`, `dev`, or `test` for the same reason.
-
-### Train a policy
-
-The default workflow is demo-seeded: behavior cloning from teleoperation demonstrations, then PPO fine-tuning on the GPU-parallel Warp backend. Train end to end in your browser:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
-
-Or run it locally with [`examples/bc_ppo_warp.py`](examples/bc_ppo_warp.py). Defaults target
-`WarpPickLift-v1`; the harder pick-and-place task (carry the object onto a goal disc, lower
-it, and hold still) is the same script with a few opt-in flags
-(`--env-id WarpPickAndPlace-v1 --demo-repo johnsutor/MuJoCoPickAndPlace-v1 --success-bonus 50
---total-timesteps 160000000 --anneal-timesteps 80000000 --lr-min-frac 0.1`, all off/at their
-`WarpPickLift-v1`-safe default otherwise); validated across 3 seeds at `best_success=0.86`
-mean (`std=0.08`), see the module docstring for the full sweep.
-For the full record -> clone -> reinforce walkthrough, see the [Workflow docs](https://so101-nexus.com/docs/workflow/overview).
-
-Prefer a from-scratch baseline instead? SO101-Nexus also ships a CleanRL-style PPO baseline for Gymnasium environments (no demonstration seeding). See [Training with PPO](https://so101-nexus.com/docs/training/ppo) for the command-line workflow and tuning notes, or train a strong policy end to end in your browser:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+Recorded MuJoCo teleoperation datasets are published on Hugging Face:
+[MuJoCoPickLift-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1)
+([viewer](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0)),
+[MuJoCoPickAndPlace-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1)
+([viewer](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0)).
 
 ## Roadmap
 
@@ -188,6 +127,10 @@ make test       # run all tests
 make format     # format code
 make lint       # lint code
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), and
+[Stability and versioning](https://so101-nexus.com/docs/api/stability) for the public-API and
+release policy.
 
 ## License
 

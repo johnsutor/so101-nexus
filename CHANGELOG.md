@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-See [Stability and versioning](https://so101-nexus.com/docs/getting-started/stability)
+See [Stability and versioning](https://so101-nexus.com/docs/api/stability)
 for the public-API and deprecation policy.
 
 ## [Unreleased]
@@ -32,8 +32,16 @@ for the public-API and deprecation policy.
 - `TargetOffset`'s docstring described it as gripper-relative, but the manipulation tasks (pick-and-place and stack-cube, both backends) override it to `goal - object`; only the object-free tasks return `goal - tcp`. Documented per task; no behaviour change. Anyone reasoning about what a privileged-state teacher actually consumes got the reference frame wrong from the docs alone.
 - `obs_mode`'s docstring now states what `"visual"` moves where and points at `privileged_state_feature_names(...)` for the per-dimension names of `info["privileged_state"]`; the two APIs never referenced each other, which invited positional indexing into a vector whose layout is `observations`-dependent.
 - `YCBObject` and `ensure_ycb_assets` now state that collision geometry is a single convex hull of the scan, and `PickConfig.objects` warns that this makes several YCB models ungraspable regardless of the policy. The failure was silent: the object builds, runs, and reports `success` normally while the fingers can only ever touch the hull enclosing the graspable feature.
+- Documentation restructured for progressive disclosure: 36 pages across 8 sidebar sections collapsed to 18 across 5 (Get Started, Workflow, Environments, Concepts, API Reference). The six per-task `environments/mujoco-*` pages became one table-driven reference at `/docs/environments`, the `guides/` and `policies/` sections were folded into `concepts/` and `api/`, and teleoperation and training moved under `workflow/`. **Documentation URLs moved**: `/docs/teleoperation/overview` is now `/docs/workflow/teleoperation`, `/docs/training/ppo` is `/docs/workflow/training`, `/docs/getting-started/stability` is `/docs/api/stability`, `/docs/concepts/observations-and-camera-modes` is `/docs/concepts/observations`, `/docs/concepts/backend-support` is `/docs/concepts/backends`, `/docs/concepts/lerobot-compatibility` is `/docs/concepts/lerobot`, and the `guides/` pages are merged into `/docs/concepts/customization` and `/docs/api/objects`. The docs site is a static export, so these are not redirected.
+- User-facing docs are now American English throughout, enforced by a new check in `tests/test_docs_consistency.py` alongside nav reachability, internal-link resolution, and API-heading existence.
 
 ### Fixed
+
+- Documented pick-and-place success no longer claims the robot must be static. Since 0.4.13 the predicate has been `is_obj_placed and is_obj_static and is_grasped < 0.5` on both backends, so releasing the object is mandatory and `is_robot_static` is an `info` diagnostic only. The environment reference and the task-semantics page both still described the pre-0.4.13 behavior.
+- Training docs no longer report `WarpPickAndPlace-v1` as "excluded until the environment is fixed" while the README reported it as solved. Both now state the same thing: `ppo_warp.py` has no baseline for it, `bc_ppo_warp.py` solves it (3 seeds, mean `best_success` 0.861), and `WarpStackCube-v1` has no baseline on either script.
+- `MeshObject` is no longer documented as MuJoCo-only. Both backends build scenes through `so101_nexus.object_slots.build_object_scene_xml`.
+- The API reference no longer documents `get_so100_simulation_dir()`, which does not exist, and now documents the exported `get_ycb_texture_file()`, which was missing. `all_registered_env_ids()` is documented as returning six ids per imported backend rather than five.
+- `Accordion` and `Accordions` are registered in the docs MDX component map. Any page using them previously failed to render.
 
 ### Removed
 

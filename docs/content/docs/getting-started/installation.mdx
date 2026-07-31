@@ -1,9 +1,12 @@
 ---
 title: Installation
-description: Install SO101-Nexus with pip or from source.
+description: Requirements, pip and from-source installs, the optional extras, and ROCm setup for AMD GPUs.
 ---
 
-Python **>=3.12** is required.
+## Requirements
+
+- Python >= 3.12. Versions 3.12 and 3.13 are verified in continuous integration.
+- Linux or macOS for the MuJoCo backend. Both are exercised in continuous integration.
 
 ## Install with pip
 
@@ -11,19 +14,9 @@ Python **>=3.12** is required.
 pip install so101-nexus
 ```
 
-## Try without installing
+## Install from source
 
-If you only want to try the teleop recorder, [uv](https://docs.astral.sh/uv/) can run it in an ephemeral environment with no permanent install:
-
-```bash
-uvx --from "so101-nexus[teleop]" so101-nexus teleop
-```
-
-See the [teleoperation docs](/docs/teleoperation/overview) for hardware requirements, troubleshooting, and full usage.
-
-## Install from Source
-
-Clone the repository, then sync with `uv`:
+Clone the repository, then sync with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/johnsutor/so101-nexus.git
@@ -31,13 +24,60 @@ cd so101-nexus
 uv sync
 ```
 
-## Verify Installation
+## Verify the install
 
 ```python
-import so101_nexus.mujoco
 import gymnasium as gym
+import so101_nexus.mujoco  # registers the MuJoCo env ids
 
 env = gym.make("MuJoCoPickLift-v1")
 print("Installation OK")
 env.close()
 ```
+
+## Extras
+
+The base install ships the MuJoCo backend and the environment API. Everything else is opt-in.
+
+| Extra | Adds | Install |
+| --- | --- | --- |
+| `teleop` | Gradio demonstration recorder: `lerobot[feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
+| `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
+| `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.4 | `pip install "so101-nexus[warp]"` |
+| `molmoact` | MolmoAct2 policy adapter | `pip install "so101-nexus[molmoact]"` |
+| `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
+
+Extras combine: `pip install "so101-nexus[teleop,train]"`.
+
+## Try without installing
+
+`uvx` runs the teleop recorder in an ephemeral environment with no permanent install:
+
+```bash
+uvx --from "so101-nexus[teleop]" so101-nexus teleop
+```
+
+## Training on an AMD GPU (ROCm)
+
+The `rocm` extra installs PyTorch from the [ROCm 7.2 wheel index](https://download.pytorch.org/whl/rocm7.2) instead of the default CUDA build, on Linux x86_64:
+
+```bash
+uv sync --extra train --extra rocm --no-default-groups
+```
+
+`--no-default-groups` skips the `dev` dependency group. `dev` pins `lerobot<0.6` for the test suite, which in turn forces `torch<2.11`, a range incompatible with the ROCm 7.2 torch build. For the same reason `uv` rejects combining `rocm` with `teleop`, `dev`, or `test`.
+
+<Callout type="warn">
+  `rocm` affects MuJoCo-backend training only, meaning behavior cloning and PPO on CPU-simulated environments. It does not enable the Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Quickstart" href="/docs/getting-started/quickstart">
+    Run your first environment and swap in a different task or object.
+  </Card>
+  <Card title="Workflow overview" href="/docs/workflow/overview">
+    Record demonstrations, clone them with BC, then reinforce with RL.
+  </Card>
+</Cards>
