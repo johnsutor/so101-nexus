@@ -75,5 +75,10 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
         reward = self.config.reward.apply_penalties(
             base, action_delta_norm=action_delta_norm, energy_norm=energy_norm, is_complete=success
         )
-        info = {"tcp_to_obj_dist": dist, "success": success}
+        info = {
+            "tcp_to_obj_dist": dist,
+            "success": success,
+            # target_object is MuJoCo-only; see WarpPickLiftVectorEnv's info dict.
+            "target_index": self._target_slot.clone(),
+        }
         return reward.to(torch.float32), success, info

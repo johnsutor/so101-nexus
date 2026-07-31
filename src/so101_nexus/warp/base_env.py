@@ -65,6 +65,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
     EE_IK_ITERATIONS,
@@ -76,6 +77,8 @@ from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
     GraspState,
+    GripperContactForce,
+    JointEfforts,
     JointPositions,
     JointVelocities,
     OverheadCamera,
@@ -172,24 +175,31 @@ def _grasp_from_contacts(
     *,
     contact_geom: torch.Tensor,
     contact_world: torch.Tensor,
+    contact_frame: torch.Tensor,
     normal_force: torch.Tensor,
     nacon: int,
     obj_geom: torch.Tensor,
     gripper_mask: torch.Tensor,
     jaw_mask: torch.Tensor,
     threshold: float,
+    opposing_threshold: float,
     num_envs: int,
 ) -> torch.Tensor:
     """Reduce flat contacts to a ``(num_envs,)`` two-sided grasp signal in {0, 1}.
 
     A world grasps when its target geom (``obj_geom[world]``) contacts both a
-    gripper finger geom and a moving-jaw finger geom, each with normal force at or
-    above ``threshold``. Pure tensor reduction over the packed ``[0, nacon)``
-    contact slots, so it is unit-testable with synthetic arrays. Mirrors the
-    MuJoCo base's ``_is_grasping``.
+    gripper finger geom and a moving-jaw finger geom with normal force at or
+    above ``threshold``, *and* the two sides' force-weighted mean contact
+    normals oppose each other by at least ``opposing_threshold`` (see
+    ``so101_nexus.grasp.opposing_normals_ok``). Without the opposition term an
+    object too wide for the jaw to close on registers as grasped while both
+    fingers merely press the same face of it. Pure tensor reduction over the
+    packed ``[0, nacon)`` contact slots, so it is unit-testable with synthetic
+    arrays. Mirrors the MuJoCo base's ``_is_grasping``.
     """
+    device = obj_geom.device
     if nacon == 0:
-        return torch.zeros(num_envs, device=obj_geom.device)
+        return torch.zeros(num_envs, device=device)
     geom = contact_geom[:nacon].long()
     world = contact_world[:nacon].long().clamp(0, num_envs - 1)
     g1, g2 = geom[:, 0], geom[:, 1]
@@ -197,14 +207,27 @@ def _grasp_from_contacts(
     obj_is_g1 = g1 == obj
     involved = obj_is_g1 | (g2 == obj)
     other = torch.where(obj_is_g1, g2, g1).clamp(min=0)
-    strong = involved & (normal_force[:nacon] >= threshold)
-    grip_hit = (gripper_mask[other] & strong).to(torch.float32)
-    jaw_hit = (jaw_mask[other] & strong).to(torch.float32)
-    grip_w = torch.zeros(num_envs, device=obj_geom.device)
-    jaw_w = torch.zeros(num_envs, device=obj_geom.device)
-    grip_w.scatter_reduce_(0, world, grip_hit, reduce="amax")
-    jaw_w.scatter_reduce_(0, world, jaw_hit, reduce="amax")
-    return (grip_w.bool() & jaw_w.bool()).to(torch.float32)
+    force = normal_force[:nacon]
+    strong = involved & (force >= threshold)
+    # contact_frame's first row is the normal from geom1 to geom2; flip it when
+    # the object is geom1 so it points into the object for both orderings.
+    normal = contact_frame[:nacon, 0, :]
+    normal = torch.where(obj_is_g1[:, None], -normal, normal)
+    weighted = normal * (force * strong).unsqueeze(1)
+
+    index = world.unsqueeze(1).expand(-1, 3)
+    grip_n = torch.zeros((num_envs, 3), device=device)
+    jaw_n = torch.zeros((num_envs, 3), device=device)
+    grip_n.scatter_add_(0, index, weighted * gripper_mask[other].unsqueeze(1))
+    jaw_n.scatter_add_(0, index, weighted * jaw_mask[other].unsqueeze(1))
+    # The guard is on each side's RESULTANT, not its contact count, so two
+    # contacts on one finger set with opposing normals and equal force cancel
+    # and read as absent. Accepted: it is the same failure mode the MuJoCo
+    # base's ``gripper_normal.any()`` has, and the force-weighted mean is what
+    # makes the opposition test meaningful in the first place.
+    both_sides = (grip_n.abs().sum(1) > 0.0) & (jaw_n.abs().sum(1) > 0.0)
+    opposing = opposing_normals_ok(grip_n, jaw_n, threshold=opposing_threshold)
+    return (both_sides & opposing).to(torch.float32)
 
 
 class SO101NexusWarpVectorEnv(VectorEnv):
@@ -270,6 +293,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.ctrl = wp.to_torch(self.data.ctrl)  # (N, nu)
         self.site_xpos = wp.to_torch(self.data.site_xpos)  # (N, nsite, 3)
         self.site_xmat = wp.to_torch(self.data.site_xmat)  # (N, nsite, 3, 3)
+        self._qfrc_actuator = wp.to_torch(self.data.qfrc_actuator)  # (N, nv)
 
         joint_ids = [
             mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_JOINT, n) for n in SO101_JOINT_NAMES
@@ -355,14 +379,18 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         # Per-world target geom for grasp detection; manipulation tasks set this to
         # a (num_envs,) long tensor. None means no graspable object (primitives).
         self._obj_geom: torch.Tensor | None = None
-        # Zero-copy contact views; the force buffer is allocated lazily on first
-        # grasp query so primitive envs pay nothing.
+        # Zero-copy contact views; the force buffer is allocated lazily on the
+        # first contact-force query (grasp state or gripper contact force), so a
+        # task that reads neither pays nothing.
         self._contact_geom_view = wp.to_torch(self.data.contact.geom)  # (naconmax, 2)
+        self._contact_frame_view = wp.to_torch(self.data.contact.frame)  # (naconmax, 3, 3)
         self._contact_world_view = wp.to_torch(self.data.contact.worldid)  # (naconmax,)
         self._nacon_view = wp.to_torch(self.data.nacon)  # (1,)
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        # reset(options={"target_index": ...}) pin, honoured by autoresets too.
+        self._target_index_override: torch.Tensor | None = None
         self._ik_graph: torch.cuda.CUDAGraph | None = None
         if control_mode in EE_CONTROL_MODES:
             self._setup_ee_control()
@@ -694,7 +722,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """Reject unsupported observation components at construction (fail fast).
 
         The Warp base routes the robot-generic components (``JointPositions``,
-        ``JointVelocities``, ``EndEffectorPose``, ``GraspState``) and camera
+        ``JointVelocities``, ``JointEfforts``, ``GripperContactForce``,
+        ``EndEffectorPose``, ``GraspState``) and camera
         components (``WristCamera``, ``OverheadCamera``) centrally, mirroring the
         MuJoCo base, and delegates task-specific components to
         ``_get_component_data`` (a subclass declares those via
@@ -706,6 +735,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             JointVelocities,
             EndEffectorPose,
             GraspState,
+            JointEfforts,
+            GripperContactForce,
             WristCamera,
             OverheadCamera,
             *self._supported_obs_components(),
@@ -741,18 +772,33 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def _tcp_pos(self) -> torch.Tensor:
         return self.site_xpos[:, self._tcp_site_id, :]
 
+    #: Robot-generic components the base reads directly, by reader method name.
+    #: Resolved through the MRO, mirroring the MuJoCo base's
+    #: ``_BASE_COMPONENT_READERS`` and matching ``_validate_obs_components``,
+    #: which admits subclasses via ``isinstance``.
+    _BASE_COMPONENT_READERS: dict[type, str] = {
+        JointPositions: "_joint_qpos",
+        JointVelocities: "_joint_qvel",
+        JointEfforts: "_joint_efforts",
+        GripperContactForce: "_gripper_contact_force",
+        EndEffectorPose: "_get_tcp_pose7",
+    }
+
+    @classmethod
+    def _base_component_reader(cls, component_type: type) -> str | None:
+        """Return the base reader method for a component type, or ``None``."""
+        readers = cls._BASE_COMPONENT_READERS
+        return next((readers[k] for k in component_type.__mro__ if k in readers), None)
+
     def _compute_state_vector(self) -> torch.Tensor:
         """Concatenate the flat state components (camera components are skipped)."""
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         parts: list[torch.Tensor] = []
         for comp in self.config.observations:
-            if isinstance(comp, JointPositions):
-                parts.append(self._joint_qpos())
-            elif isinstance(comp, JointVelocities):
-                parts.append(self._joint_qvel())
-            elif isinstance(comp, EndEffectorPose):
-                parts.append(self._get_tcp_pose7())
+            reader = self._base_component_reader(type(comp))
+            if reader is not None:
+                parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
                 parts.append(self._is_grasping().unsqueeze(1))
             elif isinstance(comp, CameraObservation):
@@ -796,9 +842,17 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[torch.Tensor | dict[str, torch.Tensor], dict]:
-        """Reset all worlds and return the initial batched observation and info."""
+        """Reset all worlds and return the initial batched observation and info.
+
+        Recognised ``options`` keys: ``init_qpos`` and, on the object-pool tasks,
+        ``target_index`` (a pool index, or one per world). A ``target_index`` pin
+        persists through same-step autoresets until the next ``reset`` call, so
+        every episode of a rollout keeps the requested target; pass a ``reset``
+        without the key to return to seeded random targets.
+        """
         if seed is not None:
             self._generator.manual_seed(seed)
+        self._target_index_override = self._parse_target_index(options)
         init_qpos = self._parse_init_qpos(options)
         self._prev_action = None
         self._has_prev_action.fill_(False)
@@ -1036,7 +1090,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         arm_vel = self.qvel.index_select(1, self._arm_dof_adr)
         return (arm_vel.abs() < self.config.robot.static_vel_threshold).all(dim=1)
 
-    def _ensure_grasp_buffers(self) -> None:
+    def _ensure_contact_force_buffers(self) -> None:
         if self._force_buf is not None:
             return
         naconmax = self.data.naconmax
@@ -1046,31 +1100,93 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._force_buf = wp.zeros(naconmax, dtype=wp.spatial_vector, device=self._wp_device)
         self._force_view = wp.to_torch(self._force_buf)  # (naconmax, 6)
 
+    def _contact_forces(self) -> tuple[torch.Tensor, int]:
+        """Return the ``(naconmax, 6)`` contact-frame force view and live ``nacon``.
+
+        The view aliases one shared buffer that the next call overwrites, so a
+        caller must consume it before calling again. ``int(self._nacon_view[0])``
+        also forces a host synchronization, which is why callers read the forces
+        once rather than per contact.
+        """
+        self._ensure_contact_force_buffers()
+        force_view = self._force_view
+        assert force_view is not None
+        with wp.ScopedDevice(self._wp_device):
+            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
+        return force_view, int(self._nacon_view[0])
+
     def _is_grasping(self) -> torch.Tensor:
-        """Return ``(N,)`` float in {0, 1}: two-sided finger grasp of the target geom.
+        """Return ``(N,)`` float in {0, 1}: two-sided pinching grasp of the target geom.
 
         Zero everywhere when no graspable object is registered (``_obj_geom``
         unset), so primitive tasks never trigger grasp logic.
         """
         if self._obj_geom is None:
             return torch.zeros(self.num_envs, device=self.device)
-        self._ensure_grasp_buffers()
-        force_view = self._force_view
-        assert force_view is not None
-        with wp.ScopedDevice(self._wp_device):
-            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
-        nacon = int(self._nacon_view[0])
+        force_view, nacon = self._contact_forces()
         return _grasp_from_contacts(
             contact_geom=self._contact_geom_view,
             contact_world=self._contact_world_view,
+            contact_frame=self._contact_frame_view,
             normal_force=force_view[:, 0].abs(),
             nacon=nacon,
             obj_geom=self._obj_geom,
             gripper_mask=self._gripper_mask,
             jaw_mask=self._jaw_mask,
             threshold=self.config.robot.grasp_force_threshold,
+            opposing_threshold=self.config.robot.grasp_opposing_normal_threshold,
             num_envs=self.num_envs,
         )
+
+    def _joint_efforts(self) -> torch.Tensor:
+        """Return ``(N, 6)`` actuator generalized force for the controlled joints."""
+        return self._qfrc_actuator.index_select(1, self._dof_adr)
+
+    def _gripper_contact_force(self) -> torch.Tensor:
+        """Return ``(N, 3)`` world-frame resultant contact force on the fingers.
+
+        Batched mirror of the MuJoCo base's ``_get_gripper_contact_force``: sums
+        every contact with exactly one finger geom, signed as the force acting on
+        the gripper.
+        """
+        force_view, nacon = self._contact_forces()
+        total = torch.zeros((self.num_envs, 3), device=self.device)
+        if nacon == 0:
+            return total
+        geom = self._contact_geom_view[:nacon].long()
+        world = self._contact_world_view[:nacon].long().clamp(0, self.num_envs - 1)
+        g1, g2 = geom[:, 0], geom[:, 1]
+        finger = self._gripper_mask | self._jaw_mask
+        g1_finger, g2_finger = finger[g1.clamp(min=0)], finger[g2.clamp(min=0)]
+        sign = g2_finger.float() - g1_finger.float()  # zero unless exactly one side
+        frame = self._contact_frame_view[:nacon]
+        # mjw.contact_force reports the force on geom2 in the contact frame,
+        # whose rows are the normal and the two tangents.
+        world_force = (frame * force_view[:nacon, :3].unsqueeze(2)).sum(1)
+        total.scatter_add_(0, world.unsqueeze(1).expand(-1, 3), world_force * sign.unsqueeze(1))
+        return total
+
+    def _parse_target_index(self, options: dict[str, Any] | None) -> torch.Tensor | None:
+        """Validate ``options['target_index']`` into a ``(N,)`` pool-index tensor.
+
+        Accepts a scalar (all worlds) or one index per world. Tasks with no
+        object pool leave ``_n_pool`` unset and reject the option outright.
+        """
+        if options is None or options.get("target_index") is None:
+            return None
+        n_pool = getattr(self, "_n_pool", None)
+        if n_pool is None:
+            raise ValueError(f"{type(self).__name__} has no object pool to target")
+        arr = torch.as_tensor(options["target_index"], dtype=torch.long, device=self.device)
+        if arr.ndim == 0:
+            arr = arr.expand(self.num_envs)
+        if arr.shape != (self.num_envs,):
+            raise ValueError(
+                f"target_index shape {tuple(arr.shape)} != expected () or ({self.num_envs},)"
+            )
+        if bool(((arr < 0) | (arr >= n_pool)).any()):
+            raise ValueError(f"target_index entries must be in [0, {n_pool})")
+        return arr.contiguous()
 
     def _parse_init_qpos(self, options: dict[str, Any] | None) -> torch.Tensor | None:
         """Validate and return the ``options['init_qpos']`` reset override, if any."""

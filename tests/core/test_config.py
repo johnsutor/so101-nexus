@@ -775,6 +775,17 @@ def test_robot_config_grasp_force_threshold_default():
     assert cfg.grasp_force_threshold == pytest.approx(0.5)
 
 
+def test_robot_config_grasp_opposing_normal_threshold_default():
+    cfg = RobotConfig()
+    assert cfg.grasp_opposing_normal_threshold == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize("value", [-1.1, 1.1, float("nan")])
+def test_robot_config_grasp_opposing_normal_threshold_outside_the_range_raises(value):
+    with pytest.raises(ValueError, match="grasp_opposing_normal_threshold must be in"):
+        RobotConfig(grasp_opposing_normal_threshold=value)
+
+
 def test_robot_config_static_vel_threshold_default():
     cfg = RobotConfig()
     assert cfg.static_vel_threshold == pytest.approx(0.2)

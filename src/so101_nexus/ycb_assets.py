@@ -128,6 +128,9 @@ def ensure_ycb_assets(model_id: str) -> Path:
     Downloads from the ai-habitat/ycb dataset and converts GLB meshes
     to OBJ format for use with MuJoCo. The visual mesh is
     exported directly and the collision mesh is derived from its convex hull.
+    That hull is what physics sees, so concave and elongated models lose
+    exactly the features that make them graspable; see ``YCBObject`` before
+    building a manipulation task around one.
 
     Returns the directory containing the model's mesh files.
     """
