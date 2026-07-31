@@ -7,6 +7,7 @@ import pytest
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
+    GazeState,
     GraspState,
     GripperContactForce,
     JointEfforts,
@@ -14,11 +15,13 @@ from so101_nexus.observations import (
     JointVelocities,
     ObjectOffset,
     ObjectPose,
+    ObjectVelocity,
     Observation,
     OverheadCamera,
     TargetOffset,
     TargetPosition,
     WristCamera,
+    observations_from_feature_names,
     privileged_state_feature_names,
 )
 
@@ -47,8 +50,10 @@ class TestStateComponents:
             (EndEffectorPose, "end_effector_pose", 7),
             (TargetOffset, "target_offset", 3),
             (GazeDirection, "gaze_direction", 3),
+            (GazeState, "gaze_state", 1),
             (GraspState, "grasp_state", 1),
             (ObjectPose, "object_pose", 7),
+            (ObjectVelocity, "object_velocity", 6),
             (ObjectOffset, "object_offset", 3),
             (TargetPosition, "target_position", 3),
         ],
@@ -187,3 +192,53 @@ class TestPrivilegedStateFeatureNames:
             "object_offset_1",
             "object_offset_2",
         ]
+
+
+class TestObservationsFromFeatureNames:
+    def test_round_trips_every_default_layout(self):
+        """A recording's declared schema rebuilds the layout that produced it."""
+        from so101_nexus.config import (
+            LookAtConfig,
+            MoveConfig,
+            PickAndPlaceConfig,
+            PickConfig,
+            StackCubeConfig,
+            TouchConfig,
+        )
+
+        for config in (
+            PickConfig(),
+            TouchConfig(),
+            PickAndPlaceConfig(),
+            StackCubeConfig(),
+            LookAtConfig(),
+            MoveConfig(),
+        ):
+            names = privileged_state_feature_names(config.observations)
+            rebuilt = observations_from_feature_names(names)
+            assert privileged_state_feature_names(rebuilt) == names
+            assert [type(c) for c in rebuilt] == [type(c) for c in config.observations]
+
+    def test_empty_names_give_an_empty_layout(self):
+        assert observations_from_feature_names([]) == []
+
+    def test_unknown_component_is_rejected(self):
+        with pytest.raises(ValueError, match="does not start an observation component"):
+            observations_from_feature_names(["wrist_pressure_0"])
+
+    def test_truncated_component_is_rejected(self):
+        # A dataset that dropped columns must fail loudly, not silently realign
+        # the remaining ones onto the wrong components.
+        with pytest.raises(ValueError, match="object_pose"):
+            observations_from_feature_names(["object_pose_0", "object_pose_1"])
+
+    def test_reordered_dimensions_are_rejected(self):
+        with pytest.raises(ValueError, match="object_offset"):
+            observations_from_feature_names(
+                ["object_offset_0", "object_offset_2", "object_offset_1"]
+            )
+
+    def test_camera_components_are_not_resolvable(self):
+        # Cameras contribute no state dimensions, so no name can name one.
+        with pytest.raises(ValueError, match="does not start an observation component"):
+            observations_from_feature_names(["wrist_camera_0"])

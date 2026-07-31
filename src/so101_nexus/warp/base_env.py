@@ -65,6 +65,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.gaze import direction_to_object, gaze_angle_rad, gaze_cosine, object_in_view
 from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
@@ -76,6 +77,8 @@ from so101_nexus.kinematics import (
 from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
+    GazeDirection,
+    GazeState,
     GraspState,
     GripperContactForce,
     JointEfforts,
@@ -294,6 +297,17 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.site_xpos = wp.to_torch(self.data.site_xpos)  # (N, nsite, 3)
         self.site_xmat = wp.to_torch(self.data.site_xmat)  # (N, nsite, 3, 3)
         self._qfrc_actuator = wp.to_torch(self.data.qfrc_actuator)  # (N, nv)
+        # The wrist camera is part of the robot model, so its world pose is
+        # defined whether or not a WristCamera observation renders from it: the
+        # gaze components and the look-at predicate read these directly.
+        self._cam_xpos = wp.to_torch(self.data.cam_xpos)  # (N, ncam, 3)
+        self._cam_xmat = wp.to_torch(self.data.cam_xmat)  # (N, ncam, 3, 3)
+        # mj_name2id's -1 sentinel would silently address the last camera, so it
+        # is rejected here, matching the MuJoCo backend's lookup.
+        self._wrist_cam_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
+        if self._wrist_cam_id < 0:
+            raise RuntimeError("the scene's robot model does not define a 'wrist_cam' camera")
+        self._static_half_fov_rad = float(np.radians(mjm.cam_fovy[self._wrist_cam_id]) / 2.0)
 
         joint_ids = [
             mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_JOINT, n) for n in SO101_JOINT_NAMES
@@ -465,11 +479,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         # (component, mujoco camera id) in declaration order (wrist, then overhead).
         self._cam_specs: list[tuple[CameraObservation, int]] = []
         if self._wrist_cam is not None:
-            wid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
-            if wid < 0:
-                raise RuntimeError("WristCamera requested but 'wrist_cam' is not in the model")
-            self._cam_specs.append((self._wrist_cam, wid))
-            self._wrist_mjid = wid
+            self._cam_specs.append((self._wrist_cam, self._wrist_cam_id))
         if self._overhead_cam is not None:
             oid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "overhead_cam")
             if oid < 0:
@@ -581,7 +591,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         if n == 0 or self._wrist_cam is None:
             return
         wc = self._wrist_cam
-        cid = self._wrist_mjid
+        cid = self._wrist_cam_id
         g = self._generator
         pitch_lo, pitch_hi = wc.pitch_rad_range
         pitch = torch.rand(n, generator=g, device=self.device) * (pitch_hi - pitch_lo) + pitch_lo
@@ -772,16 +782,19 @@ class SO101NexusWarpVectorEnv(VectorEnv):
     def _tcp_pos(self) -> torch.Tensor:
         return self.site_xpos[:, self._tcp_site_id, :]
 
-    #: Robot-generic components the base reads directly, by reader method name.
-    #: Resolved through the MRO, mirroring the MuJoCo base's
-    #: ``_BASE_COMPONENT_READERS`` and matching ``_validate_obs_components``,
-    #: which admits subclasses via ``isinstance``.
+    #: Components the base reads directly, by reader method name. Resolved
+    #: through the MRO, mirroring the MuJoCo base's ``_BASE_COMPONENT_READERS``
+    #: and matching ``_validate_obs_components``, which admits subclasses via
+    #: ``isinstance``. The gaze readers are here rather than per task because
+    #: only the target position they resolve is task-specific (see
+    #: ``_gaze_target_pos``); a task still declares them supported.
     _BASE_COMPONENT_READERS: dict[type, str] = {
         JointPositions: "_joint_qpos",
         JointVelocities: "_joint_qvel",
         JointEfforts: "_joint_efforts",
         GripperContactForce: "_gripper_contact_force",
         EndEffectorPose: "_get_tcp_pose7",
+        GazeDirection: "_gaze_direction",
     }
 
     @classmethod
@@ -801,6 +814,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
                 parts.append(self._is_grasping().unsqueeze(1))
+            elif isinstance(comp, GazeState):
+                parts.append(self._is_looking_at().unsqueeze(1))
             elif isinstance(comp, CameraObservation):
                 continue
             else:
@@ -1089,6 +1104,49 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """Return ``(N,)`` bool: all arm joints below ``static_vel_threshold``."""
         arm_vel = self.qvel.index_select(1, self._arm_dof_adr)
         return (arm_vel.abs() < self.config.robot.static_vel_threshold).all(dim=1)
+
+    def _gaze_target_pos(self) -> torch.Tensor:
+        """Return ``(N, 3)`` world position of the object the task acts on.
+
+        Implemented by every task that has one; the gaze components and the
+        look-at predicate are undefined without it (``WarpMove`` has no object).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} has no target object, so it has no gaze target"
+        )
+
+    def _gaze_axis(self) -> torch.Tensor:
+        """Return ``(N, 3)`` wrist-camera optical axis in world frame, per world."""
+        # MuJoCo cameras look along their local -z axis.
+        return -self._cam_xmat[:, self._wrist_cam_id, :, 2]
+
+    def _gaze_direction(self) -> torch.Tensor:
+        """Return ``(N, 3)`` unit vector from the wrist camera toward the target."""
+        return direction_to_object(
+            self._cam_xpos[:, self._wrist_cam_id, :], self._gaze_target_pos()
+        )
+
+    def _gaze_cosine(self) -> torch.Tensor:
+        """Return ``(N,)`` cosine between the optical axis and the target object."""
+        return gaze_cosine(self._gaze_axis(), self._gaze_direction())
+
+    def _gaze_angle_rad(self) -> torch.Tensor:
+        """Return ``(N,)`` angle between the optical axis and the target object."""
+        return gaze_angle_rad(self._gaze_cosine())
+
+    def _half_fov_rad(self) -> torch.Tensor | float:
+        """Half the wrist-camera vertical FOV: the in-frame boundary.
+
+        Per-world when a ``WristCamera`` randomizes the FOV (the model arrays are
+        reallocated per world for that), otherwise the model's static value.
+        """
+        if self._wrist_cam is None:
+            return self._static_half_fov_rad
+        return torch.deg2rad(self._cam_fovy[:, self._wrist_cam_id]) * 0.5
+
+    def _is_looking_at(self) -> torch.Tensor:
+        """Return ``(N,)`` float in {0, 1}: target object inside the wrist camera FOV."""
+        return object_in_view(self._gaze_angle_rad(), self._half_fov_rad()).to(torch.float32)
 
     def _ensure_contact_force_buffers(self) -> None:
         if self._force_buf is not None:

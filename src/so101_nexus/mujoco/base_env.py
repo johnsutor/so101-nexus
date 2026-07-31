@@ -20,6 +20,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.gaze import direction_to_object, gaze_angle_rad, gaze_cosine, object_in_view
 from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
@@ -32,6 +33,7 @@ from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
     GazeDirection,
+    GazeState,
     GraspState,
     GripperContactForce,
     JointEfforts,
@@ -39,6 +41,7 @@ from so101_nexus.observations import (
     JointVelocities,
     ObjectOffset,
     ObjectPose,
+    ObjectVelocity,
     OverheadCamera,
     TargetOffset,
     TargetPosition,
@@ -149,6 +152,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._tcp_site_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_SITE, SO101_TCP_SITE_NAME
         )
+        # The wrist camera is part of the robot model, so its pose and FOV are
+        # defined whether or not a WristCamera observation renders from it: the
+        # gaze components and the look-at success predicate read them directly.
+        # mj_name2id's -1 sentinel would silently address the last camera, so it
+        # is rejected here, matching the Warp backend's lookup.
+        self._wrist_cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
+        if self._wrist_cam_id < 0:
+            raise RuntimeError("the scene's robot model does not define a 'wrist_cam' camera")
 
         # Menagerie finger contact surfaces use condim=6 (collision_gripper and
         # collision_gripper_mesh classes); the non-finger wrist-roll box on the
@@ -246,14 +257,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                     self._overhead_cam_component = comp
 
         if self._wrist_cam_component is not None:
-            self._wrist_cam_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam"
-            )
             wrist_w = self._wrist_cam_component.width
             wrist_h = self._wrist_cam_component.height
             self._wrist_renderer = mujoco.Renderer(self.model, height=wrist_h, width=wrist_w)
         else:
-            self._wrist_cam_id = None
             self._wrist_renderer = None
 
         if self._overhead_cam_component is not None:
@@ -565,6 +572,44 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         arm_vels = self.data.qvel[self._arm_qvel_addrs]
         return bool(np.all(np.abs(arm_vels) < self.config.robot.static_vel_threshold))
 
+    def _gaze_target_pos(self) -> np.ndarray:
+        """Return the world position of the object the task acts on.
+
+        Implemented by every task that has one; the gaze components and the
+        look-at predicate are undefined without it (``MoveEnv`` has no object).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} has no target object, so it has no gaze target"
+        )
+
+    def _gaze_axis(self) -> np.ndarray:
+        """Return the wrist-camera optical axis in world frame (where it points)."""
+        # MuJoCo cameras look along their local -z axis, so the optical axis is
+        # the negated third column of the camera rotation matrix. Using the real
+        # camera axis (not a gripper-frame proxy) keeps the gaze tied to what the
+        # camera sees, and tracks any mount/FOV randomization automatically.
+        return -self.data.cam_xmat[self._wrist_cam_id].reshape(3, 3)[:, 2].copy()
+
+    def _gaze_direction(self) -> np.ndarray:
+        """Return the unit vector from the wrist camera toward the target object."""
+        return direction_to_object(self.data.cam_xpos[self._wrist_cam_id], self._gaze_target_pos())
+
+    def _gaze_cosine(self) -> float:
+        """Return the cosine between the optical axis and the target object."""
+        return float(gaze_cosine(self._gaze_axis(), self._gaze_direction()))
+
+    def _gaze_angle_rad(self) -> float:
+        """Return the angle between the optical axis and the target object."""
+        return float(gaze_angle_rad(self._gaze_cosine()))
+
+    def _half_fov_rad(self) -> float:
+        """Half the live wrist-camera vertical FOV (radians): the in-frame boundary."""
+        return float(np.radians(self.model.cam_fovy[self._wrist_cam_id].item()) / 2.0)
+
+    def _is_looking_at(self) -> float:
+        """Return 1.0 when the target object is inside the wrist camera's FOV."""
+        return float(object_in_view(self._gaze_angle_rad(), self._half_fov_rad()))
+
     @property
     def control_dt(self) -> float:
         """Simulated seconds advanced by one ``step()`` (physics timestep x substeps).
@@ -612,10 +657,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             total += world if g2_finger else -world
         return total
 
-    #: Robot-generic components the base reads directly, by reader method name.
-    #: Resolved through the MRO so a user subclass of a component behaves like
-    #: the component it derives from, matching the ``isinstance`` dispatch used
-    #: for the remaining branches. Everything else is either a camera or a task
+    #: Components the base reads directly, by reader method name. Resolved
+    #: through the MRO so a user subclass of a component behaves like the
+    #: component it derives from, matching the ``isinstance`` dispatch used for
+    #: the remaining branches. The gaze readers are here rather than per task
+    #: because only the target position they resolve is task-specific (see
+    #: ``_gaze_target_pos``). Everything else is either a camera or a task
     #: component routed through ``_get_component_data``.
     _BASE_COMPONENT_READERS: dict[type, str] = {
         JointPositions: "_get_current_qpos",
@@ -623,6 +670,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         JointEfforts: "_get_current_qfrc_actuator",
         GripperContactForce: "_get_gripper_contact_force",
         EndEffectorPose: "_get_tcp_pose",
+        GazeDirection: "_gaze_direction",
     }
 
     def _compute_obs_components(self) -> np.ndarray:
@@ -636,9 +684,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 parts.append(getattr(self, reader)())
             elif isinstance(comp, GraspState):
                 parts.append(np.array([self._is_grasping()]))
+            elif isinstance(comp, GazeState):
+                parts.append(np.array([self._is_looking_at()]))
             elif isinstance(
                 comp,
-                (TargetOffset, GazeDirection, ObjectPose, ObjectOffset, TargetPosition),
+                (TargetOffset, ObjectPose, ObjectVelocity, ObjectOffset, TargetPosition),
             ):
                 parts.append(self._get_component_data(comp))
             elif isinstance(comp, CameraObservation):
@@ -932,8 +982,6 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             obs["state"] = state
 
         if self._wrist_renderer is not None:
-            if self._wrist_cam_id is None:
-                raise RuntimeError("wrist camera id is not initialized")
             self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
             obs["wrist_camera"] = self._wrist_renderer.render()
 

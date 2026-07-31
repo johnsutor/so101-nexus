@@ -19,7 +19,7 @@ Pick up cube A and stack it directly on top of cube B, then let go.
 
 ## Observation Space
 
-The observation is a 36-dimensional vector.
+The observation is a 43-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
@@ -27,7 +27,9 @@ The observation is a 36-dimensional vector.
 | `joint_vel` | 6 | Angular velocity of each robot joint (rad/s) |
 | `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
 | `is_grasped` | 1 | Whether cube A is currently grasped |
+| `gaze_state` | 1 | Whether cube A is inside the wrist camera's field of view |
 | `obj_pose` | 7 | Cube A position (3) and orientation as quaternion (4) |
+| `obj_vel` | 6 | Cube A linear (3) and angular (3) velocity, the settling term of the success check |
 | `tcp_to_obj` | 3 | Vector from TCP to cube A |
 | `target_pos` | 3 | Cube B position |
 | `obj_to_target` | 3 | Vector from cube A to cube B |

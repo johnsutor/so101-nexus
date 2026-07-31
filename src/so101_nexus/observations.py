@@ -18,6 +18,7 @@ Typical usage::
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -163,7 +164,13 @@ class TargetOffset(Observation):
 
 
 class GazeDirection(Observation):
-    """Unit vector from the gripper tip toward the target object (3-dim)."""
+    """Unit vector from the wrist camera toward the target object (3-dim).
+
+    Anchored at the camera, not the gripper tip, so it pairs with
+    :class:`GazeState`: the two answer "where would the camera have to point"
+    and "is it pointing there". Use :class:`ObjectOffset` for the
+    gripper-relative vector.
+    """
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -196,6 +203,31 @@ class GraspState(Observation):
         return 1
 
 
+class GazeState(Observation):
+    """Whether the target object is in the wrist camera's frame (1-dim).
+
+    1.0 when the angle between the wrist camera's optical axis and the
+    camera-to-object direction is at most half the camera's vertical field of
+    view. The FOV is read live from the model, so wrist-camera domain
+    randomization moves the boundary with it, and this is the same predicate
+    ``LookAt`` scores success on (``LookAtConfig.fov_deg`` pins both together).
+
+    Two ways it is deliberately conservative. It tests the object's origin
+    against a cone, not the rendered rectangle: for an aspect ratio above 1 the
+    cone of half the *vertical* FOV is narrower than the image, so an object near
+    the left or right edge of ``obs["wrist_camera"]`` still reads 0.0. And it is
+    not an occlusion test: an object hidden behind the gripper reads 1.0.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "gaze_state"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 1
+
+
 class ObjectPose(Observation):
     """Target object position and orientation in world coordinates (7-dim)."""
 
@@ -206,6 +238,27 @@ class ObjectPose(Observation):
     @property
     def size(self) -> int:  # noqa: D102
         return 7
+
+
+class ObjectVelocity(Observation):
+    """Target object linear and angular velocity, ``[lin(3), ang(3)]`` (6-dim).
+
+    The object's free-joint velocity: linear in world coordinates (m/s),
+    angular in the object's local frame (rad/s), matching MuJoCo's free-joint
+    ``qvel`` layout. This is what the place and stack success predicates test
+    (``PickAndPlaceConfig.object_static_lin_threshold`` /
+    ``StackCubeConfig.cube_static_lin_threshold`` and their angular
+    counterparts); without it "the object has settled on the goal" and "the
+    object is sliding across it" are the same observation.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "object_velocity"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 6
 
 
 class ObjectOffset(Observation):
@@ -387,3 +440,70 @@ def privileged_state_feature_names(
         for i in range(comp.size):
             names.append(f"{comp.name}_{i}")
     return names
+
+
+def _state_component_types() -> dict[str, type[Observation]]:
+    """Return this module's state component classes by ``name``.
+
+    Scanning the module (not ``Observation.__subclasses__()``) keeps the mapping
+    to the library's own components: a user subclass of one of them is not a
+    distinct recorded schema, and would not be constructible without arguments.
+    """
+    types: dict[str, type[Observation]] = {}
+    for obj in globals().values():
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, Observation)
+            and not issubclass(obj, CameraObservation)  # no state dimensions
+            and not inspect.isabstract(obj)
+        ):
+            types[obj().name] = obj
+    return types
+
+
+def observations_from_feature_names(names: Sequence[str]) -> list[Observation]:
+    """Rebuild the state observation layout described by per-dimension names.
+
+    Inverse of :func:`privileged_state_feature_names`, so a recording's declared
+    ``observation.environment_state`` schema is enough to reconstruct the exact
+    component list it was produced from. Behaviour cloning needs this: the policy
+    has to consume the layout its demonstrations recorded, which is not
+    necessarily the env's current default.
+
+    Parameters
+    ----------
+    names
+        Per-dimension names in vector order (``joint_positions_0``, ...).
+
+    Returns
+    -------
+    list[Observation]
+        One component per named run, in vector order.
+
+    Raises
+    ------
+    ValueError
+        If a name is malformed, names an unknown component, or a component's
+        dimensions are missing, reordered, or repeated.
+    """
+    types = _state_component_types()
+    components: list[Observation] = []
+    index = 0
+    while index < len(names):
+        base, _, suffix = names[index].rpartition("_")
+        cls = types.get(base)
+        if cls is None or suffix != "0":
+            raise ValueError(
+                f"feature name {names[index]!r} does not start an observation component; "
+                f"expected one of {sorted(types)} followed by '_0'"
+            )
+        component = cls()
+        expected = [f"{base}_{i}" for i in range(component.size)]
+        if list(names[index : index + component.size]) != expected:
+            raise ValueError(
+                f"feature names for {base!r} must be {expected}, got "
+                f"{list(names[index : index + component.size])}"
+            )
+        components.append(component)
+        index += component.size
+    return components

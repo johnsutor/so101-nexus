@@ -176,12 +176,12 @@ def test_wrist_dr_writes_wxyz_pitch_quaternion():
         ]
     )
     env.reset(seed=0)
-    quat = env._cam_quat[:, env._wrist_mjid]  # (N, 4) wxyz
+    quat = env._cam_quat[:, env._wrist_cam_id]  # (N, 4) wxyz
     half = np.radians(pitch_deg) / 2.0
     expected = torch.tensor([np.cos(half), np.sin(half), 0.0, 0.0], dtype=quat.dtype)
     assert torch.allclose(quat[0], expected, atol=1e-5)
     # Degenerate FOV range -> every world shares the same pinned fovy.
-    fovy = env._cam_fovy[:, env._wrist_mjid]
+    fovy = env._cam_fovy[:, env._wrist_cam_id]
     assert torch.allclose(fovy, torch.full_like(fovy, 60.0), atol=1e-4)
 
 
@@ -193,7 +193,7 @@ def test_wrist_dr_fovy_varies_per_world():
         num_envs=8,
     )
     env.reset(seed=0)
-    fovy = env._cam_fovy[:, env._wrist_mjid]
+    fovy = env._cam_fovy[:, env._wrist_cam_id]
     assert float(fovy.std()) > 0.0  # per-world FOV randomization is live
 
 
@@ -216,7 +216,7 @@ def test_lookat_uses_live_per_world_fov_for_success():
     # Force a degenerate per-world FOV: world 0 can never satisfy (0 deg), world 1
     # always satisfies (360 deg -> half-FOV = pi >= any orientation error). A scalar
     # boundary would make both worlds behave identically; per-world fovy must not.
-    env._cam_fovy[:, env._wrist_mjid] = torch.tensor([0.0, 360.0])
+    env._cam_fovy[:, env._wrist_cam_id] = torch.tensor([0.0, 360.0])
     _, _, terminated, _, _ = env.step(torch.zeros((2, 6)))
     assert not bool(terminated[0])
     assert bool(terminated[1])

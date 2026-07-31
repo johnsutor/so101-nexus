@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import torch
 
@@ -24,6 +24,7 @@ class WarpTouchVectorEnv(WarpPickLiftVectorEnv):
     """
 
     config: TouchConfig
+    default_config_cls: ClassVar[type[TouchConfig]] = TouchConfig
 
     def __init__(
         self,

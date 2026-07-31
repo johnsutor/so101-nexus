@@ -374,7 +374,7 @@ def test_pick_multiple_cubes_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (30,)
+        assert obs.shape == (31,)
         _run_episode(env)
     finally:
         env.close()
@@ -390,7 +390,7 @@ def test_pick_mixed_pool_with_distractors():
     env = gym.make("MuJoCoPickLift-v1", config=config)
     try:
         obs, _ = env.reset()
-        assert obs.shape == (30,)
+        assert obs.shape == (31,)
         _run_episode(env)
     finally:
         env.close()
@@ -630,11 +630,11 @@ def test_joint_delta_penalty_norms_use_normalized_action(control_mode):
 
 
 def test_pick_and_place_default_obs_shape():
-    """PickAndPlace default obs is a 36-dim flat vector."""
+    """PickAndPlace default obs is a 43-dim flat vector."""
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
         obs, _ = env.reset()
-        assert obs.shape == (36,)
+        assert obs.shape == (43,)
     finally:
         env.close()
 
@@ -898,13 +898,13 @@ def test_lookat_success_means_object_in_camera_fov():
         env = gym.make("MuJoCoLookAt-v1", config=LookAtConfig(fov_deg=fov_deg)).unwrapped
         try:
             env.reset(seed=0)
+            mujoco.mj_forward(env.model, env.data)  # cam pose is a step behind qpos
             axis = env._gaze_axis()
-            tcp = env._get_tcp_pose()[:3]
+            cam = env.data.cam_xpos[env._wrist_cam_id].copy()
             mid = env._look_target_mocap_id
-            # Place the target along the camera optical axis (in frame) or opposite
-            # (behind the camera, out of frame).
-            pos = tcp + axis * 0.10 if aligned else tcp - axis * 0.10
-            env.data.mocap_pos[mid] = pos
+            # Place the target along the camera optical axis, measured from the
+            # camera itself (in frame), or opposite it (behind the camera).
+            env.data.mocap_pos[mid] = cam + axis * 0.10 if aligned else cam - axis * 0.10
             mujoco.mj_forward(env.model, env.data)
             return bool(env._get_info()["success"])
         finally:
@@ -923,13 +923,16 @@ def test_lookat_fov_deg_is_a_live_knob():
         env = gym.make("MuJoCoLookAt-v1", config=LookAtConfig(fov_deg=fov_deg)).unwrapped
         try:
             env.reset(seed=0)
+            mujoco.mj_forward(env.model, env.data)  # cam pose is a step behind qpos
             axis = env._gaze_axis()
-            tcp = env._get_tcp_pose()[:3]
+            cam = env.data.cam_xpos[env._wrist_cam_id].copy()
             perp = np.array([axis[1], -axis[0], 0.0])
             perp = perp / (np.linalg.norm(perp) + 1e-9)
             angle = float(np.deg2rad(18.0))
+            # The bearing is built from the camera, which is where the predicate
+            # casts its ray, so the achieved angle is exactly 18 degrees.
             env.data.mocap_pos[env._look_target_mocap_id] = (
-                tcp + (np.cos(angle) * axis + np.sin(angle) * perp) * 0.10
+                cam + (np.cos(angle) * axis + np.sin(angle) * perp) * 0.10
             )
             mujoco.mj_forward(env.model, env.data)
             return bool(env._get_info()["success"])
@@ -946,7 +949,7 @@ def test_lookat_success_threshold_defaults_to_live_camera_fov():
     try:
         env.reset(seed=0)
         expected = float(np.radians(env.model.cam_fovy[env._wrist_cam_id].item()) / 2.0)
-        assert env._success_half_fov_rad() == pytest.approx(expected)
+        assert env._half_fov_rad() == pytest.approx(expected)
     finally:
         env.close()
 

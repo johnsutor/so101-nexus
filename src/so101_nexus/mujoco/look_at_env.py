@@ -12,6 +12,7 @@ import numpy as np
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
 from so101_nexus.constants import COLOR_MAP, sample_color
+from so101_nexus.gaze import object_in_view
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.rewards import orientation_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, SCENE_LIGHTS_XML, SCENE_VISUAL_XML
@@ -64,8 +65,8 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
 class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     """LookAt primitive: orient the wrist camera toward a sampled target object.
 
-    Default obs (22,): joint_positions(6) + joint_velocities(6) +
-    end_effector_pose(7) + gaze_direction(3).
+    Default obs (23,): joint_positions(6) + joint_velocities(6) +
+    end_effector_pose(7) + gaze_direction(3) + gaze_state(1).
     Info: orientation_error (radians), success.
     task_description is auto-generated: "Look at the <repr(obj)>."
 
@@ -111,7 +112,6 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         # The target is a mocap body (kinematic): its pose is driven via the
         # data.mocap_pos / mocap_quat arrays indexed by body_mocapid, not qpos.
         self._look_target_mocap_id = int(self.model.body_mocapid[self._target_body_id])
-        self._wrist_cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "wrist_cam")
 
         self._finish_model_setup()
 
@@ -138,52 +138,27 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         """Return the current world position of the look-at target body."""
         return self.data.xpos[self._target_body_id].copy()
 
-    def _gaze_axis(self) -> np.ndarray:
-        """Return the wrist-camera optical axis in world frame (where it points)."""
-        # MuJoCo cameras look along their local -z axis; the optical axis is the
-        # negative third column of the camera rotation matrix. Using the real
-        # camera axis (not the gripperframe proxy) keeps success tied to what the
-        # camera actually sees, and tracks any mount/FOV change automatically.
-        mat = self.data.cam_xmat[self._wrist_cam_id].reshape(3, 3)
-        return -mat[:, 2].copy()
+    def _gaze_target_pos(self) -> np.ndarray:
+        return self._get_target_pos()
 
-    def _success_half_fov_rad(self) -> float:
-        """Half the wrist-camera vertical FOV (radians): the in-frame boundary."""
-        if self.config.fov_deg is not None:
-            fovy = self.config.fov_deg
-        else:
-            fovy = float(self.model.cam_fovy[self._wrist_cam_id].item())
-        return float(np.radians(fovy) / 2.0)
+    def _half_fov_rad(self) -> float:
+        """Half the wrist-camera vertical FOV (radians): the in-frame boundary.
 
-    def _get_component_data(self, component: object) -> np.ndarray:
-        from so101_nexus.observations import GazeDirection
-
-        if isinstance(component, GazeDirection):
-            target_pos = self._get_target_pos()
-            tcp_pos = self._get_tcp_pose()[:3]
-            gaze = target_pos - tcp_pos
-            norm = float(np.linalg.norm(gaze))
-            if norm > 1e-8:
-                gaze = gaze / norm
-            return gaze
-        return super()._get_component_data(component)
+        ``config.fov_deg`` pins the boundary; otherwise the base reads the live
+        camera, so per-episode FOV randomization moves it.
+        """
+        if self.config.fov_deg is None:
+            return super()._half_fov_rad()
+        return float(np.radians(self.config.fov_deg) / 2.0)
 
     def _get_info(self) -> dict:
-        gaze = self._gaze_axis()
-        target_pos = self._get_target_pos()
-        tcp_pos = self._get_tcp_pose()[:3]
-        to_target = target_pos - tcp_pos
-        norm = float(np.linalg.norm(to_target))
-        if norm > 1e-8:
-            to_target = to_target / norm
-        # Angle between the wrist-camera optical axis and the direction to the
-        # object. Success when the object is within the camera's field of view.
-        cos_sim = float(np.dot(gaze, to_target) / (np.linalg.norm(gaze) + 1e-8))
-        cos_sim = float(np.clip(cos_sim, -1.0, 1.0))
-        orientation_error = float(np.arccos(cos_sim))
+        # Angle between the wrist-camera optical axis and the camera-to-object
+        # direction. Success when the object is within the camera's field of view,
+        # which is exactly the GazeState observation.
+        orientation_error = self._gaze_angle_rad()
         info = {
             "orientation_error": orientation_error,
-            "success": orientation_error <= self._success_half_fov_rad(),
+            "success": bool(object_in_view(orientation_error, self._half_fov_rad())),
         }
         if self._privileged_state is not None:
             info["privileged_state"] = self._privileged_state

@@ -67,6 +67,18 @@ On `WarpPickLift-v1`, demo-seeding alone rescues the seed that stalls under vani
 (`best_success` `0.037` -> `0.993`). Full design notes and results are in
 [`examples/README.md`](https://github.com/johnsutor/so101-nexus/blob/main/examples/README.md#bc-seeded-ppo-training).
 
+## Observation-layout caveat
+
+<Callout type="warn">
+The policy has to consume exactly the state layout its demonstrations recorded, so with
+`--use-demos true` the script builds both the Warp training env and the MuJoCo evaluator
+from the layout the dataset declares, not from the env's current default. When the two
+differ (a dataset recorded before a component joined the defaults, for example
+`gaze_state`), the run prints the pinned width and the missing components at startup, and
+the resulting checkpoint only loads against that layout. Re-record the demos to train on
+the current default.
+</Callout>
+
 ## Action-space caveat
 
 <Callout type="warn">

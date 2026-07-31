@@ -30,7 +30,7 @@ Bring the gripper to an object resting on the table (touch it).
 
 ## Observation Space
 
-Default observation is the 30-dimensional pick state vector (configurable via the `observations` parameter on `TouchConfig`):
+Default observation is the 31-dimensional pick state vector (configurable via the `observations` parameter on `TouchConfig`):
 
 | Component | Class | Dimensions | Description |
 |-----------|-------|------------|-------------|
@@ -38,6 +38,7 @@ Default observation is the 30-dimensional pick state vector (configurable via th
 | Joint velocities | `JointVelocities` | 6 | Angular velocity of each robot joint (rad/s) |
 | End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
 | Grasp state | `GraspState` | 1 | Whether the gripper is grasping |
+| Gaze state | `GazeState` | 1 | Whether the target object is inside the wrist camera's field of view |
 | Object pose | `ObjectPose` | 7 | Target object position and orientation |
 | Object offset | `ObjectOffset` | 3 | TCP-to-object position offset |
 

@@ -23,11 +23,11 @@ from so101_nexus.config import REWARD_COMPONENT_KEYS, StackCubeConfig
 
 
 def test_stack_cube_default_obs_shape():
-    """StackCube default obs is a 36-dim flat vector, matching PickAndPlace."""
+    """StackCube default obs is a 43-dim flat vector, matching PickAndPlace."""
     env = gym.make("MuJoCoStackCube-v1")
     try:
         obs, _ = env.reset()
-        assert obs.shape == (36,)
+        assert obs.shape == (43,)
     finally:
         env.close()
 
@@ -408,7 +408,7 @@ def test_stack_cube_distractors_do_not_change_obs_or_task():
     env = gym.make("MuJoCoStackCube-v1", config=StackCubeConfig(n_distractors=3))
     try:
         obs, _ = env.reset(seed=1)
-        assert obs.shape == (36,)
+        assert obs.shape == (43,)
         assert env.unwrapped.task_description.startswith("Stack the red cube")  # type: ignore[attr-defined]
         for _ in range(5):
             _, reward, _, _, _ = env.step(env.action_space.sample())

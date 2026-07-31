@@ -19,11 +19,22 @@ State components produce fixed-size slices of the observation vector.
 | `GripperContactForce` | 3 | World-frame resultant contact force on the two fingers (N) |
 | `EndEffectorPose` | 7 | TCP position (3) + quaternion orientation (4) |
 | `TargetOffset` | 3 | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
-| `GazeDirection` | 3 | Unit vector from gripper toward the target object |
+| `GazeDirection` | 3 | Unit vector from the wrist camera toward the target object |
+| `GazeState` | 1 | Binary in-frame flag (1.0 = the target object is inside the cone of half the wrist camera's vertical FOV) |
 | `GraspState` | 1 | Binary grasp flag (1.0 = grasping, 0.0 = not); requires two-sided contact with opposing normals |
 | `ObjectPose` | 7 | Target object position (3) + quaternion orientation (4) |
+| `ObjectVelocity` | 6 | Target object linear (3, world frame, m/s) + angular (3, body frame, rad/s) velocity |
 | `ObjectOffset` | 3 | Vector from gripper tip to target object |
 | `TargetPosition` | 3 | Absolute goal position (x, y, z) |
+
+`GazeDirection` and `GazeState` are anchored at the wrist camera, not at the gripper
+tip: the camera sits about 8 cm from the TCP, which is the same order as the distance
+to a graspable object, so a TCP-anchored ray answers a different question than "does
+the camera see it". `GazeState` is deliberately conservative in two ways. It tests the
+object's origin against a cone of half the *vertical* FOV read live from the model (so
+wrist-camera domain randomization moves the boundary with it), which for a wider-than-tall
+image is narrower than the rendered frame. And it is not an occlusion test. Tasks without
+a target object (Move) do not support either component.
 
 ### Camera Components
 
@@ -89,12 +100,16 @@ Each task config auto-populates `observations` if you don't provide one:
 
 | Task | Default Components | State Dimensions |
 | --- | --- | --- |
-| PickLift | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 30 |
-| PickAndPlace | JointPositions, JointVelocities, EndEffectorPose, GraspState, TargetPosition, ObjectPose, ObjectOffset, TargetOffset | 36 |
-| StackCube | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset, TargetPosition, TargetOffset | 36 |
-| Touch | JointPositions, JointVelocities, EndEffectorPose, GraspState, ObjectPose, ObjectOffset | 30 |
-| LookAt | JointPositions, JointVelocities, EndEffectorPose, GazeDirection | 22 |
+| PickLift | JointPositions, JointVelocities, EndEffectorPose, GraspState, GazeState, ObjectPose, ObjectOffset | 31 |
+| PickAndPlace | JointPositions, JointVelocities, EndEffectorPose, GraspState, GazeState, TargetPosition, ObjectPose, ObjectVelocity, ObjectOffset, TargetOffset | 43 |
+| StackCube | JointPositions, JointVelocities, EndEffectorPose, GraspState, GazeState, ObjectPose, ObjectVelocity, ObjectOffset, TargetPosition, TargetOffset | 43 |
+| Touch | JointPositions, JointVelocities, EndEffectorPose, GraspState, GazeState, ObjectPose, ObjectOffset | 31 |
+| LookAt | JointPositions, JointVelocities, EndEffectorPose, GazeDirection, GazeState | 23 |
 | Move | JointPositions, JointVelocities, EndEffectorPose, TargetOffset | 22 |
+
+PickAndPlace and StackCube carry `ObjectVelocity` because their success predicates
+require the object to have settled (`object_static_lin_threshold` /
+`cube_static_lin_threshold`), which no other component exposes.
 
 ### Replaying Datasets Recorded Against an Older Layout
 
@@ -128,6 +143,19 @@ obs = relabel_environment_state(
     dt=env.unwrapped.control_dt,
     episode_index=df["episode_index"].to_numpy(),
 )
+```
+
+A column such as `gaze_state_0` cannot be reconstructed offline (it needs the episode's
+wrist-camera pose, which the state vector does not carry), so a policy trained on those
+demonstrations has to run against the layout they were recorded with.
+`observations_from_feature_names` rebuilds that layout from the declared names, and the
+config accepts it directly:
+
+```python
+from so101_nexus import PickConfig, observations_from_feature_names
+
+recorded = observations_from_feature_names(names)
+env = gym.make("MuJoCoPickLift-v1", config=PickConfig(observations=recorded))
 ```
 
 ## Observation Modes
@@ -171,7 +199,7 @@ import so101_nexus.mujoco
 # State-only (default)
 env = gym.make("MuJoCoPickLift-v1")
 obs, info = env.reset()
-print(f"Observation shape: {obs.shape}")  # (30,)
+print(f"Observation shape: {obs.shape}")  # (31,)
 env.close()
 
 # With camera

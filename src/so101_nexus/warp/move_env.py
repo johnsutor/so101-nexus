@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import torch
@@ -41,6 +42,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
     """
 
     config: MoveConfig
+    default_config_cls: ClassVar[type[MoveConfig]] = MoveConfig
 
     def __init__(
         self,
