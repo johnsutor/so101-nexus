@@ -408,9 +408,15 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `stack_alignment_margin` | `float` | `0.005` | Alignment tolerance (meters) for the stacked success check |
 | `cube_static_lin_threshold` | `float` | `0.01` | Maximum linear speed (m/s) at which cube A still counts as static for success |
 | `cube_static_ang_threshold` | `float` | `0.5` | Maximum angular speed (rad/s) at which cube A still counts as static for success |
+| `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
+| `n_distractors` | `int` | `0` | Number of distractor objects placed alongside cubes A and B each episode, sampled without replacement from `distractors` |
 
 Passing overlapping `cube_a_colors`/`cube_b_colors` pools warns (the two
 cubes may be the same color in some episodes).
+
+Distractor slots are only compiled when `n_distractors > 0`, so the default
+scene holds exactly two cubes. A distractor cube whose color is also a cube
+A/B color warns, because the task description names cubes by color alone.
 
 ### Default Observations
 

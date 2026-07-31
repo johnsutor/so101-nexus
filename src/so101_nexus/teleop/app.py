@@ -77,6 +77,7 @@ class CustomizationUIState:
     customize_value: bool = False
     common_visible: bool = False
     pick_visible: bool = False
+    distractors_visible: bool = False
     pick_and_place_visible: bool = False
     stack_visible: bool = False
     object_specs: list[str] = field(default_factory=lambda: ["cube:red"])
@@ -92,6 +93,11 @@ class CustomizationUIState:
     target_colors: list[str] = field(default_factory=lambda: ["blue"])
     cube_a_colors: list[str] = field(default_factory=lambda: ["red"])
     cube_b_colors: list[str] = field(default_factory=lambda: ["blue"])
+
+    @property
+    def pick_group_visible(self) -> bool:
+        """Whether the object-pool group is shown (pool, distractor count, or both)."""
+        return self.pick_visible or self.distractors_visible
 
 
 def _progress_text(completed: int, total: int) -> str:
@@ -203,15 +209,23 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
     }
     common_visible = bool(common_keys & set(attrs))
     pick_visible = "objects" in attrs and "n_distractors" in attrs
+    distractors_visible = "n_distractors" in attrs
     pick_and_place_visible = "cube_colors" in attrs or "target_colors" in attrs
     stack_visible = "cube_a_colors" in attrs or "cube_b_colors" in attrs
-    customize_visible = common_visible or pick_visible or pick_and_place_visible or stack_visible
+    customize_visible = (
+        common_visible
+        or distractors_visible
+        or pick_visible
+        or pick_and_place_visible
+        or stack_visible
+    )
 
     return CustomizationUIState(
         customize_visible=customize_visible,
         customize_value=customize_visible,
         common_visible=common_visible,
         pick_visible=pick_visible,
+        distractors_visible=distractors_visible,
         pick_and_place_visible=pick_and_place_visible,
         stack_visible=stack_visible,
         object_specs=_object_specs_from_config(attrs.get("objects")),
@@ -680,8 +694,8 @@ def _cb_update_customization_for_env(env_id: str):
             visible=state.customize_visible,
             interactive=state.customize_visible,
         ),
-        gr.update(value=state.object_specs),
-        gr.update(value=state.n_distractors),
+        gr.update(value=state.object_specs, visible=state.pick_visible),
+        gr.update(value=state.n_distractors, visible=state.distractors_visible),
         gr.update(value=state.ground_colors),
         gr.update(value=state.robot_colors),
         gr.update(value=state.spawn_min_radius),
@@ -692,7 +706,7 @@ def _cb_update_customization_for_env(env_id: str):
         gr.update(value=state.target_colors),
         gr.update(value=state.success_hold_seconds),
         gr.update(visible=state.common_visible),
-        gr.update(visible=state.pick_visible),
+        gr.update(visible=state.pick_group_visible),
         gr.update(visible=state.pick_and_place_visible),
         gr.update(value=state.cube_a_colors),
         gr.update(value=state.cube_b_colors),
@@ -1304,17 +1318,21 @@ def _build_setup_screen(
                 "fields below are ignored."
             ),
         )
-        with gr.Group(visible=customization_state.pick_visible) as pick_customization_group:
+        with gr.Group(
+            visible=customization_state.pick_group_visible
+        ) as objects_customization_group:
             object_pool_input = gr.CheckboxGroup(
                 choices=default_object_choices(),
                 value=customization_state.object_specs,
                 label="Pick Object Pool",
+                visible=customization_state.pick_visible,
             )
             n_distractors_input = gr.Number(
                 value=customization_state.n_distractors,
                 minimum=0,
                 precision=0,
-                label="Pick Distractors",
+                label="Distractors",
+                visible=customization_state.distractors_visible,
             )
         with gr.Group(visible=customization_state.common_visible) as common_customization_group:
             with gr.Row():
@@ -1411,7 +1429,7 @@ def _build_setup_screen(
         success_hold_seconds_input,
         repo_id_warning,
         common_customization_group,
-        pick_customization_group,
+        objects_customization_group,
         pick_and_place_customization_group,
         port_status,
         recheck_port_btn,
@@ -1724,7 +1742,7 @@ def main(
                     success_hold_seconds_input,
                     repo_id_warning,
                     common_customization_group,
-                    pick_customization_group,
+                    objects_customization_group,
                     pick_and_place_customization_group,
                     port_status,
                     recheck_port_btn,
@@ -1823,7 +1841,7 @@ def main(
                 target_colors_input,
                 success_hold_seconds_input,
                 common_customization_group,
-                pick_customization_group,
+                objects_customization_group,
                 pick_and_place_customization_group,
                 cube_a_colors_input,
                 cube_b_colors_input,

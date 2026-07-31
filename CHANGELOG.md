@@ -11,6 +11,8 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `n_distractors` and `distractors` on `StackCubeConfig` (both backends): place non-target clutter alongside cubes A and B, drawn without replacement each episode from the `distractors` pool (defaults to green, yellow, and purple cubes sharing `cube_half_size`/`cube_mass`, with colours disjoint from the default cube A/B colours). Slots are only compiled when `n_distractors > 0`, so the default two-cube scene is unchanged, and the count is exposed in the teleop UI and the `[stack_cube]` profile section. Passing a distractor cube whose colour is also a cube A/B colour warns, since the task description names cubes by colour alone.
+
 ### Changed
 
 ### Fixed

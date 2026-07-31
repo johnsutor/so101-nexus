@@ -227,3 +227,40 @@ def test_stack_cube_reward_no_dwelling_when_hovering():
     # The first hover snapshot still earned real, one-time credit for having
     # moved to that state (nonzero delta from the reset baseline).
     assert bool((reward1 > reward2 + 1e-3).all())
+
+
+def test_stack_cube_default_compiles_no_distractor_slots():
+    env = _make_env(num_envs=4)
+    assert env._d_pool == 0
+    assert len(env._slot_qadr) == env._d_offset
+
+
+def test_stack_cube_distractors_active_per_world():
+    """Each world activates exactly ``n_distractors`` pool slots inside the spawn
+    annulus, clear of both cubes; the rest stay in the hidden band."""
+    import torch
+
+    from so101_nexus.config import StackCubeConfig
+
+    cfg = StackCubeConfig(n_distractors=2)
+    env = _make_env(num_envs=8, config=cfg)
+    env.reset(seed=0)
+    center = torch.tensor(cfg.spawn_center)
+    d_qadr = env._slot_qadr[env._d_offset :]
+    assert len(d_qadr) == len(cfg.distractors)
+
+    a_xy, b_xy = env._cube_a_pos()[:, :2], env._cube_b_pos()[:, :2]
+    min_expected = cfg.min_cube_separation + env._slot_bradius.max() * 2
+    active = torch.zeros((env.num_envs, len(d_qadr)), dtype=torch.bool)
+    for j, qa in enumerate(d_qadr.tolist()):
+        xy = env.qpos[:, qa : qa + 2]
+        r = torch.linalg.norm(xy - center, dim=1)
+        near = r <= cfg.spawn_max_radius + 1e-6
+        assert bool((r[near] >= cfg.spawn_min_radius - 1e-6).all())
+        for cube_xy in (a_xy, b_xy):
+            dist = torch.linalg.norm(xy - cube_xy, dim=1)
+            assert bool((dist[near] >= min_expected - 1e-4).all()), j
+        active[:, j] = near.cpu()
+    assert bool((active.sum(dim=1) == cfg.n_distractors).all())
+    # Selection is per world, not one shared subset broadcast to every world.
+    assert not bool((active == active[0]).all())

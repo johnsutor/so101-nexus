@@ -8,6 +8,10 @@ reset, and inactive slots are parked in an off-world band. This matches the
 MuJoCo backend's per-episode resampling distribution (uniform over each
 configured list, sampled independently per role) -- the divergence documented
 here previously (compile-time-fixed colours) is removed.
+
+``StackCubeConfig.n_distractors > 0`` additionally compiles one slot per entry in
+``StackCubeConfig.distractors``; each world activates ``n_distractors`` of them
+per reset and the remainder stay parked in the hidden band.
 """
 
 from __future__ import annotations
@@ -18,11 +22,15 @@ import mujoco
 import numpy as np
 import torch
 
-from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
+from so101_nexus import (
+    ensure_ycb_assets,
+    get_so101_mujoco_model_dir,
+    get_so101_mujoco_model_path,
+)
 from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
 from so101_nexus.constants import COLOR_MAP, ColorName
 from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject
+from so101_nexus.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
@@ -36,6 +44,7 @@ from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 from so101_nexus.warp.object_slots import (
     hidden_slot_band_xy,
+    quat_mul_wxyz,
     random_yaw_quat_batch,
     sample_separated_polar,
 )
@@ -98,13 +107,23 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._b_colors = _as_list(config.cube_b_colors)
         self._a_pool = len(self._a_colors)
         self._b_pool = len(self._b_colors)
-        scene_objects = [
+        self._n_distractors = config.n_distractors
+        distractor_pool = list(config.distractors) if self._n_distractors else []
+        for obj in distractor_pool:
+            if isinstance(obj, YCBObject):
+                ensure_ycb_assets(obj.model_id)
+        self._d_pool = len(distractor_pool)
+        self._d_offset = self._a_pool + self._b_pool
+        scene_objects: list[SceneObject] = [
             CubeObject(half_size=config.cube_half_size, mass=config.cube_mass, color=c)
             for c in self._a_colors + self._b_colors
         ]
-        slot_names = [f"cube_a_{i}" for i in range(self._a_pool)] + [
-            f"cube_b_{i}" for i in range(self._b_pool)
-        ]
+        scene_objects += distractor_pool
+        slot_names = (
+            [f"cube_a_{i}" for i in range(self._a_pool)]
+            + [f"cube_b_{i}" for i in range(self._b_pool)]
+            + [f"distractor_slot_{i}" for i in range(self._d_pool)]
+        )
 
         ground_name = (
             config.ground_colors
@@ -161,8 +180,9 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             config.spawn_max_radius,
             config.spawn_center,
         )
-        # Cube slots rest at an identity quaternion (no mesh rest pose).
-        self._identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+        self._slot_rest_quat = torch.tensor(
+            np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
+        )
 
         # Per-world slot selection (set at reset; defaults track the first
         # configured pair until then). Grasp detection always targets the
@@ -300,13 +320,17 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             self.qpos[idx, qa] = self._hide_xy[j, 0]
             self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
             self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
-            self.qpos[idx, qa + 3 : qa + 7] = self._identity_quat
+            self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
             da = int(self._slot_dadr[j])
             self.qvel[idx, da : da + 6] = 0.0
 
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
-        sel = torch.stack([a_sel, b_sel], dim=1)  # (n, 2)
-        radii = self._slot_bradius[sel]  # (n, 2)
+        # Columns: 0 = cube A, 1 = cube B, 2.. = distractors.
+        sel = torch.stack([a_sel, b_sel], dim=1)
+        if self._n_distractors:
+            d_rank = torch.rand(n, self._d_pool, generator=gen, device=dev).argsort(dim=1)
+            sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
+        radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
             gen,
             dev,
@@ -316,19 +340,18 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             cfg.spawn_max_radius,
             angle,
             cfg.spawn_center,
-        )  # (n, 2, 2): column 0 = cube A, column 1 = cube B
+        )  # (n, n_active, 2)
 
         rows = idx[:, None]
-        for k in range(2):
+        for k in range(sel.shape[1]):
             sel_k = sel[:, k]
             base = self._slot_qadr[sel_k]  # (n,) qpos address per reset world
             yaw = random_yaw_quat_batch(gen, dev, n)
-            # Cubes rest at an identity quaternion, so a pure yaw sample is the
-            # final orientation (no rest_quat multiply needed, unlike mesh slots).
+            quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
             self.qpos[rows, base[:, None] + torch.arange(3, device=dev)] = torch.cat(
                 [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
             )
-            self.qpos[rows, base[:, None] + 3 + torch.arange(4, device=dev)] = yaw
+            self.qpos[rows, base[:, None] + 3 + torch.arange(4, device=dev)] = quat
             dadr = self._slot_dadr[sel_k]
             self.qvel[rows, dadr[:, None] + torch.arange(6, device=dev)] = 0.0
 
