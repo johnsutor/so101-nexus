@@ -35,8 +35,9 @@ same `_DELTA_ACTION_SCALE` the env applies internally.
 **Also covers the harder `WarpPickAndPlace-v1` task, as opt-in CLI flags -- all off/at their
 `WarpPickLift-v1`-safe default otherwise, so the recipe above is completely unaffected.**
 `env_id`/`demo_repo` are already free-form (any `Warp*-v1` id / matching demo dataset works;
-`_make_envs`/`evaluate_mujoco` build the env with `config=None`, so the obs dimension is read
-straight off whatever env is registered). Pick-and-place's `success` (object lowered back to
+the training env and the MuJoCo evaluator are built with the observation layout the demo
+dataset declares, so a dataset recorded before a component joined the env defaults still
+trains a matching policy). Pick-and-place's `success` (object lowered back to
 the goal *and* the whole arm simultaneously static -- a rarer two-condition event than
 pick-lift's pure height-threshold success) needs two additional levers, both zero/off by
 default:
@@ -90,6 +91,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from so101_nexus import observations_from_feature_names, privileged_state_feature_names
 from so101_nexus._reproducibility import seed_everything
 from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
 
@@ -331,17 +333,30 @@ class Agent(nn.Module):
         return action, logprob, entropy, self.critic(x).squeeze(-1)
 
 
-def _resolve_env_cls(env_id: str):
-    """Return the batched Warp env class registered under *env_id*."""
+def _env_cls_from_spec(env_id: str, attr: str):
+    """Import the env class a Gymnasium spec's ``attr`` entry point names."""
     import gymnasium as gym
 
+    import so101_nexus.mujoco
     import so101_nexus.warp  # noqa: F401  registers Warp*-v1
 
-    entry = gym.spec(env_id).vector_entry_point
+    entry = getattr(gym.spec(env_id), attr)
     if not isinstance(entry, str):
-        raise ValueError(f"{env_id} has no string vector_entry_point; not a Warp env")
+        raise ValueError(f"{env_id} has no string {attr}")
     module_path, class_name = entry.split(":")
     return getattr(importlib.import_module(module_path), class_name)
+
+
+def _resolve_env_cls(env_id: str):
+    """Return the batched Warp env class registered under *env_id*."""
+    return _env_cls_from_spec(env_id, "vector_entry_point")
+
+
+def _mujoco_config(mujoco_env_id: str, observations):
+    """Build the MuJoCo env's config with a pinned observation layout."""
+    return _env_cls_from_spec(mujoco_env_id, "entry_point").default_config_cls(
+        observations=observations
+    )
 
 
 def _fixed_horizon(env_cls):
@@ -369,14 +384,21 @@ def _make_envs(
     control_mode="pd_joint_delta_pos",
     episode_length=512,
     terminate_on_success=False,
+    observations=None,
 ):
-    """Build the batched Warp training env with the all-observation default config."""
+    """Build the batched Warp training env.
+
+    ``observations=None`` takes the env's all-observation default config;
+    otherwise the layout is pinned, which is what a BC run needs so the policy
+    consumes exactly the components its demonstrations recorded.
+    """
     env_cls = _resolve_env_cls(env_id)
+    config = None if observations is None else env_cls.default_config_cls(observations=observations)
     if not terminate_on_success:
         env_cls = _fixed_horizon(env_cls)
     return env_cls(
         num_envs=num_envs,
-        config=None,  # env builds its all-observation default (privileged state)
+        config=config,
         control_mode=control_mode,
         device=str(device),
         max_episode_steps=episode_length,
@@ -395,12 +417,14 @@ def evaluate_mujoco(
     eval_episodes,
     seed,
     capture_video,
+    observations=None,
 ):
     """Deterministic eval in the matching ``MuJoCo*`` backend (a transfer figure).
 
     Warp's render() is a no-op, so eval rollouts are rendered in the MuJoCo backend
-    with the same default (all-observation) config and control mode; the saved Warp
-    policy + obs-norm stats transfer directly (slight physics gap: Warp uses
+    with the same config and control mode as training (``observations=None`` takes
+    the all-observation default, otherwise the training layout is pinned); the saved
+    Warp policy + obs-norm stats transfer directly (slight physics gap: Warp uses
     implicit/no-noslip). Returns (eval_metrics, frames) where frames is one episode's
     HxWx3 uint8 arrays (None when capture_video is False).
     """
@@ -408,11 +432,13 @@ def evaluate_mujoco(
 
     import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
 
+    mujoco_id = env_id.replace("Warp", "MuJoCo")
     env = gym.make(
-        env_id.replace("Warp", "MuJoCo"),
+        mujoco_id,
         control_mode=control_mode,
         render_mode="rgb_array" if capture_video else None,
         max_episode_steps=episode_length,
+        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
     )
     mean = obs_norm.rms.mean.to(device).float()
     var = obs_norm.rms.var.to(device).float()
@@ -480,11 +506,12 @@ def rollout_video_from_checkpoint(
     """Render one deterministic MuJoCo rollout of a saved Warp PPO policy to mp4.
 
     The Warp backend steps thousands of worlds in parallel and does not render, so the
-    rollout is shown in the matching ``MuJoCo*`` backend (same default all-observation
-    config and control mode). It is a transfer figure: the saved policy and obs-norm
-    stats transfer directly, with a slight physics gap versus Warp. Returns
-    ``(metrics, video_path)`` where ``video_path`` is the written mp4, or ``None`` when
-    ``capture_video`` is False.
+    rollout is shown in the matching ``MuJoCo*`` backend (same control mode, and the
+    observation layout the checkpoint records, falling back to the env default for a
+    checkpoint written before that was stored). It is a transfer figure: the saved
+    policy and obs-norm stats transfer directly, with a slight physics gap versus Warp.
+    Returns ``(metrics, video_path)`` where ``video_path`` is the written mp4, or
+    ``None`` when ``capture_video`` is False.
     """
     import gymnasium as gym
 
@@ -493,13 +520,18 @@ def rollout_video_from_checkpoint(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
 
+    names = ckpt.get("env_state_names")
+    observations = None if not names else observations_from_feature_names(names)
+
     # Probe a throwaway MuJoCo env for obs/act dimensions (flat privileged state,
-    # matching the Warp training obs). The checkpoint stores only the policy and
-    # obs-norm stats, not the dims.
+    # matching the Warp training obs). The checkpoint stores the policy, obs-norm
+    # stats, and the layout names, but not the dims.
+    mujoco_id = env_id.replace("Warp", "MuJoCo")
     probe = gym.make(
-        env_id.replace("Warp", "MuJoCo"),
+        mujoco_id,
         control_mode=control_mode,
         max_episode_steps=episode_length,
+        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
     )
     obs_shape = probe.observation_space.shape
     act_shape = probe.action_space.shape
@@ -527,12 +559,19 @@ def rollout_video_from_checkpoint(
         eval_episodes=1,
         seed=seed,
         capture_video=capture_video,
+        observations=observations,
     )
     video_path = write_video(frames, out_path, fps=fps) if capture_video else None
     return metrics, video_path
 
 
-def _save(agent, obs_norm, path, step, success):
+def _save(agent, obs_norm, path, step, success, env_state_names=None):
+    """Checkpoint the policy plus the observation layout it was trained on.
+
+    ``env_state_names`` (from ``privileged_state_feature_names``) makes the
+    checkpoint self-describing, so a later rollout can rebuild an env whose
+    observation vector matches the saved network's input width.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save(
         {
@@ -541,6 +580,7 @@ def _save(agent, obs_norm, path, step, success):
             "obs_var": obs_norm.rms.var.cpu(),
             "step": step,
             "success": success,
+            "env_state_names": env_state_names,
         },
         path,
     )
@@ -549,14 +589,35 @@ def _save(agent, obs_norm, path, step, success):
 # ======================================================================================
 # Demo loading: HF teleop dataset -> flat (obs, delta_action) transitions
 # ======================================================================================
+def demo_observations(demo_repo: str):
+    """Return the observation layout a demo dataset declares for its state channel.
+
+    A behaviour-cloned policy has to consume exactly the components the
+    demonstrations recorded, so the dataset (not the env's current default) is
+    what defines the layout for a BC run. Datasets recorded before a component
+    joined the defaults simply produce the layout they were recorded with.
+    """
+    import json
+    from pathlib import Path
+
+    from huggingface_hub import hf_hub_download
+
+    info = json.loads(
+        Path(hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset")).read_text()
+    )
+    return observations_from_feature_names(
+        info["features"]["observation.environment_state"]["names"]
+    )
+
+
 def load_demo_transitions(
     demo_repo: str, device: torch.device, *, control_dt: float, observations=None
 ):
     """Download the HF teleop dataset and build flat (obs, action) BC transitions.
 
-    ``obs`` matches the layout of ``observations`` (default: ``PickConfig``'s
-    default component list). Datasets recorded against an older layout are
-    re-laid by name via ``relabel_environment_state``, which reconstructs
+    ``obs`` matches the layout of ``observations`` (default: the layout the dataset
+    itself declares, see :func:`demo_observations`). A layout that differs from the
+    recording is re-laid by name via ``relabel_environment_state``, which reconstructs
     ``JointVelocities`` offline as a finite difference of the recorded
     ``JointPositions`` columns. ``control_dt`` is the simulated time between
     consecutive recorded frames (``env.unwrapped.control_dt``, one env step),
@@ -580,11 +641,10 @@ def load_demo_transitions(
     from huggingface_hub import hf_hub_download
 
     from so101_nexus import dataset_row_to_sim_qpos, relabel_environment_state
-    from so101_nexus.config import PickConfig
 
     env_state_key = "observation.environment_state"
 
-    layout = list(observations if observations is not None else PickConfig().observations or [])
+    layout = list(observations if observations is not None else demo_observations(demo_repo))
     if not layout:
         raise ValueError("target observation layout is empty; pass `observations`")
 
@@ -709,6 +769,23 @@ def train(  # noqa: PLR0915, PLR0912, C901
     stagger_rng = torch.Generator(device=dev).manual_seed(seed + 2)
     demo_rng = torch.Generator(device=dev).manual_seed(seed + 3)
 
+    # BC regresses the policy on recorded states, so the env must expose exactly the
+    # layout the demos declare; without demos the env's own default is used.
+    train_observations = demo_observations(demo_repo) if use_demos else None
+    if train_observations is not None:
+        default_names = privileged_state_feature_names(
+            _resolve_env_cls(env_id).default_config_cls().observations
+        )
+        demo_names = privileged_state_feature_names(train_observations)
+        if demo_names != default_names:
+            missing = [n for n in default_names if n not in demo_names]
+            print(
+                f"[demos] {demo_repo} declares a {len(demo_names)}-dim state layout; pinning the "
+                f"env to it instead of the {len(default_names)}-dim default "
+                f"(missing: {missing}). The checkpoint only loads against this layout; "
+                "re-record the demos to train on the current default.",
+                flush=True,
+            )
     envs = _make_envs(
         env_id,
         num_envs,
@@ -717,7 +794,9 @@ def train(  # noqa: PLR0915, PLR0912, C901
         control_mode=control_mode,
         episode_length=episode_length,
         terminate_on_success=terminate_on_success,
+        observations=train_observations,
     )
+    names = privileged_state_feature_names(envs.unwrapped.config.observations)
     obs_dim = int(np.prod(envs.single_observation_space.shape))
     act_dim = int(np.prod(envs.single_action_space.shape))
 
@@ -957,7 +1036,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
         if succ_rate > best_success and len(succ_hist) >= 100:
             best_success = succ_rate
             if save_dir:
-                _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate)
+                _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate, names)
 
         if (writer is not None or log) and (update % log_freq == 0 or update == num_updates):
             metrics = {
@@ -1000,6 +1079,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
                     eval_episodes=eval_episodes,
                     seed=seed,
                     capture_video=True,
+                    observations=train_observations,
                 )
             except Exception as e:  # eval is a best-effort transfer figure; never abort training
                 print(f"[eval {global_step}] skipped: {e}", flush=True)
@@ -1013,7 +1093,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 write_video(frames, f"{save_dir}/videos/eval_{global_step}.mp4", fps=30)
 
     if save_dir:
-        _save(agent, obs_norm, f"{save_dir}/agent.pt", global_step, succ_rate)
+        _save(agent, obs_norm, f"{save_dir}/agent.pt", global_step, succ_rate, names)
 
     envs.close()
     return {

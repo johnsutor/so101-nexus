@@ -131,6 +131,21 @@ def test_package_init_defines_dunder_all(module):
     )
 
 
+@pytest.mark.parametrize("module", PACKAGE_MODULES)
+def test_dunder_all_entries_resolve(module):
+    """Every name in ``__all__`` must exist on the package.
+
+    A name left in ``__all__`` after its import was dropped breaks
+    ``from package import *`` and attribute access while the literal still reads
+    correctly in review and in the docs consistency scan.
+    """
+    import importlib
+
+    package = importlib.import_module(module)
+    missing = [name for name in package.__all__ if not hasattr(package, name)]
+    assert missing == [], f"{module}.__all__ names unresolvable symbols: {missing}"
+
+
 # Defined by codepoint so this guardrail file does not itself contain the very
 # characters it forbids (which would otherwise make the scan flag itself).
 EM_DASH = chr(0x2014)

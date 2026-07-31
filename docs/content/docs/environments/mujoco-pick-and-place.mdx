@@ -66,7 +66,7 @@ Recorded PickAndPlace teleoperation rollout, shown from both stored camera strea
 
 ## Observation Space
 
-The observation is a 36-dimensional vector.
+The observation is a 43-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
@@ -74,8 +74,10 @@ The observation is a 36-dimensional vector.
 | `joint_vel` | 6 | Angular velocity of each robot joint (rad/s) |
 | `tcp_pose` | 7 | TCP position (3) and orientation as quaternion (4) |
 | `is_grasped` | 1 | Whether the cube is currently grasped |
+| `gaze_state` | 1 | Whether the cube is inside the wrist camera's field of view |
 | `target_pos` | 3 | Target disc position |
 | `obj_pose` | 7 | Cube position (3) and orientation as quaternion (4) |
+| `obj_vel` | 6 | Cube linear (3) and angular (3) velocity, the settling term of the success check |
 | `tcp_to_obj` | 3 | Vector from TCP to cube |
 | `obj_to_target` | 3 | Vector from cube to target |
 

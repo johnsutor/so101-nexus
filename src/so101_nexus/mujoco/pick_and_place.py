@@ -146,12 +146,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
     def _get_target_pos(self) -> np.ndarray:
         return self.data.xpos[self._target_body_id].copy()
 
+    def _gaze_target_pos(self) -> np.ndarray:
+        return self._get_object_pose()[:3]
+
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus.observations import (
             ObjectOffset as _ObjectOffset,
         )
         from so101_nexus.observations import (
             ObjectPose as _ObjectPose,
+        )
+        from so101_nexus.observations import (
+            ObjectVelocity as _ObjectVelocity,
         )
         from so101_nexus.observations import (
             TargetOffset as _TargetOffset,
@@ -162,6 +168,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
         if isinstance(component, _ObjectPose):
             return self._get_object_pose()
+        if isinstance(component, _ObjectVelocity):
+            return self._get_object_vel()
         if isinstance(component, _ObjectOffset):
             return self._get_object_pose()[:3] - self._get_tcp_pose()[:3]
         if isinstance(component, _TargetPosition):

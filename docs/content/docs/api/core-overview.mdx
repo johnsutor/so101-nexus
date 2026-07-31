@@ -67,9 +67,11 @@ See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual 
 | `GripperContactForce` | State (3-dim) | World-frame resultant contact force on the fingers (N) |
 | `EndEffectorPose` | State (7-dim) | TCP position + quaternion orientation |
 | `TargetOffset` | State (3-dim) | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
-| `GazeDirection` | State (3-dim) | Unit vector toward target |
+| `GazeDirection` | State (3-dim) | Unit vector from the wrist camera toward the target object |
+| `GazeState` | State (1-dim) | Binary in-frame flag (target object inside the wrist camera FOV) |
 | `GraspState` | State (1-dim) | Binary grasp flag (two-sided, opposing-normal contact) |
 | `ObjectPose` | State (7-dim) | Object position + quaternion orientation |
+| `ObjectVelocity` | State (6-dim) | Object linear + angular velocity |
 | `ObjectOffset` | State (3-dim) | Vector from gripper to object |
 | `TargetPosition` | State (3-dim) | Absolute goal position |
 | `WristCamera` | Camera | RGB image from wrist-mounted camera |
@@ -100,11 +102,17 @@ See [Scene Objects](/docs/api/objects) for full reference.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `privileged_state_feature_names` | `(observations: Sequence[Observation] | None) -> list[str]` | Per-dimension names for the non-camera state observation vector |
+| `observations_from_feature_names` | `(names: Sequence[str]) -> list[Observation]` | Inverse of the above: rebuild the state component layout a recording declares |
 | `relabel_environment_state` | `(env_state, recorded_names, observations, *, dt, episode_index=None) -> ndarray` | Re-lay a recorded `observation.environment_state` matrix onto a newer component layout, reconstructing `JointVelocities` by finite difference |
 | `reach_progress` | `(distance, *, scale) -> float \| ndarray \| tensor` | Tanh-shaped progress in [0, 1]: 1 at distance 0, decaying toward 0 |
 | `orientation_progress` | `(cos_similarity) -> float \| ndarray \| tensor` | Maps cosine similarity in [-1, 1] to a reward in [0, 1] |
 | `lift_progress` | `(height, *, scale, grasped) -> float \| ndarray \| tensor` | Tanh-shaped lift progress in [0, 1], zero unless grasped |
 | `simple_reward` | `(*, progress, completion_bonus, success) -> float \| ndarray \| tensor` | Single-objective task reward; shaping fills [0, 1 - completion_bonus] via `progress` |
+| `direction_to_object` | `(camera_pos, object_pos) -> ndarray \| tensor` | Unit vector from a camera toward an object |
+| `gaze_cosine` | `(gaze_axis, direction) -> float \| ndarray \| tensor` | Clamped cosine between a camera's optical axis and a direction |
+| `gaze_angle_rad` | `(cosine) -> float \| ndarray \| tensor` | Gaze angle in radians for a `gaze_cosine` result |
+| `object_in_view` | `(angle_rad, half_fov_rad) -> bool \| ndarray \| tensor` | Whether a gaze bearing falls inside a camera's half field of view |
+
 #### Asset Paths
 
 | Function | Returns | Description |

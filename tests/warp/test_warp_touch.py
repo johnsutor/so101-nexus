@@ -153,12 +153,12 @@ def test_autoreset_masks_prev_action_across_episode_boundary():
 
 def test_unsupported_obs_component_rejected_at_construction():
     from so101_nexus.config import TouchConfig
-    from so101_nexus.observations import GazeDirection, JointPositions
+    from so101_nexus.observations import JointPositions, TargetPosition
     from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    # GazeDirection is a look-at task-specific component, unsupported by touch.
-    config = TouchConfig(observations=[JointPositions(), GazeDirection()])
-    with pytest.raises(NotImplementedError, match="GazeDirection"):
+    # TargetPosition is a goal-task component; touch has no goal to report.
+    config = TouchConfig(observations=[JointPositions(), TargetPosition()])
+    with pytest.raises(NotImplementedError, match="TargetPosition"):
         WarpTouchVectorEnv(num_envs=2, config=config, device="cpu")
 
 

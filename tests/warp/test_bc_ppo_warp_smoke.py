@@ -62,9 +62,11 @@ def test_bc_ppo_warp_load_demo_transitions_shapes_and_units():
         "johnsutor/MuJoCoPickLift-v1", torch.device("cpu"), control_dt=_pick_lift_control_dt()
     )
 
+    # The loader lays the demos out in the layout the dataset itself declares, not
+    # the env's current default: a BC policy has to consume what its demos recorded.
+    _, names = _pick_lift_frames()
     assert obs.ndim == 2
-    # PickConfig defaults: joints, joint velocities, ee pose, grasp, object pose, offset
-    assert obs.shape[1] == 30
+    assert obs.shape[1] == len(names)
     assert action.shape == (obs.shape[0], 6)
     assert obs.shape[0] > 0
     # deltas are normalized into the env's native [-1, 1] pd_joint_delta_pos frame

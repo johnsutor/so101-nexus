@@ -27,11 +27,13 @@ from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
+    GazeState,
     GraspState,
     JointPositions,
     JointVelocities,
     ObjectOffset,
     ObjectPose,
+    ObjectVelocity,
     TargetOffset,
     TargetPosition,
 )
@@ -1053,6 +1055,7 @@ class PickConfig(EnvironmentConfig):
                 JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
+                GazeState(),
                 ObjectPose(),
                 ObjectOffset(),
             ]
@@ -1193,8 +1196,10 @@ class PickAndPlaceConfig(EnvironmentConfig):
                 JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
+                GazeState(),
                 TargetPosition(),
                 ObjectPose(),
+                ObjectVelocity(),
                 ObjectOffset(),
                 TargetOffset(),
             ]
@@ -1366,7 +1371,9 @@ class StackCubeConfig(EnvironmentConfig):
                 JointVelocities(),
                 EndEffectorPose(),
                 GraspState(),
+                GazeState(),
                 ObjectPose(),
+                ObjectVelocity(),
                 ObjectOffset(),
                 TargetPosition(),
                 TargetOffset(),
@@ -1438,7 +1445,7 @@ class LookAtConfig(EnvironmentConfig):
         Vertical field of view (degrees) of the wrist camera used for the gaze
         axis. The task succeeds when the target lies within the camera's field
         of view, i.e. the angle between the wrist-camera optical axis and the
-        direction to the object is at most ``fov_deg / 2``. When ``None``
+        camera-to-object direction is at most ``fov_deg / 2``. When ``None``
         (default), the FOV is read from the actual wrist camera at runtime
         (``model.cam_fovy``), so the success band auto-adapts to any camera
         configuration, a wider FOV, or per-episode FOV randomization. Pin it
@@ -1466,6 +1473,7 @@ class LookAtConfig(EnvironmentConfig):
                 JointVelocities(),
                 EndEffectorPose(),
                 GazeDirection(),
+                GazeState(),
             ]
         for obj in self.objects:
             if not isinstance(obj, CubeObject):

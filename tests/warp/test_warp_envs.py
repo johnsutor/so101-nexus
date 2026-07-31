@@ -12,11 +12,11 @@ _ENVS = [
     "WarpStackCube-v1",
 ]
 _DEFAULT_OBS_DIM = {
-    "WarpLookAt-v1": 22,
+    "WarpLookAt-v1": 23,
     "WarpMove-v1": 22,
-    "WarpPickLift-v1": 30,
-    "WarpPickAndPlace-v1": 36,
-    "WarpStackCube-v1": 36,
+    "WarpPickLift-v1": 31,
+    "WarpPickAndPlace-v1": 43,
+    "WarpStackCube-v1": 43,
 }
 
 

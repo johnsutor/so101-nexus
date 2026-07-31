@@ -17,6 +17,7 @@ per reset and the remainder stay parked in the hidden band.
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -31,7 +32,15 @@ from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_targ
 from so101_nexus.constants import COLOR_MAP, ColorName
 from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import CubeObject, SceneObject, YCBObject
-from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
+from so101_nexus.observations import (
+    GazeDirection,
+    GazeState,
+    ObjectOffset,
+    ObjectPose,
+    ObjectVelocity,
+    TargetOffset,
+    TargetPosition,
+)
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
     object_static_ok,
@@ -78,15 +87,17 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
     (``is_grasped < 0.5``) -- a strict superset of ManiSkill's
     ``StackCubeEnv.evaluate`` predicate, matching ``MuJoCoStackCube-v1``.
 
-    Default obs (36,): joint_positions(6) + joint_velocities(6) +
-    end_effector_pose(7) + grasp_state(1) + object_pose(7) + object_offset(3) +
-    target_position(3) + target_offset(3), matching ``MuJoCoStackCube-v1``.
+    Default obs (43,): joint_positions(6) + joint_velocities(6) +
+    end_effector_pose(7) + grasp_state(1) + gaze_state(1) + object_pose(7) +
+    object_velocity(6) + object_offset(3) + target_position(3) +
+    target_offset(3), matching ``MuJoCoStackCube-v1``.
 
     ``cube_a_color_names`` / ``cube_b_color_names`` hold the selected colour per
     world and are resampled at every reset; ``task_descriptions`` tracks them.
     """
 
     config: StackCubeConfig
+    default_config_cls: ClassVar[type[StackCubeConfig]] = StackCubeConfig
 
     def __init__(
         self,
@@ -211,7 +222,15 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         return "Pick up cube A and stack it on top of cube B."
 
     def _supported_obs_components(self) -> set[type]:
-        return {ObjectPose, ObjectOffset, TargetPosition, TargetOffset}
+        return {
+            ObjectPose,
+            ObjectVelocity,
+            ObjectOffset,
+            TargetPosition,
+            TargetOffset,
+            GazeDirection,
+            GazeState,
+        }
 
     def _gather(self, buf: torch.Tensor, base_cols: torch.Tensor, width: int) -> torch.Tensor:
         cols = base_cols[:, None] + torch.arange(width, device=self.device)
@@ -226,12 +245,19 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
     def _cube_b_pos(self) -> torch.Tensor:
         return self._gather(self.qpos, self._b_qadr, 3)
 
+    def _cube_a_vel(self) -> torch.Tensor:
+        """Return ``(N, 6)`` cube A free-joint velocity ``[lin(3), ang(3)]`` per world."""
+        return self._gather(self.qvel, self._a_dadr, 6)
+
+    def _gaze_target_pos(self) -> torch.Tensor:
+        return self._cube_a_pos()
+
     def _is_cube_a_static(self) -> torch.Tensor:
         """Return ``(N,)`` bool: cube A's speeds below the static thresholds.
 
         ManiSkill's ``is_cubeA_static`` check on the per-world selected slot.
         """
-        vel = self._gather(self.qvel, self._a_dadr, 6)  # (N, 6)
+        vel = self._cube_a_vel()
         return object_static_ok(
             torch.linalg.norm(vel[:, :3], dim=1),
             torch.linalg.norm(vel[:, 3:], dim=1),
@@ -373,6 +399,8 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
     def _get_component_data(self, component: object) -> torch.Tensor:
         if isinstance(component, ObjectPose):
             return self._cube_a_pose7()
+        if isinstance(component, ObjectVelocity):
+            return self._cube_a_vel()
         if isinstance(component, ObjectOffset):
             return self._cube_a_pos() - self._tcp_pos()
         if isinstance(component, TargetPosition):

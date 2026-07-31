@@ -24,18 +24,19 @@ Orient the robot's end-effector so that it points at a target object.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `objects` | `list` | -- | List of objects to look at (supports `CubeObject`) |
-| `fov_deg` | `float \| None` | `None` | Vertical field of view (degrees) of the wrist camera. Succeeds when the target lies within the camera's field of view (angle between the wrist-camera optical axis and the direction to the object is at most `fov_deg / 2`). When `None`, the FOV is read from the actual wrist camera at runtime, so the success band adapts to any camera configuration or a wider FOV. |
+| `fov_deg` | `float \| None` | `None` | Vertical field of view (degrees) of the wrist camera. Succeeds when the target lies within the camera's field of view (angle between the wrist-camera optical axis and the camera-to-object direction is at most `fov_deg / 2`). When `None`, the FOV is read from the actual wrist camera at runtime, so the success band adapts to any camera configuration or a wider FOV. |
 
 ## Observation Space
 
-Default observation is a 22-dimensional vector (configurable via the `observations` parameter on `LookAtConfig`):
+Default observation is a 23-dimensional vector (configurable via the `observations` parameter on `LookAtConfig`):
 
 | Component | Class | Dimensions | Description |
 |-----------|-------|------------|-------------|
 | Joint positions | `JointPositions` | 6 | Current angle of each robot joint |
 | Joint velocities | `JointVelocities` | 6 | Angular velocity of each robot joint (rad/s) |
 | End-effector pose | `EndEffectorPose` | 7 | TCP position and orientation |
-| Gaze direction | `GazeDirection` | 3 | Unit vector from the TCP toward the target object |
+| Gaze direction | `GazeDirection` | 3 | Unit vector from the wrist camera toward the target object |
+| Gaze state | `GazeState` | 1 | Whether the target is in frame, the task's own success predicate |
 
 ## Objects
 
@@ -43,7 +44,7 @@ The environment uses `CubeObject` instances as gaze targets.
 
 ## Success Condition
 
-Succeeds when the target is within the wrist camera's field of view: the angle between the wrist-camera optical axis and the direction to the object is at most half the camera FOV (`fov_deg / 2`, or the live `cam_fovy / 2` when `fov_deg` is `None`). The dense reward shapes toward dead-center (1.0 when perfectly aligned), rewarding the object being centered in the frame.
+Succeeds when the target is within the wrist camera's field of view: the angle between the wrist-camera optical axis and the camera-to-object direction is at most half the camera FOV (`fov_deg / 2`, or the live `cam_fovy / 2` when `fov_deg` is `None`). This is exactly the `GazeState` observation. The dense reward shapes toward dead-center (1.0 when perfectly aligned), rewarding the object being centered in the frame.
 
 ## Reward
 

@@ -9,6 +9,8 @@ documented divergence from the MuJoCo backend, which randomizes it per episode.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import mujoco
 import numpy as np
 import torch
@@ -17,7 +19,7 @@ import warp as wp
 from so101_nexus.config import ControlMode, PickAndPlaceConfig, describe_place_target
 from so101_nexus.constants import COLOR_MAP
 from so101_nexus.objects import CubeObject
-from so101_nexus.observations import ObjectOffset, ObjectPose, TargetOffset, TargetPosition
+from so101_nexus.observations import TargetOffset, TargetPosition
 from so101_nexus.rewards import (
     object_static_ok,
     place_grasp_potential,
@@ -46,12 +48,14 @@ def _target_disc_body(target_disc_radius: float, rgba: list[float]) -> str:
 class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
     """Batched pick-and-place: carry the per-world object onto the goal disc.
 
-    Default obs (36,): joint_positions(6) + joint_velocities(6) +
-    end_effector_pose(7) + grasp_state(1) + target_position(3) + object_pose(7)
-    + object_offset(3) + target_offset(3), matching ``MuJoCoPickAndPlace-v1``.
+    Default obs (43,): joint_positions(6) + joint_velocities(6) +
+    end_effector_pose(7) + grasp_state(1) + gaze_state(1) + target_position(3) +
+    object_pose(7) + object_velocity(6) + object_offset(3) + target_offset(3),
+    matching ``MuJoCoPickAndPlace-v1``.
     """
 
     config: PickAndPlaceConfig
+    default_config_cls: ClassVar[type[PickAndPlaceConfig]] = PickAndPlaceConfig
 
     def __init__(
         self,
@@ -103,7 +107,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         return f"Pick up the object and place it on the {self.target_color_name} circle."
 
     def _supported_obs_components(self) -> set[type]:
-        return {ObjectPose, ObjectOffset, TargetPosition, TargetOffset}
+        return {*super()._supported_obs_components(), TargetPosition, TargetOffset}
 
     def _target_disc_pos(self) -> torch.Tensor:
         return self._mocap_pos[:, self._target_mocap_id, :]

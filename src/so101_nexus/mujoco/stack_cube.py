@@ -155,12 +155,20 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         addr = self._slot_b.qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
+    def _get_cube_a_vel(self) -> np.ndarray:
+        """Return cube A's free-joint velocity ``[lin(3), ang(3)]``."""
+        addr = self._slot_a.dof_addr
+        return self.data.qvel[addr : addr + 6].copy()
+
+    def _gaze_target_pos(self) -> np.ndarray:
+        return self._get_cube_a_pose()[:3]
+
     def _is_cube_a_static(self) -> bool:
         """Return True if cube A's speeds are below the static thresholds.
 
         ManiSkill's ``is_cubeA_static`` check on the selected cube A slot.
         """
-        vel = self.data.qvel[self._slot_a.dof_addr : self._slot_a.dof_addr + 6]
+        vel = self._get_cube_a_vel()
         return bool(
             object_static_ok(
                 float(np.linalg.norm(vel[:3])),
@@ -178,6 +186,9 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
             ObjectPose as _ObjectPose,
         )
         from so101_nexus.observations import (
+            ObjectVelocity as _ObjectVelocity,
+        )
+        from so101_nexus.observations import (
             TargetOffset as _TargetOffset,
         )
         from so101_nexus.observations import (
@@ -186,6 +197,8 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
 
         if isinstance(component, _ObjectPose):
             return self._get_cube_a_pose()
+        if isinstance(component, _ObjectVelocity):
+            return self._get_cube_a_vel()
         if isinstance(component, _ObjectOffset):
             return self._get_cube_a_pose()[:3] - self._get_tcp_pose()[:3]
         if isinstance(component, _TargetPosition):

@@ -13,6 +13,7 @@ coloured cube slots give per-world colour variation through selection.
 from __future__ import annotations
 
 import tempfile
+from typing import ClassVar
 
 import mujoco
 import numpy as np
@@ -27,7 +28,13 @@ from so101_nexus.config import ControlMode, PickConfig, describe_pick_target
 from so101_nexus.constants import sample_color
 from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import SceneObject, YCBObject
-from so101_nexus.observations import ObjectOffset, ObjectPose
+from so101_nexus.observations import (
+    GazeDirection,
+    GazeState,
+    ObjectOffset,
+    ObjectPose,
+    ObjectVelocity,
+)
 from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
@@ -56,12 +63,13 @@ def _contact_budget(n_pool: int) -> tuple[int, int]:
 class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     """Batched pick-lift: grasp the per-world target object and lift it.
 
-    Default obs (30,): joint_positions(6) + joint_velocities(6) +
-    end_effector_pose(7) + grasp_state(1) + object_pose(7) + object_offset(3),
-    matching ``MuJoCoPickLift-v1``.
+    Default obs (31,): joint_positions(6) + joint_velocities(6) +
+    end_effector_pose(7) + grasp_state(1) + gaze_state(1) + object_pose(7) +
+    object_offset(3), matching ``MuJoCoPickLift-v1``.
     """
 
     config: PickConfig
+    default_config_cls: ClassVar[type[PickConfig]] = PickConfig
 
     def __init__(
         self,
@@ -195,7 +203,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         return "Pick up the selected object."
 
     def _supported_obs_components(self) -> set[type]:
-        return {ObjectPose, ObjectOffset}
+        return {ObjectPose, ObjectVelocity, ObjectOffset, GazeDirection, GazeState}
 
     def _gather(self, base_cols: torch.Tensor, width: int) -> torch.Tensor:
         cols = base_cols[:, None] + torch.arange(width, device=self.device)
@@ -211,6 +219,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         """Return ``(N, 6)`` target free-joint velocity ``[lin(3), ang(3)]`` per world."""
         cols = self._target_dadr[:, None] + torch.arange(6, device=self.device)
         return self.qvel[self._world_rows[:, None], cols]
+
+    def _gaze_target_pos(self) -> torch.Tensor:
+        return self._target_pos()
 
     def _target_bounding_radius(self) -> torch.Tensor:
         return self._slot_bradius[self._target_slot]
@@ -325,6 +336,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     def _get_component_data(self, component: object) -> torch.Tensor:
         if isinstance(component, ObjectPose):
             return self._target_pose7()
+        if isinstance(component, ObjectVelocity):
+            return self._target_vel()
         if isinstance(component, ObjectOffset):
             return self._target_pos() - self._tcp_pos()
         return super()._get_component_data(component)

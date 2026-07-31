@@ -49,6 +49,12 @@ from so101_nexus.constants import (
     ColorName,
     sample_color,
 )
+from so101_nexus.gaze import (
+    direction_to_object,
+    gaze_angle_rad,
+    gaze_cosine,
+    object_in_view,
+)
 from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
@@ -71,6 +77,7 @@ from so101_nexus.observations import (
     CameraObservation,
     EndEffectorPose,
     GazeDirection,
+    GazeState,
     GraspState,
     GripperContactForce,
     JointEfforts,
@@ -78,11 +85,13 @@ from so101_nexus.observations import (
     JointVelocities,
     ObjectOffset,
     ObjectPose,
+    ObjectVelocity,
     Observation,
     OverheadCamera,
     TargetOffset,
     TargetPosition,
     WristCamera,
+    observations_from_feature_names,
     privileged_state_feature_names,
 )
 from so101_nexus.rewards import (
@@ -165,6 +174,7 @@ __all__ = [
     "EndEffectorPose",
     "EnvironmentConfig",
     "GazeDirection",
+    "GazeState",
     "GraspState",
     "GripperContactForce",
     "JointEfforts",
@@ -176,6 +186,7 @@ __all__ = [
     "MoveDirection",
     "ObjectOffset",
     "ObjectPose",
+    "ObjectVelocity",
     "ObsMode",
     "Observation",
     "OverheadCamera",
@@ -197,7 +208,10 @@ __all__ = [
     "__version__",
     "dataset_row_to_sim_qpos",
     "describe_pick_target",
+    "direction_to_object",
     "ensure_ycb_assets",
+    "gaze_angle_rad",
+    "gaze_cosine",
     "get_mujoco_ycb_rest_pose",
     "get_so101_mujoco_model_dir",
     "get_so101_mujoco_model_path",
@@ -208,6 +222,8 @@ __all__ = [
     "get_ycb_texture_file",
     "get_ycb_visual_mesh",
     "lift_progress",
+    "object_in_view",
+    "observations_from_feature_names",
     "opposing_normals_ok",
     "orientation_progress",
     "privileged_state_feature_names",

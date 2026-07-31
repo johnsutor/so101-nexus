@@ -66,7 +66,7 @@ Recorded PickLift teleoperation rollout, shown from both stored camera streams.
 
 ## Observation Space
 
-The observation is a 30-dimensional vector.
+The observation is a 31-dimensional vector.
 
 | Component | Dimensions | Description |
 |-----------|------------|-------------|
@@ -75,6 +75,7 @@ The observation is a 30-dimensional vector.
 | `tcp_pos` | 3 | TCP position in world frame |
 | `tcp_quat` | 4 | TCP orientation as quaternion |
 | `is_grasped` | 1 | Whether the object is currently grasped |
+| `gaze_state` | 1 | Whether the object is inside the wrist camera's field of view |
 | `obj_pos` | 3 | Object position |
 | `obj_quat` | 4 | Object orientation as quaternion |
 | `tcp_to_obj` | 3 | Vector from TCP to object |

@@ -135,6 +135,14 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         addr = slot.qpos_addr
         return self.data.qpos[addr : addr + 7].copy()
 
+    def _get_target_vel(self) -> np.ndarray:
+        """Return the target object's free-joint velocity ``[lin(3), ang(3)]``."""
+        addr = self._slots[self._target_slot_idx].dof_addr
+        return self.data.qvel[addr : addr + 6].copy()
+
+    def _gaze_target_pos(self) -> np.ndarray:
+        return self._get_target_pose()[:3]
+
     def _describe_target(self, target_obj: SceneObject) -> str:
         """Return the task description for the chosen target (overridable per task)."""
         return describe_pick_target(target_obj)
@@ -146,9 +154,12 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     def _get_component_data(self, component: object) -> np.ndarray:
         from so101_nexus.observations import ObjectOffset as _ObjectOffset
         from so101_nexus.observations import ObjectPose as _ObjectPose
+        from so101_nexus.observations import ObjectVelocity as _ObjectVelocity
 
         if isinstance(component, _ObjectPose):
             return self._get_target_pose()
+        if isinstance(component, _ObjectVelocity):
+            return self._get_target_vel()
         if isinstance(component, _ObjectOffset):
             tcp_pos = self._get_tcp_pose()[:3]
             obj_pos = self._get_target_pose()[:3]
