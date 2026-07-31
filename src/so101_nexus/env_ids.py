@@ -42,3 +42,28 @@ def env_ids_for_backend(backend: Backend | None) -> list[str]:
         return ids
     prefix = _BACKEND_PREFIXES[backend]
     return [env_id for env_id in ids if env_id.startswith(prefix)]
+
+
+def backend_for_env_id(env_id: str) -> Backend:
+    """Return the backend that owns ``env_id``, resolved from its id prefix.
+
+    Parameters
+    ----------
+    env_id
+        A SO101-Nexus Gymnasium id such as ``"MuJoCoPickLift-v1"``.
+
+    Returns
+    -------
+    Backend
+        ``"mujoco"`` or ``"warp"``.
+
+    Raises
+    ------
+    ValueError
+        If ``env_id`` carries no known backend prefix.
+    """
+    for backend, prefix in _BACKEND_PREFIXES.items():
+        if env_id.startswith(prefix):
+            return backend
+    known = ", ".join(_BACKEND_PREFIXES.values())
+    raise ValueError(f"{env_id!r} does not start with a known backend prefix ({known})")

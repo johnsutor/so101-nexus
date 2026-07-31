@@ -14,7 +14,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs" / "content" / "docs"
-TEXT_DOCS = [ROOT / "README.md", ROOT / "examples" / "README.md", *DOCS.rglob("*.mdx")]
+TEXT_DOCS = [
+    ROOT / "README.md",
+    ROOT / "examples" / "README.md",
+    ROOT / "envhub" / "README.md",
+    *DOCS.rglob("*.mdx"),
+]
 
 
 def _read(path: Path) -> str:

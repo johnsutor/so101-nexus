@@ -85,6 +85,20 @@ LookAt, and Move. The optional MuJoCo Warp backend (`so101-nexus[warp]`) registe
 six as GPU-parallel batched vector environments for large-scale RL. See the
 [environment reference](https://so101-nexus.com/docs/environments).
 
+The same environments are published as a
+[LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub) package, so a LeRobot user
+can load them without importing this library:
+
+```python
+from lerobot.envs.factory import make_env
+
+envs = make_env(
+    "johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
+    n_envs=4,
+    trust_remote_code=True,
+)
+```
+
 ## Why
 
 Plenty of SO-101 tooling exists, but little of it connects teleoperation, LeRobot datasets,
@@ -114,7 +128,7 @@ Recorded MuJoCo teleoperation datasets are published on Hugging Face:
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
 - [x] MuJoCo Warp backend for GPU-parallel throughput
 - [x] Stronger training baselines and exemplars for every environment
-- [ ] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
+- [x] Integration with the [LeRobot Hub](https://huggingface.co/docs/lerobot/en/envhub)
 
 ## Development
 

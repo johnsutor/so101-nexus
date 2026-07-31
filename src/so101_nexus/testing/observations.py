@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from so101_nexus.observations import component_slice as _component_slice
+
 if TYPE_CHECKING:
     from so101_nexus.observations import Observation
 
@@ -11,9 +13,9 @@ if TYPE_CHECKING:
 def component_slice(env: Any, component: type[Observation]) -> slice:
     """Return the flat-observation slice occupied by an observation component.
 
-    Locating a component by type rather than by a hardcoded offset keeps tests
-    readable and stops them from silently checking the wrong columns whenever a
-    component is added to a task's default ``observations`` list.
+    Thin ``env``-shaped wrapper over :func:`so101_nexus.observations.component_slice`
+    so tests can name an env instead of digging its component list out of its
+    config.
 
     Parameters
     ----------
@@ -31,12 +33,7 @@ def component_slice(env: Any, component: type[Observation]) -> slice:
 
     Raises
     ------
-    AssertionError
+    ValueError
         If the env's observation list contains no instance of ``component``.
     """
-    offset = 0
-    for comp in env.unwrapped.config.observations:
-        if isinstance(comp, component):
-            return slice(offset, offset + comp.size)
-        offset += comp.size
-    raise AssertionError(f"{component.__name__} is not in the env's observation list")
+    return _component_slice(env.unwrapped.config.observations, component)

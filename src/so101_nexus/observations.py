@@ -442,6 +442,41 @@ def privileged_state_feature_names(
     return names
 
 
+def component_slice(
+    observations: Sequence[Observation] | None,
+    component: type[Observation],
+) -> slice:
+    """Return the flat state-vector slice occupied by ``component``.
+
+    Locating a component by type rather than by a hardcoded offset keeps callers
+    correct whenever a component joins or leaves a task's ``observations`` list.
+
+    Parameters
+    ----------
+    observations
+        Observation components (as on ``EnvironmentConfig.observations``).
+    component
+        The component class to locate.
+
+    Returns
+    -------
+    slice
+        Start/stop indices into the flat state vector. For a batched Warp
+        observation this indexes the trailing (feature) axis.
+
+    Raises
+    ------
+    ValueError
+        If ``observations`` contains no instance of ``component``.
+    """
+    offset = 0
+    for comp in observations or ():
+        if isinstance(comp, component):
+            return slice(offset, offset + comp.size)
+        offset += comp.size
+    raise ValueError(f"{component.__name__} is not in the observation list")
+
+
 def _state_component_types() -> dict[str, type[Observation]]:
     """Return this module's state component classes by ``name``.
 
