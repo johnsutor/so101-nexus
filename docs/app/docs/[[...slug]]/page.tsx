@@ -1,4 +1,5 @@
 import { source } from "@/lib/source";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import {
   DocsPage,
@@ -22,7 +23,7 @@ export default async function Page(props: {
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX components={{ ...defaultMdxComponents }} />
+        <MDX components={{ ...defaultMdxComponents, Accordion, Accordions }} />
       </DocsBody>
     </DocsPage>
   );

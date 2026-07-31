@@ -32,13 +32,25 @@ def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     assert offenders == [], f"Found em dashes, en dashes, or emoji in user-facing docs: {offenders}"
 
 
-def test_environment_nav_lists_all_environment_pages() -> None:
-    """The environments sidebar must expose every ``*.mdx`` env page."""
-    meta = json.loads((DOCS / "environments" / "meta.json").read_text(encoding="utf-8"))
-    pages = {page for page in meta["pages"] if not page.startswith("---")}
-    files = {path.stem for path in (DOCS / "environments").glob("*.mdx") if path.stem != "index"}
-    missing = sorted(files - pages)
-    assert missing == [], f"Environment pages missing from nav: {missing}"
+def test_every_docs_page_is_reachable_from_nav() -> None:
+    """Every ``*.mdx`` page must be listed in its section's ``meta.json``.
+
+    An unreferenced page is unreachable from the sidebar, so it is a mistake
+    rather than a draft. Root ``index.mdx`` is listed in the root nav; section
+    ``index.mdx`` pages are listed in their own section nav.
+    """
+    orphans: list[str] = []
+    for meta_path in DOCS.rglob("meta.json"):
+        directory = meta_path.parent
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        listed = {page for page in meta["pages"] if not page.startswith("---")}
+        for page in sorted(path.stem for path in directory.glob("*.mdx")):
+            if page not in listed:
+                orphans.append(str((directory / f"{page}.mdx").relative_to(ROOT)))
+        for child in sorted(p.name for p in directory.iterdir() if (p / "meta.json").exists()):
+            if child not in listed:
+                orphans.append(str((directory / child).relative_to(ROOT)))
+    assert orphans == [], f"docs pages missing from nav: {orphans}"
 
 
 def test_docs_do_not_import_public_objects_from_backend_submodules() -> None:
@@ -206,4 +218,150 @@ def test_examples_readme_entropy_matches_ppo_warp_defaults() -> None:
     )
     assert all(b == ent_coef_final.group(1) for b in bash_final), (
         f"--ent-coef-final command {bash_final} != ppo_warp.py default {ent_coef_final.group(1)}"
+    )
+
+
+_BRITISH_SPELLINGS = re.compile(
+    r"\b("
+    r"colour|behaviour|centre|metre|licence|catalogue|grey|fibre|defence|favour|neighbour"
+    r"|normalis|optimis|initialis|customis|organis|analyse|analysing|utilis|visualis|recognis"
+    r"|serialis|synchronis|prioritis|summaris|minimis|maximis|parameteris"
+    r"|labelled|modelling|travelling|cancelled"
+    r")\w*",
+    re.IGNORECASE,
+)
+
+
+def test_user_docs_use_american_english() -> None:
+    """User-facing docs are written in American English."""
+    offenders: list[tuple[str, int, str]] = []
+    for path in TEXT_DOCS:
+        for lineno, line in enumerate(_read(path).splitlines(), start=1):
+            for found in _BRITISH_SPELLINGS.finditer(line):
+                offenders.append((str(path.relative_to(ROOT)), lineno, found.group(0)))
+    assert offenders == [], f"British spellings in user-facing docs: {offenders}"
+
+
+def _docs_route_exists(route: str) -> bool:
+    """Return True if a ``/docs/...`` route resolves to a real page file."""
+    relative = route.removeprefix("/docs").strip("/")
+    if not relative:
+        return (DOCS / "index.mdx").exists()
+    return (DOCS / f"{relative}.mdx").exists() or (DOCS / relative / "index.mdx").exists()
+
+
+_LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)|href=\"([^\"]+)\"")
+_SITE_ORIGIN = re.compile(r"^https://so101-nexus\.(?:com|github\.io)")
+
+
+def test_internal_doc_links_resolve() -> None:
+    """Every link into ``/docs`` from user-facing docs must reach a real page.
+
+    Covers both site-relative hrefs and absolute links to the published site,
+    so a page rename cannot silently orphan a cross-reference.
+    """
+    offenders: list[tuple[str, str]] = []
+    for path in TEXT_DOCS:
+        for found in _LINK_TARGET.finditer(_read(path)):
+            target = (found.group(1) or found.group(2)).split("#")[0]
+            target = _SITE_ORIGIN.sub("", target)
+            if not target.startswith("/docs"):
+                continue
+            route = target.rstrip("/")
+            if not _docs_route_exists(route):
+                offenders.append((str(path.relative_to(ROOT)), route))
+    assert offenders == [], f"docs links point at pages that do not exist: {sorted(set(offenders))}"
+
+
+def _public_exports() -> set[str]:
+    init_src = _read(ROOT / "src" / "so101_nexus" / "__init__.py")
+    match = re.search(r"__all__\s*=\s*\[(.*?)\]", init_src, re.DOTALL)
+    assert match, "could not locate __all__ in so101_nexus/__init__.py"
+    public = set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', match.group(1)))
+    assert public, "parsed empty __all__"
+    return public
+
+
+def test_docs_import_examples_resolve_against_public_api() -> None:
+    """Every name in a ``from so101_nexus import ...`` example must be exported."""
+    public = _public_exports()
+    pattern = re.compile(r"from so101_nexus import \(([^)]*)\)|from so101_nexus import ([^\n(]+)")
+    offenders: list[tuple[str, str]] = []
+    for path in TEXT_DOCS:
+        for found in pattern.finditer(_read(path)):
+            body = found.group(1) or found.group(2)
+            for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", body):
+                if name not in public:
+                    offenders.append((str(path.relative_to(ROOT)), name))
+    assert offenders == [], f"docs import names missing from so101_nexus.__all__: {offenders}"
+
+
+def _package_definitions() -> set[str]:
+    """Every class and function name defined anywhere in the package."""
+    names: set[str] = set()
+    for src in (ROOT / "src" / "so101_nexus").rglob("*.py"):
+        names.update(re.findall(r"^\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", _read(src), re.M))
+    assert names, "parsed no definitions from the package source"
+    return names
+
+
+def test_api_reference_headings_name_real_helpers() -> None:
+    """Top-level function headings in the API reference must name real helpers.
+
+    Guards against documenting a helper that does not exist, which is invisible
+    to readers until they call it. ``####`` headings are method-level and are
+    resolved against their owning class rather than the module namespace.
+    """
+    known = _public_exports() | _package_definitions()
+    pattern = re.compile(r"^#{2,3}\s+`([A-Za-z_][A-Za-z0-9_]*)\(\)`", re.MULTILINE)
+    offenders: list[tuple[str, str]] = []
+    for path in sorted((DOCS / "api").glob("*.mdx")):
+        for found in pattern.finditer(_read(path)):
+            if found.group(1) not in known:
+                offenders.append((str(path.relative_to(ROOT)), found.group(1)))
+    assert offenders == [], f"API reference documents helpers that do not exist: {offenders}"
+
+
+def test_documented_place_success_predicates_require_release() -> None:
+    """PickAndPlace and StackCube success requires releasing the object.
+
+    Both backends gate success on ``is_grasped < 0.5``. Only StackCube also
+    requires the arm to be static; for PickAndPlace ``is_robot_static`` is an
+    ``info`` diagnostic, so docs must not present it as a success condition.
+    """
+    for backend, module in (("mujoco", "pick_and_place"), ("warp", "pick_and_place")):
+        src = _read(ROOT / "src" / "so101_nexus" / backend / f"{module}.py")
+        predicate = re.search(r"success = (.+)", src)
+        assert predicate, f"could not parse success predicate from {backend}/{module}.py"
+        assert "is_robot_static" not in predicate.group(1), (
+            f"{backend}/{module}.py now gates success on the arm; update the docs and this test"
+        )
+
+    section = _read(DOCS / "environments" / "index.mdx").split("## Success conditions", 1)[1]
+    section = section.split("## Rewards", 1)[0]
+    place = section.split("**PickAndPlace**", 1)[1].split("**StackCube**", 1)[0].lower()
+    assert "released" in place or "release" in place, (
+        "the PickAndPlace success condition must state that the object is released"
+    )
+    assert "diagnostic" in place, (
+        "the PickAndPlace success condition must note that is_robot_static is diagnostic only"
+    )
+
+
+def test_pick_and_place_baseline_matches_bc_ppo_docstring() -> None:
+    """Training docs must quote the demo-seeded PickAndPlace result from source.
+
+    ``ppo_warp.py`` has no PickAndPlace baseline but ``bc_ppo_warp.py`` does, and
+    the two were previously reported as contradicting each other.
+    """
+    docstring = _read(ROOT / "examples" / "bc_ppo_warp.py").split('"""')[1]
+    mean = re.search(r"mean `([\d.]+)`", docstring)
+    assert mean, "could not parse the validated PickAndPlace mean from bc_ppo_warp.py"
+
+    training = _read(DOCS / "workflow" / "training.mdx")
+    assert mean.group(1) in training, (
+        f"workflow/training.mdx must report the bc_ppo_warp.py PickAndPlace mean {mean.group(1)}"
+    )
+    assert "excluded until the environment is fixed" not in training, (
+        "the PickAndPlace 'excluded' claim is stale: bc_ppo_warp.py solves it"
     )

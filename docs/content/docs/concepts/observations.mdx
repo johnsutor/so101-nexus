@@ -1,6 +1,6 @@
 ---
 title: Observations
-description: Composable observation components, observation modes, and how to inspect them.
+description: The composable state and camera components, how they compose into a vector or dict, and their units.
 ---
 
 Every SO101-Nexus environment builds its observation from a list of **observation components**. Components are lightweight descriptor classes that tell the environment which data to include. State components contribute slices of a flat vector; camera components add image tensors to a dictionary observation.
@@ -28,13 +28,7 @@ State components produce fixed-size slices of the observation vector.
 | `TargetPosition` | 3 | Absolute goal position (x, y, z) |
 
 `GazeDirection` and `GazeState` are anchored at the wrist camera, not at the gripper
-tip: the camera sits about 8 cm from the TCP, which is the same order as the distance
-to a graspable object, so a TCP-anchored ray answers a different question than "does
-the camera see it". `GazeState` is deliberately conservative in two ways. It tests the
-object's origin against a cone of half the *vertical* FOV read live from the model (so
-wrist-camera domain randomization moves the boundary with it), which for a wider-than-tall
-image is narrower than the rendered frame. And it is not an occlusion test. Tasks without
-a target object (Move) do not support either component.
+tip. Tasks without a target object (Move) do not support either component.
 
 ### Camera Components
 
@@ -46,8 +40,6 @@ Camera components add image tensors to a dict-style observation space. They have
 | `OverheadCamera` | `"overhead_camera"` | RGB image from a stationary camera above the workspace |
 
 Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
-
-Both backends render camera observations. The MuJoCo backend renders on CPU through per-env OpenGL renderers; the MuJoCo Warp backend renders all worlds in one batched ray-tracing pass on the simulation device, returning `uint8` image tensors of shape `(num_envs, height, width, 3)` (with per-world wrist-camera domain randomization). The two renderers differ (OpenGL rasterizer vs ray tracer), so pixel values are not identical across backends, but observation keys, shapes, and dtypes match. Warp camera observations are independent of Gymnasium `render_mode`; `render_mode` visualization is MuJoCo-only. See [Backend Support](/docs/concepts/backend-support).
 
 ```python
 from so101_nexus import WristCamera, OverheadCamera
@@ -62,6 +54,8 @@ wrist = WristCamera(width=224, height=224, fov_deg_range=(60.0, 90.0))
 overhead = OverheadCamera(width=320, height=240, fov_deg=45.0)
 ```
 
+Both backends render camera observations, and observation keys, shapes, and dtypes match. Pixel values do not: the MuJoCo backend rasterizes on CPU through per-env OpenGL renderers, while the MuJoCo Warp backend ray-traces all worlds in one batched pass on the simulation device, returning `uint8` tensors of shape `(num_envs, height, width, 3)`. Warp camera observations are independent of Gymnasium `render_mode`; `render_mode` visualization is MuJoCo-only. See [Backends](/docs/concepts/backends).
+
 ## Composing Observations
 
 Pass a list of components via the `observations` parameter on any config. Each task provides sensible defaults when `observations` is not specified.
@@ -72,7 +66,7 @@ from so101_nexus import (
     ObjectPose, ObjectOffset, WristCamera,
 )
 
-# State-only observations (default for PickLift)
+# State-only observations
 config = PickConfig(observations=[
     JointPositions(),
     JointVelocities(),
@@ -109,54 +103,8 @@ Each task config auto-populates `observations` if you don't provide one:
 
 PickAndPlace and StackCube carry `ObjectVelocity` because their success predicates
 require the object to have settled (`object_static_lin_threshold` /
-`cube_static_lin_threshold`), which no other component exposes.
-
-### Replaying Datasets Recorded Against an Older Layout
-
-Teleop recording writes the full state vector to `observation.environment_state`, and
-the dataset declares one name per column (`joint_positions_0`, `joint_velocities_0`, ...)
-from `privileged_state_feature_names`. A dataset recorded before a component joined a
-task's defaults is therefore narrower than what the env now emits, and cannot be fed
-directly to a policy trained against the current env.
-
-`relabel_environment_state` maps the recorded columns onto the current layout by name.
-`JointVelocities` is reconstructed offline as a backward finite difference of the
-recorded `JointPositions` columns (never across an episode boundary), which is the same
-relabeling a real SO-101 control loop performs on consecutive servo position readings.
-Any other missing column raises, since it cannot be recovered from what was recorded.
-
-Pass the env's `control_dt` (simulated seconds per `step()`), not the dataset's `1 / fps`.
-The teleop recorder sleeps to pace the operator but advances the simulation exactly one
-step per recorded frame, so the wall-clock frame period would rescale every velocity.
-A finite difference is an interval average rather than the instantaneous `qvel` a live
-env reports, so relabeled velocities are unbiased but noisier than recorded ones.
-
-```python
-import numpy as np
-from so101_nexus import PickConfig, relabel_environment_state
-
-names = info["features"]["observation.environment_state"]["names"]  # from meta/info.json
-obs = relabel_environment_state(
-    np.stack(df["observation.environment_state"].to_numpy()),
-    names,
-    PickConfig().observations,
-    dt=env.unwrapped.control_dt,
-    episode_index=df["episode_index"].to_numpy(),
-)
-```
-
-A column such as `gaze_state_0` cannot be reconstructed offline (it needs the episode's
-wrist-camera pose, which the state vector does not carry), so a policy trained on those
-demonstrations has to run against the layout they were recorded with.
-`observations_from_feature_names` rebuilds that layout from the declared names, and the
-config accepts it directly:
-
-```python
-from so101_nexus import PickConfig, observations_from_feature_names
-
-recorded = observations_from_feature_names(names)
-env = gym.make("MuJoCoPickLift-v1", config=PickConfig(observations=recorded))
-```
+`cube_static_lin_threshold`), which no other component exposes. Success predicates per
+task are in [Environments](/docs/environments).
 
 ## Observation Modes
 
@@ -179,9 +127,9 @@ config = PickConfig(
 )
 ```
 
-### Units: Degrees vs Radians
+## Units: Degrees vs Radians
 
-Configuration APIs (`REST_POSE`, `*_deg` fields, spawn ranges, leader-arm helpers) use **degrees** per the library convention. Runtime values exposed by the env (`obs["state"]`, `env.step(action)`, `env.action_space.low/high`) use **radians**, which is the native unit of the underlying MuJoCo engine (and the planned MuJoCo Warp backend) and the unit the integrator consumes when writing `ctrl`. Converting on every step would add runtime work without changing the simulation result.
+Configuration APIs (`REST_POSE`, `*_deg` fields, spawn ranges, leader-arm helpers) use **degrees** per the library convention. Runtime values exposed by the env (`obs["state"]`, `env.step(action)`, `env.action_space.low/high`) use **radians**, which is the native unit of the underlying MuJoCo and MuJoCo Warp engines and the unit the integrator consumes when writing `ctrl`. Converting on every step would add runtime work without changing the simulation result.
 
 Code that crosses into LeRobot territory converts at the boundary:
 
@@ -229,3 +177,66 @@ env.close()
 | Vision-based RL training | `"visual"` | JointPositions + WristCamera | Policy learns from camera images; no ground-truth state |
 | Multi-view vision | `"visual"` | JointPositions + WristCamera + OverheadCamera | Policy fuses multiple camera views |
 | Debugging / visualization | `"state"` | Default + WristCamera | Full state + camera for analysis |
+
+## Specialist details
+
+<Accordions>
+<Accordion title="Why GazeState is conservative">
+
+`GazeState` tests the object's *origin* against a cone of half the *vertical* FOV, read
+live from the model so wrist-camera domain randomization moves the boundary with it. For
+a wider-than-tall image that cone is narrower than the rendered frame, and it is not an
+occlusion test. The wrist camera also sits about 8 cm from the TCP, the same order as the
+distance to a graspable object, so a TCP-anchored ray would answer a different question
+than "does the camera see it".
+
+</Accordion>
+<Accordion title="Replaying datasets recorded against an older layout">
+
+Teleop recording writes the full state vector to `observation.environment_state`, and
+the dataset declares one name per column (`joint_positions_0`, `joint_velocities_0`, ...)
+from `privileged_state_feature_names`. A dataset recorded before a component joined a
+task's defaults is therefore narrower than what the env now emits, and cannot be fed
+directly to a policy trained against the current env.
+
+`relabel_environment_state` maps the recorded columns onto the current layout by name.
+`JointVelocities` is reconstructed offline as a backward finite difference of the
+recorded `JointPositions` columns (never across an episode boundary), which is the same
+relabeling a real SO-101 control loop performs on consecutive servo position readings.
+Any other missing column raises, since it cannot be recovered from what was recorded.
+
+Pass the env's `control_dt` (simulated seconds per `step()`), not the dataset's `1 / fps`.
+The teleop recorder sleeps to pace the operator but advances the simulation exactly one
+step per recorded frame, so the wall-clock frame period would rescale every velocity.
+A finite difference is an interval average rather than the instantaneous `qvel` a live
+env reports, so relabeled velocities are unbiased but noisier than recorded ones.
+
+```python
+import numpy as np
+from so101_nexus import PickConfig, relabel_environment_state
+
+names = info["features"]["observation.environment_state"]["names"]  # from meta/info.json
+obs = relabel_environment_state(
+    np.stack(df["observation.environment_state"].to_numpy()),
+    names,
+    PickConfig().observations,
+    dt=env.unwrapped.control_dt,
+    episode_index=df["episode_index"].to_numpy(),
+)
+```
+
+A column such as `gaze_state_0` cannot be reconstructed offline (it needs the episode's
+wrist-camera pose, which the state vector does not carry), so a policy trained on those
+demonstrations has to run against the layout they were recorded with.
+`observations_from_feature_names` rebuilds that layout from the declared names, and the
+config accepts it directly:
+
+```python
+from so101_nexus import PickConfig, observations_from_feature_names
+
+recorded = observations_from_feature_names(names)
+env = gym.make("MuJoCoPickLift-v1", config=PickConfig(observations=recorded))
+```
+
+</Accordion>
+</Accordions>

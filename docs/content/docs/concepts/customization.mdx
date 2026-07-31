@@ -1,0 +1,314 @@
+---
+title: Customization
+description: Recipes for changing episode length, scene objects, cameras, randomization, initial poses, and reward weights.
+---
+
+Every environment accepts a typed config object imported from `so101_nexus` and passed
+to `gymnasium.make` (or `gym.make_vec`) through the `config` keyword. The config is the
+single place where scene contents, observations, randomization, and reward shaping are
+declared, and it travels unchanged across both backends.
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus import PickConfig
+
+env = gym.make("MuJoCoPickLift-v1", config=PickConfig())
+```
+
+## Episode length
+
+`max_episode_steps` is a `gym.make` argument, never a config field. It works the same
+way on both backends.
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco  # noqa: F401
+import so101_nexus.warp  # noqa: F401
+from so101_nexus import TouchConfig
+
+config = TouchConfig()
+
+# MuJoCo (single env): applied via the TimeLimit wrapper
+env = gym.make("MuJoCoTouch-v1", config=config, max_episode_steps=256)
+
+# Warp (batched): forwarded to the vector env, which truncates internally
+envs = gym.make_vec("WarpTouch-v1", num_envs=4, device="cuda", config=config, max_episode_steps=256)
+```
+
+Per-task defaults are listed in [Environments](/docs/environments).
+
+## Scene objects
+
+Manipulation tasks default to a single red cube. Pass `objects` on `PickConfig` to
+change that.
+
+```python
+from so101_nexus import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(objects=CubeObject(color="blue"))
+
+# Or a real-world scanned object; YCB assets download on first use.
+config = PickConfig(objects=YCBObject(model_id="011_banana"))
+```
+
+Ten YCB models ship, including `011_banana` and `058_golf_ball`. The full list and every
+constructor parameter for `CubeObject`, `YCBObject`, and `MeshObject` are in the
+[Objects reference](/docs/api/objects).
+
+### Sampling a target from a pool
+
+Pass a list and the environment picks one object as the manipulation target at each
+reset.
+
+```python
+from so101_nexus import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[
+        CubeObject(color="blue"),
+        YCBObject(model_id="058_golf_ball"),
+        YCBObject(model_id="011_banana"),
+    ],
+)
+```
+
+### Distractors
+
+Distractors are extra objects the agent must ignore. The pool passed through `objects`
+must hold at least `n_distractors + 1` entries: one becomes the target, the rest become
+distractors. `min_object_separation` (meters) keeps them from overlapping at spawn.
+
+```python
+from so101_nexus import PickConfig, CubeObject
+
+config = PickConfig(
+    objects=[
+        CubeObject(color="green"),
+        CubeObject(color="blue"),
+        CubeObject(color="yellow"),
+        CubeObject(color="orange"),
+    ],
+    n_distractors=3,
+    min_object_separation=0.04,
+)
+```
+
+### Custom meshes
+
+`MeshObject` loads an arbitrary mesh file and works on both backends.
+
+```python
+from so101_nexus import PickConfig, MeshObject
+
+obj = MeshObject(
+    collision_mesh_path="/path/to/collision.stl",
+    visual_mesh_path="/path/to/visual.obj",
+    mass=0.015,
+    name="custom_widget",
+)
+config = PickConfig(objects=obj)
+```
+
+Each object contributes to the env's task description, which matters for
+language-conditioned policies. Read it off `env.unwrapped.task_description`.
+
+## Cameras and visual observations
+
+Add `WristCamera` or `OverheadCamera` to `observations` and the observation becomes a
+dictionary: a `"state"` key holding the flat vector from all state components, plus one
+key per camera.
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco  # noqa: F401
+from so101_nexus import PickConfig, JointPositions, WristCamera, OverheadCamera
+
+config = PickConfig(observations=[
+    JointPositions(),
+    WristCamera(width=224, height=224),
+    OverheadCamera(width=224, height=224),
+])
+env = gym.make("MuJoCoPickLift-v1", config=config)
+obs, _ = env.reset()
+obs["state"]             # (6,)
+obs["wrist_camera"]      # (224, 224, 3)
+obs["overhead_camera"]   # (224, 224, 3)
+```
+
+Set `obs_mode="visual"` to declare that the policy must not read privileged simulator
+state. It requires at least one camera component. See
+[Observations](/docs/concepts/observations) for the component tables and the
+per-task defaults.
+
+## Domain randomization
+
+Color fields accept a single color name or a list. Given a list, the environment samples
+uniformly at each reset. The spawn knobs tighten or widen where objects appear.
+
+```python
+from so101_nexus import PickConfig
+
+config = PickConfig(
+    ground_colors=["gray", "white", "black"],
+    robot_colors=["yellow", "orange"],
+    spawn_min_radius=0.20,
+    spawn_max_radius=0.30,
+    spawn_angle_half_range_deg=60.0,
+)
+```
+
+Available colors: `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `black`,
+`white`, `gray`.
+
+<Callout type="info">
+On the Warp backend all worlds share one compiled model, so per-episode color
+randomization of a single object is unsupported. Distinct colored slots still give
+per-world variation. See [Backends](/docs/concepts/backends).
+</Callout>
+
+## Initial poses
+
+By default the robot starts each episode in the fixed rest pose plus small Gaussian
+noise scaled by `robot_init_qpos_noise`. Set `RobotConfig.init_pose` for more diverse
+starting configurations, which helps a policy generalize across arm positions.
+
+A `Pose` names all six joints. Each joint is either fixed or free:
+
+- **Fixed** (`float`): the same angle every episode, for example `shoulder_lift_deg=-90.0`.
+- **Free** (`tuple[float, float]`): sampled uniformly from that range each episode, for
+  example `shoulder_pan_deg=(-110.0, 110.0)`.
+
+Two poses are built in. Both fix the arm and leave `shoulder_pan`, `wrist_roll`, and
+`gripper` free.
+
+| Name | Constant | Arm |
+| --- | --- | --- |
+| `rest` | `REST_POSE` | Curled up (the default rest configuration) |
+| `extended` | `EXTENDED_POSE` | Stretched forward |
+
+Reference either by name, or look it up in the `POSES` dict.
+
+```python
+from so101_nexus import POSES, RobotConfig, PickConfig
+
+config = PickConfig(robot=RobotConfig(init_pose="rest"))
+config = PickConfig(robot=RobotConfig(init_pose=POSES["extended"]))
+```
+
+Or build your own:
+
+```python
+from so101_nexus import Pose, RobotConfig, PickConfig
+
+my_pose = Pose(
+    name="looking_left",
+    shoulder_pan_deg=90.0,          # fixed: rotated left
+    shoulder_lift_deg=-90.0,        # fixed
+    elbow_flex_deg=90.0,            # fixed
+    wrist_flex_deg=37.8,            # fixed
+    wrist_roll_deg=(-157.0, 163.0), # free: full range
+    gripper_deg=(-10.0, 100.0),     # free: full range
+)
+config = PickConfig(robot=RobotConfig(init_pose=my_pose))
+```
+
+All angles are degrees.
+
+| Joint | Index | Description | Range (deg) |
+| --- | --- | --- | --- |
+| `shoulder_pan` | 0 | Base rotation | -110 to 110 |
+| `shoulder_lift` | 1 | Shoulder elevation | -100 to 100 |
+| `elbow_flex` | 2 | Elbow bend | -97 to 97 |
+| `wrist_flex` | 3 | Wrist pitch | -95 to 95 |
+| `wrist_roll` | 4 | Wrist rotation | -157 to 163 |
+| `gripper` | 5 | Gripper open/close | -10 to 100 |
+
+## Reset settling
+
+Environments advance 5 no-op frames after reset before returning the first observation,
+skipping the unstable frames while contacts and controllers initialize. Set
+`reset_settle_frames=0` to inspect the raw reset state.
+
+```python
+from so101_nexus import PickConfig
+
+config = PickConfig(reset_settle_frames=0)
+```
+
+## Reward weights
+
+`RewardConfig` carries four weights that must sum to 1.0: `reaching`, `grasping`,
+`task_objective`, and `completion_bonus`. Two penalties, `action_delta_penalty` and
+`energy_penalty`, are applied separately and default to 0.0.
+
+```python
+from so101_nexus import RewardConfig, PickConfig
+
+reward = RewardConfig(
+    reaching=0.20,
+    grasping=0.20,
+    task_objective=0.50,
+    completion_bonus=0.10,
+    action_delta_penalty=0.025,
+    energy_penalty=0.025,
+)
+config = PickConfig(reward=reward)
+```
+
+What each component measures, and which tasks use potential-based shaping, is in
+[Environments](/docs/environments#rewards). Defaults are in
+[Configs](/docs/api/configs).
+
+## Task-specific configs
+
+### `PickConfig`
+
+PickLift environments. Adds the object pool, distractors, and `lift_threshold`.
+`TouchConfig` subclasses it, so the same object-pool fields apply to Touch.
+
+```python
+from so101_nexus import PickConfig, CubeObject, YCBObject
+
+config = PickConfig(
+    objects=[CubeObject(color="blue"), YCBObject(model_id="011_banana")],
+    n_distractors=1,
+    lift_threshold=0.06,
+)
+```
+
+### `PickAndPlaceConfig`
+
+Controls the carried cube and the target disc.
+
+```python
+from so101_nexus import PickAndPlaceConfig
+
+config = PickAndPlaceConfig(
+    cube_colors=["red", "green", "blue"],
+    target_colors="purple",
+    min_cube_target_separation=0.05,
+)
+```
+
+### `StackCubeConfig`
+
+Controls both cubes' colors, size, and spawn separation. The defaults keep cube A and
+cube B visually distinct (red against blue); overlapping color pools warn.
+
+```python
+from so101_nexus import StackCubeConfig
+
+config = StackCubeConfig(
+    cube_a_colors=["red", "orange"],
+    cube_b_colors=["blue", "green"],
+    min_cube_separation=0.05,
+)
+```
+
+## Every parameter
+
+[Configs](/docs/api/configs) lists the full field set and defaults for
+`EnvironmentConfig`, `PickConfig`, `PickAndPlaceConfig`, `StackCubeConfig`,
+`TouchConfig`, `LookAtConfig`, `MoveConfig`, `RewardConfig`, `RenderConfig`, and
+`RobotConfig`.

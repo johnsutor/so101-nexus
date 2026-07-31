@@ -1,0 +1,198 @@
+---
+title: Training
+description: Behavior cloning and PPO recipes for the Warp environments, with per-task commands, hyperparameters, and measured baselines.
+---
+
+Two scripts cover the clone and reinforce stages. `examples/bc_ppo_warp.py` is the default
+recommendation: it BC-pretrains the actor on teleoperation demonstrations, then runs
+GPU-parallel PPO with a persistent BC loss anchoring the actor to those demos.
+`examples/ppo_warp.py` is the same recipe with no demos, trained from scratch, and
+`--use-demos false` makes `bc_ppo_warp.py` recover it exactly. `examples/ppo.py` is a slow
+single-environment MuJoCo reference, useful for sanity checks but not the recommended path.
+
+## Quick start
+
+The defaults target `WarpPickLift-v1` with the published `johnsutor/MuJoCoPickLift-v1`
+demonstrations, so one command runs the whole thing:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py
+```
+
+Watch it train:
+
+```bash
+tensorboard --logdir runs
+```
+
+Evaluate the saved checkpoint deterministically, with no exploration noise:
+
+```bash
+uv run --extra warp python examples/eval_warp.py \
+    --env-id WarpPickLift-v1 \
+    --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
+```
+
+`examples/ppo_warp.py` can also render periodic transfer videos in the matching `MuJoCo*`
+environment with `--capture-video`.
+
+## Results
+
+Measured on one RTX 5090. Success is the recent completed-episode success rate reported by the
+Warp training rollout at the listed step budget. The two scripts are reported separately
+because they are different recipes: a task with no vanilla baseline is not a broken task, and
+a task solved only under demo seeding is still solved.
+
+| Task | Steps | Vanilla PPO (`ppo_warp.py`) | Demo-seeded (`bc_ppo_warp.py`) |
+| --- | ---: | --- | --- |
+| `WarpTouch-v1` | 5M | `1.000`, 88 s | not measured |
+| `WarpLookAt-v1` | 5M | `1.000`, 62 s | not measured |
+| `WarpMove-v1` | 5M | `1.000`, 60 s | not measured |
+| `WarpPickLift-v1` | 30M | 4 of 5 seeds solved. Final success `0.965` min, `0.973` mean, `0.985` max, 24.5 min per run | Rescues the failing seed to `best_success=0.993`, `final_success=0.983` |
+| `WarpPickAndPlace-v1` | 160M | no baseline | Solved. 3 seeds, `best_success` `0.927` / `0.912` / `0.743` (mean `0.861`, std `0.083`) |
+| `WarpStackCube-v1` | | no baseline | no baseline |
+
+Under vanilla PPO, `WarpPickLift-v1` seed 5 stalls at a grasp-and-hold-at-the-table local
+optimum with `best_success=0.037`; demo seeding alone fixes it at the same 30M budget, which is
+the whole argument for the clone stage. The `WarpPickAndPlace-v1` seed-1 checkpoint also
+transfers across backends: a 100-episode evaluation in MuJoCo reports `success_rate=0.870`.
+
+## Recommended commands
+
+`WarpTouch-v1`, `WarpLookAt-v1`, and `WarpMove-v1` need nothing beyond a step budget:
+
+```bash
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpTouch-v1 \
+    --total-timesteps 5000000
+```
+
+`WarpPickLift-v1` under vanilla PPO. This repeats the tuned defaults explicitly so copied runs
+keep the seed-validated recipe even if script defaults change later:
+
+```bash
+uv run --extra warp --extra train python examples/ppo_warp.py \
+    --env-id WarpPickLift-v1 \
+    --total-timesteps 30000000 \
+    --num-minibatches 32 \
+    --update-epochs 10 \
+    --ent-coef 0.03 \
+    --ent-coef-final 0.005 \
+    --max-grad-norm 0.5 \
+    --target-kl None
+```
+
+`WarpPickAndPlace-v1`, the validated demo-seeded run. The success bonus, the long budget, and
+the decoupled anneal horizon with a learning-rate floor are all load-bearing here:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+    --env-id WarpPickAndPlace-v1 \
+    --demo-repo johnsutor/MuJoCoPickAndPlace-v1 \
+    --success-bonus 50 \
+    --total-timesteps 160000000 \
+    --anneal-timesteps 80000000 \
+    --lr-min-frac 0.1
+```
+
+If a pick task stalls at low return with 0% success, check the entropy and optimizer settings
+against the commands above before tuning anything else. Lift discovery on GPU is stochastic.
+
+## Behavior cloning
+
+The clone stage is the BC-pretrain phase inside `bc_ppo_warp.py`. It regresses the actor mean
+onto demo actions before any online rollout, so PPO starts near successful behavior instead of
+a random init. There is no separate BC step to run.
+
+Point it at your own recording with `--demo-repo`, which takes a Hugging Face repo id or a
+local dataset path. Every field of the script's `Args` dataclass is exposed on the command
+line through `tyro`:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+    --demo-repo your-user/MuJoCoPickLift-v1 \
+    --env-id WarpPickLift-v1
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--demo-repo` | `johnsutor/MuJoCoPickLift-v1` | Dataset the actor is cloned from |
+| `--use-demos` | `true` | Seed the actor from demos before PPO. `false` gives pure PPO |
+| `--bc-pretrain-updates` | `2000` | Supervised steps regressing the actor mean onto demo actions |
+| `--bc-pretrain-lr` | `1e-3` | Learning rate for the pretrain phase |
+| `--bc-coef` | `0.1` | Weight of the persistent BC loss added to every PPO minibatch |
+| `--bc-anneal-steps` | `0` | If greater than 0, linearly decay `bc_coef` to 0 over this many env steps |
+
+To judge clone quality, watch `pretrain/bc_loss` in TensorBoard during the pretrain phase. A
+low, flat curve means the actor has matched the demo actions. `--bc-coef` is what makes
+fine-tuning reinforce the clone rather than forget it; `--bc-anneal-steps` fades that anchor
+if you want the policy to drift toward its own discoveries.
+
+<Callout type="warn">
+BC touches only the actor mean, never the critic. Demos carry no value estimate under the
+online policy, so biasing the critic toward them would corrupt the advantages PPO's gradient
+relies on.
+</Callout>
+
+## Baseline hyperparameters
+
+The recipe uses fixed-horizon episodes, staggered resets, observation normalization,
+return-based reward scaling, and entropy annealing. Treat the annealing horizon as a real
+hyperparameter: shortening `--total-timesteps` also shortens the learning-rate and entropy
+schedules, unless you decouple it with `--anneal-timesteps`. The pick tasks use a strong
+entropy warm-start with a nonzero floor because the GPU Warp contact path is not bitwise
+deterministic.
+
+| Argument | Value |
+| --- | ---: |
+| `--num-envs` | `1024` |
+| `--num-steps` | `16` |
+| `--learning-rate` | `3e-4` |
+| `--gamma` | `0.99` |
+| `--gae-lambda` | `0.95` |
+| `--num-minibatches` | `32` |
+| `--update-epochs` | `10` |
+| `--clip-coef` | `0.2` |
+| `--ent-coef` | `0.03` |
+| `--ent-coef-final` | `0.005` |
+| `--vf-coef` | `0.5` |
+| `--max-grad-norm` | `0.5` |
+| `--target-kl` | `None` |
+| `--hidden-dim` | `256` |
+| `--control-mode` | `pd_joint_delta_pos` |
+| `--episode-length` | `512` |
+
+## Caveats
+
+<Callout type="warn">
+**Observation layout is pinned by the dataset.** A policy has to consume exactly the state
+layout its demonstrations recorded, so with `--use-demos true` the script builds both the Warp
+training env and the MuJoCo evaluator from the layout the dataset declares, not from the
+environment's current default. When the two differ, for example a dataset recorded before
+`gaze_state` joined the defaults, the run prints the pinned width and the missing components
+at startup, and the resulting checkpoint only loads against that layout. Re-record the demos
+to train on the current default. See [Observations](/docs/concepts/observations).
+</Callout>
+
+<Callout type="warn">
+**Do not switch control modes between record and train.** Teleop recording is pinned to
+`pd_joint_pos` because absolute joint positions are the only label a leader arm produces, but
+training uses `pd_joint_delta_pos`. Demo actions are therefore relabeled as the delta between
+consecutive recorded joint states, normalized by the environment's `_DELTA_ACTION_SCALE`.
+`pd_ee_delta_pose` labels are the same finite difference taken over the recorded
+`EndEffectorPose`, targeting the same TCP, so no re-recording is needed there either. Change
+the record-time mode and the clone is silently wrong. See
+[Control Modes](/docs/concepts/control-modes).
+</Callout>
+
+## Colab
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
+[`bc_ppo_warp_colab.ipynb`](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
+runs the demo-seeded pipeline on `WarpPickLift-v1`: it downloads the published demos,
+BC-pretrains the actor, fine-tunes with PPO, and shows a rollout video.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+[`ppo_warp_colab.ipynb`](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+runs vanilla PPO with the same `ENV_ID` and step-budget choices, embedded TensorBoard,
+evaluation, and a rollout video.

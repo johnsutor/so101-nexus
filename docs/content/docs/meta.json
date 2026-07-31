@@ -2,18 +2,14 @@
   "title": "SO101-Nexus",
   "root": true,
   "pages": [
-    "---Getting Started---",
     "index",
+    "---Get Started---",
     "getting-started",
+    "---Workflow---",
     "workflow",
-    "teleoperation",
-    "training",
-    "---Learn---",
-    "concepts",
-    "guides",
-    "policies",
     "---Reference---",
     "environments",
+    "concepts",
     "api"
   ]
 }

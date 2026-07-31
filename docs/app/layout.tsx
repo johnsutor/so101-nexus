@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 export const metadata = {
   title: "SO101-Nexus",
   description:
-    "Gymnasium-compatible simulation environments for the SO-100 and SO-101 robot arms",
+    "Full-stack robot learning for the SO-101 arm: teleoperation, imitation learning, and RL in MuJoCo",
 };
 
 export default function Layout({ children }: { children: ReactNode }) {

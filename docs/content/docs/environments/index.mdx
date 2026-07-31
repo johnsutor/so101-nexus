@@ -1,38 +1,245 @@
 ---
-title: Environment Reference
-description: Complete reference for all registered simulation environments.
+title: Environments
+description: The six SO-101 tasks, with their IDs, state dimensions, success predicates, and reward shape.
 ---
 
-# Environment Reference
+SO101-Nexus ships six Gymnasium-compatible manipulation tasks for the SO-101 arm.
+Importing `so101_nexus.mujoco` registers the single-environment `MuJoCo*-v1` IDs;
+importing `so101_nexus.warp` registers the GPU-batched `Warp*-v1` counterparts, which
+share the same task definitions and step caps.
 
-SO101-Nexus provides Gymnasium-compatible MuJoCo environments for the SO-101 arm. Each environment is registered with a unique ID and can be created with `gym.make()`.
+For a runnable loop, see the [quickstart](/docs/getting-started/quickstart). For the
+observation components themselves, see [Observations](/docs/concepts/observations); for
+action spaces, see [Control modes](/docs/concepts/control-modes).
 
-## All Environments
+## Tasks
 
-| ID | Backend | Task | Max Steps |
-|----|---------|------|-----------|
-| [`MuJoCoPickLift-v1`](/docs/environments/mujoco-pick-lift) | MuJoCo | Pick and lift an object | 1024 |
-| [`MuJoCoPickAndPlace-v1`](/docs/environments/mujoco-pick-and-place) | MuJoCo | Pick a cube and place on target | 1024 |
-| [`MuJoCoStackCube-v1`](/docs/environments/mujoco-stack-cube) | MuJoCo | Pick up cube A and stack it on cube B | 1024 |
-| [`MuJoCoTouch-v1`](/docs/environments/mujoco-touch) | MuJoCo | Touch an object on the table | 512 |
-| [`MuJoCoLookAt-v1`](/docs/environments/mujoco-look-at) | MuJoCo | Orient TCP toward object | 256 |
-| [`MuJoCoMove-v1`](/docs/environments/mujoco-move) | MuJoCo | Move TCP in a direction | 256 |
+| Task | MuJoCo ID | Warp ID | Config class | Max steps | State dim |
+| --- | --- | --- | --- | --- | --- |
+| Pick and lift an object | `MuJoCoPickLift-v1` | `WarpPickLift-v1` | `PickConfig` | 1024 | 31 |
+| Place a cube on a target disc | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
+| Stack cube A on cube B | `MuJoCoStackCube-v1` | `WarpStackCube-v1` | `StackCubeConfig` | 1024 | 43 |
+| Touch an object on the table | `MuJoCoTouch-v1` | `WarpTouch-v1` | `TouchConfig` | 512 | 31 |
+| Gaze at an object | `MuJoCoLookAt-v1` | `WarpLookAt-v1` | `LookAtConfig` | 256 | 23 |
+| Move the TCP a fixed distance | `MuJoCoMove-v1` | `WarpMove-v1` | `MoveConfig` | 256 | 22 |
 
-## Registration
+State dim is the width of the default state observation. It changes if you override
+`observations` on the config. `all_registered_env_ids()` returns these six IDs for each
+backend you have imported.
 
-MuJoCo environments are registered when you import `so101_nexus.mujoco`.
+## Success conditions
 
-```python
-import gymnasium as gym
-import so101_nexus.mujoco
+Every task publishes a binary `success` flag in the `info` dict.
 
-env = gym.make("MuJoCoPickLift-v1")
-```
+**PickLift** succeeds when the object is grasped and its height above the spawn pose
+exceeds `lift_threshold` (default 0.05 m). Both conditions must hold on the same step.
 
-## Train a policy in Colab
+**PickAndPlace** succeeds when the cube is placed, settled, and released: its XY distance
+to the target disc is within `goal_thresh` (default 0.025 m) and it has come back down to
+table height, its linear and angular speeds are below the static thresholds, and
+`is_grasped < 0.5`. Letting go is mandatory. The arm's own motion is not part of the
+predicate: `is_robot_static` is reported in `info` as a diagnostic only, so a policy may
+still be retreating when the episode succeeds.
 
-Every task has a GPU-parallel Warp counterpart (`Warp*-v1`); PickLift, Touch, LookAt, and Move have solved PPO baselines you can reproduce in Colab (PickAndPlace's and StackCube's Warp baselines are pending, see [Training with PPO](/docs/training/ppo)).
+**StackCube** succeeds when cube A's horizontal offset from cube B is within
+`sqrt(2) * cube_half_size + stack_alignment_margin` and its height above cube B is within
+`stack_alignment_margin` of exactly `2 * cube_half_size` (resting flush on cube B's top
+face), cube A is static, the robot is static, and cube A has been released
+(`is_grasped < 0.5`). Unlike PickAndPlace, the robot-static check *is* required here.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
+**Touch** succeeds when the TCP comes within the target object's bounding radius plus
+`touch_margin` (default 0.03 m) of the object center, so the threshold scales with object
+size.
 
-Pick the task with `ENV_ID` in the notebook's environment cell. See [Training with PPO](/docs/training/ppo) for details and per-task results.
+**LookAt** succeeds when the angle between the wrist camera's optical axis and the
+direction to the target is at most half the camera's vertical field of view (`fov_deg / 2`,
+or the live `cam_fovy / 2` when `fov_deg` is `None`). This is exactly the `GazeState`
+observation.
+
+**Move** succeeds when the TCP's displacement along the move direction reaches at least
+`target_distance - success_threshold`. Perpendicular drift is ignored.
+
+{/* Other pages deep-link to /docs/environments#rewards. Keep this heading text stable. */}
+
+## Rewards
+
+Each step returns a scalar roughly in `[-1, 1]`, where `1.0` means the task just finished.
+It is a weighted sum of `reaching`, `grasping`, `task_objective`, and a one-time
+`completion_bonus`, and those four weights must sum to `1.0`. The component functions live
+in `so101_nexus.rewards`; the weights are set through `RewardConfig`.
+
+**Simple tasks pay the current level.** Touch, LookAt, and Move each have exactly one thing
+to get right, so the reward is how close the robot is right now: low when far away, rising
+smoothly toward `1.0` as it closes in, plus the bonus on success. Distance terms use tanh
+shaping rather than a hard cutoff, so reward rises gradually instead of jumping.
+
+**Multi-step tasks pay the change in progress.** PickLift, PickAndPlace, and StackCube use
+potential-based shaping: outside the completion bonus, the reward is how much better this
+step is than the last, not how good the current state looks. Once the robot stops
+improving, that term drops to exactly zero. This removes the incentive to freeze in a
+good-looking pose (holding a lifted object for the rest of the episode, or hovering a cube
+above the target) instead of finishing, because dwelling pays nothing.
+
+Because those terms measure a change, reward can go slightly negative when progress is
+genuinely lost, such as dropping an object that was already grasped. That is intentional
+and symmetric with the credit earned for making the same progress in the first place.
+Success always pays the full `1.0`.
+
+Two optional penalties, `action_delta_penalty` (jerky motion) and `energy_penalty` (high
+effort), default to `0.0`. See [Configs](/docs/api/configs) for every reward field and its
+default.
+
+## Task details
+
+<Accordions>
+
+<Accordion title="PickLift">
+
+Task description: `Pick up the {object!r}.`
+
+Default observation (31): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `GraspState` (1), `GazeState` (1), `ObjectPose` (7), `ObjectOffset` (3).
+
+Objects: the `objects` pool takes any mix of `CubeObject`, `YCBObject`, and `MeshObject`,
+and one entry is sampled as the target each episode. `n_distractors` adds non-target
+objects drawn from the same pool, which raise visual and physical difficulty without
+changing the observation width.
+
+Task-specific fields on `PickConfig`: `lift_threshold` (0.05 m, the success height),
+`max_goal_height` (0.08 m, the height used to normalize lift progress), and
+`min_object_separation` (0.04 m). Full field list in [Configs](/docs/api/configs).
+
+Overhead camera:
+
+<video controls muted playsInline width="100%" aria-label="MuJoCo PickLift overhead camera rollout">
+  <source src="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1/resolve/main/videos/observation.images.overhead/chunk-000/file-000.mp4" type="video/mp4" />
+  Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0">PickLift episode viewer</a> instead.
+</video>
+
+Wrist camera:
+
+<video controls muted playsInline width="100%" aria-label="MuJoCo PickLift wrist camera rollout">
+  <source src="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1/resolve/main/videos/observation.images.wrist/chunk-000/file-000.mp4" type="video/mp4" />
+  Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0">PickLift episode viewer</a> instead.
+</video>
+
+</Accordion>
+
+<Accordion title="PickAndPlace">
+
+Task description: `Pick up the {object!r} and place it on the {target_color} circle.`
+
+Default observation (43): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `GraspState` (1), `GazeState` (1), `TargetPosition` (3), `ObjectPose` (7),
+`ObjectVelocity` (6), `ObjectOffset` (3), `TargetOffset` (3). `ObjectVelocity` is the
+settling term of the success check, so keep it if you shrink the observation.
+
+Objects: one colored cube plus a flat target disc. Both colors are sampled per episode
+from `PickAndPlaceConfig` and named in the task description.
+
+Task-specific fields: `goal_thresh` (0.025 m, the XY placement tolerance),
+`target_disc_radius` (0.05 m), `cube_half_size`, `cube_mass`, and
+`min_cube_target_separation` (0.0375 m, the minimum spawn gap between cube and disc).
+Full field list in [Configs](/docs/api/configs).
+
+Overhead camera:
+
+<video controls muted playsInline width="100%" aria-label="MuJoCo PickAndPlace overhead camera rollout">
+  <source src="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1/resolve/main/videos/observation.images.overhead/chunk-000/file-000.mp4" type="video/mp4" />
+  Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace episode viewer</a> instead.
+</video>
+
+Wrist camera:
+
+<video controls muted playsInline width="100%" aria-label="MuJoCo PickAndPlace wrist camera rollout">
+  <source src="https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1/resolve/main/videos/observation.images.wrist/chunk-000/file-000.mp4" type="video/mp4" />
+  Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0">PickAndPlace episode viewer</a> instead.
+</video>
+
+</Accordion>
+
+<Accordion title="StackCube">
+
+Task description: `Stack the {cube_a!r} on the {cube_b!r}.`
+
+Default observation (43): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `GraspState` (1), `GazeState` (1), `ObjectPose` (7), `ObjectVelocity` (6),
+`ObjectOffset` (3), `TargetPosition` (3), `TargetOffset` (3). `TargetPosition` is cube B,
+re-read every step, so bumping cube B moves the goal.
+
+Objects: cube A (picked up) and cube B (the stationary base). `cube_a_colors` and
+`cube_b_colors` each take a color or a list sampled per episode, and default to disjoint
+pools (red and blue) so the two cubes are never the same color. Overlapping pools warn,
+because the task description identifies cubes by color alone. `n_distractors` draws extra
+cubes without replacement from the `distractors` pool; they never enter the observation or
+the task description.
+
+Task-specific fields: `stack_alignment_margin` (0.005 m, the alignment tolerance in both
+axes), `cube_static_lin_threshold` (0.01 m/s), `cube_static_ang_threshold` (0.5 rad/s),
+`cube_half_size`, and `min_cube_separation` (0.04 m). Full field list in
+[Configs](/docs/api/configs).
+
+</Accordion>
+
+<Accordion title="Touch">
+
+Task description: `Touch the {object!r}.`
+
+Default observation (31): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `GraspState` (1), `GazeState` (1), `ObjectPose` (7), `ObjectOffset` (3). Same layout
+as PickLift.
+
+Objects: any `CubeObject`, `YCBObject` (a spoon, say), or `MeshObject`, optionally among
+distractors. `TouchConfig` extends `PickConfig`, so the object-pool fields carry over;
+the inherited `lift_threshold` and `max_goal_height` are unused here.
+
+Task-specific field: `touch_margin` (0.03 m), added to the target's bounding radius to
+form the success threshold. Full field list in [Configs](/docs/api/configs).
+
+</Accordion>
+
+<Accordion title="LookAt">
+
+Task description: `Look at the {object!r}.`
+
+Default observation (23): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `GazeDirection` (3), `GazeState` (1). `GazeDirection` is the unit vector from the
+wrist camera to the target; `GazeState` is the success predicate itself.
+
+Objects: `CubeObject` gaze targets only. There is nothing to grasp, so no grasp state is
+exposed.
+
+Task-specific field: `fov_deg`, the wrist camera's vertical field of view in degrees.
+Leave it at `None` (the default) to read the live camera FOV each step, so the success
+band tracks camera changes and per-episode FOV randomization; pin it to a number to fix
+the band. Full field list in [Configs](/docs/api/configs).
+
+</Accordion>
+
+<Accordion title="Move">
+
+Task description: `Move the end-effector {direction} by {target_distance:.2f} m.`
+
+Default observation (22): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
+(7), `TargetOffset` (3).
+
+Objects: none. The goal is computed at episode start as the initial TCP position offset by
+`direction * target_distance`. On `WarpMove-v1` the goal is captured from the pre-settle
+TCP so it matches across `reset()` and same-step autoreset, which means the first observed
+TCP-to-goal distance can differ slightly from `target_distance` when
+`reset_settle_frames > 0`.
+
+Task-specific fields: `direction` (`up`, `down`, `left`, `right`, `forward`, or
+`backward`; default `up`), `target_distance` (0.10 m), and `success_threshold` (0.01 m).
+Full field list in [Configs](/docs/api/configs).
+
+</Accordion>
+
+</Accordions>
+
+## Training
+
+PickLift, Touch, LookAt, and Move have solved vanilla-PPO baselines on the Warp backend.
+PickAndPlace is solved by the demo-seeded BC-then-PPO recipe, not by vanilla PPO.
+StackCube has no baseline yet. Commands, hyperparameters, and per-seed results are in
+[Training](/docs/workflow/training).

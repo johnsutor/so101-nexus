@@ -36,7 +36,7 @@ Teleoperation lives behind the backend CLI, not a standalone script:
 uv run so101-nexus teleop --leader-port /dev/ttyACM0
 ```
 
-For deeper coverage of session configuration, dataset layout, and troubleshooting, see [/docs/teleoperation/overview](https://so101-nexus.github.io/docs/teleoperation/overview).
+For session configuration, dataset layout, and troubleshooting, see the [teleoperation guide](https://so101-nexus.com/docs/workflow/teleoperation).
 
 The CLI opens a Gradio UI in your browser where you configure all recording parameters:
 
@@ -158,16 +158,21 @@ uv run --extra warp --extra train python examples/ppo_warp.py \
 Success rate is the recent completed-episode success rate reported by the Warp
 training rollout at the listed step budget. PickLift reports seed-validated results
 from seeds 1, 2, 3, 4, and 5 (4 of 5 solved).
+
 | env_id | steps | success rate | wall-clock |
 |---|---:|---:|---:|
 | `WarpTouch-v1` | 5.0M | 1.000 | 88 s |
 | `WarpLookAt-v1` | 5.0M | 1.000 | 62 s |
 | `WarpMove-v1` | 5.0M | 1.000 | 60 s |
 | `WarpPickLift-v1` | 30.0M | 0.965 min, 0.973 mean, 0.985 max final | 24.5 min/run |
-| `WarpPickAndPlace-v1` | pending | pending | pending |
+| `WarpPickAndPlace-v1` | none | see below | none |
+| `WarpStackCube-v1` | none | none | none |
 
-`WarpPickAndPlace-v1` is intentionally excluded for now; the environment needs task
-fixes before PPO baselines are meaningful.
+`ppo_warp.py` has no PickAndPlace baseline: pure exploration does not find the
+place-and-release event often enough. Demo seeding does solve it, so use
+`bc_ppo_warp.py` for that task (results under
+["BC-Seeded PPO Training"](#bc-seeded-ppo-training)). `WarpStackCube-v1` has no
+baseline on either script yet.
 
 ### Evaluate a checkpoint
 
@@ -194,7 +199,7 @@ and run all cells.
 
 Use `examples/bc_ppo_warp.py` for demo-seeded PPO on `WarpPickLift-v1`: the exact
 same GPU-parallel CleanRL PPO recipe as `ppo_warp.py` (fixed-horizon episodes,
-CleanRL optimizer budget, entropy warm-start/anneal -- see that file's module doc
+CleanRL optimizer budget, entropy warm-start/anneal, see that file's module doc
 for why each is decisive), plus behavior-cloning (BC) seeding from the 10 successful
 teleop episodes in
 [`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1):
@@ -224,7 +229,7 @@ alternative is designed but not yet built; see
   the proven recipe), demo actions are recomputed as the delta between consecutive
   recorded joint states (the realized per-step motion), normalized by the same
   `_DELTA_ACTION_SCALE` the env applies internally.
-- **BC touches only the actor mean**, never the critic -- the demos have no
+- **BC touches only the actor mean**, never the critic, because the demos have no
   associated value estimates under the online policy, so biasing the critic toward
   them would corrupt the advantage estimates PPO's own gradient relies on.
   `--bc-pretrain-updates` fits the actor alone (separate optimizer, `--bc-pretrain-lr`)
@@ -232,7 +237,7 @@ alternative is designed but not yet built; see
   into every PPO minibatch update afterward, optionally annealed via
   `--bc-anneal-steps`.
 - **`--use-demos false` recovers `ppo_warp.py` exactly** (same Agent, same env
-  helpers, same PPO loss) -- this file is a strict superset, not a fork with
+  helpers, same PPO loss): this file is a strict superset, not a fork with
   behavior drift.
 
 ### Run it
@@ -256,16 +261,33 @@ above, plus:
 
 ### Results
 
-Validated against the exact seed (5) that fails under `ppo_warp.py`'s current
-default recipe, same `--total-timesteps 30000000`:
+**`WarpPickLift-v1`**, validated against the exact seed (5) that fails under
+`ppo_warp.py`'s current default recipe, same `--total-timesteps 30000000`:
 
 | Run | seed | best success | final success |
 |---|---:|---:|---:|
 | `ppo_warp.py` (no demos) | 5 | 0.037 | 0.000 |
 | `bc_ppo_warp.py` (demo-seeded) | 5 | 0.993 | 0.983 |
 
-Same `--total-timesteps 30000000`, same entropy/optimizer schedule -- demo-seeding is
-the only difference, and it rescues the seed outright rather than nudging it. Success
-climbed steadily from the BC-pretrained starting point (0.003 at 1.6M steps) through
-0.807 at 6.6M, crossing 0.95+ by 8.2M and staying there through 30M steps. TensorBoard
-under `runs/` shows the full curve for any local reproduction.
+Same step budget, same entropy and optimizer schedule, so demo-seeding is the only
+difference, and it rescues the seed outright rather than nudging it. Success climbed
+steadily from the BC-pretrained start (0.003 at 1.6M steps) through 0.807 at 6.6M,
+crossing 0.95 by 8.2M and holding through 30M. TensorBoard under `runs/` shows the
+full curve for any local reproduction.
+
+**`WarpPickAndPlace-v1`** has no `ppo_warp.py` baseline at all, and is solved here
+with the opt-in flags from the module docstring:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+  --env-id WarpPickAndPlace-v1 \
+  --demo-repo johnsutor/MuJoCoPickAndPlace-v1 \
+  --success-bonus 50 \
+  --total-timesteps 160000000 \
+  --anneal-timesteps 80000000 \
+  --lr-min-frac 0.1
+```
+
+3 seeds reach `best_success` 0.927, 0.912, and 0.743 (mean 0.861, std 0.083). A
+100-episode MuJoCo-transfer eval of the seed-1 checkpoint measured
+`success_rate=0.870` (95% CI approx +/- 0.066).

@@ -3,23 +3,11 @@ title: LeRobot Processors
 description: Action and observation processor steps, default pipelines, and the LeRobot env wrapper.
 ---
 
-# LeRobot Processors
-
 The `so101_nexus.processors` subpackage exposes the LeRobot-compatible building blocks SO101-Nexus uses for teleoperation, dataset recording, and observation-shape conversion. Every step subclasses LeRobot's typed processor bases and is registered with `ProcessorStepRegistry`, so pipelines can be saved and loaded via `save_pretrained` and `from_pretrained`.
 
-## Optional Dependency
+## Optional dependency
 
-Importing the `processors` subpackage requires `lerobot`. Install the optional extra:
-
-```bash
-pip install "so101-nexus[teleop]"
-```
-
-or with `uv`:
-
-```bash
-uv sync --extra teleop
-```
+Importing the `processors` subpackage requires `lerobot`, which ships with the `teleop` extra. See [Installation](/docs/getting-started/installation).
 
 ## Environment Wrappers
 

@@ -1,0 +1,262 @@
+---
+title: Teleoperation
+description: Drive a simulated SO-101 follower with a physical leader arm and record LeRobot v3 demonstration datasets.
+---
+
+SO101-Nexus ships a Gradio teleop recorder. A physical SO-100 or SO-101 leader arm drives a
+simulated follower, and every approved episode is written to a LeRobot v3 dataset you can push
+to the Hugging Face Hub. That dataset is the artifact the
+[clone and reinforce](/docs/workflow/training) stages consume.
+
+## Quickstart
+
+```bash
+uvx --from "so101-nexus[teleop]" so101-nexus teleop \
+    --leader-port /dev/ttyACM0
+```
+
+A Gradio UI opens in your browser. Most settings live in the UI; the CLI only takes
+connection-level options. For a repeat-use install of the `teleop` extra, see
+[Installation](/docs/getting-started/installation).
+
+## Hardware and the serial port
+
+You need a physical SO-100 or SO-101 leader arm on USB and a host with access to its serial
+port. If the device is not writable, fix permissions and confirm the port:
+
+```bash
+sudo chmod 666 /dev/ttyACM0
+lerobot-find-port
+```
+
+The Configure step reports leader-port reachability before you fill in the rest of the form,
+with a `Recheck Port` button, and blocks `Initialize Session` while the port is not ready. A
+connect-time failure keeps the session alive on the Initialize step with recovery guidance, so
+you can fix the port in another terminal and click `Retry Initialization`.
+
+## Session flow
+
+1. **Configure.** Pick the environment, robot type, episode count, FPS, camera resolutions,
+   action space, countdown, dataset fields, Max Steps, and Success Hold.
+2. **Initialize.** The app connects to the leader arm and creates the dataset.
+3. **Record.** A countdown plays, then the simulation mirrors the leader arm. The live wrist
+   feed renders in the UI.
+4. **Review.** After each episode, the UI shows a video replay and a joint-state plot.
+5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
+6. **Push.** When all episodes are done, push to the Hugging Face Hub from the UI.
+
+## CLI arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
+| `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
+| `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+| `--env-config-profile` | `str \| None` | `None` | JSON or TOML profile with environment config overrides |
+| `--env-config-factory` | `str \| None` | `None` | Python `module:function` that returns a config or `gym.make` kwargs |
+| `--env-module` | repeatable `str` | `[]` | Import a module that registers custom Gymnasium environments |
+| `--extra-env-id` | repeatable `str` | `[]` | Add a custom environment ID to the UI dropdown |
+
+## Cameras and recorded fields
+
+Both the wrist and overhead cameras are captured on every step, so you can decide after the
+fact which views end up in your dataset. Both are wired into the environment's observation
+config automatically even when the task's default config declares only one, and separate width
+and height sliders set each camera's resolution.
+
+Under **Advanced Settings, Dataset fields**, a checkbox group selects which fields are
+persisted; deselecting an optional field drops it from the declared feature schema and from
+every recorded frame. `observation.state`, `action`, `reward`, `success`, `done`, and `task`
+stay forced on because LeRobot datasets require them for policy training and task indexing.
+
+### Recorded dataset format
+
+Datasets use the LeRobot v3 SO follower schema. Always present:
+
+- `observation.state`: follower readback, 6D
+- `action`: commanded absolute joint positions, 6D
+- `reward`: scalar transition reward from the same environment step as `action`
+- `success` and `done`: episode success and termination flags
+- `task`: language description, from LeRobot v3 metadata
+
+Optional, on by default: `observation.images.wrist`, `observation.images.overhead`, and
+`observation.environment_state` (privileged low-dim state: TCP and object pose, grasp,
+offsets).
+
+Body joints are stored in LeRobot degree units and the gripper in `RANGE_0_100` percent,
+matching `sim_so_follower` and SO100/SO101 MolmoAct2 normalization. `observation.state` is
+simulated follower readback, not the leader echo.
+
+On finalize, before any Hub push, the app writes the environment id and customization
+overrides to `meta/so101_nexus_env.json` inside the dataset. That file is itself a valid
+[config profile](#config-profiles), so `--env-config-profile meta/so101_nexus_env.json`
+reproduces a recording's environment. It captures UI and CLI overrides only; a separate
+`--env-config-profile` used at record time is not merged in.
+
+On first recording the app creates a simulator-only calibration file at
+`$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json`, or under the LeRobot default
+calibration root when that variable is unset. No physical follower calibration is needed.
+
+## Environment customization
+
+Teleop uses the same typed config objects as the regular Gymnasium API. The recorder starts
+from the selected environment's default config, applies UI, profile, and factory overrides,
+then wires the camera observations required for recording.
+
+**Advanced Settings** exposes the common options. Turn on `Apply Environment Customization` to
+enable them; leave it off to use the default config unchanged.
+
+| Option | Effect |
+| --- | --- |
+| `Pick Object Pool` | Built-in cube and YCB objects for pick tasks |
+| `Distractors` | Number of distractors to place, on every task that supports them |
+| `Ground Colors`, `Robot Colors` | Sampled per reset when multiple colors are selected |
+| `Spawn Min Radius`, `Spawn Max Radius`, `Spawn Angle Half Range (deg)` | Spawn-region controls shared by supported tasks |
+| `Reset Settle Frames` | No-op frames after reset before the first recorded frame (default 5), applied before cameras are wired |
+| `Pick-and-Place Cube Colors`, `Pick-and-Place Target Colors` | Sampled cube and target colors |
+| `Stack Cube A Colors`, `Stack Cube B Colors` | Sampled colors for the two cubes |
+| `Max Steps` | Overrides the episode's step cap |
+| `Success Hold (s)` | Seconds to keep recording after success before auto-stopping (default 0.5, 0 stops immediately) |
+
+Options that do not apply to the selected environment are ignored: pick-object settings apply
+to `PickConfig`, pick-and-place colors to `PickAndPlaceConfig`, stack-cube colors to
+`StackCubeConfig`. Field names and defaults are in [Config reference](/docs/api/configs).
+
+### Config profiles
+
+Use a profile for a repeatable recording setup. Profiles may be JSON or TOML and are merged in
+this order, with later sections overriding earlier ones: flat top-level override keys,
+`common`, the matching task section (`pick`, `pick_and_place`, or `stack_cube`), then
+`envs.<env_id>`.
+
+```toml
+[common]
+ground_colors = ["gray", "white"]
+robot_colors = ["yellow"]
+spawn_min_radius = 0.15
+spawn_max_radius = 0.25
+reset_settle_frames = 5
+
+[pick]
+n_distractors = 1
+objects = [
+  { type = "cube", color = "green" },
+  { type = "ycb", model_id = "011_banana" },
+  { type = "ycb", model_id = "058_golf_ball" },
+]
+
+[pick_and_place]
+cube_colors = ["red", "green"]
+target_colors = ["blue"]
+
+[stack_cube]
+cube_a_colors = ["red", "orange"]
+cube_b_colors = ["blue", "green"]
+
+[envs.MuJoCoPickLift-v1]
+spawn_angle_half_range_deg = 60.0
+```
+
+```bash
+uv run so101-nexus teleop \
+    --leader-port /dev/ttyACM0 \
+    --env-config-profile teleop-profile.toml
+```
+
+The profile object schema matches the classes in [Scene Objects](/docs/api/objects). String
+specs such as `cube:blue` and `ycb:011_banana` work for built-in object choices. Mesh objects
+use mapping syntax because file paths may contain separator characters:
+
+```toml
+[[pick.objects]]
+type = "mesh"
+name = "custom widget"
+collision_mesh_path = "/path/to/collision.stl"
+visual_mesh_path = "/path/to/visual.obj"
+mass = 0.02
+scale = 1.0
+```
+
+### Config factories
+
+For advanced setups, pass a Python factory with
+`--env-config-factory my_project.teleop_configs:build_config`. It receives
+`(env_id, base_config)` and may return a config object:
+
+```python
+from so101_nexus import CubeObject, PickConfig, YCBObject
+
+
+def build_config(env_id, base_config):
+    return PickConfig(
+        objects=[CubeObject(color="green"), YCBObject("011_banana")],
+        n_distractors=1,
+    )
+```
+
+It may also return a `dict` of `gym.make` kwargs. If the dict includes `"config"`, teleop still
+wires the recording cameras after the factory runs.
+
+### Custom environments
+
+Custom environments must be registered with Gymnasium before teleop builds the dropdown.
+Import the registration module and list the environment ID:
+
+```bash
+uv run so101-nexus teleop \
+    --leader-port /dev/ttyACM0 \
+    --env-module my_project.envs \
+    --extra-env-id CustomPick-v1
+```
+
+A custom environment should accept SO-100/SO-101 six-joint actions in the standard joint order,
+expose current qpos through `_get_current_qpos()`, and return camera observations compatible
+with the selected recording fields. If the unwrapped environment exposes `task_description`,
+teleop records it as the required LeRobot `task` field.
+
+## Published demonstration datasets
+
+| Task | Dataset | Episode viewer |
+| --- | --- | --- |
+| PickLift | [johnsutor/MuJoCoPickLift-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0) |
+| PickAndPlace | [johnsutor/MuJoCoPickAndPlace-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0) |
+
+## Troubleshooting
+
+<Accordions>
+<Accordion title="Teleop cannot open /dev/ttyACM*">
+
+Fix the device permissions with `sudo chmod 666 /dev/ttyACM0`, confirm the port with
+`lerobot-find-port`, then retry initialization in the same browser session. The UI stays on the
+Initialize step and shows recovery guidance instead of forcing a restart.
+
+</Accordion>
+<Accordion title="Ubuntu libdecor-gtk warnings">
+
+```text
+libdecor-gtk-WARNING: Failed to initialize GTK
+Failed to load plugin 'libdecor-gtk.so': failed to init
+```
+
+For teleop this is usually non-fatal: the recorder renders the simulation feed offscreen as
+`rgb_array`, not through the MuJoCo human viewer, so recording works even when native window
+decoration support is incomplete. Treat it as actionable only if the app crashes before the
+Gradio UI is usable, the viewer fails to render at all, or you are deliberately running a
+native MuJoCo human-viewer workflow outside the browser flow. To install the runtime packages
+that provide `libdecor` and GTK:
+
+```bash
+# Ubuntu 24.04+
+sudo apt install libdecor-0-0 libdecor-0-plugin-1-gtk libgtk-3-0t64
+
+# Ubuntu 22.04
+sudo apt install libdecor-0-0 libgtk-3-0
+```
+
+Package references:
+[`libdecor-0-0`](https://packages.ubuntu.com/plucky/amd64/libs/libdecor-0-0),
+[`libdecor-0-plugin-1-gtk`](https://packages.ubuntu.com/plucky/amd64/libs/libdecor-0-plugin-1-gtk),
+[`libgtk-3-0`](https://packages.ubuntu.com/jammy/libgtk-3-0).
+
+</Accordion>
+</Accordions>

@@ -1,15 +1,69 @@
 ---
 title: Core Package
-description: Public API surface of so101_nexus.
+description: Environment registration plus the full export surface of so101_nexus.
 ---
 
-# Core Package
-
-`so101_nexus` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry. The MuJoCo backend lives under `so101_nexus.mujoco` and is registered by importing it.
+`so101_nexus` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry. Backends live under `so101_nexus.mujoco` and `so101_nexus.warp` and are registered by importing them.
 
 ```python
 import so101_nexus
 ```
+
+## Environment registration
+
+Environment IDs are registered with Gymnasium at import time. Importing the top-level `so101_nexus` package alone registers nothing.
+
+```python
+import so101_nexus.mujoco  # registers the MuJoCo ids
+import so101_nexus.warp    # registers the Warp ids (so101-nexus[warp])
+```
+
+| Package | Import | Registers |
+|---------|--------|-----------|
+| `so101-nexus` | `import so101_nexus.mujoco` | Single-env `MuJoCo*-v1` ids |
+| `so101-nexus[warp]` | `import so101_nexus.warp` | Batched GPU-parallel `Warp*-v1` ids |
+
+MuJoCo environments are constructed with `gym.make()`:
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+```
+
+Warp environments are natively batched vector environments, so they are constructed with `gym.make_vec()`:
+
+```python
+import gymnasium as gym
+import so101_nexus.warp
+
+envs = gym.make_vec("WarpTouch-v1", num_envs=4096, device="cuda")
+obs, info = envs.reset(seed=0)
+```
+
+Warp observations, actions, and rewards are torch tensors on `device`, and autoreset is same-step: the done step already returns the post-reset observation.
+
+Both `gym.make` and `gym.make_vec` accept `config=` and an episode-length keyword:
+
+```python
+from so101_nexus import CubeObject, PickConfig
+
+config = PickConfig(objects=[CubeObject(color="blue")])
+env = gym.make("MuJoCoPickLift-v1", config=config, max_episode_steps=512)
+```
+
+See [Configuration Classes](/docs/api/configs) for the config surface and [Environments](/docs/environments) for the id list, step caps, and observation widths.
+
+### `all_registered_env_ids()`
+
+```python
+from so101_nexus.env_ids import all_registered_env_ids
+
+ids = all_registered_env_ids()
+```
+
+Returns the SO101-Nexus environment IDs for whichever backends are currently imported: six `MuJoCo*-v1` ids with the MuJoCo backend imported, plus six `Warp*-v1` ids with the Warp backend imported.
 
 ## Exports by Category
 
@@ -22,7 +76,7 @@ import so101_nexus
 | `ControlMode` | `Literal["pd_joint_pos", "pd_joint_delta_pos", "pd_joint_target_delta_pos", "pd_ee_pose", "pd_ee_delta_pose"]` (see [Control Modes](/docs/concepts/control-modes)) |
 | `ObsMode` | `Literal["state", "visual"]` |
 | `MoveDirection` | `Literal["up", "down", "left", "right", "forward", "backward"]` |
-| `YcbModelId` | Literal union of 10 YCB object IDs (see [Assets and Geometry](/docs/api/assets-and-geometry)) |
+| `YcbModelId` | Literal union of 10 YCB object IDs (see [Scene Objects and Assets](/docs/api/objects)) |
 
 ### Constants
 
@@ -56,7 +110,7 @@ All configuration classes have sensible defaults. See [Configuration Classes](/d
 
 ### Observation Components
 
-See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual overview and [Configuration Classes](/docs/api/configs) for full parameter reference.
+See [Observations](/docs/concepts/observations) for conceptual overview and [Configuration Classes](/docs/api/configs) for full parameter reference.
 
 | Class | Type | Description |
 |-------|------|-------------|
@@ -80,14 +134,14 @@ See [Observations](/docs/concepts/observations-and-camera-modes) for conceptual 
 
 ### Scene Objects
 
-See [Scene Objects](/docs/api/objects) for full reference.
+See [Scene Objects and Assets](/docs/api/objects) for full reference.
 
 | Class | Description |
 |-------|-------------|
 | `SceneObject` | Abstract base for all scene objects |
 | `CubeObject` | A colored cube with configurable size and mass |
 | `YCBObject` | A YCB benchmark object loaded from mesh assets |
-| `MeshObject` | A custom mesh object (MuJoCo only) |
+| `MeshObject` | A custom mesh object loaded from collision and visual mesh files |
 
 ### Functions
 
@@ -101,7 +155,7 @@ See [Scene Objects](/docs/api/objects) for full reference.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `privileged_state_feature_names` | `(observations: Sequence[Observation] | None) -> list[str]` | Per-dimension names for the non-camera state observation vector |
+| `privileged_state_feature_names` | `(observations: Sequence[Observation] \| None) -> list[str]` | Per-dimension names for the non-camera state observation vector |
 | `observations_from_feature_names` | `(names: Sequence[str]) -> list[Observation]` | Inverse of the above: rebuild the state component layout a recording declares |
 | `relabel_environment_state` | `(env_state, recorded_names, observations, *, dt, episode_index=None) -> ndarray` | Re-lay a recorded `observation.environment_state` matrix onto a newer component layout, reconstructing `JointVelocities` by finite difference |
 | `reach_progress` | `(distance, *, scale) -> float \| ndarray \| tensor` | Tanh-shaped progress in [0, 1]: 1 at distance 0, decaying toward 0 |
@@ -115,6 +169,8 @@ See [Scene Objects](/docs/api/objects) for full reference.
 
 #### Asset Paths
 
+See [Scene Objects and Assets](/docs/api/objects) for full reference.
+
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `get_so101_simulation_dir()` | `Path` | Path to SO-101 `SO101/` assets (URDF/XML, retained for teleop calibration) |
@@ -123,7 +179,7 @@ See [Scene Objects](/docs/api/objects) for full reference.
 
 #### YCB Asset Management
 
-See [Assets and Geometry](/docs/api/assets-and-geometry) for full reference.
+See [Scene Objects and Assets](/docs/api/objects) for full reference.
 
 | Function | Description |
 |----------|-------------|
@@ -131,16 +187,15 @@ See [Assets and Geometry](/docs/api/assets-and-geometry) for full reference.
 | `get_ycb_mesh_dir(model_id)` | Path to mesh directory for a YCB model |
 | `get_ycb_collision_mesh(model_id)` | Path to `collision.obj` |
 | `get_ycb_visual_mesh(model_id)` | Path to `visual.obj` |
+| `get_ycb_texture_file(model_id)` | Expected path to the optional `texture.png` |
 | `get_mujoco_ycb_rest_pose(verts)` | Rest orientation and spawn height for MuJoCo |
 
 #### Environment Registry
 
 | Function | Description |
 |----------|-------------|
-| `all_registered_env_ids()` | Returns all registered Gymnasium environment IDs |
-
-See [Environment Registry](/docs/api/environment-registry) for details on how registration works.
+| `all_registered_env_ids()` | All registered Gymnasium environment IDs for the imported backends |
 
 ### Processor APIs
 
-The optional `so101_nexus.processors` subpackage provides LeRobot-style action and observation processor steps and a Gym wrapper that emits LeRobot-shaped observations. It requires the `teleop` extra (`pip install so101-nexus[teleop]`). See [LeRobot Processors](/docs/api/lerobot-processors) for the full reference.
+The optional `so101_nexus.processors` subpackage provides LeRobot-style action and observation processor steps and a Gym wrapper that emits LeRobot-shaped observations. It requires the `teleop` extra. See [LeRobot Processors](/docs/api/lerobot-processors) for the full reference and [Installation](/docs/getting-started/installation) for the extras matrix.

@@ -4,8 +4,8 @@
     "core-overview",
     "configs",
     "objects",
-    "assets-and-geometry",
-    "environment-registry",
-    "lerobot-processors"
+    "lerobot-processors",
+    "policies",
+    "stability"
   ]
 }

@@ -1,11 +1,10 @@
 {
   "title": "Concepts",
   "pages": [
-    "backend-support",
+    "observations",
     "control-modes",
-    "lerobot-compatibility",
-    "observations-and-camera-modes",
-    "poses",
-    "tasks-and-success-conditions"
+    "customization",
+    "backends",
+    "lerobot"
   ]
 }

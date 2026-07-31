@@ -38,7 +38,7 @@ Both end-effector modes are seven-dimensional:
 
 | Index | `pd_ee_pose` | `pd_ee_delta_pose` |
 |-------|--------------|--------------------|
-| 0-2 | tool position `x, y, z` in world metres | normalized position delta |
+| 0-2 | tool position `x, y, z` in world meters | normalized position delta |
 | 3-5 | tool orientation as a rotation vector `wx, wy, wz` | normalized rotation-vector delta |
 | 6 | gripper joint target in radians | normalized gripper delta |
 
@@ -46,7 +46,7 @@ Orientation is a rotation vector rather than a quaternion, matching LeRobot's
 `ee.wx`/`ee.wy`/`ee.wz` action features. `pd_ee_delta_pose` measures its delta
 against the current tool pose, mirroring `pd_joint_delta_pos`.
 
-The tool-centre point is the `gripperframe` site, which sits between the jaws.
+The tool-center point is the `gripperframe` site, which sits between the jaws.
 The vendored `so101_new_calib.urdf` carries a matching `tcp_frame_link`, so a
 URDF-based solver on real hardware resolves poses to the same physical point. The
 upstream `gripper_frame_link` is kept but sits 19.9 mm away at the fixed
@@ -80,7 +80,7 @@ config on either backend:
 import gymnasium as gym
 
 import so101_nexus.warp  # noqa: F401
-from so101_nexus.config import PickAndPlaceConfig, RobotConfig
+from so101_nexus import PickAndPlaceConfig, RobotConfig
 
 envs = gym.make_vec(
     "WarpPickAndPlace-v1",
@@ -157,7 +157,7 @@ still cheaper.
   validated default for the shipped PPO recipes.
 - **Behavior cloning from teleoperated demonstrations:** match whatever the
   demonstrations were recorded in. Recorded datasets store absolute joint
-  targets; see [Behavior Cloning](/docs/workflow/behavior-cloning).
+  targets; see [Training](/docs/workflow/training).
 - **Cartesian scripted motion or policies that reason in task space:**
   `pd_ee_delta_pose`.
 - **Replaying or commanding a known tool pose:** `pd_ee_pose`.
@@ -192,7 +192,7 @@ Convert downstream, at training time:
 
 Mind the units on the way through. `action` and `observation.state` are LeRobot
 normalized motor values in degrees; `observation.environment_state` is raw
-simulator state, so the TCP entries are metres and a `wxyz` quaternion, the same
+simulator state, so the TCP entries are meters and a `wxyz` quaternion, the same
 units the end-effector action space uses.
 
 The end-effector relabel is also the lossier-looking of the two only on paper.
