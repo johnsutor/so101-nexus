@@ -15,6 +15,8 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- `examples/eval_warp.py` and `examples/ppo_warp.py`'s `rollout_video_from_checkpoint` now rebuild the environment from the observation layout the checkpoint records (`env_state_names`), instead of always using the environment's current default. A demo-seeded `examples/bc_ppo_warp.py` checkpoint pins the layout its demo dataset declares, so since the 0.5.0 default-observation growth (`gaze_state`, `object_velocity`) evaluating one raised `RuntimeError: size mismatch for actor_mean.0.weight`. This is the evaluation step both Colab notebooks and the training guide's quick start run. `eval_warp.py` also prints a line when the pinned layout is not the current default, since a silently stale layout otherwise reports plausible-looking numbers. `examples/ppo_warp.py` gained the `observations=` keyword on `_make_envs` and `evaluate_mujoco` plus the `_mujoco_config` helper, so it stays a byte-identical mirror of `examples/bc_ppo_warp.py` for every shared helper.
+
 ### Removed
 
 ## [0.5.0] - 2026-07-31

@@ -1,4 +1,4 @@
-"""Deterministic evaluation of a `ppo_warp.py` checkpoint on the Warp backend.
+"""Deterministic evaluation of a `ppo_warp.py` / `bc_ppo_warp.py` checkpoint on Warp.
 
 Loads a saved agent + obs-normalization stats, runs the *deterministic* policy
 (mean action, no exploration noise) for full fixed-horizon episodes across a batch of
@@ -11,6 +11,11 @@ Usage::
 
     uv run --extra warp python examples/eval_warp.py --checkpoint runs/.../best_agent.pt
     uv run --extra warp python examples/eval_warp.py  # globs the latest best_agent.pt
+
+When a checkpoint records the observation layout it was trained on, the env is rebuilt
+with that layout so the saved network's input width still matches. ``bc_ppo_warp.py``
+records the layout its demo dataset declares, which is narrower than the env default
+whenever a component joined the defaults after the demos were recorded.
 """
 
 from __future__ import annotations
@@ -25,10 +30,16 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
+from so101_nexus import observations_from_feature_names, privileged_state_feature_names
+
 try:
-    from examples.ppo_warp import Agent, _make_envs
+    from examples.ppo_warp import Agent, _make_envs, _resolve_env_cls
 except ImportError:  # when run as `python examples/eval_warp.py`
-    from ppo_warp import Agent, _make_envs  # ty: ignore[unresolved-import]
+    from ppo_warp import (  # ty: ignore[unresolved-import]
+        Agent,
+        _make_envs,
+        _resolve_env_cls,
+    )
 
 
 @dataclass
@@ -36,7 +47,7 @@ class Args:
     """Deterministic-eval configuration."""
 
     checkpoint: str = "runs/WarpPickLift-v1__*/best_agent.pt"
-    """path or glob to a `ppo_warp.py` checkpoint (latest match is used for a glob)"""
+    """path or glob to a training checkpoint (latest match is used for a glob)"""
     env_id: str = "WarpPickLift-v1"
     num_envs: int = 512
     episode_length: int = 512
@@ -58,6 +69,15 @@ def main():
     ckpt = torch.load(path, map_location=device, weights_only=False)
     print(f"[eval] checkpoint={path} trained_step={ckpt['step']} saved_success={ckpt['success']}")
 
+    names = ckpt.get("env_state_names")
+    default = privileged_state_feature_names(
+        _resolve_env_cls(args.env_id).default_config_cls().observations
+    )
+    if names and list(names) != default:
+        # Silently evaluating a stale layout would report plausible-looking numbers.
+        print(
+            f"[eval] checkpoint pins a {len(names)}-dim layout, not the {len(default)}-dim default"
+        )
     envs = _make_envs(
         args.env_id,
         args.num_envs,
@@ -65,6 +85,7 @@ def main():
         args.seed,
         control_mode=args.control_mode,
         episode_length=args.episode_length,
+        observations=None if not names else observations_from_feature_names(names),
     )
     obs_dim = int(np.prod(envs.single_observation_space.shape))
     act_dim = int(np.prod(envs.single_action_space.shape))

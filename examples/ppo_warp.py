@@ -56,6 +56,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from so101_nexus import observations_from_feature_names
 from so101_nexus._reproducibility import seed_everything
 
 
@@ -254,17 +255,30 @@ class Agent(nn.Module):
         return action, logprob, entropy, self.critic(x).squeeze(-1)
 
 
-def _resolve_env_cls(env_id: str):
-    """Return the batched Warp env class registered under *env_id*."""
+def _env_cls_from_spec(env_id: str, attr: str):
+    """Import the env class a Gymnasium spec's ``attr`` entry point names."""
     import gymnasium as gym
 
+    import so101_nexus.mujoco
     import so101_nexus.warp  # noqa: F401  registers Warp*-v1
 
-    entry = gym.spec(env_id).vector_entry_point
+    entry = getattr(gym.spec(env_id), attr)
     if not isinstance(entry, str):
-        raise ValueError(f"{env_id} has no string vector_entry_point; not a Warp env")
+        raise ValueError(f"{env_id} has no string {attr}")
     module_path, class_name = entry.split(":")
     return getattr(importlib.import_module(module_path), class_name)
+
+
+def _resolve_env_cls(env_id: str):
+    """Return the batched Warp env class registered under *env_id*."""
+    return _env_cls_from_spec(env_id, "vector_entry_point")
+
+
+def _mujoco_config(mujoco_env_id: str, observations):
+    """Build the MuJoCo env's config with a pinned observation layout."""
+    return _env_cls_from_spec(mujoco_env_id, "entry_point").default_config_cls(
+        observations=observations
+    )
 
 
 def _fixed_horizon(env_cls):
@@ -292,14 +306,22 @@ def _make_envs(
     control_mode="pd_joint_delta_pos",
     episode_length=512,
     terminate_on_success=False,
+    observations=None,
 ):
-    """Build the batched Warp training env with the all-observation default config."""
+    """Build the batched Warp training env.
+
+    ``observations=None`` takes the env's all-observation default config (the
+    privileged state this script trains on); otherwise the layout is pinned, which
+    is what evaluating a checkpoint trained against a different layout needs, such
+    as a ``bc_ppo_warp.py`` run pinned to its demo dataset's recorded components.
+    """
     env_cls = _resolve_env_cls(env_id)
+    config = None if observations is None else env_cls.default_config_cls(observations=observations)
     if not terminate_on_success:
         env_cls = _fixed_horizon(env_cls)
     return env_cls(
         num_envs=num_envs,
-        config=None,  # env builds its all-observation default (privileged state)
+        config=config,
         control_mode=control_mode,
         device=str(device),
         max_episode_steps=episode_length,
@@ -318,12 +340,14 @@ def evaluate_mujoco(
     eval_episodes,
     seed,
     capture_video,
+    observations=None,
 ):
     """Deterministic eval in the matching ``MuJoCo*`` backend (a transfer figure).
 
     Warp's render() is a no-op, so eval rollouts are rendered in the MuJoCo backend
-    with the same default (all-observation) config and control mode; the saved Warp
-    policy + obs-norm stats transfer directly (slight physics gap: Warp uses
+    with the same config and control mode as training (``observations=None`` takes
+    the all-observation default, otherwise the training layout is pinned); the saved
+    Warp policy + obs-norm stats transfer directly (slight physics gap: Warp uses
     implicit/no-noslip). Returns (eval_metrics, frames) where frames is one episode's
     HxWx3 uint8 arrays (None when capture_video is False).
     """
@@ -331,11 +355,13 @@ def evaluate_mujoco(
 
     import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
 
+    mujoco_id = env_id.replace("Warp", "MuJoCo")
     env = gym.make(
-        env_id.replace("Warp", "MuJoCo"),
+        mujoco_id,
         control_mode=control_mode,
         render_mode="rgb_array" if capture_video else None,
         max_episode_steps=episode_length,
+        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
     )
     mean = obs_norm.rms.mean.to(device).float()
     var = obs_norm.rms.var.to(device).float()
@@ -402,9 +428,10 @@ def rollout_video_from_checkpoint(
     """Render one deterministic MuJoCo rollout of a saved Warp PPO policy to mp4.
 
     The Warp backend steps thousands of worlds in parallel and does not render, so the
-    rollout is shown in the matching ``MuJoCo*`` backend (same default all-observation
-    config and control mode). It is a transfer figure: the saved policy and obs-norm
-    stats transfer directly, with a slight physics gap versus Warp. Returns
+    rollout is shown in the matching ``MuJoCo*`` backend (same control mode, and the
+    observation layout the checkpoint records, falling back to the env default for a
+    checkpoint written without it). It is a transfer figure: the saved policy and
+    obs-norm stats transfer directly, with a slight physics gap versus Warp. Returns
     ``(metrics, video_path)`` where ``video_path`` is the written mp4, or ``None`` when
     ``capture_video`` is False.
     """
@@ -415,13 +442,18 @@ def rollout_video_from_checkpoint(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
 
+    names = ckpt.get("env_state_names")
+    observations = None if not names else observations_from_feature_names(names)
+
     # Probe a throwaway MuJoCo env for obs/act dimensions (flat privileged state,
-    # matching the Warp training obs). The checkpoint stores only the policy and
-    # obs-norm stats, not the dims.
+    # matching the Warp training obs). The checkpoint stores the policy, obs-norm
+    # stats, and the layout names, but not the dims.
+    mujoco_id = env_id.replace("Warp", "MuJoCo")
     probe = gym.make(
-        env_id.replace("Warp", "MuJoCo"),
+        mujoco_id,
         control_mode=control_mode,
         max_episode_steps=episode_length,
+        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
     )
     obs_shape = probe.observation_space.shape
     act_shape = probe.action_space.shape
@@ -449,6 +481,7 @@ def rollout_video_from_checkpoint(
         eval_episodes=1,
         seed=seed,
         capture_video=capture_video,
+        observations=observations,
     )
     video_path = write_video(frames, out_path, fps=fps) if capture_video else None
     return metrics, video_path
