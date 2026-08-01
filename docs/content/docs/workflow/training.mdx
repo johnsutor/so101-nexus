@@ -7,7 +7,7 @@ Two scripts cover the clone and reinforce stages. `examples/bc_ppo_warp.py` is t
 recommendation: it BC-pretrains the actor on teleoperation demonstrations, then runs
 GPU-parallel PPO with a persistent BC loss anchoring the actor to those demos.
 `examples/ppo_warp.py` is the same recipe with no demos, trained from scratch, and
-`--use-demos false` makes `bc_ppo_warp.py` recover it exactly. `examples/ppo.py` is a slow
+`--no-use-demos` makes `bc_ppo_warp.py` recover it exactly. `examples/ppo.py` is a slow
 single-environment MuJoCo reference, useful for sanity checks but not the recommended path.
 
 ## Quick start
@@ -117,7 +117,7 @@ uv run --extra warp --extra train python examples/bc_ppo_warp.py \
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--demo-repo` | `johnsutor/MuJoCoPickLift-v1` | Dataset the actor is cloned from |
-| `--use-demos` | `true` | Seed the actor from demos before PPO. `false` gives pure PPO |
+| `--use-demos` / `--no-use-demos` | `--use-demos` | Seed the actor from demos before PPO. `--no-use-demos` gives pure PPO |
 | `--bc-pretrain-updates` | `2000` | Supervised steps regressing the actor mean onto demo actions |
 | `--bc-pretrain-lr` | `1e-3` | Learning rate for the pretrain phase |
 | `--bc-coef` | `0.1` | Weight of the persistent BC loss added to every PPO minibatch |
@@ -166,12 +166,14 @@ deterministic.
 
 <Callout type="warn">
 **Observation layout is pinned by the dataset.** A policy has to consume exactly the state
-layout its demonstrations recorded, so with `--use-demos true` the script builds both the Warp
-training env and the MuJoCo evaluator from the layout the dataset declares, not from the
-environment's current default. When the two differ, for example a dataset recorded before
-`gaze_state` joined the defaults, the run prints the pinned width and the missing components
-at startup, and the resulting checkpoint only loads against that layout. Re-record the demos
-to train on the current default. See [Observations](/docs/concepts/observations).
+layout its demonstrations recorded, so with demo seeding on (the default) the script builds
+both the Warp training env and the MuJoCo evaluator from the layout the dataset declares, not
+from the environment's current default. When the two differ, for example a dataset recorded
+before `gaze_state` joined the defaults, the run prints the pinned width and the missing
+components at startup, and the resulting checkpoint only loads against that layout. The
+checkpoint records that layout, so `eval_warp.py` and `rollout_video_from_checkpoint` rebuild
+a matching env automatically. Re-record the demos to train on the current default. See
+[Observations](/docs/concepts/observations).
 </Callout>
 
 <Callout type="warn">

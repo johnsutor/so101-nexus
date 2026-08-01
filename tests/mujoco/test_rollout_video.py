@@ -16,6 +16,8 @@ import numpy as np
 import pytest
 import torch
 
+from so101_nexus import privileged_state_feature_names
+
 pytest.importorskip("mujoco")
 pytest.importorskip("so101_nexus.mujoco")
 
@@ -28,12 +30,21 @@ EPISODE_LENGTH = 16
 HIDDEN_DIM = 64
 
 
-def _probe_dims():
+def _probe_dims(observations=None):
     import gymnasium as gym
 
     import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
 
-    env = gym.make(MUJOCO_ID, control_mode="pd_joint_delta_pos", max_episode_steps=EPISODE_LENGTH)
+    env = gym.make(
+        MUJOCO_ID,
+        control_mode="pd_joint_delta_pos",
+        max_episode_steps=EPISODE_LENGTH,
+        **(
+            {}
+            if observations is None
+            else {"config": ppo_mod._mujoco_config(MUJOCO_ID, observations)}
+        ),
+    )
     obs_shape = env.observation_space.shape
     act_shape = env.action_space.shape
     if obs_shape is None or act_shape is None:
@@ -44,18 +55,18 @@ def _probe_dims():
     return obs_dim, act_dim
 
 
-def _write_synthetic_checkpoint(path, obs_dim, act_dim):
+def _write_synthetic_checkpoint(path, obs_dim, act_dim, env_state_names=None):
     agent = ppo_mod.Agent(obs_dim, act_dim, HIDDEN_DIM)
-    torch.save(
-        {
-            "model": agent.state_dict(),
-            "obs_mean": torch.zeros(obs_dim, dtype=torch.float64),
-            "obs_var": torch.ones(obs_dim, dtype=torch.float64),
-            "step": 0,
-            "success": 0.0,
-        },
-        path,
-    )
+    payload = {
+        "model": agent.state_dict(),
+        "obs_mean": torch.zeros(obs_dim, dtype=torch.float64),
+        "obs_var": torch.ones(obs_dim, dtype=torch.float64),
+        "step": 0,
+        "success": 0.0,
+    }
+    if env_state_names is not None:
+        payload["env_state_names"] = env_state_names
+    torch.save(payload, path)
     return agent
 
 
@@ -80,6 +91,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
         eval_episodes,
         seed,
         capture_video,
+        observations=None,
     ):
         captured["kwargs"] = {
             "env_id": env_id,
@@ -88,6 +100,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
             "eval_episodes": eval_episodes,
             "seed": seed,
             "capture_video": capture_video,
+            "observations": observations,
         }
         captured["obs_norm_mean"] = obs_norm.rms.mean.detach().cpu().clone()
         captured["obs_norm_var"] = obs_norm.rms.var.detach().cpu().clone()
@@ -124,6 +137,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
         "eval_episodes": 1,
         "seed": 12345,
         "capture_video": True,
+        "observations": None,  # no env_state_names recorded: env default layout
     }
     # Saved obs-norm stats and policy weights must load unchanged into the rollout.
     assert torch.allclose(captured["obs_norm_mean"], torch.zeros(obs_dim, dtype=torch.float64))
@@ -163,3 +177,43 @@ def test_rollout_video_from_checkpoint_renders_mp4(tmp_path):
     assert out_path.is_file()
     assert out_path.stat().st_size > 0
     assert set(metrics) >= {"eval/return", "eval/success_rate", "eval/ep_len"}
+
+
+def test_rollout_video_from_checkpoint_honors_recorded_layout(tmp_path, monkeypatch):
+    """A checkpoint recording a narrower layout must size the probe and Agent to it.
+
+    Regression: the helper always probed the env's current default, so rendering a
+    demo-pinned ``bc_ppo_warp.py`` checkpoint raised ``RuntimeError: size mismatch``
+    once a component joined the defaults after the demos were recorded.
+    """
+    default_cls = ppo_mod._env_cls_from_spec(MUJOCO_ID, "entry_point").default_config_cls
+    observations = list(default_cls().observations)[:-1]
+    names = privileged_state_feature_names(observations)
+    obs_dim, act_dim = _probe_dims(observations)
+    default_dim, _ = _probe_dims()
+    assert obs_dim < default_dim, "narrowed layout must differ from the env default"
+
+    ckpt_path = tmp_path / "best_agent.pt"
+    expected_agent = _write_synthetic_checkpoint(ckpt_path, obs_dim, act_dim, names)
+    captured: dict = {}
+
+    def fake_evaluate_mujoco(agent, obs_norm, device, *, observations=None, **kwargs):
+        captured["observations"] = observations
+        captured["agent_weight"] = agent.actor_mean[0].weight.detach().cpu().clone()
+        return {"eval/return": 0.0, "eval/success_rate": 0.0, "eval/ep_len": 1.0}, []
+
+    monkeypatch.setattr(ppo_mod, "evaluate_mujoco", fake_evaluate_mujoco)
+    monkeypatch.setattr(ppo_mod, "write_video", lambda frames, path, fps=30: path)
+
+    ppo_mod.rollout_video_from_checkpoint(
+        str(ckpt_path),
+        ENV_ID,
+        control_mode="pd_joint_delta_pos",
+        episode_length=EPISODE_LENGTH,
+        hidden_dim=HIDDEN_DIM,
+        out_path=str(tmp_path / "rollout.mp4"),
+    )
+
+    assert privileged_state_feature_names(captured["observations"]) == names
+    assert captured["agent_weight"].shape[1] == obs_dim
+    assert torch.allclose(captured["agent_weight"], expected_agent.actor_mean[0].weight.detach())
