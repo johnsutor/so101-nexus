@@ -1,43 +1,62 @@
 ---
 title: Policy adapters
-description: MolmoActPolicy, the chunked-action adapter for the AllenAI MolmoAct2 SO100/SO101 checkpoint, and RolloutRecorder for capturing its rollouts as a LeRobot dataset.
+description: ChunkedActionPolicy, the protocol for policies that replay an internally predicted action chunk one step at a time, and RolloutRecorder for capturing their rollouts as a LeRobot dataset.
 ---
 
-`MolmoActPolicy` is a chunked-action adapter around `allenai/MolmoAct2-SO100_101`. It exposes the same `select_action(batch)` and `reset()` shape as a LeRobot policy, so it can drive the same rollout recorder that future chunked policies can use.
+`ChunkedActionPolicy` is the minimal protocol `RolloutRecorder` drives. Any object with
+`select_action(batch)` and `reset()` satisfies it, which is the same shape a LeRobot policy
+exposes, so a LeRobot policy or your own wrapper around a vision-language-action checkpoint
+both work without an adapter class in this library.
 
-## Installation
+```python
+from typing import Any, Protocol
 
-Install the optional MolmoAct dependencies before loading the real model:
 
-```bash
-pip install "so101-nexus[molmoact]"
+class ChunkedActionPolicy(Protocol):
+    def select_action(self, batch: dict[str, Any]) -> Any: ...
+    def reset(self) -> None: ...
 ```
 
-The adapter can still be imported without this extra. Hugging Face and transformer imports happen only when you call `MolmoActPolicy.from_pretrained(...)`.
+`select_action` receives a LeRobot-shaped batch with `observation.state`,
+`observation.images.<name>`, and `task` keys, and returns one six-element action in degrees.
+Policies that internally predict a chunk of future actions should cache that chunk and return
+one action per call, then clear the cache in `reset()`.
 
 ## End-to-End Usage
 
 ```python
 import gymnasium as gym
-import torch
+import numpy as np
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from so101_nexus import SO101_JOINT_NAMES
-from so101_nexus.policy_adapters import MolmoActPolicy, RolloutRecorder
+from so101_nexus.policy_adapters import RolloutRecorder
 from so101_nexus.teleop.dataset import FieldSelection, build_features
 import so101_nexus.mujoco  # noqa: F401
+
+
+class MyPolicy:
+    """Replace with your own model. Returns absolute joint targets in degrees."""
+
+    def select_action(self, batch):
+        return np.zeros(len(SO101_JOINT_NAMES), dtype=np.float32)
+
+    def reset(self):
+        pass
+
+
+policy = MyPolicy()
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array", control_mode="pd_joint_pos")
 action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
 follower_features = {**action_features, "wrist": (480, 640, 3), "overhead": (480, 640, 3)}
 features = build_features(FieldSelection(), follower_features, action_features)
 dataset = LeRobotDataset.create(
-    repo_id="local/molmoact-rollouts",
+    repo_id="local/policy-rollouts",
     fps=30,
     features=features,
     robot_type="sim_so_follower",
     use_videos=True,
 )
-policy = MolmoActPolicy.from_pretrained(dtype=torch.bfloat16)
 recorder = RolloutRecorder(env, policy, dataset=dataset, max_steps_per_episode=160)
 recorder.record_episodes(n=10, seed=0)
 dataset.finalize()
@@ -48,7 +67,7 @@ env.close()
 
 ### Image Key Alignment
 
-`MolmoActPolicy.image_keys` and `RolloutRecorder.camera_keys` are two sides of the same contract. The defaults line up: the recorder maps `("overhead_camera", "wrist_camera")` to `observation.images.overhead` and `observation.images.wrist`, and the policy reads those image keys in that order. If you customize one side, customize the other side to match or the policy will fail at inference when a requested image key is missing.
+`RolloutRecorder.camera_keys` and the image keys your policy reads are two sides of the same contract. By default the recorder maps `("overhead_camera", "wrist_camera")` to `observation.images.overhead` and `observation.images.wrist`. If you customize one side, customize the other side to match or the policy will fail at inference when a requested image key is missing.
 
 ### Side Video Channel
 
@@ -58,22 +77,12 @@ Pass `record_side_video=True` to record the env's configured render view as an e
 
 ### Action Semantics
 
-The adapter treats `predict_action(...)` output as absolute joint positions in degrees, then the recorder converts those positions to radians and clips them before `env.step(action)`. It does not integrate deltas. If a real-model rollout visibly drifts away from rest or immediately saturates the clip, validate the assumption by running with `chunk_size=1` and printing `state_deg` next to `action_deg` for a few steps.
+The recorder treats policy actions as absolute joint positions in degrees, then converts those positions to radians and clips them before `env.step(action)`. It does not integrate deltas. If a real-model rollout visibly drifts away from rest or immediately saturates the clip, validate the assumption by disabling your policy's internal chunk replay so every call re-queries the model, and printing `state_deg` next to `action_deg` for a few steps.
 
 ### Calibration Gap
 
-The local homing pose may not match the checkpoint's training distribution. In the reference notes for this adapter, shoulder lift was around `-90 deg` locally versus about `+123 deg` in the training corpus. That is a hardware and dataset alignment issue. Rehome to a compatible setup or fine-tune on demos from your setup before expecting useful zero-shot rollouts.
+A checkpoint trained on physical demonstrations assumes that robot's homing pose. If your simulated rest pose sits far from the training distribution, for example a shoulder lift near `-90 deg` locally against a training corpus centered near `+123 deg`, zero-shot rollouts will look wrong even when the plumbing is correct. That is a hardware and dataset alignment issue. Rehome to a compatible setup or fine-tune on demonstrations recorded from your own setup.
 
-### GPU Memory
+### Untrusted Checkpoints
 
-The MolmoAct2 model card reports about 26 GB of GPU memory for float32 inference and less than 16 GB with bfloat16. Use bfloat16 on smaller cards:
-
-```python
-import torch
-
-policy = MolmoActPolicy.from_pretrained(dtype=torch.bfloat16)
-```
-
-### CUDA Graph Warmup
-
-The first few policy calls can be slow when CUDA graph capture is enabled. That is expected warmup cost, not an environment slowdown. Set `enable_cuda_graph=False` on `MolmoActPolicy` if you need simpler first-call behavior while debugging.
+Loading a policy from a remote checkpoint can execute code from that repository, not just deserialize weights. Loader flags such as `trust_remote_code=True` run the publisher's Python even when the weights themselves are a safe, weights-only format. Prefer weights-only formats, leave remote-code execution off unless you have read the code, pin the revision you load, and treat a checkpoint from an untrusted publisher the same way you would treat running that publisher's code.

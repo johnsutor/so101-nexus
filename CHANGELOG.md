@@ -39,6 +39,10 @@ for the public-API and deprecation policy.
 - Documentation restructured for progressive disclosure: 36 pages across 8 sidebar sections collapsed to 18 across 5 (Get Started, Workflow, Environments, Concepts, API Reference). The six per-task `environments/mujoco-*` pages became one table-driven reference at `/docs/environments`, the `guides/` and `policies/` sections were folded into `concepts/` and `api/`, and teleoperation and training moved under `workflow/`. **Documentation URLs moved**: `/docs/teleoperation/overview` is now `/docs/workflow/teleoperation`, `/docs/training/ppo` is `/docs/workflow/training`, `/docs/getting-started/stability` is `/docs/api/stability`, `/docs/concepts/observations-and-camera-modes` is `/docs/concepts/observations`, `/docs/concepts/backend-support` is `/docs/concepts/backends`, `/docs/concepts/lerobot-compatibility` is `/docs/concepts/lerobot`, and the `guides/` pages are merged into `/docs/concepts/customization` and `/docs/api/objects`. The docs site is a static export, so these are not redirected.
 - User-facing docs are now American English throughout, enforced by a new check in `tests/test_docs_consistency.py` alongside nav reachability, internal-link resolution, and API-heading existence.
 
+### Removed
+
+- **Breaking:** `so101_nexus.policy_adapters.MolmoActPolicy` and the `molmoact` optional extra. The adapter hardcoded `trust_remote_code=True` and pinned no revision, so `MolmoActPolicy.from_pretrained(repo_id)` executed whatever Python the named Hugging Face repo shipped, and no caller could turn that off. `ChunkedActionPolicy` and `RolloutRecorder` are unchanged: any object exposing `select_action(batch)` and `reset()` still drives the recorder, so wrap the checkpoint yourself and pin the revision you load. `scripts/smoke_molmoact_rollout.py` is removed with it.
+
 ### Fixed
 
 - Documented pick-and-place success no longer claims the robot must be static. Since 0.4.13 the predicate has been `is_obj_placed and is_obj_static and is_grasped < 0.5` on both backends, so releasing the object is mandatory and `is_robot_static` is an `info` diagnostic only. The environment reference and the task-semantics page both still described the pre-0.4.13 behavior.
@@ -46,8 +50,6 @@ for the public-API and deprecation policy.
 - `MeshObject` is no longer documented as MuJoCo-only. Both backends build scenes through `so101_nexus.object_slots.build_object_scene_xml`.
 - The API reference no longer documents `get_so100_simulation_dir()`, which does not exist, and now documents the exported `get_ycb_texture_file()`, which was missing. `all_registered_env_ids()` is documented as returning six ids per imported backend rather than five.
 - `Accordion` and `Accordions` are registered in the docs MDX component map. Any page using them previously failed to render.
-
-### Removed
 
 ## [0.4.13] - 2026-07-26
 

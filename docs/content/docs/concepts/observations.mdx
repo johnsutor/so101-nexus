@@ -134,7 +134,7 @@ Configuration APIs (`REST_POSE`, `*_deg` fields, spawn ranges, leader-arm helper
 Code that crosses into LeRobot territory converts at the boundary:
 
 - The teleop recorder (`so101_nexus.teleop`) stores actions and states in degrees.
-- The MolmoAct adapter (`so101_nexus.policy_adapters`) reads `obs["state"]` and converts to degrees before calling `select_action`, then converts the policy's degree-valued action back to radians before `env.step`.
+- The rollout recorder (`so101_nexus.policy_adapters`) reads `obs["state"]` and converts to degrees before calling `select_action`, then converts the policy's degree-valued action back to radians before `env.step`.
 
 This matches LeRobot's `use_degrees=true` convention. For background on why LeRobot uses degrees, mid-range zero, and no wrap-around, see [Backward compatibility](https://github.com/huggingface/lerobot/blob/main/docs/source/backwardcomp.mdx).
 

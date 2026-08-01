@@ -37,12 +37,6 @@ teleop = [
     "opencv-python>=4.8.0",
     "Pillow",
 ]
-molmoact = [
-    "transformers>=5.8",
-    "huggingface-hub",
-    "Pillow",
-    "accelerate",
-]
 train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
