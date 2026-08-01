@@ -11,6 +11,16 @@ for the public-API and deprecation policy.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.5.0] - 2026-07-31
+
+### Added
+
 - `so101_nexus.envhub.make_env`: a [LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub) entry point returning LeRobot's `{env_id: {0: vector_env}}` mapping for any registered environment on either backend. Observations use the gym-side convention `lerobot.envs.utils.preprocess_observation` consumes (`agent_pos`, `environment_state`, `pixels`), success is mirrored to `info["final_info"]["is_success"]`, and `task_description` is re-exposed on each sub-environment, so a LeRobot rollout reads instructions and success without any adaptation. Options come from an `EnvConfig` (`task`, `obs_type`, `observation_width`, `observation_height`, `episode_length`, `disable_env_checker`, plus a free-form `kwargs` dict) and from keyword arguments, which accept the same options under the name `env_id` instead of `task` and add `control_mode`, `render_mode`, `device` (Warp only) and `config` (a prebuilt `EnvironmentConfig` that takes precedence over `obs_type` and the camera resolution). Warp ids are bridged from batched torch tensors to NumPy, which costs a host copy per step; train against `gymnasium.make_vec` directly instead.
 - `envhub/`: the Hub payload published to [johnsutor/so101-nexus-envs](https://huggingface.co/johnsutor/so101-nexus-envs), one entry-point file per registered env id plus a root `env.py`. Each file is a shim over `so101_nexus.envhub`, so the environment code stays in the released package. `python scripts/publish_envhub.py` uploads it.
 - `so101_nexus.component_slice`: the flat-state slice occupied by an observation component, promoted out of `so101_nexus.testing` because the EnvHub adapter needs the same layout lookup at runtime. The public function takes the component list (`component_slice(config.observations, JointPositions)`); `so101_nexus.testing.component_slice` keeps its env-shaped signature, now delegates, and raises `ValueError` instead of `AssertionError` when the component is absent.
@@ -404,7 +414,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...0.5.0
 [0.4.13]: https://github.com/johnsutor/so101-nexus/compare/0.4.12...0.4.13
 [0.4.12]: https://github.com/johnsutor/so101-nexus/compare/0.4.11...0.4.12
 [0.4.11]: https://github.com/johnsutor/so101-nexus/compare/0.4.10...0.4.11

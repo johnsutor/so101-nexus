@@ -3,13 +3,13 @@
 ## Supported versions
 
 SO101-Nexus is pre-1.0 and under active development. Security fixes are applied to
-the latest released minor version, currently the `0.4.x` series. Please upgrade to
+the latest released minor version, currently the `0.5.x` series. Please upgrade to
 the most recent release before reporting an issue.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.x   | Yes       |
-| < 0.4   | No        |
+| 0.5.x   | Yes       |
+| < 0.5   | No        |
 
 ## Reporting a vulnerability
 
