@@ -41,8 +41,8 @@ class RolloutRecorder:
     camera_keys : Sequence[str], optional
         Env camera keys to map into ``observation.images.<stem>`` batch keys.
         Supported keys are ``"overhead_camera"`` and ``"wrist_camera"``. Keep
-        these keys and their order aligned with ``MolmoActPolicy.image_keys`` if
-        either side is customized.
+        these keys and their order aligned with the image keys the policy
+        expects if either side is customized.
     joint_names : tuple[str, ...], optional
         Joint order expected by policy actions and env states.
     task : str, optional

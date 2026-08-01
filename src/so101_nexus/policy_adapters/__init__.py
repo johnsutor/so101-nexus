@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from so101_nexus.policy_adapters.chunked_policy import ChunkedActionPolicy
-from so101_nexus.policy_adapters.molmoact import MolmoActPolicy
 from so101_nexus.policy_adapters.recorder import EpisodeResult, RolloutRecorder
 
-__all__ = ["ChunkedActionPolicy", "EpisodeResult", "MolmoActPolicy", "RolloutRecorder"]
+__all__ = ["ChunkedActionPolicy", "EpisodeResult", "RolloutRecorder"]

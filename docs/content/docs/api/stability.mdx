@@ -37,6 +37,8 @@ Before a public name or behavior is removed:
 2. It is kept for at least one subsequent minor release.
 3. It is removed only in a release whose version bump reflects the break.
 
+A name whose only safe behavior would be a breaking change, for example a path that executes remote code, may be removed immediately in a minor release. The removal is recorded in the changelog as breaking, with the replacement named.
+
 ## Supported platforms
 
 - **Python**: 3.12 and 3.13, verified in continuous integration.

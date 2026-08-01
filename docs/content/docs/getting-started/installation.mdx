@@ -44,7 +44,6 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | `teleop` | Gradio demonstration recorder: `lerobot[feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
 | `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.4 | `pip install "so101-nexus[warp]"` |
-| `molmoact` | MolmoAct2 policy adapter | `pip install "so101-nexus[molmoact]"` |
 | `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
 
 Extras combine: `pip install "so101-nexus[teleop,train]"`.

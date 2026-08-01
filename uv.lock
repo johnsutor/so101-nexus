@@ -72,8 +72,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ca/14/787e5498cd062640f0f3d92ef4ae4063174f76f9afd29d13fc52a319daae/accelerate-1.13.0.tar.gz", hash = "sha256:d631b4e0f5b3de4aff2d7e9e6857d164810dfc3237d54d017f075122d057b236", size = 402835, upload-time = "2026-03-04T19:34:12.359Z" }
 wheels = [
@@ -3518,12 +3517,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-molmoact = [
-    { name = "accelerate" },
-    { name = "huggingface-hub" },
-    { name = "pillow" },
-    { name = "transformers" },
-]
 rocm = [
     { name = "pytorch-triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -3578,17 +3571,14 @@ visual = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", marker = "extra == 'molmoact'" },
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
     { name = "gymnasium", specifier = ">=1.0.0,<2" },
     { name = "huggingface-hub", specifier = "<2" },
-    { name = "huggingface-hub", marker = "extra == 'molmoact'" },
     { name = "lerobot", extras = ["feetech"], marker = "extra == 'teleop'", specifier = ">=0.5.0,<0.6" },
     { name = "mujoco", specifier = ">=3.1.3,<4" },
     { name = "mujoco-warp", marker = "extra == 'warp'", specifier = ">=3.9.0.1,<3.10" },
     { name = "numpy", specifier = "<3" },
     { name = "opencv-python", marker = "extra == 'teleop'", specifier = ">=4.8.0" },
-    { name = "pillow", marker = "extra == 'molmoact'" },
     { name = "pillow", marker = "extra == 'teleop'" },
     { name = "pillow", marker = "extra == 'viz'" },
     { name = "plotly", marker = "extra == 'teleop'", specifier = ">=6.0.0" },
@@ -3598,13 +3588,12 @@ requires-dist = [
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "torch", marker = "extra == 'train'" },
     { name = "torch", marker = "extra == 'warp'" },
-    { name = "transformers", marker = "extra == 'molmoact'", specifier = ">=5.8" },
     { name = "trimesh", specifier = "<5" },
     { name = "triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "tyro", specifier = ">=0.9.0,<2" },
     { name = "wandb", extras = ["media"], marker = "extra == 'train'", specifier = ">=0.16.0" },
 ]
-provides-extras = ["viz", "teleop", "molmoact", "train", "warp", "rocm"]
+provides-extras = ["viz", "teleop", "train", "warp", "rocm"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4016,26 +4005,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf", size = 78374, upload-time = "2026-02-03T17:35:50.982Z" },
-]
-
-[[package]]
-name = "transformers"
-version = "5.8.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "pyyaml" },
-    { name = "regex" },
-    { name = "safetensors" },
-    { name = "tokenizers" },
-    { name = "tqdm" },
-    { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/e6/4134ea2fbea322cddc7ffc94a0d8ee47fe32ce8e876b320cd37d88edfc4d/transformers-5.8.1.tar.gz", hash = "sha256:4dd5b6de4105725104d84fd6abd74b305f4debfc251b38c648ee5dd087cf543b", size = 8532019, upload-time = "2026-05-13T03:21:57.234Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/b1/8be7e7ef0b5200491312201918b6125ef9c9df9dd0f0240ccef9ac824e6b/transformers-5.8.1-py3-none-any.whl", hash = "sha256:5340fb95962162cdfdae5cc91d7f8fedd92ed75216c1154c5e1f590fcf56dd0e", size = 10632882, upload-time = "2026-05-13T03:21:52.876Z" },
 ]
 
 [[package]]
