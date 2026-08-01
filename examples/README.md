@@ -184,6 +184,10 @@ uv run --extra warp python examples/eval_warp.py \
   --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
 ```
 
+This works for `bc_ppo_warp.py` checkpoints too: a checkpoint records the observation
+layout it was trained on, so the evaluator rebuilds a matching environment instead of
+assuming the environment's current default.
+
 ### Train in Colab
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb)
@@ -236,7 +240,7 @@ alternative is designed but not yet built; see
   before the PPO loop starts; the persistent `--bc-coef` term adds the same MSE loss
   into every PPO minibatch update afterward, optionally annealed via
   `--bc-anneal-steps`.
-- **`--use-demos false` recovers `ppo_warp.py` exactly** (same Agent, same env
+- **`--no-use-demos` recovers `ppo_warp.py` exactly** (same Agent, same env
   helpers, same PPO loss): this file is a strict superset, not a fork with
   behavior drift.
 
@@ -253,7 +257,7 @@ above, plus:
 
 | Argument | Value |
 |---|---:|
-| `--use-demos` | `true` |
+| `--use-demos` / `--no-use-demos` | `--use-demos` |
 | `--bc-pretrain-updates` | `2000` |
 | `--bc-pretrain-lr` | `1e-3` |
 | `--bc-coef` | `0.1` |
