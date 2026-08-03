@@ -17,6 +17,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 import so101_nexus.mujoco  # noqa: F401
 from so101_nexus.config import PickAndPlaceConfig
 from so101_nexus.mujoco.pick_and_place import PickAndPlaceEnv
+from so101_nexus.objects import CubeObject, YCBObject
 
 _CFG = PickAndPlaceConfig()
 
@@ -45,6 +46,68 @@ class TestConstructionValidation:
     def test_negative_object_static_ang_threshold(self):
         with pytest.raises(ValueError, match="object_static_ang_threshold"):
             PickAndPlaceConfig(object_static_ang_threshold=-0.5)
+
+    def test_negative_min_object_separation(self):
+        with pytest.raises(ValueError, match="min_object_separation"):
+            PickAndPlaceConfig(min_object_separation=-0.01)
+
+
+class TestDistractorDefaults:
+    def test_default_has_no_distractors(self):
+        assert _CFG.n_distractors == 0
+
+    def test_default_distractor_pool_avoids_carried_and_target_colors(self):
+        colors = {obj.color for obj in _CFG.distractors}
+        assert colors.isdisjoint({_CFG.cube_colors, _CFG.target_colors})
+
+    def test_default_distractor_pool_matches_configured_cube_geometry(self):
+        cfg = PickAndPlaceConfig(cube_half_size=0.02, cube_mass=0.05)
+        assert [(o.half_size, o.mass) for o in cfg.distractors] == [(0.02, 0.05)] * 3
+
+
+class TestDistractorValidation:
+    def test_negative_distractors_raises(self):
+        with pytest.raises(ValueError, match="n_distractors must be >= 0"):
+            PickAndPlaceConfig(n_distractors=-1)
+
+    def test_more_distractors_than_pool_raises(self):
+        with pytest.raises(ValueError, match="distractors pool must have at least"):
+            PickAndPlaceConfig(distractors=[CubeObject(color="green")], n_distractors=2)
+
+    def test_empty_distractor_pool_raises(self):
+        with pytest.raises(ValueError, match="distractors must not be empty"):
+            PickAndPlaceConfig(distractors=[])
+
+    def test_single_distractor_wrapped_in_list(self):
+        cfg = PickAndPlaceConfig(distractors=CubeObject(color="green"), n_distractors=1)
+        assert len(cfg.distractors) == 1
+        assert cfg.distractors[0].color == "green"
+
+    def test_distractor_color_matching_carried_cube_warns(self):
+        with pytest.warns(UserWarning, match="ambiguous"):
+            PickAndPlaceConfig(distractors=[CubeObject(color="red")], n_distractors=1)
+
+    def test_distractor_color_matching_explicit_pool_warns(self):
+        with pytest.warns(UserWarning, match="ambiguous"):
+            PickAndPlaceConfig(
+                objects=[CubeObject(color="green")],
+                distractors=[CubeObject(color="green")],
+                n_distractors=1,
+            )
+
+    def test_distractor_color_matching_disc_does_not_warn(self, recwarn):
+        # The instruction names the goal as a circle, so a blue distractor cube
+        # beside the blue disc is unambiguous.
+        PickAndPlaceConfig(distractors=[CubeObject(color="blue")], n_distractors=1)
+        assert len(recwarn) == 0
+
+    def test_unused_distractor_pool_does_not_warn(self, recwarn):
+        PickAndPlaceConfig(distractors=[CubeObject(color="red")], n_distractors=0)
+        assert len(recwarn) == 0
+
+    def test_non_cube_distractors_never_warn(self, recwarn):
+        PickAndPlaceConfig(distractors=[YCBObject("011_banana")], n_distractors=1)
+        assert len(recwarn) == 0
 
 
 class TestSharedConstants:

@@ -5,6 +5,11 @@ The carried object is chosen per episode from the shared compiled object-slot po
 per-world position lives in ``data.mocap_pos``. The disc colour is fixed at
 model-build time to the first configured target colour (``geom_rgba`` is global), a
 documented divergence from the MuJoCo backend, which randomizes it per episode.
+
+``PickAndPlaceConfig.n_distractors > 0`` additionally compiles one slot per entry
+in ``PickAndPlaceConfig.distractors`` after the carried pool; each world activates
+``n_distractors`` of them per reset and the remainder stay parked in the hidden
+band. Target selection stays inside the carried pool.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from so101_nexus.rewards import (
     place_task_potential,
     potential_shaping,
 )
-from so101_nexus.warp.object_slots import sample_polar
+from so101_nexus.warp.object_slots import sample_polar, sample_separated_polar
 from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
 _TARGET_Z = 0.001
@@ -72,6 +77,14 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         if config is None:
             config = PickAndPlaceConfig()
         scene_objects = config.object_pool()
+        n_carried = len(scene_objects)
+        # Distractor slots are only compiled when requested, so the default
+        # single-object scene (and its contact budget) stays unchanged.
+        self._n_distractors = config.n_distractors
+        distractor_pool = list(config.distractors) if self._n_distractors else []
+        self._d_pool = len(distractor_pool)
+        self._d_offset = n_carried
+        scene_objects = scene_objects + distractor_pool
         self.target_color_name = (
             config.target_colors
             if isinstance(config.target_colors, str)
@@ -92,6 +105,9 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             model_name="pick_and_place_scene",
             extra_bodies=disc_xml,
             render_mode=render_mode,
+            n_target_pool=n_carried,
+            slot_names=[f"pick_slot_{i}" for i in range(n_carried)]
+            + [f"distractor_slot_{i}" for i in range(self._d_pool)],
         )
         target_bid = mujoco.mj_name2id(self._mjm, mujoco.mjtObj.mjOBJ_BODY, "target")
         self._target_mocap_id = int(self._mjm.body_mocapid[target_bid])
@@ -185,38 +201,57 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         if n == 0:
             return
         sel, target = self._select_active_slots(idx)  # (n, 1), (n,)
+        gen, dev = self._generator, self.device
+        if self._n_distractors:
+            # Distinct distractor slots per world, as in WarpStackCubeVectorEnv.
+            d_rank = torch.rand(n, self._d_pool, generator=gen, device=dev).argsort(dim=1)
+            sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
         self._hide_all_slots(idx)
 
         cfg = self.config
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
         disc_xy = sample_polar(
-            self._generator,
-            self.device,
+            gen,
+            dev,
             n,
             cfg.spawn_min_radius,
             cfg.spawn_max_radius,
             angle,
             cfg.spawn_center,
         )
-        obj_xy = sample_polar(
-            self._generator,
-            self.device,
-            n,
+        radii = self._slot_bradius[sel]  # (n, n_placed)
+        obj_xy = sample_separated_polar(
+            gen,
+            dev,
+            radii,
+            cfg.min_object_separation,
             cfg.spawn_min_radius,
             cfg.spawn_max_radius,
             angle,
             cfg.spawn_center,
-        )
-        # Bounding-radius-aware object/disc separation (disc fixed, object resampled).
-        sep = cfg.min_object_target_separation + self._slot_bradius[sel[:, 0]]
+        )  # (n, n_placed, 2)
+        # Bounding-radius-aware object/disc separation (disc fixed, objects
+        # resampled), applied to the carried object and every distractor so no
+        # object spawns on the goal. Resampling would undo the object/object
+        # clearance the separated sampler established, so with distractors
+        # present that check gates the loop too.
+        disc_sep = cfg.min_object_target_separation + radii  # (n, n_placed)
+        # Carried object plus its distractors; distinct from ``self._n_active``,
+        # which stays 1 for this env (one carried slot drawn from the pool).
+        n_placed = sel.shape[1]
+        pair_sep = cfg.min_object_separation + radii[:, :, None] + radii[:, None, :]
+        off_diag = ~torch.eye(n_placed, dtype=torch.bool, device=dev)
         for _ in range(100):
-            bad = torch.linalg.norm(obj_xy - disc_xy, dim=1) < sep
+            bad = torch.linalg.norm(obj_xy - disc_xy[:, None, :], dim=2) < disc_sep
+            if n_placed > 1:
+                pair_dist = torch.linalg.norm(obj_xy[:, :, None, :] - obj_xy[:, None, :, :], dim=3)
+                bad |= ((pair_dist < pair_sep) & off_diag).any(dim=2)
             k = int(bad.sum())
             if k == 0:
                 break
             obj_xy[bad] = sample_polar(
-                self._generator,
-                self.device,
+                gen,
+                dev,
                 k,
                 cfg.spawn_min_radius,
                 cfg.spawn_max_radius,
@@ -227,7 +262,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         self._mocap_pos[idx, self._target_mocap_id, 0] = disc_xy[:, 0]
         self._mocap_pos[idx, self._target_mocap_id, 1] = disc_xy[:, 1]
         self._mocap_pos[idx, self._target_mocap_id, 2] = _TARGET_Z
-        self._place_active_slots(idx, sel, obj_xy[:, None, :])
+        self._place_active_slots(idx, sel, obj_xy)
         self._set_target_tracking(idx, target)
 
     def _get_component_data(self, component: object) -> torch.Tensor:

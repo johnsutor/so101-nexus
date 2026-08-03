@@ -94,6 +94,22 @@ config = PickConfig(
 )
 ```
 
+Pick-and-place and stack-cube have role-fixed task objects, so their distractors come
+from a separate `distractors` pool instead of `objects`. It defaults to green, yellow,
+and purple cubes matching the task cube geometry, which covers `n_distractors` up to 3
+with no extra configuration.
+
+```python
+from so101_nexus import CubeObject, PickAndPlaceConfig
+
+config = PickAndPlaceConfig(
+    cube_colors="red",
+    target_colors="blue",
+    distractors=[CubeObject(color="green"), CubeObject(color="yellow")],
+    n_distractors=2,
+)
+```
+
 ### Custom meshes
 
 `MeshObject` loads an arbitrary mesh file and works on both backends.

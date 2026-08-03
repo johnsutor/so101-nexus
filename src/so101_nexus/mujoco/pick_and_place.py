@@ -4,6 +4,14 @@ The carried object is chosen per episode from a compiled object pool (shared wit
 the unified pick env via ``so101_nexus.object_slots``); the goal is a visible,
 non-colliding disc whose colour is randomized per episode. Supported carried
 objects: ``CubeObject``, ``YCBObject``, ``MeshObject``.
+
+When ``PickAndPlaceConfig.n_distractors > 0``, one freejoint slot per entry in
+``PickAndPlaceConfig.distractors`` is compiled after the carried pool; each reset
+activates ``n_distractors`` of them and parks the remainder off-world with
+collisions disabled, matching ``StackCubeEnv``'s slot machinery. As in stack-cube
+the distractor pool is separate from the task objects, so unlike ``PickEnv`` (whose
+distractors are drawn from the same pool as its target) a distractor here can never
+become the carried object.
 """
 
 from __future__ import annotations
@@ -26,9 +34,13 @@ from so101_nexus.config import (
 )
 from so101_nexus.constants import COLOR_MAP, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.mujoco.spawn_utils import hide_freejoint_slot, place_freejoint_slot
+from so101_nexus.mujoco.spawn_utils import (
+    activate_distractor_slots,
+    hide_freejoint_slot,
+    place_freejoint_slot,
+)
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject, YCBObject
+from so101_nexus.objects import CubeObject, SceneObject, YCBObject
 from so101_nexus.rewards import (
     object_static_ok,
     place_grasp_potential,
@@ -78,11 +90,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        scene_objects = config.object_pool()
+        scene_objects: list[SceneObject] = config.object_pool()
+        n_carried = len(scene_objects)
+        # Distractor slots are only compiled when requested, so the default
+        # single-object scene stays identical.
+        distractor_pool = list(config.distractors) if config.n_distractors else []
+        scene_objects += distractor_pool
         for obj in scene_objects:
             if isinstance(obj, YCBObject):
                 ensure_ycb_assets(obj.model_id)
-        slot_names = [f"pick_slot_{i}" for i in range(len(scene_objects))]
+        slot_names = [f"pick_slot_{i}" for i in range(n_carried)] + [
+            f"distractor_slot_{i}" for i in range(len(distractor_pool))
+        ]
 
         self.cube_half_size = config.cube_half_size
         self.target_disc_radius = config.target_disc_radius
@@ -118,7 +137,12 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        self._slots: list[ObjectSlot] = extract_object_slots(self.model, slot_names, scene_objects)
+        slots = extract_object_slots(self.model, slot_names, scene_objects)
+        # ``_slots`` stays the carried pool alone, so pool indices (and
+        # ``info["target_index"]``) are unaffected by the distractor slots.
+        self._slots: list[ObjectSlot] = slots[:n_carried]
+        self._distractor_slots: list[ObjectSlot] = slots[n_carried:]
+        self._n_distractors = config.n_distractors
         self._target_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "target_disc"
         )
@@ -363,19 +387,56 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         target_y = cy + r_t * np.sin(theta_t)
         self.model.body_pos[self._target_body_id] = [target_x, target_y, _TARGET_Z]
 
-        sep = self.config.min_object_target_separation + target_slot.bounding_radius
-        obj_x, obj_y = target_x, target_y
-        for _ in range(100):
-            r_c = rng.uniform(min_r, max_r)
-            theta_c = rng.uniform(-angle_half, angle_half)
-            obj_x = cx + r_c * np.cos(theta_c)
-            obj_y = cy + r_c * np.sin(theta_c)
-            if np.hypot(obj_x - target_x, obj_y - target_y) >= sep:
-                break
-
-        place_freejoint_slot(self.model, self.data, target_slot, rng, (obj_x, obj_y))
+        distractors = activate_distractor_slots(
+            self.model, self.data, self._distractor_slots, self._n_distractors, rng
+        )
+        active_slots = [target_slot, *distractors]
+        positions = self._sample_object_positions(rng, active_slots, (target_x, target_y))
+        for slot, xy in zip(active_slots, positions, strict=True):
+            place_freejoint_slot(self.model, self.data, slot, rng, xy)
         for idx, slot in enumerate(self._slots):
             if idx != target_idx:
                 hide_freejoint_slot(self.model, self.data, slot)
 
         self._initial_obj_z = target_slot.spawn_z
+
+    def _sample_object_positions(
+        self,
+        rng: np.random.Generator,
+        slots: list[ObjectSlot],
+        disc_xy: tuple[float, float],
+    ) -> list[tuple[float, float]]:
+        """Sample one XY per active slot, clear of the goal disc and of each other.
+
+        Two clearances apply: every object stays ``min_object_target_separation``
+        plus its bounding radius from the disc center, and any two objects stay
+        ``min_object_separation`` plus their bounding radii apart. The disc
+        clearance is measured to the disc center, not its rim, so with a
+        ``target_disc_radius`` wider than that margin an object footprint may
+        still overlap the disc's outer annulus. Falls back to the last candidate
+        once the attempt budget runs out, matching
+        ``spawn_utils.sample_separated_positions``.
+        """
+        cfg = self.config
+        min_r, max_r = cfg.spawn_min_radius, cfg.spawn_max_radius
+        angle_half = float(np.radians(cfg.spawn_angle_half_range_deg))
+        cx, cy = cfg.spawn_center
+        disc_x, disc_y = disc_xy
+        placed: list[tuple[float, float, float]] = []  # x, y, bounding radius
+        for slot in slots:
+            radius = slot.bounding_radius
+            disc_sep = cfg.min_object_target_separation + radius
+            for _ in range(100):
+                r = rng.uniform(min_r, max_r)
+                theta = rng.uniform(-angle_half, angle_half)
+                x = cx + r * np.cos(theta)
+                y = cy + r * np.sin(theta)
+                if np.hypot(x - disc_x, y - disc_y) < disc_sep:
+                    continue
+                if all(
+                    np.hypot(x - px, y - py) >= radius + pr + cfg.min_object_separation
+                    for px, py, pr in placed
+                ):
+                    break
+            placed.append((x, y, radius))
+        return [(x, y) for x, y, _ in placed]

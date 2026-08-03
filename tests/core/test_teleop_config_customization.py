@@ -88,6 +88,22 @@ def test_apply_config_overrides_updates_stack_cube_distractors() -> None:
     assert cfg.n_distractors == 2
 
 
+def test_apply_config_overrides_updates_pick_and_place_distractors() -> None:
+    # The pick object-pool control is hidden for pick-and-place, so an object
+    # override must not fight the cube sugar its carried pool is derived from.
+    cfg = apply_config_overrides(
+        PickAndPlaceConfig(),
+        TeleopConfigOverrides(
+            object_specs=("cube:orange",), n_distractors=2, cube_colors=("orange",)
+        ),
+    )
+
+    assert isinstance(cfg, PickAndPlaceConfig)
+    assert cfg.n_distractors == 2
+    assert cfg.objects is None
+    assert cfg.cube_colors == ["orange"]
+
+
 def test_apply_config_overrides_accepts_parsed_mesh_objects() -> None:
     mesh = MeshObject(
         collision_mesh_path="/tmp/collision.stl",

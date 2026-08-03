@@ -925,11 +925,11 @@ def _normalize_objects(
     return normalized
 
 
-def _default_stack_distractors(half_size: float, mass: float) -> list[SceneObject]:
-    """Return the default stack-cube distractor pool.
+def _default_distractor_cubes(half_size: float, mass: float) -> list[SceneObject]:
+    """Return the default distractor pool for the cube-based tasks.
 
     The cubes share the task cubes' geometry and differ only in color (disjoint
-    from the default cube A/B colors), so a distractor cannot be told apart from
+    from the default task-cube colors), so a distractor cannot be told apart from
     a task cube by size alone.
     """
     return [
@@ -938,12 +938,20 @@ def _default_stack_distractors(half_size: float, mass: float) -> list[SceneObjec
     ]
 
 
+def _require_non_negative(**values: float) -> None:
+    """Raise ``ValueError`` naming the first keyword whose value is negative."""
+    for name, value in values.items():
+        if value < 0:
+            raise ValueError(f"{name} must be >= 0, got {value}")
+
+
 def _validate_distractor_pool(
     distractors: list[SceneObject],
     n_distractors: int,
     target_colors: Collection[str],
+    target_colors_field: str = "cube_a_colors/cube_b_colors",
 ) -> None:
-    """Validate a distractor count against its pool and the target cube colors."""
+    """Validate a distractor count against its pool and the task cube colors."""
     if n_distractors < 0:
         raise ValueError(f"n_distractors must be >= 0, got {n_distractors}")
     if n_distractors > len(distractors):
@@ -956,7 +964,7 @@ def _validate_distractor_pool(
     ambiguous = {o.color for o in distractors if isinstance(o, CubeObject)} & set(target_colors)
     if n_distractors > 0 and ambiguous:
         warnings.warn(
-            f"distractor cubes share {ambiguous} with cube_a_colors/cube_b_colors; "
+            f"distractor cubes share {ambiguous} with {target_colors_field}; "
             "the task description may be ambiguous in some episodes",
             stacklevel=3,
         )
@@ -1105,6 +1113,20 @@ class PickAndPlaceConfig(EnvironmentConfig):
     object_static_ang_threshold : float
         Maximum angular speed (rad/s) at which the carried object still counts
         as static for the success check. Mirrors ManiSkill's ``ang_thresh=0.5``.
+    distractors : list[SceneObject] | SceneObject | None
+        Pool of non-target objects to sample distractors from. Defaults to
+        green, yellow, and purple cubes sharing ``cube_half_size`` /
+        ``cube_mass`` (colors disjoint from the default carried cube and goal
+        disc). Only compiled into the scene when ``n_distractors > 0``.
+    n_distractors : int
+        Number of distractor objects placed alongside the carried object each
+        episode, drawn without replacement from ``distractors``. 0 means the
+        single-object scene. Distractors keep
+        ``min_object_target_separation`` from the goal disc, so clutter never
+        spawns on the goal.
+    min_object_separation : float
+        Minimum spawn separation between the carried object and the
+        distractors (meters), on top of their bounding radii.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -1122,6 +1144,9 @@ class PickAndPlaceConfig(EnvironmentConfig):
         min_object_target_separation: float | None = None,
         object_static_lin_threshold: float = 0.01,
         object_static_ang_threshold: float = 0.5,
+        distractors: list[SceneObject] | SceneObject | None = None,
+        n_distractors: int = 0,
+        min_object_separation: float = 0.04,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1154,6 +1179,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
         )
         self.object_static_lin_threshold = object_static_lin_threshold
         self.object_static_ang_threshold = object_static_ang_threshold
+        self.min_object_separation = min_object_separation
 
         _validate_color_config(self.cube_colors, "cube_colors")
         _validate_color_config(self.target_colors, "target_colors")
@@ -1172,24 +1198,35 @@ class PickAndPlaceConfig(EnvironmentConfig):
             )
         if not (0.01 <= self.cube_half_size <= 0.05):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
+        if self.cube_mass <= 0:
+            raise ValueError(f"cube_mass must be > 0, got {self.cube_mass}")
         if self.target_disc_radius <= 0:
             raise ValueError(f"target_disc_radius must be > 0, got {self.target_disc_radius}")
-        if min_cube_target_separation < 0:
-            raise ValueError(
-                f"min_cube_target_separation must be >= 0, got {min_cube_target_separation}"
-            )
-        if min_object_target_separation is not None and min_object_target_separation < 0:
-            raise ValueError(
-                f"min_object_target_separation must be >= 0, got {min_object_target_separation}"
-            )
-        if self.object_static_lin_threshold < 0:
-            raise ValueError(
-                f"object_static_lin_threshold must be >= 0, got {self.object_static_lin_threshold}"
-            )
-        if self.object_static_ang_threshold < 0:
-            raise ValueError(
-                f"object_static_ang_threshold must be >= 0, got {self.object_static_ang_threshold}"
-            )
+        _require_non_negative(min_cube_target_separation=min_cube_target_separation)
+        if min_object_target_separation is not None:
+            _require_non_negative(min_object_target_separation=min_object_target_separation)
+        _require_non_negative(
+            object_static_lin_threshold=self.object_static_lin_threshold,
+            object_static_ang_threshold=self.object_static_ang_threshold,
+            min_object_separation=self.min_object_separation,
+        )
+        # Built after the cube checks so an invalid cube_half_size/cube_mass is
+        # reported against its own field, not against the default pool's cubes.
+        self.distractors = _normalize_objects(
+            distractors,
+            _default_distractor_cubes(cube_half_size, cube_mass),
+            field_name="distractors",
+        )
+        self.n_distractors = n_distractors
+        # The instruction names the carried object by color, so only the carried
+        # pool's cube colors can make an episode ambiguous; the goal disc is
+        # named as a circle and never confusable with a cube.
+        _validate_distractor_pool(
+            self.distractors,
+            self.n_distractors,
+            {o.color for o in self.object_pool() if isinstance(o, CubeObject)},
+            target_colors_field="the carried-object pool colors",
+        )
         if self.observations is None:
             self.observations = [
                 JointPositions(),
@@ -1237,7 +1274,8 @@ class PickAndPlaceConfig(EnvironmentConfig):
     def __repr__(self) -> str:  # noqa: D105
         return (
             f"PickAndPlaceConfig(objects={self.objects!r}, "
-            f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size})"
+            f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size}, "
+            f"n_distractors={self.n_distractors})"
         )
 
     @property
@@ -1360,7 +1398,7 @@ class StackCubeConfig(EnvironmentConfig):
         # reported against its own field, not against the default pool's cubes.
         self.distractors = _normalize_objects(
             distractors,
-            _default_stack_distractors(cube_half_size, cube_mass),
+            _default_distractor_cubes(cube_half_size, cube_mass),
             field_name="distractors",
         )
         self.n_distractors = n_distractors

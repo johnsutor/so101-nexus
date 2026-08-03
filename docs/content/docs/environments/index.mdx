@@ -135,11 +135,14 @@ Default observation (43): `JointPositions` (6), `JointVelocities` (6), `EndEffec
 settling term of the success check, so keep it if you shrink the observation.
 
 Objects: one colored cube plus a flat target disc. Both colors are sampled per episode
-from `PickAndPlaceConfig` and named in the task description.
+from `PickAndPlaceConfig` and named in the task description. `n_distractors` draws extra
+objects without replacement from the `distractors` pool; they stay clear of the disc and
+never enter the observation or the task description.
 
 Task-specific fields: `goal_thresh` (0.025 m, the XY placement tolerance),
-`target_disc_radius` (0.05 m), `cube_half_size`, `cube_mass`, and
-`min_cube_target_separation` (0.0375 m, the minimum spawn gap between cube and disc).
+`target_disc_radius` (0.05 m), `cube_half_size`, `cube_mass`,
+`min_cube_target_separation` (0.0375 m, the minimum spawn gap between cube and disc), and
+`min_object_separation` (0.04 m, the gap between the carried object and distractors).
 Full field list in [Configs](/docs/api/configs).
 
 Overhead camera:

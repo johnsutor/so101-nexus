@@ -6,7 +6,12 @@ and for sampling random object orientations.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+
+if TYPE_CHECKING:
+    from so101_nexus.object_slots import ObjectSlot
 
 MESH_FLOOR_MARGIN = 0.002
 """Small floor clearance for mesh object spawns, in metres."""
@@ -171,3 +176,38 @@ def hide_freejoint_slot(model, data, slot) -> None:
     model.geom_conaffinity[slot.geom_id] = 0
     data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = [0.0, 0.0, -10.0]
     data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = [1.0, 0.0, 0.0, 0.0]
+
+
+def activate_distractor_slots(
+    model, data, slots: list[ObjectSlot], count: int, rng: np.random.Generator
+) -> list[ObjectSlot]:
+    """Activate ``count`` of ``slots`` and park the rest off-world.
+
+    Restores collisions on the whole distractor pool first, so a slot that was
+    hidden by an earlier episode collides again once it is chosen. Returns the
+    chosen slots in pool order; the caller places them.
+
+    Parameters
+    ----------
+    model : mujoco.MjModel
+        Compiled model whose per-geom contact flags are toggled.
+    data : mujoco.MjData
+        State buffer whose freejoint qpos is parked for inactive slots.
+    slots : list
+        Compiled distractor pool (``so101_nexus.object_slots.ObjectSlot``).
+    count : int
+        Number of slots to activate, drawn without replacement.
+    rng : numpy.random.Generator
+        Seeded generator (``self.np_random``) backing the draw, so activation is
+        reproducible under ``reset(seed=...)``.
+    """
+    if not slots:
+        return []
+    for slot in slots:
+        model.geom_contype[slot.geom_id] = 1
+        model.geom_conaffinity[slot.geom_id] = 1
+    chosen = {int(i) for i in rng.choice(len(slots), size=count, replace=False)}
+    for idx, slot in enumerate(slots):
+        if idx not in chosen:
+            hide_freejoint_slot(model, data, slot)
+    return [slots[idx] for idx in sorted(chosen)]

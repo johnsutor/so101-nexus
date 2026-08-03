@@ -25,6 +25,7 @@ from so101_nexus.teleop.config_customization import (
     default_color_choices,
     default_cube_color_choices,
     default_object_choices,
+    has_pick_object_pool,
     load_config_factory,
     overrides_to_mapping,
 )
@@ -208,7 +209,7 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         "reset_settle_frames",
     }
     common_visible = bool(common_keys & set(attrs))
-    pick_visible = "objects" in attrs and "n_distractors" in attrs
+    pick_visible = has_pick_object_pool(attrs)
     distractors_visible = "n_distractors" in attrs
     pick_and_place_visible = "cube_colors" in attrs or "target_colors" in attrs
     stack_visible = "cube_a_colors" in attrs or "cube_b_colors" in attrs

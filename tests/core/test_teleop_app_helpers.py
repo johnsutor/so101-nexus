@@ -657,13 +657,20 @@ def test_customization_ui_state_for_pick_and_place_hides_pick_controls() -> None
             target_colors="blue",
             ground_colors="gray",
             robot_colors=["yellow", "orange"],
+            distractors=[CubeObject(color="purple")],
+            n_distractors=1,
         )
     )
 
     assert state.customize_visible is True
     assert state.customize_value is True
     assert state.common_visible is True
+    # The carried pool is driven by cube_colors, so the object-pool control stays
+    # hidden even though pick-and-place now exposes a distractor count.
     assert state.pick_visible is False
+    assert state.distractors_visible is True
+    assert state.pick_group_visible is True
+    assert state.n_distractors == 1
     assert state.pick_and_place_visible is True
     assert state.cube_colors == ["red", "green"]
     assert state.target_colors == ["blue"]
