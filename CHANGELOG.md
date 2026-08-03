@@ -15,6 +15,37 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+### Removed
+
+## [0.5.1] - 2026-08-02
+
+### Added
+
+- `n_distractors`, `distractors`, and `min_object_separation` on `PickAndPlaceConfig` (both
+  backends): place non-target clutter alongside the carried object, drawn without replacement
+  each episode from the `distractors` pool.
+  - `distractors` defaults to green, yellow, and purple cubes sharing `cube_half_size` /
+    `cube_mass`, with colors disjoint from the default carried cube and goal disc.
+  - Distractors keep `min_object_target_separation` from the goal disc center, so clutter does
+    not spawn on the goal, and `min_object_separation` (0.04 m, matching `PickConfig`) is the
+    gap between the carried object and the distractors.
+  - Slots are only compiled when `n_distractors > 0`, so the default single-object scene and its
+    Warp contact budget are unchanged.
+  - The count is exposed in the teleop UI and the `[pick_and_place]` profile section.
+  - Passing a distractor cube whose color is also a carried cube color warns, since the task
+    description names the carried object by color alone.
+  - Distractors never enter the observation, the task description, the success predicate, or the
+    reward. On the Warp backend `reset(options={"target_index": k})` still indexes the carried
+    pool alone, so distractor slots cannot be pinned as the carried object.
+
+### Changed
+
+- `PickAndPlaceConfig` now rejects a non-positive `cube_mass` with a `cube_mass must be > 0`
+  error, matching `StackCubeConfig`. Previously the invalid value surfaced indirectly as
+  `mass must be positive` from the default distractor pool's cubes.
+
+### Fixed
+
 - `examples/eval_warp.py` and `examples/ppo_warp.py`'s `rollout_video_from_checkpoint` now rebuild the environment from the observation layout the checkpoint records (`env_state_names`), instead of always using the environment's current default. A demo-seeded `examples/bc_ppo_warp.py` checkpoint pins the layout its demo dataset declares, so since the 0.5.0 default-observation growth (`gaze_state`, `object_velocity`) evaluating one raised `RuntimeError: size mismatch for actor_mean.0.weight`. This is the evaluation step both Colab notebooks and the training guide's quick start run. `eval_warp.py` also prints a line when the pinned layout is not the current default, since a silently stale layout otherwise reports plausible-looking numbers. `examples/ppo_warp.py` gained the `observations=` keyword on `_make_envs` and `evaluate_mujoco` plus the `_mujoco_config` helper, so it stays a byte-identical mirror of `examples/bc_ppo_warp.py` for every shared helper.
 - Docs and the BC Colab notebook told readers to disable demo seeding with `--use-demos false`, which `tyro` rejects as an unrecognized option. The flag is `--no-use-demos`.
 
@@ -417,7 +448,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...0.5.0
 [0.4.13]: https://github.com/johnsutor/so101-nexus/compare/0.4.12...0.4.13
 [0.4.12]: https://github.com/johnsutor/so101-nexus/compare/0.4.11...0.4.12

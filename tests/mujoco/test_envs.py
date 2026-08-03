@@ -679,6 +679,125 @@ def test_pick_and_place_min_cube_target_separation():
         env.close()
 
 
+def test_pick_and_place_default_scene_compiles_no_distractor_slots():
+    """n_distractors=0 keeps the single-object scene: no extra freejoint bodies."""
+    env = gym.make("MuJoCoPickAndPlace-v1")
+    baseline = gym.make(
+        "MuJoCoPickAndPlace-v1",
+        config=PickAndPlaceConfig(distractors=[CubeObject(color="green")], n_distractors=0),
+    )
+    try:
+        env.reset(seed=0)
+        baseline.reset(seed=0)
+        assert env.unwrapped._distractor_slots == []  # type: ignore[attr-defined]
+        # A configured-but-unused pool must not reach the compiled model either.
+        assert env.unwrapped.model.nbody == baseline.unwrapped.model.nbody
+        assert env.unwrapped.model.nq == baseline.unwrapped.model.nq
+    finally:
+        env.close()
+        baseline.close()
+
+
+def test_pick_and_place_custom_distractor_pool_reaches_the_scene():
+    """A non-default ``distractors`` entry is what gets compiled, not the default pool."""
+    cfg = PickAndPlaceConfig(
+        distractors=[CubeObject(color="green", half_size=0.03)], n_distractors=1
+    )
+    env = gym.make("MuJoCoPickAndPlace-v1", config=cfg)
+    try:
+        env.reset(seed=0)
+        pool = env.unwrapped._distractor_slots  # type: ignore[attr-defined]
+        assert len(pool) == 1
+        assert pool[0].bounding_radius == pytest.approx(0.03 * np.sqrt(2), rel=1e-6)
+        rgba = env.unwrapped.model.geom_rgba[pool[0].geom_id]
+        assert list(rgba) == CUBE_COLOR_MAP["green"]
+    finally:
+        env.close()
+
+
+def test_pick_and_place_distractors_active_on_table_and_separated():
+    """``n_distractors`` pool slots rest in the spawn annulus, clear of the goal
+    disc and the carried object; unchosen slots are parked with collisions off."""
+    cfg = PickAndPlaceConfig(n_distractors=2)
+    env = gym.make("MuJoCoPickAndPlace-v1", config=cfg)
+    try:
+        cx, cy = cfg.spawn_center
+        for seed in range(5):
+            env.reset(seed=seed)
+            inner = env.unwrapped
+            pool = inner._distractor_slots  # type: ignore[attr-defined]
+            assert len(pool) == len(cfg.distractors)
+            active = [s for s in pool if inner.data.qpos[s.qpos_addr + 2] > 0.0]
+            hidden = [s for s in pool if inner.data.qpos[s.qpos_addr + 2] <= 0.0]
+            assert len(active) == cfg.n_distractors
+            for slot in hidden:
+                assert inner.model.geom_contype[slot.geom_id] == 0
+                assert inner.model.geom_conaffinity[slot.geom_id] == 0
+
+            disc_xy = inner._get_target_pos()[:2]  # type: ignore[attr-defined]
+            target_slot = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
+            placed = [(inner._get_object_pose()[:2], target_slot.bounding_radius)]  # type: ignore[attr-defined]
+            for slot in active:
+                # A slot parked on an earlier reset must regain collisions when
+                # it becomes active again.
+                assert inner.model.geom_contype[slot.geom_id] == 1
+                assert inner.model.geom_conaffinity[slot.geom_id] == 1
+                xy = inner.data.qpos[slot.qpos_addr : slot.qpos_addr + 2]
+                r = float(np.hypot(xy[0] - cx, xy[1] - cy))
+                assert cfg.spawn_min_radius - 1e-6 <= r <= cfg.spawn_max_radius + 1e-6
+                placed.append((xy, slot.bounding_radius))
+            for xy_i, r_i in placed:
+                disc_dist = float(np.linalg.norm(np.asarray(xy_i) - disc_xy))
+                assert disc_dist >= cfg.min_object_target_separation + r_i - 1e-6
+            for i, (xy_i, r_i) in enumerate(placed):
+                for xy_j, r_j in placed[i + 1 :]:
+                    dist = float(np.linalg.norm(np.asarray(xy_i) - np.asarray(xy_j)))
+                    assert dist >= cfg.min_object_separation + r_i + r_j - 1e-6
+    finally:
+        env.close()
+
+
+def test_pick_and_place_min_object_separation_widens_distractor_spacing():
+    """``min_object_separation`` is a live knob, not a documented default."""
+    wide = PickAndPlaceConfig(n_distractors=1, min_object_separation=0.15)
+    env = gym.make("MuJoCoPickAndPlace-v1", config=wide)
+    try:
+        for seed in range(5):
+            env.reset(seed=seed)
+            inner = env.unwrapped
+            slot = next(
+                s
+                for s in inner._distractor_slots  # type: ignore[attr-defined]
+                if inner.data.qpos[s.qpos_addr + 2] > 0.0
+            )
+            xy = inner.data.qpos[slot.qpos_addr : slot.qpos_addr + 2]
+            obj_xy = inner._get_object_pose()[:2]  # type: ignore[attr-defined]
+            obj_r = inner._slots[inner._target_slot_idx].bounding_radius  # type: ignore[attr-defined]
+            floor = wide.min_object_separation + slot.bounding_radius + obj_r
+            assert float(np.linalg.norm(xy - obj_xy)) >= floor - 1e-6
+    finally:
+        env.close()
+
+
+def test_pick_and_place_distractors_do_not_change_obs_or_task():
+    """Distractors are scene clutter only: obs width, task string, and the
+    reported target stay those of the carried pool."""
+    env = gym.make("MuJoCoPickAndPlace-v1", config=PickAndPlaceConfig(n_distractors=3))
+    try:
+        obs, info = env.reset(seed=1)
+        assert obs.shape == (43,)
+        assert info["target_index"] == 0
+        assert info["target_object"] == "red cube"
+        assert env.unwrapped.task_description == (  # type: ignore[attr-defined]
+            "Pick up the red cube and place it on the blue circle."
+        )
+        for _ in range(5):
+            _, reward, _, _, _ = env.step(env.action_space.sample())
+            assert np.isfinite(reward)
+    finally:
+        env.close()
+
+
 def test_pick_and_place_success_false_at_reset():
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:

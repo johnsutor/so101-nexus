@@ -132,13 +132,26 @@ def object_from_mapping(raw: Mapping[str, Any]) -> SceneObject:
     raise ValueError(f"unsupported object mapping type: {kind!r}")
 
 
+def has_pick_object_pool(attrs: Mapping[str, object]) -> bool:
+    """Return whether a config exposes the free-form ``objects`` pool control.
+
+    ``cube_colors`` marks the pick-and-place carried-cube sugar: that family also
+    exposes ``n_distractors``, but its ``objects`` pool is derived from the cube
+    colors and cannot be combined with a color override, so the pool control stays
+    off for it. Keyed on attribute names because the teleop layer is handed a
+    config instance, not a task identifier.
+    """
+    keys = set(attrs)
+    return {"objects", "n_distractors"} <= keys and "cube_colors" not in keys
+
+
 def apply_config_overrides[ConfigT](
     config: ConfigT,
     overrides: TeleopConfigOverrides,
 ) -> ConfigT:
     """Return a cloned config with applicable teleop overrides applied."""
     attrs = vars(config).copy()
-    is_pick_like = "objects" in attrs and "n_distractors" in attrs
+    is_pick_like = has_pick_object_pool(attrs)
 
     for name in ("ground_colors", "robot_colors"):
         value = _as_color_config(getattr(overrides, name))

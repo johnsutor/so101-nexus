@@ -379,6 +379,93 @@ def test_pnp_target_varies_per_world_and_respects_separation():
     assert not info["success"].any()
 
 
+def test_pnp_distractors_active_per_world_and_clear_of_the_disc():
+    """Each world activates exactly ``n_distractors`` pool slots inside the spawn
+    annulus, clear of the goal disc and the carried object, and target selection
+    stays inside the carried pool."""
+    import torch
+
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    cfg = PickAndPlaceConfig(n_distractors=2)
+    env = WarpPickAndPlaceVectorEnv(num_envs=8, config=cfg, device="cpu", seed=0)
+    env.reset(seed=0)
+    assert env._n_pool == 1  # carried pool only; distractors are never the target
+    assert env._d_pool == len(cfg.distractors)
+    assert bool((env._target_slot == 0).all())
+
+    disc_xy = env._target_disc_pos()[:, :2]
+    obj_xy = env._target_pos()[:, :2]
+    center = torch.tensor(cfg.spawn_center)
+    active = torch.zeros(8, env._d_pool, dtype=torch.bool)
+    for j in range(env._d_pool):
+        qa = int(env._slot_qadr[env._d_offset + j])
+        xy = env.qpos[:, qa : qa + 2]
+        radius = float(env._slot_bradius[env._d_offset + j])
+        on_table = torch.linalg.norm(xy - center, dim=1) <= cfg.spawn_max_radius + 1e-5
+        active[:, j] = on_table
+        # Hidden slots sit in the off-world band, so only active ones are checked.
+        disc_gap = torch.linalg.norm(xy - disc_xy, dim=1)[on_table]
+        assert bool((disc_gap >= cfg.min_object_target_separation + radius - 1e-5).all())
+        obj_gap = torch.linalg.norm(xy - obj_xy, dim=1)[on_table]
+        floor = cfg.min_object_separation + radius + float(env._slot_bradius[0])
+        assert bool((obj_gap >= floor - 1e-5).all())
+    assert bool((active.sum(dim=1) == cfg.n_distractors).all())
+    # Selection is per world, not one shared subset broadcast to every world.
+    assert not bool((active == active[0]).all())
+
+
+def test_pnp_target_index_pin_rejects_distractor_slots():
+    """``target_index`` is validated against the carried pool, so the trailing
+    distractor slots stay unpinnable."""
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    env = WarpPickAndPlaceVectorEnv(
+        num_envs=2, config=PickAndPlaceConfig(n_distractors=2), device="cpu", seed=0
+    )
+    with pytest.raises(ValueError, match="target_index"):
+        env.reset(seed=0, options={"target_index": 1})
+
+
+def test_pnp_default_scene_compiles_no_distractor_slots():
+    """n_distractors=0 compiles the carried pool alone, so the default contact
+    budget is unchanged even when a distractors pool is configured."""
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    cfg = PickAndPlaceConfig()
+    env = WarpPickAndPlaceVectorEnv(num_envs=2, config=cfg, device="cpu", seed=0)
+    assert env._d_pool == 0
+    assert env._n_total_slots == len(cfg.object_pool())
+    assert env._n_total_slots == env._n_pool
+
+
+def test_pnp_min_object_separation_is_a_live_knob():
+    """An exaggerated ``min_object_separation`` widens the enforced spacing across
+    every active slot, carried object included."""
+    import torch
+
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    cfg = PickAndPlaceConfig(n_distractors=1, min_object_separation=0.15)
+    env = WarpPickAndPlaceVectorEnv(num_envs=8, config=cfg, device="cpu", seed=0)
+    env.reset(seed=0)
+
+    center = torch.tensor(cfg.spawn_center)
+    qa = int(env._slot_qadr[env._d_offset])
+    xy = env.qpos[:, qa : qa + 2]
+    radius = float(env._slot_bradius[env._d_offset])
+    on_table = torch.linalg.norm(xy - center, dim=1) <= cfg.spawn_max_radius + 1e-5
+    assert bool(on_table.any())
+
+    gap = torch.linalg.norm(xy - env._target_pos()[:, :2], dim=1)[on_table]
+    floor = cfg.min_object_separation + radius + float(env._slot_bradius[0])
+    assert bool((gap >= floor - 1e-5).all())
+
+
 def test_primitive_supports_central_end_effector_pose():
     import torch
 

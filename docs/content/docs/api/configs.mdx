@@ -377,6 +377,15 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `cube_half_size` | `float` | `0.0125` | Half-size of the default cube(s) (meters) |
 | `cube_mass` | `float` | `0.01` | Mass of the default cube(s) (kg) |
 | `min_cube_target_separation` | `float` | `0.0375` | Deprecated alias for `min_object_target_separation` |
+| `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
+| `n_distractors` | `int` | `0` | Number of distractor objects placed alongside the carried object each episode, sampled without replacement from `distractors` |
+| `min_object_separation` | `float` | `0.04` | Minimum spawn separation between the carried object and the distractors (meters), on top of their bounding radii |
+
+Distractor slots are only compiled when `n_distractors > 0`, so the default
+scene holds exactly one object. Distractors keep
+`min_object_target_separation` from the disc, so clutter never spawns on the
+goal. A distractor cube whose color is also a carried cube color warns,
+because the task description names the carried object by color alone.
 
 ### Default Observations
 

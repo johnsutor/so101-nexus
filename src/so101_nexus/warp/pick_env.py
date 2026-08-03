@@ -49,14 +49,15 @@ _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
 
 # Contact budget per world. The single-cube scene needs a generous floor for
-# active grasping; pools add resting contacts for hidden/distractor slots, so the
-# budget scales with the pool size. naconmax = nconmax * num_envs.
+# active grasping; every compiled slot (carried pool and distractor alike) adds
+# resting contacts, so the budget scales with the total slot count, not with the
+# carried pool. naconmax = nconmax * num_envs.
 _PICK_NCONMAX_BASE = 192
 _PICK_NCONMAX_PER_SLOT = 16
 
 
-def _contact_budget(n_pool: int) -> tuple[int, int]:
-    nconmax = _PICK_NCONMAX_BASE + _PICK_NCONMAX_PER_SLOT * n_pool
+def _contact_budget(n_slots: int) -> tuple[int, int]:
+    nconmax = _PICK_NCONMAX_BASE + _PICK_NCONMAX_PER_SLOT * n_slots
     return nconmax, nconmax * 2
 
 
@@ -116,18 +117,46 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         model_name: str,
         extra_bodies: str = "",
         render_mode: str | None = None,
+        n_target_pool: int | None = None,
+        slot_names: list[str] | None = None,
     ) -> None:
         """Compile the shared object-slot model and build per-slot tensors.
 
         Shared by the pick/touch and pick-and-place backends; the latter passes
-        ``extra_bodies`` for the mocap goal disc and ``n_active=1``.
+        ``extra_bodies`` for the mocap goal disc, ``n_active=1``, and a
+        ``n_target_pool`` that excludes its trailing distractor slots.
+
+        Parameters
+        ----------
+        n_target_pool : int, optional
+            Number of leading slots a target may be drawn from, which is also
+            what ``reset(options={"target_index": k})`` is validated against.
+            ``None`` (default) allows every compiled slot.
+        slot_names : list[str], optional
+            Body-name stems for the compiled slots. ``None`` (default) names
+            them ``pick_slot_{i}``.
         """
         for obj in scene_objects:
             if isinstance(obj, YCBObject):
                 ensure_ycb_assets(obj.model_id)
-        self._n_pool = len(scene_objects)
+        self._n_total_slots = len(scene_objects)
+        # ``_n_pool`` is the carried/distractor boundary: ``_select_active_slots``
+        # draws from ``[0, _n_pool)`` and ``_parse_target_index`` range-checks a
+        # pin against it, so a value past the compiled slots would make a
+        # distractor pinnable and index past the per-slot tensors.
+        if n_target_pool is not None and not 0 < n_target_pool <= self._n_total_slots:
+            raise ValueError(
+                f"n_target_pool must be in [1, {self._n_total_slots}], got {n_target_pool}"
+            )
+        self._n_pool = self._n_total_slots if n_target_pool is None else n_target_pool
         self._n_active = n_active
-        slot_names = [f"pick_slot_{i}" for i in range(self._n_pool)]
+        if slot_names is None:
+            slot_names = [f"pick_slot_{i}" for i in range(self._n_total_slots)]
+        elif len(slot_names) != self._n_total_slots:
+            raise ValueError(
+                f"slot_names must have one entry per compiled slot "
+                f"({self._n_total_slots}), got {len(slot_names)}"
+            )
 
         xml_string = build_object_scene_xml(
             scene_objects,
@@ -144,7 +173,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             f.flush()
             mjm = mujoco.MjModel.from_xml_path(f.name)
         slots = extract_object_slots(mjm, slot_names, scene_objects)
-        default_nconmax, default_njmax = _contact_budget(self._n_pool)
+        default_nconmax, default_njmax = _contact_budget(self._n_total_slots)
         super().__init__(
             num_envs=num_envs,
             config=config,
@@ -176,7 +205,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         )
         self._hide_xy = hidden_slot_band_xy(
             self.device,
-            self._n_pool,
+            self._n_total_slots,
             float(self._slot_bradius.max()),
             config.spawn_max_radius,
             config.spawn_center,
@@ -227,7 +256,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         return self._slot_bradius[self._target_slot]
 
     def _select_active_slots(self, idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return ``(n, n_active)`` distinct pool indices and the ``(n,)`` target.
+        """Return ``(n, n_active)`` distinct target-pool indices and the ``(n,)`` target.
 
         The active set is one seeded draw, unchanged by
         ``reset(options={"target_index": k})``. Worlds whose pin is already in
@@ -260,7 +289,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         Slot qpos columns are shared across worlds, so hiding uses fixed slices;
         active slots are overwritten afterward by ``_place_active_slots``.
         """
-        for j in range(self._n_pool):
+        for j in range(self._n_total_slots):
             qa = int(self._slot_qadr[j])
             self.qpos[idx, qa] = self._hide_xy[j, 0]
             self.qpos[idx, qa + 1] = self._hide_xy[j, 1]

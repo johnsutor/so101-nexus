@@ -29,7 +29,7 @@ from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_targ
 from so101_nexus.constants import COLOR_MAP, ColorName, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.mujoco.spawn_utils import (
-    hide_freejoint_slot,
+    activate_distractor_slots,
     place_freejoint_slot,
     sample_separated_positions,
 )
@@ -326,24 +326,6 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_reach_progress = place_reach_potential(tcp_to_obj_dist, is_stacked, scale=scale)
         self._prev_grasp_progress = place_grasp_potential(is_grasped, is_stacked)
 
-    def _sample_distractor_slots(self, rng: np.random.Generator) -> list[ObjectSlot]:
-        """Activate ``config.n_distractors`` pool slots and park the rest off-world."""
-        if not self._distractor_slots:
-            return []
-        for slot in self._distractor_slots:
-            self.model.geom_contype[slot.geom_id] = 1
-            self.model.geom_conaffinity[slot.geom_id] = 1
-        chosen = {
-            int(i)
-            for i in rng.choice(
-                len(self._distractor_slots), size=self._n_distractors, replace=False
-            )
-        }
-        for idx, slot in enumerate(self._distractor_slots):
-            if idx not in chosen:
-                hide_freejoint_slot(self.model, self.data, slot)
-        return [self._distractor_slots[idx] for idx in sorted(chosen)]
-
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
@@ -355,7 +337,10 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self.model.geom_rgba[self._slot_a.geom_id] = COLOR_MAP[self.cube_a_color_name]
         self.model.geom_rgba[self._slot_b.geom_id] = COLOR_MAP[self.cube_b_color_name]
 
-        active_slots = [self._slot_a, self._slot_b, *self._sample_distractor_slots(rng)]
+        distractors = activate_distractor_slots(
+            self.model, self.data, self._distractor_slots, self._n_distractors, rng
+        )
+        active_slots = [self._slot_a, self._slot_b, *distractors]
         positions = sample_separated_positions(
             rng,
             len(active_slots),

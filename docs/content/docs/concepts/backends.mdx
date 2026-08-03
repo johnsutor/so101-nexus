@@ -21,7 +21,7 @@ MuJoCo envs support Gymnasium `render_mode="human"` and `render_mode="rgb_array"
 
 ## Object Pools and the Batched Model
 
-`WarpPickLift` and `WarpTouch` accept the same heterogeneous object pools as MuJoCo (`CubeObject`, `YCBObject`, `MeshObject`, plus `n_distractors`), `WarpPickAndPlace` accepts a carried-object pool, and `WarpStackCube` compiles one cube slot per configured color in `cube_a_colors`/`cube_b_colors` plus one slot per `distractors` pool entry when `n_distractors > 0`. Each pool object is compiled as a freejoint slot, the per-world target (or, for stack-cube, one slot per role plus the sampled distractors) is selected at reset, and inactive slots are parked off-world.
+`WarpPickLift` and `WarpTouch` accept the same heterogeneous object pools as MuJoCo (`CubeObject`, `YCBObject`, `MeshObject`, plus `n_distractors`), `WarpPickAndPlace` accepts a carried-object pool plus one slot per `distractors` pool entry when `n_distractors > 0`, and `WarpStackCube` compiles one cube slot per configured color in `cube_a_colors`/`cube_b_colors` plus the same distractor slots. Each pool object is compiled as a freejoint slot, the per-world target (or, for pick-and-place and stack-cube, the role slots plus the sampled distractors) is selected at reset, and inactive slots are parked off-world. A pick-and-place target is only ever drawn from the carried pool, so `reset(options={"target_index": k})` indexes that pool alone.
 
 Because all worlds share one compiled model, per-episode `geom_rgba` color randomization of a single object is unsupported. Distinct colored cube slots still give per-world color variation through selection (this is how `WarpStackCube` matches the MuJoCo backend's per-episode resampling of both cube colors), and the `WarpPickAndPlace` goal disc color is fixed to the first configured color.
 
@@ -37,4 +37,4 @@ Install the backend with the `warp` extra, which needs an NVIDIA GPU and CUDA >=
 
 ## Objects
 
-Both backends support `CubeObject`, `YCBObject`, and `MeshObject`, configured through the same object-pool fields (`objects`, `n_distractors`). See [Customization](/docs/concepts/customization) for the recipes and [Objects](/docs/api/objects) for the constructor reference.
+Both backends support `CubeObject`, `YCBObject`, and `MeshObject`, configured through the same object-pool fields (`objects`, `n_distractors`, and `distractors` on the pick-and-place and stack-cube families). See [Customization](/docs/concepts/customization) for the recipes and [Objects](/docs/api/objects) for the constructor reference.
