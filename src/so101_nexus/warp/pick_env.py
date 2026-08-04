@@ -191,6 +191,14 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._slot_objs = scene_objects
         self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
         self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
+        # Host-side copies of the same addresses. ``_hide_all_slots`` indexes one
+        # slot at a time, and reading each address back off the device there is a
+        # synchronization per slot per autoreset, i.e. on most steps of a rollout.
+        self._slot_qadr_host = [s.qpos_addr for s in slots]
+        self._slot_dadr_host = [s.dof_addr for s in slots]
+        # Free-joint position offsets, reused by every slot write below so the
+        # reset path does not rebuild them per active slot.
+        self._qpos_offsets = torch.arange(7, device=self.device)
         self._slot_geom = torch.tensor(
             [s.geom_id for s in slots], dtype=torch.long, device=self.device
         )
@@ -289,13 +297,12 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         Slot qpos columns are shared across worlds, so hiding uses fixed slices;
         active slots are overwritten afterward by ``_place_active_slots``.
         """
-        for j in range(self._n_total_slots):
-            qa = int(self._slot_qadr[j])
+        for j, qa in enumerate(self._slot_qadr_host):
             self.qpos[idx, qa] = self._hide_xy[j, 0]
             self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
             self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
             self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
-            da = int(self._slot_dadr[j])
+            da = self._slot_dadr_host[j]
             self.qvel[idx, da : da + 6] = 0.0
 
     def _place_active_slots(
@@ -309,10 +316,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             base = self._slot_qadr[sel_k]
             yaw = random_yaw_quat_batch(self._generator, self.device, n)
             quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
-            self.qpos[rows, base[:, None] + torch.arange(3, device=self.device)] = torch.cat(
+            self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
                 [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
             )
-            self.qpos[rows, base[:, None] + 3 + torch.arange(4, device=self.device)] = quat
+            self.qpos[rows, base[:, None] + self._qpos_offsets[3:]] = quat
 
     def _set_target_tracking(self, idx: torch.Tensor, target: torch.Tensor) -> None:
         """Record the per-world target slot and refresh its task description."""
@@ -323,10 +330,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._target_qadr[idx] = self._slot_qadr[target]
         self._target_dadr[idx] = self._slot_dadr[target]
         self._initial_obj_z[idx] = self._slot_spawn_z[target]
-        for i in range(int(idx.numel())):
-            self.task_descriptions[int(idx[i])] = self._describe_target(
-                self._slot_objs[int(target[i])]
-            )
+        # One device read per tensor instead of one per world: indexing a CUDA
+        # tensor element by element synchronizes on every element.
+        for world, slot in zip(idx.tolist(), target.tolist(), strict=True):
+            self.task_descriptions[world] = self._describe_target(self._slot_objs[slot])
 
     def _task_reset(self, mask: torch.Tensor) -> None:
         idx = mask.nonzero(as_tuple=True)[0]

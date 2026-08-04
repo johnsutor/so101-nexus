@@ -175,6 +175,13 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         n_slots = len(slots)
         self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
         self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
+        # Host-side copies of the same addresses, so parking the slots at reset
+        # does not synchronize once per slot (see WarpPickLiftVectorEnv).
+        self._slot_qadr_host = [s.qpos_addr for s in slots]
+        self._slot_dadr_host = [s.dof_addr for s in slots]
+        # Free-joint component offsets, reused by every slot write at reset.
+        self._qpos_offsets = torch.arange(7, device=self.device)
+        self._dof_offsets = torch.arange(6, device=self.device)
         self._slot_geom = torch.tensor(
             [s.geom_id for s in slots], dtype=torch.long, device=self.device
         )
@@ -341,13 +348,12 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         # Park every slot off-world with zeroed velocity (Warp contact bits are
         # model-global, so inactive cubes cannot have collisions disabled);
         # the two selected slots per world are overwritten below.
-        for j in range(len(self._slot_qadr)):
-            qa = int(self._slot_qadr[j])
+        for j, qa in enumerate(self._slot_qadr_host):
             self.qpos[idx, qa] = self._hide_xy[j, 0]
             self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
             self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
             self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
-            da = int(self._slot_dadr[j])
+            da = self._slot_dadr_host[j]
             self.qvel[idx, da : da + 6] = 0.0
 
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
@@ -374,12 +380,12 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             base = self._slot_qadr[sel_k]  # (n,) qpos address per reset world
             yaw = random_yaw_quat_batch(gen, dev, n)
             quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
-            self.qpos[rows, base[:, None] + torch.arange(3, device=dev)] = torch.cat(
+            self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
                 [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
             )
-            self.qpos[rows, base[:, None] + 3 + torch.arange(4, device=dev)] = quat
+            self.qpos[rows, base[:, None] + self._qpos_offsets[3:]] = quat
             dadr = self._slot_dadr[sel_k]
-            self.qvel[rows, dadr[:, None] + torch.arange(6, device=dev)] = 0.0
+            self.qvel[rows, dadr[:, None] + self._dof_offsets] = 0.0
 
         self._a_qadr[idx] = self._slot_qadr[a_sel]
         self._a_dadr[idx] = self._slot_dadr[a_sel]
@@ -388,10 +394,11 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         obj_geom = self._obj_geom
         assert obj_geom is not None  # set to a tensor in __init__
         obj_geom[idx] = self._slot_geom[a_sel]
-        for i in range(n):
-            w = int(idx[i])
-            a_color = self._a_colors[int(a_sel[i])]
-            b_color = self._b_colors[int(b_sel_local[i])]
+        # One device read per tensor instead of three per world: indexing a CUDA
+        # tensor element by element synchronizes on every element.
+        for w, a_i, b_i in zip(idx.tolist(), a_sel.tolist(), b_sel_local.tolist(), strict=True):
+            a_color = self._a_colors[a_i]
+            b_color = self._b_colors[b_i]
             self.cube_a_color_names[w] = a_color
             self.cube_b_color_names[w] = b_color
             self.task_descriptions[w] = self._describe_pair(a_color, b_color)
