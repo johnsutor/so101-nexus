@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from enum import Enum
+from functools import cache, wraps
+from typing import TYPE_CHECKING, Any, Protocol
 
 import gymnasium
 import mujoco
@@ -49,6 +51,9 @@ from so101_nexus.observations import (
 )
 from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 logger = logging.getLogger(__name__)
 
 # Internal per-joint physical scale applied to a normalized delta action.
@@ -70,6 +75,66 @@ _DELTA_ACTION_SCALE = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.2], dtype=np.flo
 # set gives a maximum TCP reach of 0.5457 m, so 0.55 m spans the workspace
 # without admitting targets the solver could only clamp toward.
 _EE_WORKSPACE_RADIUS = 0.55
+
+
+class _Dispatch(Enum):
+    """The two observation branches that are not a base reader method.
+
+    ``TASK`` routes the component through ``_get_component_data``; ``SKIP``
+    marks a camera component, rendered in ``_get_obs`` rather than placed in
+    the flat state vector. An enum rather than string constants so a mis-typed
+    reader name can never be mistaken for a branch, which would silently
+    reshape the observation vector instead of raising.
+    """
+
+    TASK = "task"
+    SKIP = "camera"
+
+
+_CACHE_MISS = object()
+
+
+class _Reader[ReadT](Protocol):
+    """An unbound zero-argument physics reader, as ``_observation_scoped`` sees it.
+
+    Narrower than ``Callable`` because the decorator keys its memo on the
+    method's ``__name__``.
+    """
+
+    __name__: str
+
+    def __call__(self, env: Any, /) -> ReadT:
+        """Read the quantity off the environment's live MuJoCo state."""
+        ...
+
+
+def _observation_scoped[ReadT](method: _Reader[ReadT]) -> Callable[[Any], ReadT]:
+    """Memoize a zero-argument physics reader for the duration of one ``_observe``.
+
+    The decorated readers are pure functions of the current ``self.data``, and
+    ``_get_obs`` and ``_get_info`` each ask for several of the same ones while
+    describing a single physics state. Outside the ``_observe`` window
+    ``_read_cache`` is ``None`` and every call recomputes from live MuJoCo
+    state, so no caller can be handed a value belonging to an earlier state.
+    An instance attribute assigned over the reader (how the tests pin a grasp)
+    shadows this wrapper entirely and is never cached.
+
+    A memoized reader hands the same array to every caller inside the window,
+    so a decorated reader must not return anything a caller mutates in place.
+    """
+    key = method.__name__
+
+    @wraps(method)
+    def reader(self: Any) -> ReadT:
+        memo = self._read_cache
+        if memo is None:
+            return method(self)
+        value = memo.get(key, _CACHE_MISS)
+        if value is _CACHE_MISS:
+            value = memo[key] = method(self)
+        return value
+
+    return reader
 
 
 def _configure_free_camera(cam: mujoco.MjvCamera, params: dict[str, Any]) -> None:
@@ -110,6 +175,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     # Menagerie physics uses timestep=0.005; keep control_dt = timestep *
     # _N_SUBSTEPS = 0.02 s (unchanged from the old 0.002 * 10).
     _N_SUBSTEPS = 4
+    # Memo for the @_observation_scoped readers, non-None only inside _observe.
+    # A plain class-level None is safe here (unlike a mutable default): _observe
+    # rebinds it per instance for the window and clears it back to None.
+    _read_cache: dict[str, Any] | None = None
 
     def _init_common(
         self,
@@ -168,6 +237,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         # filter in _get_finger_geoms.
         self._gripper_geom_ids = self._get_finger_geoms(self._gripper_body_id)
         self._jaw_geom_ids = self._get_finger_geoms(self._jaw_body_id)
+        # Same two sets as a per-geom boolean lookup, so the contact scan can
+        # classify every contact with one fancy-index instead of a Python
+        # membership test per contact.
+        self._finger_geom_mask = np.zeros(self.model.ngeom, dtype=bool)
+        self._finger_geom_mask[list(self._gripper_geom_ids | self._jaw_geom_ids)] = True
 
         # Per-joint qpos/qvel addresses for the six controlled joints; the arm
         # slices (gripper excluded) back the static-robot check and IK.
@@ -436,6 +510,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         # Legacy default for pick envs that haven't migrated yet
         return 18
 
+    @_observation_scoped
     def _get_tcp_pose(self) -> np.ndarray:
         """Return the tool-centre-point pose as a 7-vector [x, y, z, qw, qx, qy, qz]."""
         pos = self.data.site_xpos[self._tcp_site_id].copy()
@@ -506,6 +581,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         gripper = np.clip(gripper_target, self._target_low[-1], self._target_high[-1])
         return np.concatenate([q, [gripper]])
 
+    @_observation_scoped
     def _is_grasping(self) -> float:
         """Return 1.0 when the two finger sets pinch the target object.
 
@@ -523,19 +599,28 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         float
             1.0 when a pinching two-sided grasp is detected, 0.0 otherwise.
         """
+        # Building a per-contact wrapper (data.contact[i]) costs more than the
+        # force solve itself, so the object's contacts are selected from the
+        # struct-of-arrays view first; ascending order matches the old scan, so
+        # the accumulation is unchanged. _obj_geom_id is read only once there is
+        # a contact to classify, matching the old scan for the primitive envs
+        # that never define it.
+        contacts = self.data.contact
+        geoms = contacts.geom[: self.data.ncon]
+        if geoms.shape[0] == 0:
+            return 0.0
+        obj_geom_id = self._obj_geom_id
+        rows = np.flatnonzero((geoms == obj_geom_id).any(axis=1))
+        if rows.size == 0:
+            return 0.0
+
         gripper_normal = np.zeros(3)
         jaw_normal = np.zeros(3)
-
+        frames = contacts.frame
         force_buf = np.zeros(6)
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            g1, g2 = contact.geom1, contact.geom2
-
-            obj_involved = self._obj_geom_id in (g1, g2)
-            if not obj_involved:
-                continue
-
-            other = g2 if g1 == self._obj_geom_id else g1
+        for i in rows:
+            g1, g2 = geoms[i]
+            other = int(g2 if g1 == obj_geom_id else g1)
             if other in self._gripper_geom_ids:
                 accum = gripper_normal
             elif other in self._jaw_geom_ids:
@@ -548,10 +633,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             if normal_force < self.config.robot.grasp_force_threshold:
                 continue
 
-            # contact.frame's first row is the normal pointing from geom1 to
+            # The contact frame's first row is the normal pointing from geom1 to
             # geom2; flip it when the object is geom1 so it points into the
             # object for both orderings.
-            normal = contact.frame[:3] if g2 == self._obj_geom_id else -contact.frame[:3]
+            normal = frames[i, :3] if g2 == obj_geom_id else -frames[i, :3]
             accum += normal_force * normal
 
         if not (gripper_normal.any() and jaw_normal.any()):
@@ -641,20 +726,24 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         ``_is_grasping`` this needs no target object, so primitive envs can use
         it too.
         """
+        # Same struct-of-arrays prefilter as _is_grasping: build the per-contact
+        # wrapper only for the contacts that turn out to involve a finger.
+        contacts = self.data.contact
+        geoms = contacts.geom[: self.data.ncon]
+        fingers = self._finger_geom_mask[geoms]
+        rows = np.flatnonzero(fingers[:, 0] != fingers[:, 1])
         total = np.zeros(3)
+        if rows.size == 0:
+            return total
+
+        frames = contacts.frame
         force_buf = np.zeros(6)
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            g1, g2 = contact.geom1, contact.geom2
-            g1_finger = g1 in self._gripper_geom_ids or g1 in self._jaw_geom_ids
-            g2_finger = g2 in self._gripper_geom_ids or g2 in self._jaw_geom_ids
-            if g1_finger == g2_finger:
-                continue  # neither side is a finger, or a finger touching itself
+        for i in rows:
             mujoco.mj_contactForce(self.model, self.data, i, force_buf)
             # mj_contactForce reports the force on geom2 in the contact frame,
             # whose rows are the normal and the two tangents.
-            world = contact.frame.reshape(3, 3).T @ force_buf[:3]
-            total += world if g2_finger else -world
+            world = frames[i].reshape(3, 3).T @ force_buf[:3]
+            total += world if fingers[i, 1] else -world
         return total
 
     #: Components the base reads directly, by reader method name. Resolved
@@ -673,35 +762,70 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         GazeDirection: "_gaze_direction",
     }
 
+    #: Task components routed to ``_get_component_data``; a component outside
+    #: both this tuple and ``_BASE_COMPONENT_READERS`` is rejected.
+    _TASK_COMPONENTS: tuple[type, ...] = (
+        TargetOffset,
+        ObjectPose,
+        ObjectVelocity,
+        ObjectOffset,
+        TargetPosition,
+    )
+
+    def _grasp_state_obs(self) -> np.ndarray:
+        """GraspState as a 1-vector."""
+        return np.array([self._is_grasping()])
+
+    def _gaze_state_obs(self) -> np.ndarray:
+        """GazeState as a 1-vector."""
+        return np.array([self._is_looking_at()])
+
     def _compute_obs_components(self) -> np.ndarray:
         """Build the flat state vector from the observation component list."""
         parts: list[np.ndarray] = []
         if self.config.observations is None:
             raise RuntimeError("config.observations must be set")
         for comp in self.config.observations:
-            reader = self._base_component_reader(type(comp))
-            if reader is not None:
-                parts.append(getattr(self, reader)())
-            elif isinstance(comp, GraspState):
-                parts.append(np.array([self._is_grasping()]))
-            elif isinstance(comp, GazeState):
-                parts.append(np.array([self._is_looking_at()]))
-            elif isinstance(
-                comp,
-                (TargetOffset, ObjectPose, ObjectVelocity, ObjectOffset, TargetPosition),
-            ):
-                parts.append(self._get_component_data(comp))
-            elif isinstance(comp, CameraObservation):
+            reader = self._component_reader(type(comp))
+            if reader is _Dispatch.SKIP:
                 continue  # camera images handled separately in _get_obs
-            else:
+            if reader is _Dispatch.TASK:
+                parts.append(self._get_component_data(comp))
+            elif reader is None:
                 raise ValueError(f"Unsupported observation component: {comp!r}")
+            else:
+                parts.append(getattr(self, reader)())
         return np.concatenate(parts).astype(np.float32, copy=False)
 
     @classmethod
-    def _base_component_reader(cls, component_type: type) -> str | None:
-        """Return the base reader method for a component type, or ``None``."""
+    @cache
+    def _component_reader(cls, component_type: type) -> str | _Dispatch | None:
+        """Resolve a component type to its dispatch branch, once per (class, type).
+
+        Returns a base reader method name, ``_Dispatch.TASK`` for components
+        ``_get_component_data`` owns, ``_Dispatch.SKIP`` for camera components,
+        or ``None`` when the component is unsupported. Resolution is MRO-based,
+        so a user subclass of a component dispatches like its base, matching the
+        ``isinstance`` chain this replaces. Caching it keeps the per-step
+        observation build off ``ABCMeta.__instancecheck__``, which dominated the
+        dispatch cost for a ten-component observation list. The cache is keyed on
+        the class, so a subclass may rebind ``_BASE_COMPONENT_READERS`` or
+        ``_TASK_COMPONENTS``, but must never mutate either in place: the first
+        lookup for a component type is the one that sticks.
+        """
         readers = cls._BASE_COMPONENT_READERS
-        return next((readers[k] for k in component_type.__mro__ if k in readers), None)
+        for klass in component_type.__mro__:
+            if klass in readers:
+                return readers[klass]
+        if issubclass(component_type, GraspState):
+            return "_grasp_state_obs"
+        if issubclass(component_type, GazeState):
+            return "_gaze_state_obs"
+        if issubclass(component_type, cls._TASK_COMPONENTS):
+            return _Dispatch.TASK
+        if issubclass(component_type, CameraObservation):
+            return _Dispatch.SKIP
+        return None
 
     def _resolve_target_index(self, n_pool: int) -> int | None:
         """Return this reset's ``options['target_index']`` override, or ``None``.
@@ -774,9 +898,23 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._settle_after_reset()
         self._refresh_reset_reference_state()
 
-        obs = self._get_obs()
-        info = self._get_info()
-        return obs, info
+        return self._observe()
+
+    def _observe(self) -> tuple[np.ndarray | dict[str, np.ndarray], dict]:
+        """Return ``(obs, info)`` describing the current physics state.
+
+        The two halves are separate methods but describe one state, and they
+        ask the ``@_observation_scoped`` readers for several of the same
+        quantities (a ten-component observation list plus a task info dict
+        reads the TCP pose three times and the grasp predicate twice). This
+        opens the memo window around both, and closes it on the way out so
+        every read taken outside ``reset``/``step`` still hits live MuJoCo.
+        """
+        self._read_cache = {}
+        try:
+            return self._get_obs(), self._get_info()
+        finally:
+            self._read_cache = None
 
     def _settle_after_reset(self) -> None:
         """Advance configured no-op frames after reset before returning observations."""
@@ -853,8 +991,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         for _ in range(self._N_SUBSTEPS):
             mujoco.mj_step(self.model, self.data)
 
-        obs = self._get_obs()
-        info = self._get_info()
+        obs, info = self._observe()
         info["energy_norm"] = float(np.linalg.norm(public_action))
         if self._prev_action is None:
             info["action_delta_norm"] = 0.0
