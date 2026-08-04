@@ -13,6 +13,27 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Performance only, no behavior change. Observations, rewards, info dicts and the RNG draw
+  sequence are bit-identical before and after on both backends.
+  - MuJoCo envs step 2 to 11 percent faster, most on the object-manipulation tasks that read
+    the most per step (`MuJoCoStackCube-v1` 126 to 112 us/step, `MuJoCoPickLift-v1` 92 to 86;
+    zero action, interleaved A/B, median of four rounds).
+    `reset` and `step` now build the observation and the info dict inside one window that
+    memoizes the TCP pose and the grasp predicate, instead of recomputing each two or three
+    times per step; the observation component list dispatches through a per-type cache rather
+    than an `isinstance` ladder over abstract base classes; and the grasp and gripper contact
+    force scans select the contacts they care about from MuJoCo's contact arrays instead of
+    building a wrapper object per contact.
+  - Warp `_task_reset` is 73 to 83 percent faster at 512 worlds (`WarpPickLift-v1` 11.9 to
+    2.1 ms, `WarpStackCube-v1` 25.7 to 6.8 ms, `WarpPickAndPlace-v1` 17.7 to 3.9 ms), which is
+    paid on every same-step autoreset during a rollout. Slot addresses and per-world target and
+    color indices are read from the device once per reset instead of once per slot and once per
+    world, removing two device synchronizations per slot plus two (pick-lift, pick-and-place)
+    or three (stack-cube) per resetting world.
+  - `import so101_nexus` no longer imports `importlib.metadata`, which pulled in the `email`,
+    `zipfile`, `csv`, `socket` and `tempfile` trees: 205 modules instead of 264.
+    `so101_nexus.__version__` now resolves on first access and is unchanged.
+
 ### Fixed
 
 ### Removed

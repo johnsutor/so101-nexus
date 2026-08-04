@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _package_version
 from pathlib import Path
-
-try:
-    __version__ = _package_version("so101-nexus")
-except PackageNotFoundError:  # pragma: no cover - running from a source tree
-    __version__ = "0.0.0+unknown"
+from typing import TYPE_CHECKING
 
 from so101_nexus.config import (
     ABSOLUTE_CONTROL_MODES,
@@ -112,6 +106,39 @@ from so101_nexus.ycb_geometry import get_mujoco_ycb_rest_pose
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 SO101_DIR = ASSETS_DIR / "SO101"
+
+
+if TYPE_CHECKING:
+    # Declared for type checkers so ``so101_nexus.__version__`` keeps its type
+    # and, more importantly, so the runtime ``__getattr__`` below does not make
+    # every misspelled ``so101_nexus.X`` resolve instead of erroring.
+    __version__: str
+else:
+
+    def __getattr__(name: str) -> str:
+        """Resolve ``__version__`` on first access.
+
+        Reading installed distribution metadata pulls in 59 modules (the
+        ``email``, ``zipfile``, ``csv``, ``socket`` and ``tempfile`` trees)
+        that nothing else in the eager import needs, and every backend, CLI
+        and test import pays for them. Resolving it here keeps the eager
+        import light while ``so101_nexus.__version__`` stays a plain module
+        attribute afterwards.
+        """
+        if name != "__version__":
+            raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            resolved = version("so101-nexus")
+        except PackageNotFoundError:  # pragma: no cover - running from a source tree
+            resolved = "0.0.0+unknown"
+        globals()["__version__"] = resolved
+        return resolved
+
+    def __dir__() -> list[str]:
+        """Include the lazily resolved ``__version__`` before it is first read."""
+        return sorted({*globals(), *__all__})
 
 
 def get_so101_simulation_dir() -> Path:
