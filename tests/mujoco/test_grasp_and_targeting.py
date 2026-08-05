@@ -30,6 +30,8 @@ from so101_nexus.testing import component_slice
 _OPEN = np.array([0, 0, 0, 0, 0, 0, 1], dtype=np.float32)
 _CLOSE = np.array([0, 0, 0, 0, 0, 0, -1], dtype=np.float32)
 _LIFT = np.array([0, 0, 0.4, 0, 0, 0, -1], dtype=np.float32)
+#: 90 degree yaw, exactly normalized (MuJoCo renormalizes, but the test should not rely on it).
+_YAW_90 = np.array([1.0, 0.0, 0.0, 1.0]) / np.sqrt(2.0)
 
 
 def _pick_env(*, half_size=0.012, robot=None, objects=None, observations=None, n_distractors=0):
@@ -50,8 +52,8 @@ def _fingertip_geoms(env):
     ]
 
 
-def _pinch_the_target(env, steps=60):
-    """Close the jaws on the target held between the fingertips."""
+def _pinch_the_target(env, steps=60, quat=(1.0, 0.0, 0.0, 0.0)):
+    """Close the jaws on the target held between the fingertips at ``quat``."""
     for _ in range(60):
         env.step(_OPEN)
     tips = _fingertip_geoms(env)
@@ -59,7 +61,7 @@ def _pinch_the_target(env, steps=60):
     for _ in range(steps):
         mid = env.data.geom_xpos[tips].mean(0)
         env.data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = mid
-        env.data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = [1, 0, 0, 0]
+        env.data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = quat
         env.data.qvel[slot.dof_addr : slot.dof_addr + 6] = 0.0
         env.step(_CLOSE)
 
@@ -91,16 +93,18 @@ def _straddle_the_target(env, penetration=0.04):
     mujoco.mj_forward(env.model, env.data)
 
 
-def _loaded_finger_sides(env):
-    """Return which finger sets currently bear force against the target geom."""
+def _loaded_contacts(env):
+    """Return the finger sets bearing force on the target and the geoms they load."""
     sides = set()
+    loaded_geoms = set()
     force = np.zeros(6)
+    target_geoms = set(env._obj_geom_ids.tolist())
     for i in range(env.data.ncon):
         contact = env.data.contact[i]
         pair = (contact.geom1, contact.geom2)
-        if env._obj_geom_id not in pair:
+        if not target_geoms & set(pair):
             continue
-        other = pair[1] if pair[0] == env._obj_geom_id else pair[0]
+        target, other = (pair[0], pair[1]) if pair[0] in target_geoms else (pair[1], pair[0])
         mujoco.mj_contactForce(env.model, env.data, i, force)
         if abs(force[0]) < env.config.robot.grasp_force_threshold:
             continue
@@ -108,7 +112,15 @@ def _loaded_finger_sides(env):
             sides.add("gripper")
         elif other in env._jaw_geom_ids:
             sides.add("jaw")
-    return sides
+        else:
+            continue
+        loaded_geoms.add(int(target))
+    return sides, loaded_geoms
+
+
+def _loaded_finger_sides(env):
+    """Return which finger sets currently bear force against the target object."""
+    return _loaded_contacts(env)[0]
 
 
 def test_straddling_an_over_wide_object_is_not_a_grasp():
@@ -155,6 +167,35 @@ def test_a_real_pinch_still_grasps_and_carries_the_object():
             env.step(_LIFT)
         assert env._is_grasping() == 1.0
         assert float(env._get_target_pose()[2]) - z0 > env.config.lift_threshold
+    finally:
+        env.close()
+
+
+@pytest.mark.slow
+def test_pinching_a_decomposed_ycb_object_grasps_across_its_parts():
+    """Grasp detection is per object, not per convex part.
+
+    A YCB collision hull is a multi-part decomposition, so the two finger sets
+    load different parts of the same body. Aggregating contact normals per geom
+    instead of per slot scores that as one-sided and returns 0.0.
+    """
+    pytest.importorskip("coacd", reason="multi-hull collision needs the decomp extra")
+    from so101_nexus.objects import YCBObject
+
+    env = _pick_env(objects=[YCBObject(model_id="043_phillips_screwdriver")])
+    try:
+        env.reset(seed=0)
+        slot = env._slots[0]
+        assert len(slot.geom_ids) > 1, "screwdriver should decompose into multiple hulls"
+        # Stand the handle upright between the fingertips so the jaws close across
+        # its shaft rather than along it.
+        _pinch_the_target(env, quat=_YAW_90)
+        sides, loaded_geoms = _loaded_contacts(env)
+        assert sides == {"gripper", "jaw"}
+        # The point of the test: without contacts on more than one part it would
+        # pass under per-geom aggregation too, and guard nothing.
+        assert len(loaded_geoms) > 1, f"fingers loaded a single part: {loaded_geoms}"
+        assert env._is_grasping() == 1.0
     finally:
         env.close()
 
@@ -225,7 +266,7 @@ def test_target_index_option_selects_the_target():
             _, info = env.reset(seed=11, options={"target_index": k})
             assert info["target_index"] == k
             assert info["target_object"] == repr(_POOL[k])
-            assert env._obj_geom_id == env._slots[k].geom_id
+            assert tuple(env._obj_geom_ids) == env._slots[k].geom_ids
     finally:
         env.close()
 

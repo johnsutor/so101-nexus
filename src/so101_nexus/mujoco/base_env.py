@@ -52,9 +52,12 @@ from so101_nexus.observations import (
 from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 logger = logging.getLogger(__name__)
+
+_NO_TARGET_GEOMS = np.zeros(0, dtype=bool)
+"""Empty grasp-target mask shared by envs that have not selected a target yet."""
 
 # Internal per-joint physical scale applied to a normalized delta action.
 # The public delta action space is normalized to [-1, 1] (the cross-backend
@@ -151,7 +154,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     Notes
     -----
-    ``_is_grasping()`` requires ``_obj_geom_id`` to be set by the subclass.
+    ``_is_grasping()`` requires ``_obj_geom_ids`` to be set by the subclass.
     Primitive envs without a graspable object (``LookAtEnv``, ``MoveEnv``)
     must **never** call ``_is_grasping()``.
     """
@@ -160,7 +163,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     model: mujoco.MjModel
     data: mujoco.MjData
     config: EnvironmentConfig
-    _obj_geom_id: int
+    _obj_geom_ids: np.ndarray
+    _obj_geom_mask: np.ndarray
     # Options dict of the current episode's reset(), for _task_reset to read.
     # Declared, never assigned at class level: a mutable class default would be
     # shared by every instance the moment someone mutates it in place.
@@ -197,6 +201,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self.render_mode = render_mode
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self._privileged_state: np.ndarray | None = None
+        # Grasp-detection target, sized to the model by _set_target_geoms. Left
+        # empty for primitive envs, which must never call _is_grasping(); it
+        # raises IndexError there rather than reporting a grasp of geom 0.
+        self._obj_geom_mask: np.ndarray = _NO_TARGET_GEOMS
         self._init_qpos_clamp_warned = False
 
     def _finish_model_setup(self) -> None:
@@ -581,6 +589,21 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         gripper = np.clip(gripper_target, self._target_low[-1], self._target_high[-1])
         return np.concatenate([q, [gripper]])
 
+    def _set_target_geoms(self, geom_ids: Sequence[int]) -> None:
+        """Point grasp detection at one object slot's collision geoms.
+
+        Keeps ``_obj_geom_ids`` and the per-geom boolean lookup the contact scan
+        indexes in step, so the two can never disagree. The mask is what makes
+        the scan cost independent of the part count of a decomposed mesh.
+        """
+        self._obj_geom_ids = np.asarray(geom_ids, dtype=np.int32)
+        mask = self._obj_geom_mask
+        if mask.size != self.model.ngeom:  # first target of this model
+            mask = self._obj_geom_mask = np.zeros(self.model.ngeom, dtype=bool)
+        else:
+            mask[:] = False
+        mask[self._obj_geom_ids] = True
+
     @_observation_scoped
     def _is_grasping(self) -> float:
         """Return 1.0 when the two finger sets pinch the target object.
@@ -594,6 +617,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         touched by both finger sets from the same side while it rests on the
         table, which satisfies bilateral contact but bears no load.
 
+        Contacts are aggregated over every collision geom of the target
+        (``_obj_geom_mask``, set by ``_set_target_geoms``), so a decomposed mesh
+        whose fingers land on different convex parts still yields one normal per
+        finger set.
+
         Returns
         -------
         float
@@ -602,15 +630,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         # Building a per-contact wrapper (data.contact[i]) costs more than the
         # force solve itself, so the object's contacts are selected from the
         # struct-of-arrays view first; ascending order matches the old scan, so
-        # the accumulation is unchanged. _obj_geom_id is read only once there is
-        # a contact to classify, matching the old scan for the primitive envs
-        # that never define it.
+        # the accumulation is unchanged. The target mask is read only once there
+        # is a contact to classify, matching the old scan for the primitive
+        # envs that never define one.
         contacts = self.data.contact
         geoms = contacts.geom[: self.data.ncon]
         if geoms.shape[0] == 0:
             return 0.0
-        obj_geom_id = self._obj_geom_id
-        rows = np.flatnonzero((geoms == obj_geom_id).any(axis=1))
+        is_obj = self._obj_geom_mask[geoms]
+        rows = np.flatnonzero(is_obj.any(axis=1))
         if rows.size == 0:
             return 0.0
 
@@ -620,7 +648,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         force_buf = np.zeros(6)
         for i in rows:
             g1, g2 = geoms[i]
-            other = int(g2 if g1 == obj_geom_id else g1)
+            obj_is_first = bool(is_obj[i, 0])
+            other = int(g2 if obj_is_first else g1)
             if other in self._gripper_geom_ids:
                 accum = gripper_normal
             elif other in self._jaw_geom_ids:
@@ -636,7 +665,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             # The contact frame's first row is the normal pointing from geom1 to
             # geom2; flip it when the object is geom1 so it points into the
             # object for both orderings.
-            normal = frames[i, :3] if g2 == obj_geom_id else -frames[i, :3]
+            normal = -frames[i, :3] if obj_is_first else frames[i, :3]
             accum += normal_force * normal
 
         if not (gripper_normal.any() and jaw_normal.any()):

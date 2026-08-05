@@ -38,6 +38,7 @@ from so101_nexus.mujoco.spawn_utils import (
     activate_distractor_slots,
     hide_freejoint_slot,
     place_freejoint_slot,
+    set_slot_contacts,
 )
 from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
 from so101_nexus.objects import CubeObject, SceneObject, YCBObject
@@ -153,7 +154,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_task_potential: float = 0.0
         self._prev_reach_progress: float = 0.0
         self._prev_grasp_progress: float = 0.0
-        self._obj_geom_id: int = self._slots[0].geom_id
+        self._set_target_geoms(self._slots[0].geom_ids)
         self.task_description = config.task_description
 
         self._finish_model_setup()
@@ -361,14 +362,13 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # Restore collisions on every slot; the chosen target collides, the rest
         # are hidden below the floor with their contact bits zeroed.
         for slot in self._slots:
-            self.model.geom_contype[slot.geom_id] = 1
-            self.model.geom_conaffinity[slot.geom_id] = 1
+            set_slot_contacts(self.model, slot, True)
 
         target_idx = self._choose_target_index(rng, n_pool)
         target_slot = self._slots[target_idx]
         target_obj = target_slot.obj
         self._target_slot_idx = target_idx
-        self._obj_geom_id = target_slot.geom_id
+        self._set_target_geoms(target_slot.geom_ids)
         self.cube_color_name = target_obj.color if isinstance(target_obj, CubeObject) else ""
 
         # The disc colour is sampled per episode (reproducible under reset(seed=...)).

@@ -190,6 +190,49 @@ def test_mesh_geom_world_min_z_rejects_non_mesh_geom():
         spawn_utils.mesh_geom_world_min_z(model, data, 0)
 
 
+class _FakeTwoPartModel:
+    """Two mesh geoms sharing one body, as a decomposed collision hull compiles to."""
+
+    def __init__(self, geom_types: tuple[int, int]):
+        self.geom_type = np.array(geom_types, dtype=np.int32)
+        self.geom_dataid = np.array([0, 1], dtype=np.int32)
+        self.mesh_vertadr = np.array([0, 2], dtype=np.int32)
+        self.mesh_vertnum = np.array([2, 2], dtype=np.int32)
+        self.mesh_vert = np.array(
+            [[0.0, 0.0, 0.05], [0.0, 0.0, 0.06], [0.0, 0.0, -0.01], [0.0, 0.0, 0.02]],
+            dtype=np.float64,
+        )
+
+
+class _FakeTwoPartData:
+    def __init__(self):
+        self.qpos = np.zeros(7, dtype=np.float64)
+        self.geom_xpos = np.array([[0.0, 0.0, 0.5], [0.0, 0.0, 0.5]], dtype=np.float64)
+        self.geom_xmat = np.tile(np.eye(3, dtype=np.float64).reshape(1, 9), (2, 1))
+
+
+def test_slot_world_min_z_takes_the_lowest_part():
+    """A slot clears the floor only when its lowest convex part does."""
+    import mujoco
+
+    mesh = mujoco.mjtGeom.mjGEOM_MESH
+    model = _FakeTwoPartModel((mesh, mesh))
+    data = _FakeTwoPartData()
+
+    assert spawn_utils.slot_world_min_z(model, data, (0, 1)) == pytest.approx(0.49)
+    assert spawn_utils.slot_world_min_z(model, data, (0,)) == pytest.approx(0.55)
+
+
+def test_slot_world_min_z_rejects_a_non_mesh_part():
+    import mujoco
+
+    model = _FakeTwoPartModel((mujoco.mjtGeom.mjGEOM_MESH, mujoco.mjtGeom.mjGEOM_BOX))
+    data = _FakeTwoPartData()
+
+    with pytest.raises(ValueError, match="mesh geom"):
+        spawn_utils.slot_world_min_z(model, data, (0, 1))
+
+
 def test_align_freejoint_geom_to_floor_sets_spawn_height(monkeypatch):
     import mujoco
 
@@ -205,7 +248,7 @@ def test_align_freejoint_geom_to_floor_sets_spawn_height(monkeypatch):
         model,
         data,
         qpos_addr=0,
-        geom_id=0,
+        geom_ids=(0,),
         xy=(0.2, -0.1),
         quat=np.array([1.0, 0.0, 0.0, 0.0]),
         margin=0.005,

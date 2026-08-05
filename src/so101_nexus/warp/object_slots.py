@@ -8,10 +8,31 @@ helpers operate on zero-copy ``qpos`` tensor views.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import torch
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from so101_nexus.object_slots import ObjectSlot
 
 HIDE_CLEARANCE = 0.1
 """Clearance (m) between the off-world parking band and the reachable spawn annulus."""
+
+
+def slot_geom_masks(slots: Sequence[ObjectSlot], ngeom: int, device: torch.device) -> torch.Tensor:
+    """Return an ``(n_slots, ngeom)`` boolean lookup of each slot's collision geoms.
+
+    A per-geom mask rather than a padded id matrix: the batched grasp reduction
+    then costs two contact-sized gathers instead of a comparison against every
+    convex part, so its cost does not grow with the decomposition. Mirrors the
+    MuJoCo base env's ``_obj_geom_mask``.
+    """
+    masks = torch.zeros((len(slots), ngeom), dtype=torch.bool, device=device)
+    for row, slot in enumerate(slots):
+        masks[row, list(slot.geom_ids)] = True
+    return masks
 
 
 def hidden_slot_band_xy(

@@ -96,8 +96,11 @@ from so101_nexus.rewards import (
     simple_reward,
 )
 from so101_nexus.ycb_assets import (
+    YCBCollisionPart,
     ensure_ycb_assets,
     get_ycb_collision_mesh,
+    get_ycb_collision_meshes,
+    get_ycb_collision_parts,
     get_ycb_mesh_dir,
     get_ycb_texture_file,
     get_ycb_visual_mesh,
@@ -231,6 +234,7 @@ __all__ = [
     "TargetPosition",
     "TouchConfig",
     "WristCamera",
+    "YCBCollisionPart",
     "YCBObject",
     "YcbModelId",
     "__version__",
@@ -247,6 +251,8 @@ __all__ = [
     "get_so101_simulation_dir",
     "get_so101_urdf_path",
     "get_ycb_collision_mesh",
+    "get_ycb_collision_meshes",
+    "get_ycb_collision_parts",
     "get_ycb_mesh_dir",
     "get_ycb_texture_file",
     "get_ycb_visual_mesh",

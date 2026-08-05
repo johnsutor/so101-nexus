@@ -15,15 +15,16 @@ import mujoco
 from so101_nexus import get_so101_mujoco_model_path
 from so101_nexus.object_slots import (
     build_object_scene_xml,
+    collision_geom_name,
     cube_bounding_radius,
     cube_xml_body,
     extract_object_slots,
     mesh_xml_body,
     object_bounding_radius,
-    primary_geom_name,
 )
 from so101_nexus.objects import CubeObject, MeshObject, YCBObject
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
+from so101_nexus.ycb_assets import YCBCollisionPart
 
 _ROBOT_XML = str(get_so101_mujoco_model_path())
 
@@ -52,16 +53,28 @@ class TestXmlBuilders:
 
     def test_mesh_xml_body_groups(self):
         xml = mesh_xml_body("pick_slot_0", 0, 0.01)
-        assert 'name="pick_slot_0_collision"' in xml
-        assert 'mesh="pick_coll_0"' in xml
+        assert 'name="pick_slot_0_collision_0"' in xml
+        assert 'mesh="pick_coll_0_0"' in xml
         assert 'group="3"' in xml
         assert 'name="pick_slot_0_visual"' in xml
         assert 'mesh="pick_vis_0"' in xml
         assert 'group="2"' in xml
 
-    def test_primary_geom_name(self):
-        assert primary_geom_name("pick_slot_0", CubeObject()) == "pick_slot_0_geom"
-        assert primary_geom_name("pick_slot_1", YCBObject("011_banana")) == "pick_slot_1_collision"
+    def test_mesh_xml_body_splits_mass_across_parts(self):
+        xml = mesh_xml_body("pick_slot_0", 1, 0.02, mass_fractions=(0.25, 0.75))
+        assert 'name="pick_slot_0_collision_0"' in xml
+        assert 'name="pick_slot_0_collision_1"' in xml
+        assert 'mesh="pick_coll_1_0"' in xml
+        assert 'mesh="pick_coll_1_1"' in xml
+        assert 'mass="0.005"' in xml
+        assert 'mass="0.015"' in xml
+        assert xml.count('type="mesh"') == 3  # two collision parts plus the visual
+
+    def test_collision_geom_name(self):
+        assert collision_geom_name("pick_slot_0", CubeObject()) == "pick_slot_0_geom"
+        banana = YCBObject("011_banana")
+        assert collision_geom_name("pick_slot_1", banana) == "pick_slot_1_collision_0"
+        assert collision_geom_name("pick_slot_1", banana, part=2) == "pick_slot_1_collision_2"
 
     def test_cube_bounding_radius(self):
         assert cube_bounding_radius(CubeObject(half_size=0.0125)) == pytest.approx(
@@ -103,7 +116,11 @@ class TestXmlBuilders:
         visual_path = tmp_path / "visual.obj"
         texture_path = tmp_path / "texture.png"
         texture_path.write_text("texture", encoding="utf-8")
-        monkeypatch.setattr(object_slots, "get_ycb_collision_mesh", lambda _m: collision_path)
+        monkeypatch.setattr(
+            object_slots,
+            "get_ycb_collision_parts",
+            lambda _m: [YCBCollisionPart(collision_path, 1.0)],
+        )
         monkeypatch.setattr(object_slots, "get_ycb_visual_mesh", lambda _m: visual_path)
         monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: texture_path)
 
@@ -138,7 +155,11 @@ class TestXmlBuilders:
         collision_path = _FakePath("C:/cache/ycb/collision.obj", r"C:\cache\ycb\collision.obj")
         visual_path = _FakePath("C:/cache/ycb/visual.obj", r"C:\cache\ycb\visual.obj")
         texture_path = _FakePath("C:/cache/ycb/texture.png", r"C:\cache\ycb\texture.png")
-        monkeypatch.setattr(object_slots, "get_ycb_collision_mesh", lambda _m: collision_path)
+        monkeypatch.setattr(
+            object_slots,
+            "get_ycb_collision_parts",
+            lambda _m: [YCBCollisionPart(collision_path, 1.0)],
+        )
         monkeypatch.setattr(object_slots, "get_ycb_visual_mesh", lambda _m: visual_path)
         monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: texture_path)
 
@@ -223,3 +244,115 @@ class TestSlotExtraction:
         naive_radius = float(np.linalg.norm([2 * hx, 2 * hy]) / 2)
         assert slot.bounding_radius == pytest.approx(rotated_radius, abs=1e-6)
         assert slot.bounding_radius != pytest.approx(naive_radius, abs=1e-6)
+
+
+def _write_box_obj(path, lo, hi):
+    """Write an axis-aligned box OBJ spanning ``lo`` to ``hi``."""
+    corners = [(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+    faces = [
+        (1, 2, 4),
+        (1, 4, 3),
+        (5, 6, 8),
+        (5, 8, 7),
+        (1, 2, 6),
+        (1, 6, 5),
+        (3, 4, 8),
+        (3, 8, 7),
+        (1, 3, 7),
+        (1, 7, 5),
+        (2, 4, 8),
+        (2, 8, 6),
+    ]
+    lines = [f"v {x} {y} {z}" for x, y, z in corners]
+    lines += [f"f {a} {b} {c}" for a, b, c in faces]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+class TestMultiPartCollision:
+    """A decomposed YCB collision hull must behave as one object, not N objects.
+
+    The fixture is a thin slab offset from the body origin and split across its
+    thin axis, so reading one part (or reading raw compiled vertices instead of
+    body-frame ones) gives a measurably different rest pose.
+    """
+
+    X0, X1 = 0.10, 0.11  # thin axis, offset from the body origin
+    XSPLIT = 0.1025
+    HY, HZ = 0.03, 0.02
+    MARGIN = 0.002
+    MASS = 0.05
+
+    def _compile(self, monkeypatch, tmp_path, parts):
+        from so101_nexus import object_slots
+
+        visual = _write_box_obj(
+            tmp_path / "visual.obj",
+            (self.X0, -self.HY, -self.HZ),
+            (self.X1, self.HY, self.HZ),
+        )
+        monkeypatch.setattr(object_slots, "get_ycb_collision_parts", lambda _m: parts)
+        monkeypatch.setattr(object_slots, "get_ycb_visual_mesh", lambda _m: visual)
+        monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: tmp_path / "none.png")
+
+        obj = YCBObject(model_id="011_banana", mass_override=self.MASS)
+        xml, slot_names = _cube_scene([obj])
+        so_dir = get_so101_mujoco_model_path().parent
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", dir=so_dir, delete=True) as f:
+            f.write(xml)
+            f.flush()
+            mjm = mujoco.MjModel.from_xml_path(f.name)
+        return mjm, extract_object_slots(mjm, slot_names, [obj])[0]
+
+    def _single_hull(self, tmp_path):
+        path = _write_box_obj(
+            tmp_path / "whole.obj",
+            (self.X0, -self.HY, -self.HZ),
+            (self.X1, self.HY, self.HZ),
+        )
+        return [YCBCollisionPart(path, 1.0)]
+
+    def _two_slabs(self, tmp_path):
+        """Split across the thin axis, unequally, so part 0 alone is measurably shorter."""
+        near = _write_box_obj(
+            tmp_path / "near.obj",
+            (self.X0, -self.HY, -self.HZ),
+            (self.XSPLIT, self.HY, self.HZ),
+        )
+        far = _write_box_obj(
+            tmp_path / "far.obj",
+            (self.XSPLIT, -self.HY, -self.HZ),
+            (self.X1, self.HY, self.HZ),
+        )
+        return [YCBCollisionPart(near, 0.25), YCBCollisionPart(far, 0.75)]
+
+    def test_every_part_becomes_a_collision_geom(self, monkeypatch, tmp_path):
+        _, slot = self._compile(monkeypatch, tmp_path, self._two_slabs(tmp_path))
+        assert len(slot.geom_ids) == 2
+        assert slot.geom_id == slot.geom_ids[0]
+        assert slot.geom_ids[1] == slot.geom_ids[0] + 1
+
+    def test_body_mass_is_independent_of_part_count(self, monkeypatch, tmp_path):
+        single_mjm, single_slot = self._compile(monkeypatch, tmp_path, self._single_hull(tmp_path))
+        multi_mjm, multi_slot = self._compile(monkeypatch, tmp_path, self._two_slabs(tmp_path))
+        single_body = int(single_mjm.geom_bodyid[single_slot.geom_id])
+        multi_body = int(multi_mjm.geom_bodyid[multi_slot.geom_id])
+        assert float(multi_mjm.body_mass[multi_body]) == pytest.approx(
+            float(single_mjm.body_mass[single_body]), rel=1e-9
+        )
+        assert float(multi_mjm.body_mass[multi_body]) == pytest.approx(self.MASS, rel=1e-9)
+
+    def test_rest_pose_uses_the_union_of_the_parts(self, monkeypatch, tmp_path):
+        _, single = self._compile(monkeypatch, tmp_path, self._single_hull(tmp_path))
+        _, multi = self._compile(monkeypatch, tmp_path, self._two_slabs(tmp_path))
+        # The slab rests on its thin axis, so the body origin must clear the far
+        # face: reading only part 0 would spawn it 7.5 mm into the floor.
+        expected_z = self.X1 + self.MARGIN
+        part0_z = self.XSPLIT + self.MARGIN
+        assert multi.spawn_z == pytest.approx(expected_z, abs=1e-5)
+        assert multi.spawn_z == pytest.approx(single.spawn_z, abs=1e-5)
+        assert multi.spawn_z != pytest.approx(part0_z, abs=1e-5)
+        # Footprint after the rest rotation is the Y and Z extents of the union.
+        expected_radius = float(np.linalg.norm([2 * self.HY, 2 * self.HZ]) / 2)
+        assert multi.bounding_radius == pytest.approx(expected_radius, abs=1e-5)
+        np.testing.assert_allclose(multi.rest_quat, single.rest_quat)

@@ -61,7 +61,7 @@ def test_autoreset_preserves_per_world_target_metadata():
     assert not truncated[2:].any()
     # Non-reset worlds keep their target; reset worlds keep a valid geom mapping.
     assert torch.equal(env._target_slot[2:], slot_before[2:])
-    assert torch.equal(env._obj_geom, env._slot_geom[env._target_slot])
+    assert torch.equal(env._obj_geom_mask, env._slot_geom_masks[env._target_slot])
 
 
 def test_per_world_task_descriptions_and_reducer():

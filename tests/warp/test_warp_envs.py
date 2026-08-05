@@ -311,13 +311,19 @@ def test_pick_object_pose_obs_tracks_cube():
     assert torch.allclose(obs[:, :3], env._target_pos(), atol=1e-5)
 
 
-def test_pick_contact_budget_headroom_and_grasp_range():
+@pytest.mark.parametrize("objects", [None, "033_spatula"])
+def test_pick_contact_budget_headroom_and_grasp_range(objects):
+    """The default budget must cover a decomposed pool, not just a single cube."""
     import torch
 
     from so101_nexus.config import PickConfig
+    from so101_nexus.objects import YCBObject
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
-    env = WarpPickLiftVectorEnv(num_envs=6, config=PickConfig(), device="cpu", seed=0)
+    if objects is not None:
+        pytest.importorskip("coacd", reason="multi-hull collision needs the decomp extra")
+    config = PickConfig() if objects is None else PickConfig(objects=YCBObject(objects))
+    env = WarpPickLiftVectorEnv(num_envs=6, config=config, device="cpu", seed=0)
     env.reset(seed=0)
     max_nacon = 0
     info = {}
@@ -349,15 +355,15 @@ def test_pick_supports_heterogeneous_pool():
     assert torch.isfinite(obs).all()
     assert torch.isfinite(reward).all()
 
-    # Mixed pool with distractors: per-world target geoms are valid pool geoms.
-    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("058_golf_ball")]
+    # Mixed pool with a decomposed model: every world's target mask is exactly
+    # the compiled mask of its selected slot, parts included.
+    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("011_banana")]
     env2 = WarpPickLiftVectorEnv(
         num_envs=8, config=PickConfig(objects=pool, n_distractors=1), device="cpu", seed=1
     )
     obs2, _ = env2.reset(seed=1)
     assert torch.isfinite(obs2).all()
-    valid_geoms = set(env2._slot_geom.tolist())
-    assert all(int(g) in valid_geoms for g in env2._obj_geom.tolist())
+    assert torch.equal(env2._obj_geom_mask, env2._slot_geom_masks[env2._target_slot])
     # Target selection differs across worlds for a multi-object pool.
     assert env2._target_slot.unique().numel() > 1
 

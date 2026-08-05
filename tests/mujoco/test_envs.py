@@ -398,7 +398,8 @@ def test_pick_mixed_pool_with_distractors():
 
 @pytest.mark.parametrize("model_id", ["011_banana", "030_fork", "031_spoon", "032_knife"])
 def test_pick_ycb_collision_geom_starts_above_floor(model_id):
-    from so101_nexus.mujoco.spawn_utils import mesh_geom_world_min_z
+    pytest.importorskip("coacd", reason="multi-hull collision needs the decomp extra")
+    from so101_nexus.mujoco.spawn_utils import slot_world_min_z
 
     config = PickConfig(objects=[YCBObject(model_id=model_id)], reset_settle_frames=0)
     env = gym.make("MuJoCoPickLift-v1", config=config)
@@ -406,7 +407,9 @@ def test_pick_ycb_collision_geom_starts_above_floor(model_id):
         env.reset(seed=0)
         inner = env.unwrapped
         slot = inner._slots[inner._target_slot_idx]  # type: ignore[attr-defined]
-        min_z = mesh_geom_world_min_z(inner.model, inner.data, slot.geom_id)  # type: ignore[attr-defined]
+        assert len(slot.geom_ids) > 1, f"{model_id} should decompose into multiple hulls"
+        # Every convex part must clear the floor, not just the first one.
+        min_z = slot_world_min_z(inner.model, inner.data, slot.geom_ids)  # type: ignore[attr-defined]
         assert min_z >= -1e-6
     finally:
         env.close()
@@ -1678,7 +1681,7 @@ def test_pick_and_place_color_description_agreement():
         assert inner.cube_color_name in desc
         assert inner.target_color_name in desc
         # Rendered geom rgba matches the named color.
-        cube_rgba = inner.model.geom_rgba[inner._obj_geom_id]
+        cube_rgba = inner.model.geom_rgba[inner._obj_geom_ids[0]]
         target_rgba = inner.model.geom_rgba[inner._target_geom_id]
         np.testing.assert_allclose(cube_rgba, COLOR_MAP[inner.cube_color_name], atol=1e-6)
         np.testing.assert_allclose(target_rgba, COLOR_MAP[inner.target_color_name], atol=1e-6)

@@ -33,6 +33,7 @@ from so101_nexus.mujoco.spawn_utils import (
     hide_freejoint_slot,
     place_freejoint_slot,
     sample_separated_positions,
+    set_slot_contacts,
 )
 from so101_nexus.object_slots import (
     ObjectSlot,
@@ -119,8 +120,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         self._prev_task_potential: float = 0.0
         self._prev_reach_progress: float = 0.0
         self._prev_grasp_progress: float = 0.0
-        # _obj_geom_id required by base _is_grasping(); will be set at reset
-        self._obj_geom_id: int = self._slots[0].geom_id
+        # Grasp detection needs a target before the first reset picks one.
+        self._set_target_geoms(self._slots[0].geom_ids)
 
         self._finish_model_setup()
 
@@ -239,8 +240,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         # that remain unchosen below are re-zeroed; slots that become active
         # need contype/conaffinity = 1 so they collide with the floor and gripper.
         for slot in self._slots:
-            self.model.geom_contype[slot.geom_id] = 1
-            self.model.geom_conaffinity[slot.geom_id] = 1
+            set_slot_contacts(self.model, slot, True)
 
         # Sample n_slots distinct slot indices from the pool without replacement.
         chosen_indices, target_pool_idx = self._choose_slots(rng, n_pool, n_slots)
@@ -248,7 +248,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
 
         # One chosen slot is the target; the rest are distractors.
         self._target_slot_idx = target_pool_idx
-        self._obj_geom_id = self._slots[target_pool_idx].geom_id
+        self._set_target_geoms(self._slots[target_pool_idx].geom_ids)
 
         # Gather bounding radii only for active slots (for position sampling).
         active_bounding_radii = [self._slots[int(i)].bounding_radius for i in chosen_indices]
