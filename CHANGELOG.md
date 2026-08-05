@@ -11,8 +11,50 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `decomp` extra (`coacd`, `threadpoolctl`) building multi-hull convex collision geometry for
+  YCB objects. `get_ycb_collision_parts(model_id)` returns the convex parts as
+  `YCBCollisionPart(path, mass_fraction)`, `get_ycb_collision_meshes(model_id)` returns just
+  their paths, and `ObjectSlot.geom_ids` lists every collision geom of a slot
+  (`ObjectSlot.geom_id` stays the first one).
+
 ### Changed
 
+- **YCB collision geometry is now a convex decomposition of the scan, not a single convex
+  hull.** Physics saw a fork as a solid wedge and a spatula as a filled slab, burying the
+  feature a policy has to grasp; measured as visual volume over collision volume, the ten
+  shipped models go 0.19 to 0.66 (spatula), 0.31 to 0.74 (spoon), 0.36 to 0.74 (scissors),
+  0.45 to 0.76 (fork), 0.55 to 0.74 (knife), 0.65 to 0.94 (banana), 0.68 to 0.89
+  (screwdriver), 0.84 to 0.89 (large marker), with the gelatin box (0.97) and golf ball
+  (1.00) already convex and left as one hull. Parts are computed once with CoACD, pinned to
+  one OpenMP thread so the split is reproducible, and cached under
+  `~/.cache/so101_nexus/ycb/{model_id}/collision_v2/`; the versioned directory means an
+  existing single-hull cache is rebuilt rather than silently reused, and the manifest records
+  which decomposer wrote the parts, so installing the `decomp` extra later or upgrading CoACD
+  rebuilds them too. Without the extra the collision geometry falls back to the previous
+  single hull. Cube scenes are byte-identical. Each part carries a volume-weighted share of
+  the object's mass, so total body mass is unchanged.
+- `get_ycb_collision_mesh(model_id)` now returns the first convex part
+  (`collision_v2/collision_000.obj`, was `collision.obj`) and reads the decomposition
+  manifest, so it raises `FileNotFoundError` when the model has not been prepared; it was
+  previously a pure path computation that never touched disk. Call `ensure_ycb_assets` first.
+  `ensure_ycb_assets` also deletes the superseded `collision.obj` from an older cache.
+- Grasp detection aggregates contact normals over every collision geom of the target before
+  the opposing-normal test, so fingers landing on different parts of one object still read as
+  a pinch. The MuJoCo env attribute `_obj_geom_id` is now `_obj_geom_ids` (NumPy array) plus
+  an `ngeom`-sized `_obj_geom_mask`, and subclasses must call
+  `_set_target_geoms(slot.geom_ids)` rather than assigning either directly; the Warp
+  `_obj_geom` tensor is now the `(num_envs, ngeom)` boolean `_obj_geom_mask`.
+- `mesh_xml_body()` takes `mass_fractions`, `primary_geom_name()` is now
+  `collision_geom_name(slot_name, obj, part=0)`, mesh collision geoms are named
+  `{slot}_collision_{k}` (was `{slot}_collision`), and their mesh assets `pick_coll_{i}_{k}`
+  (was `pick_coll_{i}`). `align_freejoint_geom_to_floor()` takes `geom_ids` instead of
+  `geom_id`, `so101_nexus.mujoco.spawn_utils.slot_world_min_z()` returns a slot's floor
+  clearance across all of its parts, and `set_slot_contacts()` toggles a slot's contact bits.
+- Warp default `nconmax`/`njmax` now add a small per-collision-geom term on top of the
+  per-slot one, so a decomposed pool reserves proportionally more contact memory (measured
+  peaks per world: 6.5 contacts for one cube, 6.2 for a 16-part spatula, 34.7 for a
+  seven-slot 61-geom YCB pool, against budgets of 208, 238 and 412). Cube-only scenes get
+  exactly the previous budget. Pass explicit `nconmax`/`njmax` to override.
 - Performance only, no behavior change. Observations, rewards, info dicts and the RNG draw
   sequence are bit-identical before and after on both backends.
   - MuJoCo envs step 2 to 11 percent faster, most on the object-manipulation tasks that read
@@ -35,6 +77,22 @@ for the public-API and deprecation policy.
     `so101_nexus.__version__` now resolves on first access and is unchanged.
 
 ### Fixed
+
+- Mesh-slot rest pose, spawn height, and bounding radius are measured in the body frame.
+  `extract_object_slots` read raw `mesh_vert`, which the MuJoCo compiler stores recentered on
+  each mesh's center of mass and rotated onto its principal axes, so the numbers described a
+  frame the body never sits in. Every mesh-backed slot changes even when its collision
+  geometry does not: `058_golf_ball` spawn_z 0.02322 to 0.00223, `009_gelatin_box` spawn_z
+  0.01741 to 0.00252 and bounding radius 0.05771 to 0.06748, `011_banana` bounding radius
+  0.01101 to 0.10510 (a flat-lying banana is 0.19 m long, so the old footprint was ten times
+  too small and the spawn samplers packed objects far too close). The Warp backend places
+  from `slot.spawn_z` without realignment, so its mesh objects previously started floating
+  above or sunk into the floor; the MuJoCo backend was masked by
+  `align_freejoint_geom_to_floor`.
+- `get_mujoco_ycb_rest_pose` measured the thin-X case against the inverse of the rotation it
+  returned. The two agree only for vertices centered on the origin, which is what the old
+  recentered `mesh_vert` input happened to be; with body-frame vertices the error is twice
+  the offset and could bury an object below the floor.
 
 ### Removed
 

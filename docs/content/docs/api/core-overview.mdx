@@ -185,7 +185,9 @@ See [Scene Objects and Assets](/docs/api/objects) for full reference.
 |----------|-------------|
 | `ensure_ycb_assets(model_id)` | Download and cache YCB assets, return cache path |
 | `get_ycb_mesh_dir(model_id)` | Path to mesh directory for a YCB model |
-| `get_ycb_collision_mesh(model_id)` | Path to `collision.obj` |
+| `get_ycb_collision_parts(model_id)` | Convex collision parts with their mass fractions |
+| `get_ycb_collision_meshes(model_id)` | Paths of the convex collision parts |
+| `get_ycb_collision_mesh(model_id)` | Path of the first convex collision part |
 | `get_ycb_visual_mesh(model_id)` | Path to `visual.obj` |
 | `get_ycb_texture_file(model_id)` | Expected path to the optional `texture.png` |
 | `get_mujoco_ycb_rest_pose(verts)` | Rest orientation and spawn height for MuJoCo |
