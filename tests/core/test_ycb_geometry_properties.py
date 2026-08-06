@@ -81,3 +81,35 @@ def test_rest_pose_deterministic(n, scale, seed):
     q2, z2 = get_mujoco_ycb_rest_pose(verts, margin=1e-3)
     np.testing.assert_array_equal(q1, q2)
     assert z1 == z2
+
+
+@pytest.mark.parametrize("thin_axis", [0, 1, 2])
+@pytest.mark.parametrize("offset", [0.0, 0.11])
+def test_spawn_z_matches_the_returned_rotation(thin_axis: int, offset: float):
+    """``spawn_z`` must be the clearance of the mesh under ``quat``, not its mirror.
+
+    Regression: the thin-X branch measured the height of the inverse rotation.
+    That is invisible for vertices centered on the origin (the two agree by
+    symmetry) and buries the object below the floor once they are offset, which
+    is what the body-frame vertices from ``extract_object_slots`` are.
+    """
+    import mujoco
+
+    half = [0.03, 0.03, 0.03]
+    half[thin_axis] = 0.005
+    corners = np.array(
+        [
+            [sx * half[0], sy * half[1], sz * half[2]]
+            for sx in (-1, 1)
+            for sy in (-1, 1)
+            for sz in (-1, 1)
+        ]
+    )
+    verts = corners + np.array([offset, offset, offset])
+
+    quat, spawn_z = get_mujoco_ycb_rest_pose(verts, margin=0.002)
+
+    rot = np.zeros(9)
+    mujoco.mju_quat2Mat(rot, quat)
+    rotated_z = (verts @ rot.reshape(3, 3).T)[:, 2]
+    assert spawn_z == pytest.approx(-rotated_z.min() + 0.002, abs=1e-6)

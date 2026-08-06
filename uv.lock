@@ -558,6 +558,20 @@ wheels = [
 ]
 
 [[package]]
+name = "coacd"
+version = "1.0.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/3b/434beab9e1754ca0ae3a619b383243dd85aa65d03a4dc7333c8296c97a92/coacd-1.0.11-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:adbc58259a721cc5ede24cc8c2671a95e75a8a52dc1ee4d953d80d236b192da9", size = 3299264, upload-time = "2026-05-04T19:23:36.183Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/a7/06f63baa29198f681ba60848e3271cc625eddd61cd4e59071f56ffce9362/coacd-1.0.11-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e376fadb22790444c7253f0cee9104a1af01ec965488c1318e84e3b2dbf1e2a3", size = 2573832, upload-time = "2026-05-04T19:23:38.008Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/b4/057c78f7b16b87871cfcecc6febe70522e77a2a33f8788960377152c224d/coacd-1.0.11-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a60f700a52e5b40462e508c14bb756cd63ce7e6a95ff72ae0b1592be1dbb0106", size = 2640170, upload-time = "2026-05-04T19:23:39.322Z" },
+    { url = "https://files.pythonhosted.org/packages/00/83/c50472ce98175fddd86d4aba861fea89f30350a5487880b3a81d34915a85/coacd-1.0.11-cp39-abi3-win_amd64.whl", hash = "sha256:4de22f70d1a3fa8c44698c8006a223fe5fb0ee84b76adecf3726cf2003e9145f", size = 1465079, upload-time = "2026-05-04T19:23:41.604Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -3517,6 +3531,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+decomp = [
+    { name = "coacd" },
+    { name = "threadpoolctl" },
+]
 rocm = [
     { name = "pytorch-triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "torch", version = "2.13.0+rocm7.2", source = { registry = "https://download.pytorch.org/whl/rocm7.2" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -3571,6 +3589,7 @@ visual = [
 
 [package.metadata]
 requires-dist = [
+    { name = "coacd", marker = "extra == 'decomp'", specifier = ">=1.0.5,<2" },
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
     { name = "gymnasium", specifier = ">=1.0.0,<2" },
     { name = "huggingface-hub", specifier = "<2" },
@@ -3585,6 +3604,7 @@ requires-dist = [
     { name = "pytorch-triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "scipy", specifier = "<2" },
     { name = "tensorboard", marker = "extra == 'train'", specifier = ">=2.0.0" },
+    { name = "threadpoolctl", marker = "extra == 'decomp'", specifier = ">=3.1,<4" },
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "torch", marker = "extra == 'train'" },
     { name = "torch", marker = "extra == 'warp'" },
@@ -3593,7 +3613,7 @@ requires-dist = [
     { name = "tyro", specifier = ">=0.9.0,<2" },
     { name = "wandb", extras = ["media"], marker = "extra == 'train'", specifier = ">=0.16.0" },
 ]
-provides-extras = ["viz", "teleop", "train", "warp", "rocm"]
+provides-extras = ["decomp", "viz", "teleop", "train", "warp", "rocm"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3710,6 +3730,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/46/79/cf31d7a93a8fdc6aa0fbb665be84426a8c5a557d9240b6239e9e11e35fc5/termcolor-3.3.0.tar.gz", hash = "sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5", size = 14434, upload-time = "2025-12-29T12:55:21.882Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/d1/8bb87d21e9aeb323cc03034f5eaf2c8f69841e40e4853c2627edf8111ed3/termcolor-3.3.0-py3-none-any.whl", hash = "sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5", size = 7734, upload-time = "2025-12-29T12:55:20.718Z" },
+]
+
+[[package]]
+name = "threadpoolctl"
+version = "3.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/4d/08c89e34946fce2aec4fbb45c9016efd5f4d7f24af8e5d93296e935631d8/threadpoolctl-3.6.0.tar.gz", hash = "sha256:8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e", size = 21274, upload-time = "2025-03-13T13:49:23.031Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl", hash = "sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb", size = 18638, upload-time = "2025-03-13T13:49:21.846Z" },
 ]
 
 [[package]]

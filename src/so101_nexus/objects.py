@@ -67,19 +67,23 @@ class CubeObject(SceneObject):
 class YCBObject(SceneObject):
     """YCB dataset object identified by model_id (e.g. '003_cracker_box').
 
-    The visual mesh is the original YCB scan, but the **collision geometry is a
-    single convex hull** of it (see ``ensure_ycb_assets``). Physics therefore
-    sees the hull, not the shape you see rendered, and the two differ a lot for
-    concave or elongated models: a fork is a wedge, a banana is a solid crescent
-    hull. Two consequences for manipulation tasks:
+    The visual mesh is the original YCB scan; the collision geometry is a
+    **convex decomposition** of it (see ``ensure_ycb_assets``), so physics sees
+    the concavities that make an object graspable (a fork's handle, a spatula's
+    neck) instead of one solid wedge. The decomposition needs the optional
+    ``decomp`` extra (``pip install so101-nexus[decomp]``); without it the
+    collision geometry falls back to a single convex hull, and then:
 
-    - The feature that makes an object graspable in reality (a fork's handle, a
-      banana's taper) is buried inside the hull, so the fingers never touch it.
+    - The feature that makes an object graspable in reality is buried inside the
+      hull, so the fingers never touch it.
     - A model whose hull is wider than the gripper can close on cannot be
-      grasped at all, no matter how good the policy is. Measure a candidate
-      before building a task around it: ``ensure_ycb_assets(model_id)`` then
-      ``get_ycb_collision_mesh(model_id)`` gives the path to the collision OBJ
-      physics uses; load it to measure the hull.
+      grasped at all, no matter how good the policy is.
+
+    Installing the extra after the assets were prepared rebuilds the cache on the
+    next ``ensure_ycb_assets`` call: the manifest records which decomposer wrote
+    the parts. Measure a candidate before building a task around it:
+    ``ensure_ycb_assets(model_id)`` then ``get_ycb_collision_meshes(model_id)``
+    gives the OBJ parts physics uses.
 
     Parameters
     ----------

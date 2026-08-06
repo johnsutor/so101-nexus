@@ -18,6 +18,8 @@ import this module without triggering MuJoCo env registration. No torch import.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import mujoco
 import numpy as np
 
@@ -25,11 +27,14 @@ from so101_nexus.constants import COLOR_MAP
 from so101_nexus.objects import CubeObject, MeshObject, SceneObject, YCBObject
 from so101_nexus.scene import SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 from so101_nexus.ycb_assets import (
-    get_ycb_collision_mesh,
+    get_ycb_collision_parts,
     get_ycb_texture_file,
     get_ycb_visual_mesh,
 )
 from so101_nexus.ycb_geometry import get_mujoco_ycb_rest_pose
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Default bounding radius used when an object exposes no geometry to measure.
 DEFAULT_BOUNDING_RADIUS = 0.025
@@ -43,12 +48,19 @@ def cube_bounding_radius(obj: CubeObject) -> float:
     return float(obj.half_size * np.sqrt(2))
 
 
-def primary_geom_name(slot_name: str, obj: SceneObject) -> str:
-    """Return the name of the collision/contact geom for an object slot."""
+def collision_geom_name(slot_name: str, obj: SceneObject, part: int = 0) -> str:
+    """Return the name of a slot's collision/contact geom.
+
+    Mesh-backed slots (YCB, custom) carry one geom per convex part of their
+    collision decomposition, numbered from zero; cubes carry a single box geom.
+    """
     if isinstance(obj, CubeObject):
         return f"{slot_name}_geom"
-    # YCBObject and MeshObject both use the _collision suffix.
-    return f"{slot_name}_collision"
+    return _mesh_collision_geom_name(slot_name, part)
+
+
+def _mesh_collision_geom_name(slot_name: str, part: int) -> str:
+    return f"{slot_name}_collision_{part}"
 
 
 def cube_xml_body(slot_name: str, obj: CubeObject) -> str:
@@ -71,22 +83,32 @@ def mesh_xml_body(
     asset_index: int,
     mass: float,
     material_name: str | None = None,
+    mass_fractions: Sequence[float] = (1.0,),
 ) -> str:
     """Return the MJCF ``<body>`` fragment for one freejoint mesh slot.
 
-    Mesh slots carry a hidden collision geom (group 3) and a non-colliding visual
+    Mesh slots carry hidden collision geoms (group 3) and a non-colliding visual
     geom (group 2); the latter is mostly for MuJoCo rendering parity (Warp
     training reads state tensors, not rendered images).
+
+    The collision hull is a convex decomposition, so there is one collision geom
+    per part. Each part declares ``mass * mass_fractions[k]`` rather than the
+    full mass: MuJoCo sums geom masses into the body, so declaring ``mass`` on
+    every part would multiply the object's weight by the part count.
     """
     material_attr = f' material="{material_name}"' if material_name else ""
+    collision_geoms = "".join(
+        f'      <geom name="{_mesh_collision_geom_name(slot_name, part)}" type="mesh" '
+        f'mesh="pick_coll_{asset_index}_{part}"\n'
+        f'            mass="{float(mass) * float(fraction)!r}" contype="1" conaffinity="1"\n'
+        f'            group="3" condim="4" friction="1 0.05 0.001" solref="0.01 1"\n'
+        f'            solimp="0.95 0.99 0.001"/>\n'
+        for part, fraction in enumerate(mass_fractions)
+    )
     return (
         f'    <body name="{slot_name}" pos="0.15 0 0.01">\n'
         f'      <freejoint name="{slot_name}_joint"/>\n'
-        f'      <geom name="{slot_name}_collision" type="mesh" '
-        f'mesh="pick_coll_{asset_index}"\n'
-        f'            mass="{mass}" contype="1" conaffinity="1"\n'
-        f'            group="3" condim="4" friction="1 0.05 0.001" solref="0.01 1"\n'
-        f'            solimp="0.95 0.99 0.001"/>\n'
+        f"{collision_geoms}"
         f'      <geom name="{slot_name}_visual" type="mesh" '
         f'mesh="pick_vis_{asset_index}"\n'
         f'            group="2" contype="0" conaffinity="0" mass="0"{material_attr}/>\n'
@@ -134,9 +156,12 @@ def build_object_scene_xml(
 
     for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
         if isinstance(obj, YCBObject):
-            collision_path = get_ycb_collision_mesh(obj.model_id).as_posix()
+            parts = get_ycb_collision_parts(obj.model_id)
+            for k, part in enumerate(parts):
+                asset_entries += (
+                    f'    <mesh name="pick_coll_{i}_{k}" file="{part.path.as_posix()}"/>\n'
+                )
             visual_path = get_ycb_visual_mesh(obj.model_id).as_posix()
-            asset_entries += f'    <mesh name="pick_coll_{i}" file="{collision_path}"/>\n'
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
             material_name = None
             texture_path = get_ycb_texture_file(obj.model_id)
@@ -152,10 +177,16 @@ def build_object_scene_xml(
                     'texuniform="false"/>\n'
                 )
             mass = obj.mass_override if obj.mass_override is not None else _DEFAULT_YCB_MASS
-            body_entries += mesh_xml_body(slot, i, mass, material_name=material_name)
+            body_entries += mesh_xml_body(
+                slot,
+                i,
+                mass,
+                material_name=material_name,
+                mass_fractions=[part.mass_fraction for part in parts],
+            )
         elif isinstance(obj, MeshObject):
             asset_entries += (
-                f'    <mesh name="pick_coll_{i}" file="{obj.collision_mesh_path}"'
+                f'    <mesh name="pick_coll_{i}_0" file="{obj.collision_mesh_path}"'
                 f' scale="{obj.scale} {obj.scale} {obj.scale}"/>\n'
             )
             asset_entries += (
@@ -195,13 +226,15 @@ class ObjectSlot:
     Backend-neutral: ``qpos_addr``/``dof_addr`` index the shared ``MjModel``
     layout and apply to a scalar ``MjData`` (MuJoCo) and a batched
     ``mjw.Data`` column (Warp) alike. ``rest_quat`` is a NumPy ``wxyz`` vector;
-    backends convert to tensors as needed.
+    backends convert to tensors as needed. ``geom_ids`` holds every collision
+    geom of the slot (one per convex part of a decomposed mesh, one for a cube),
+    which is what contact scans must aggregate over.
     """
 
     __slots__ = (
         "bounding_radius",
         "dof_addr",
-        "geom_id",
+        "geom_ids",
         "obj",
         "qpos_addr",
         "rest_quat",
@@ -212,7 +245,7 @@ class ObjectSlot:
         self,
         qpos_addr: int,
         dof_addr: int,
-        geom_id: int,
+        geom_ids: tuple[int, ...],
         rest_quat: np.ndarray,
         spawn_z: float,
         bounding_radius: float,
@@ -220,11 +253,57 @@ class ObjectSlot:
     ) -> None:
         self.qpos_addr = qpos_addr
         self.dof_addr = dof_addr
-        self.geom_id = geom_id
+        self.geom_ids = geom_ids
         self.rest_quat = rest_quat
         self.spawn_z = spawn_z
         self.bounding_radius = bounding_radius
         self.obj = obj
+
+    @property
+    def geom_id(self) -> int:
+        """First collision geom of the slot; the whole object is ``geom_ids``."""
+        return self.geom_ids[0]
+
+
+def _slot_collision_geom_ids(
+    mjm: mujoco.MjModel, slot_name: str, obj: SceneObject
+) -> tuple[int, ...]:
+    """Return every collision geom id of a slot body, in XML order."""
+    geom_ids: list[int] = []
+    if isinstance(obj, CubeObject):
+        geom_id = int(mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, f"{slot_name}_geom"))
+        geom_ids = [geom_id] if geom_id >= 0 else []
+    else:
+        while True:
+            name = _mesh_collision_geom_name(slot_name, len(geom_ids))
+            geom_id = int(mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, name))
+            if geom_id < 0:
+                break
+            geom_ids.append(geom_id)
+    if not geom_ids:
+        # mj_name2id's -1 sentinel would silently address the model's last geom.
+        raise ValueError(f"slot {slot_name!r} has no collision geom in the compiled model")
+    return tuple(geom_ids)
+
+
+def _body_frame_collision_verts(mjm: mujoco.MjModel, geom_ids: tuple[int, ...]) -> np.ndarray:
+    """Return the union of a slot's compiled collision vertices, in body frame.
+
+    The compiler recenters every mesh on its own center of mass and folds the
+    offset into the geom frame, so raw ``mesh_vert`` blocks of a multi-part
+    decomposition do not share an origin. Rest pose and footprint must see the
+    whole object, not one part.
+    """
+    chunks = []
+    rot = np.zeros(9)
+    for geom_id in geom_ids:
+        mesh_id = int(mjm.geom_dataid[geom_id])
+        vert_start = int(mjm.mesh_vertadr[mesh_id])
+        vert_count = int(mjm.mesh_vertnum[mesh_id])
+        verts = mjm.mesh_vert[vert_start : vert_start + vert_count]
+        mujoco.mju_quat2Mat(rot, mjm.geom_quat[geom_id])
+        chunks.append(verts @ rot.reshape(3, 3).T + mjm.geom_pos[geom_id])
+    return np.concatenate(chunks)
 
 
 def extract_object_slots(
@@ -236,21 +315,17 @@ def extract_object_slots(
 
     For cubes the rest pose is identity and the spawn height is the half-size;
     for mesh-backed objects (YCB, custom) the stable rest orientation and floor
-    clearance come from the compiled mesh vertices.
+    clearance come from the union of the compiled collision-part vertices.
     """
     slots: list[ObjectSlot] = []
     for slot_name, obj in zip(slot_names, objects, strict=True):
-        geom_name = primary_geom_name(slot_name, obj)
-        geom_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+        geom_ids = _slot_collision_geom_ids(mjm, slot_name, obj)
         joint_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_JOINT, f"{slot_name}_joint")
         qpos_addr = int(mjm.jnt_qposadr[joint_id])
         dof_addr = int(mjm.jnt_dofadr[joint_id])
 
         if isinstance(obj, (YCBObject, MeshObject)):
-            mesh_id = mjm.geom_dataid[geom_id]
-            vert_start = mjm.mesh_vertadr[mesh_id]
-            vert_count = mjm.mesh_vertnum[mesh_id]
-            verts = mjm.mesh_vert[vert_start : vert_start + vert_count]
+            verts = _body_frame_collision_verts(mjm, geom_ids)
             rest_quat, spawn_z = get_mujoco_ycb_rest_pose(verts)
             # Footprint is measured in the resting orientation: the stable rest
             # pose can rotate a thin X/Y axis up, changing the horizontal extent
@@ -271,7 +346,7 @@ def extract_object_slots(
             ObjectSlot(
                 qpos_addr=qpos_addr,
                 dof_addr=dof_addr,
-                geom_id=geom_id,
+                geom_ids=geom_ids,
                 rest_quat=rest_quat,
                 spawn_z=float(spawn_z),
                 bounding_radius=bounding_radius,

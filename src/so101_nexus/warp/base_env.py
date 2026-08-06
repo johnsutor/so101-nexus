@@ -181,7 +181,7 @@ def _grasp_from_contacts(
     contact_frame: torch.Tensor,
     normal_force: torch.Tensor,
     nacon: int,
-    obj_geom: torch.Tensor,
+    obj_mask: torch.Tensor,
     gripper_mask: torch.Tensor,
     jaw_mask: torch.Tensor,
     threshold: float,
@@ -190,25 +190,33 @@ def _grasp_from_contacts(
 ) -> torch.Tensor:
     """Reduce flat contacts to a ``(num_envs,)`` two-sided grasp signal in {0, 1}.
 
-    A world grasps when its target geom (``obj_geom[world]``) contacts both a
-    gripper finger geom and a moving-jaw finger geom with normal force at or
-    above ``threshold``, *and* the two sides' force-weighted mean contact
-    normals oppose each other by at least ``opposing_threshold`` (see
-    ``so101_nexus.grasp.opposing_normals_ok``). Without the opposition term an
-    object too wide for the jaw to close on registers as grasped while both
-    fingers merely press the same face of it. Pure tensor reduction over the
-    packed ``[0, nacon)`` contact slots, so it is unit-testable with synthetic
-    arrays. Mirrors the MuJoCo base's ``_is_grasping``.
+    A world grasps when its target object (every collision geom flagged in
+    ``obj_mask[world]``) contacts both a gripper finger geom and a moving-jaw
+    finger geom with normal force at or above ``threshold``, *and* the two
+    sides' force-weighted mean contact normals oppose each other by at least
+    ``opposing_threshold`` (see ``so101_nexus.grasp.opposing_normals_ok``).
+    Without the opposition term an object too wide for the jaw to close on
+    registers as grasped while both fingers merely press the same face of it.
+    Pure tensor reduction over the packed ``[0, nacon)`` contact slots, so it is
+    unit-testable with synthetic arrays. Mirrors the MuJoCo base's
+    ``_is_grasping``.
+
+    Parameters
+    ----------
+    obj_mask:
+        ``(num_envs, ngeom)`` boolean lookup of the target's collision geoms per
+        world. Flagging every convex part of a decomposed mesh is what keeps the
+        opposition test per-object rather than per-part, and the lookup keeps the
+        reduction contact-sized rather than contacts-times-parts.
     """
-    device = obj_geom.device
+    device = obj_mask.device
     if nacon == 0:
         return torch.zeros(num_envs, device=device)
     geom = contact_geom[:nacon].long()
     world = contact_world[:nacon].long().clamp(0, num_envs - 1)
     g1, g2 = geom[:, 0], geom[:, 1]
-    obj = obj_geom[world]
-    obj_is_g1 = g1 == obj
-    involved = obj_is_g1 | (g2 == obj)
+    obj_is_g1 = obj_mask[world, g1.clamp(min=0)]
+    involved = obj_is_g1 | obj_mask[world, g2.clamp(min=0)]
     other = torch.where(obj_is_g1, g2, g1).clamp(min=0)
     force = normal_force[:nacon]
     strong = involved & (force >= threshold)
@@ -390,9 +398,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         jaw_bid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_BODY, "moving_jaw_so101_v1")
         self._gripper_mask = self._finger_geom_mask(mjm, gripper_bid, ngeom)
         self._jaw_mask = self._finger_geom_mask(mjm, jaw_bid, ngeom)
-        # Per-world target geom for grasp detection; manipulation tasks set this to
-        # a (num_envs,) long tensor. None means no graspable object (primitives).
-        self._obj_geom: torch.Tensor | None = None
+        # Per-world target collision geoms for grasp detection; manipulation tasks
+        # set this to a (num_envs, ngeom) boolean mask (one row per world, every
+        # convex part of the target flagged). None means no graspable object.
+        self._obj_geom_mask: torch.Tensor | None = None
         # Zero-copy contact views; the force buffer is allocated lazily on the
         # first contact-force query (grasp state or gripper contact force), so a
         # task that reads neither pays nothing.
@@ -1174,12 +1183,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         return force_view, int(self._nacon_view[0])
 
     def _is_grasping(self) -> torch.Tensor:
-        """Return ``(N,)`` float in {0, 1}: two-sided pinching grasp of the target geom.
+        """Return ``(N,)`` float in {0, 1}: two-sided pinching grasp of the target object.
 
-        Zero everywhere when no graspable object is registered (``_obj_geom``
-        unset), so primitive tasks never trigger grasp logic.
+        Zero everywhere when no graspable object is registered
+        (``_obj_geom_mask`` unset), so primitive tasks never trigger grasp logic.
         """
-        if self._obj_geom is None:
+        if self._obj_geom_mask is None:
             return torch.zeros(self.num_envs, device=self.device)
         force_view, nacon = self._contact_forces()
         return _grasp_from_contacts(
@@ -1188,7 +1197,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             contact_frame=self._contact_frame_view,
             normal_force=force_view[:, 0].abs(),
             nacon=nacon,
-            obj_geom=self._obj_geom,
+            obj_mask=self._obj_geom_mask,
             gripper_mask=self._gripper_mask,
             jaw_mask=self._jaw_mask,
             threshold=self.config.robot.grasp_force_threshold,

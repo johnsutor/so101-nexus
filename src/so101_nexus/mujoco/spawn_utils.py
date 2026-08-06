@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from so101_nexus.object_slots import ObjectSlot
 
 MESH_FLOOR_MARGIN = 0.002
@@ -100,9 +102,9 @@ def random_yaw_quat(rng: np.random.Generator) -> np.ndarray:
 def mesh_geom_world_min_z(model, data, geom_id: int) -> float:
     """Return the minimum world Z of one compiled mesh collision geom.
 
-    This helper is scoped to the current pick-scene structure, where each mesh
-    object body has one collision mesh geom. Future compound mesh bodies should
-    compute the minimum across all collision geoms attached to the body.
+    A mesh object body carries one collision geom per convex part of its
+    decomposition, so the body's clearance is the minimum over ``slot.geom_ids``
+    (see :func:`slot_world_min_z`), not over a single part.
     """
     import mujoco
 
@@ -118,23 +120,28 @@ def mesh_geom_world_min_z(model, data, geom_id: int) -> float:
     return float(world[:, 2].min())
 
 
+def slot_world_min_z(model, data, geom_ids: Sequence[int]) -> float:
+    """Return the minimum world Z over every collision geom of a slot."""
+    return min(mesh_geom_world_min_z(model, data, geom_id) for geom_id in geom_ids)
+
+
 def align_freejoint_geom_to_floor(
     model,
     data,
     *,
     qpos_addr: int,
-    geom_id: int,
+    geom_ids: Sequence[int],
     xy: tuple[float, float],
     quat: np.ndarray,
     margin: float = MESH_FLOOR_MARGIN,
 ) -> float:
-    """Set a freejoint mesh pose so its compiled collision geom clears the floor."""
+    """Set a freejoint mesh pose so its compiled collision geoms clear the floor."""
     import mujoco
 
     data.qpos[qpos_addr : qpos_addr + 3] = [xy[0], xy[1], 0.0]
     data.qpos[qpos_addr + 3 : qpos_addr + 7] = quat
     mujoco.mj_forward(model, data)
-    min_z = mesh_geom_world_min_z(model, data, geom_id)
+    min_z = slot_world_min_z(model, data, geom_ids)
     spawn_z = -min_z + margin
     data.qpos[qpos_addr + 2] = spawn_z
     mujoco.mj_forward(model, data)
@@ -162,8 +169,19 @@ def place_freejoint_slot(
     obj_quat = np.zeros(4)
     mujoco.mju_mulQuat(obj_quat, random_yaw_quat(rng), slot.rest_quat)
     align_freejoint_geom_to_floor(
-        model, data, qpos_addr=slot.qpos_addr, geom_id=slot.geom_id, xy=(x, y), quat=obj_quat
+        model, data, qpos_addr=slot.qpos_addr, geom_ids=slot.geom_ids, xy=(x, y), quat=obj_quat
     )
+
+
+def set_slot_contacts(model, slot, enabled: bool) -> None:
+    """Enable or disable collisions on every collision geom of a slot.
+
+    ``geom_ids`` is listed rather than passed as-is because NumPy reads a tuple
+    index as a multi-dimensional index.
+    """
+    geom_ids = list(slot.geom_ids)
+    model.geom_contype[geom_ids] = int(enabled)
+    model.geom_conaffinity[geom_ids] = int(enabled)
 
 
 def hide_freejoint_slot(model, data, slot) -> None:
@@ -172,8 +190,7 @@ def hide_freejoint_slot(model, data, slot) -> None:
     Zeroing the contact bits keeps the constraint solver from exploding stacked
     hidden bodies during the post-reset settle.
     """
-    model.geom_contype[slot.geom_id] = 0
-    model.geom_conaffinity[slot.geom_id] = 0
+    set_slot_contacts(model, slot, False)
     data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = [0.0, 0.0, -10.0]
     data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = [1.0, 0.0, 0.0, 0.0]
 
@@ -204,8 +221,7 @@ def activate_distractor_slots(
     if not slots:
         return []
     for slot in slots:
-        model.geom_contype[slot.geom_id] = 1
-        model.geom_conaffinity[slot.geom_id] = 1
+        set_slot_contacts(model, slot, True)
     chosen = {int(i) for i in rng.choice(len(slots), size=count, replace=False)}
     for idx, slot in enumerate(slots):
         if idx not in chosen:

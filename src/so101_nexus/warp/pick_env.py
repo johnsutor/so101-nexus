@@ -43,21 +43,31 @@ from so101_nexus.warp.object_slots import (
     quat_mul_wxyz,
     random_yaw_quat_batch,
     sample_separated_polar,
+    slot_geom_masks,
 )
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
 
 # Contact budget per world. The single-cube scene needs a generous floor for
-# active grasping; every compiled slot (carried pool and distractor alike) adds
-# resting contacts, so the budget scales with the total slot count, not with the
-# carried pool. naconmax = nconmax * num_envs.
+# active grasping, and every compiled slot (carried pool and distractor alike)
+# adds resting contacts. The convex parts of one decomposed mesh never collide
+# with each other and only two or three of them touch the floor at once, so an
+# extra part costs far less than an extra slot: measured peaks per world are 6.5
+# contacts for one cube, 6.2 for a 16-part spatula, and 34.7 for a seven-slot
+# 61-geom YCB pool, against budgets of 208, 238 and 412. naconmax = nconmax *
+# num_envs, so the per-part term stays small on purpose.
 _PICK_NCONMAX_BASE = 192
 _PICK_NCONMAX_PER_SLOT = 16
+_PICK_NCONMAX_PER_EXTRA_PART = 2
 
 
-def _contact_budget(n_slots: int) -> tuple[int, int]:
-    nconmax = _PICK_NCONMAX_BASE + _PICK_NCONMAX_PER_SLOT * n_slots
+def _contact_budget(n_slots: int, n_collision_geoms: int) -> tuple[int, int]:
+    nconmax = (
+        _PICK_NCONMAX_BASE
+        + _PICK_NCONMAX_PER_SLOT * n_slots
+        + _PICK_NCONMAX_PER_EXTRA_PART * (n_collision_geoms - n_slots)
+    )
     return nconmax, nconmax * 2
 
 
@@ -173,7 +183,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             f.flush()
             mjm = mujoco.MjModel.from_xml_path(f.name)
         slots = extract_object_slots(mjm, slot_names, scene_objects)
-        default_nconmax, default_njmax = _contact_budget(self._n_total_slots)
+        default_nconmax, default_njmax = _contact_budget(
+            len(slots), sum(len(slot.geom_ids) for slot in slots)
+        )
         super().__init__(
             num_envs=num_envs,
             config=config,
@@ -199,9 +211,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # Free-joint position offsets, reused by every slot write below so the
         # reset path does not rebuild them per active slot.
         self._qpos_offsets = torch.arange(7, device=self.device)
-        self._slot_geom = torch.tensor(
-            [s.geom_id for s in slots], dtype=torch.long, device=self.device
-        )
+        self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
         self._slot_spawn_z = torch.tensor(
             [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
         )
@@ -219,9 +229,11 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             config.spawn_center,
         )
 
-        # Per-world target tracking (set at reset). ``_obj_geom`` drives grasp
+        # Per-world target tracking (set at reset). ``_obj_geom_mask`` drives grasp
         # detection in the base; ``_target_qadr`` indexes the selected slot pose.
-        self._obj_geom = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+        self._obj_geom_mask = torch.zeros(
+            (num_envs, mjm.ngeom), dtype=torch.bool, device=self.device
+        )
         self._target_qadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_dadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_slot = torch.zeros(num_envs, dtype=torch.long, device=self.device)
@@ -324,9 +336,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     def _set_target_tracking(self, idx: torch.Tensor, target: torch.Tensor) -> None:
         """Record the per-world target slot and refresh its task description."""
         self._target_slot[idx] = target
-        obj_geom = self._obj_geom
-        assert obj_geom is not None  # set to a tensor in _build_slot_model
-        obj_geom[idx] = self._slot_geom[target]
+        obj_mask = self._obj_geom_mask
+        assert obj_mask is not None  # set to a tensor in _build_slot_model
+        obj_mask[idx] = self._slot_geom_masks[target]
         self._target_qadr[idx] = self._slot_qadr[target]
         self._target_dadr[idx] = self._slot_dadr[target]
         self._initial_obj_z[idx] = self._slot_spawn_z[target]

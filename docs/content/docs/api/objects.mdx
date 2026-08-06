@@ -113,7 +113,9 @@ YCB mesh assets are downloaded from the Hugging Face Hub on first use and cached
 ~/.cache/so101_nexus/ycb/{model_id}/
 ```
 
-Each model directory holds `collision.obj` and `visual.obj`, and, when extraction succeeds, `texture.png`.
+Each model directory holds `visual.obj`, the convex collision parts under
+`collision_v2/` (`collision_000.obj` ... plus a `parts.json` manifest), and, when
+extraction succeeds, `texture.png`.
 
 Creating a `YCBObject` and stepping an environment downloads whatever is missing. You can also trigger the download explicitly:
 
@@ -131,29 +133,44 @@ def ensure_ycb_assets(model_id: str) -> Path
 
 Downloads the mesh assets for `model_id` if they are not already cached, then returns the cache directory.
 
-`collision.obj` and `visual.obj` are the required geometry cache. The function additionally attempts to extract `texture.png` from `meshes/{model_id}/google_16k/textured.glb`. Texture extraction is best effort: if a model or the locally installed `trimesh` does not expose a texture image, the environment still runs with the untextured visual mesh.
+`visual.obj` and the `collision_v2/` parts are the required geometry cache. The collision
+geometry is a convex decomposition of the visual scan, computed once with
+[CoACD](https://github.com/SarahWeiii/CoACD) and cached, so physics sees the concavities a
+single hull would fill in. It needs the `decomp` extra; see
+[Installation](/docs/getting-started/installation) for the extras matrix. Nearly convex
+models (the golf ball, the gelatin box) keep a single hull either way. The manifest records
+which decomposer produced the parts, so installing the extra later, or upgrading CoACD,
+rebuilds the cache instead of reusing coarser geometry. The function additionally attempts
+to extract `texture.png` from `meshes/{model_id}/google_16k/textured.glb`. Texture
+extraction is best effort: if a model or the locally installed `trimesh` does not expose a
+texture image, the environment still runs with the untextured visual mesh.
 
 ### Path helpers
 
-These four functions resolve cache paths and never trigger a download. Call `ensure_ycb_assets` first if the assets may not be present yet.
+These helpers resolve cache paths and never trigger a download. Call `ensure_ycb_assets` first if the assets may not be present yet; the three collision helpers read the decomposition manifest and raise `FileNotFoundError` when it is missing.
 
 | Function | Returns |
 |----------|---------|
 | `get_ycb_mesh_dir(model_id)` | The model's cache directory |
-| `get_ycb_collision_mesh(model_id)` | Path to `collision.obj` |
+| `get_ycb_collision_parts(model_id)` | `YCBCollisionPart(path, mass_fraction)` per convex part |
+| `get_ycb_collision_meshes(model_id)` | Paths of the convex collision parts |
+| `get_ycb_collision_mesh(model_id)` | Path of the first convex collision part |
 | `get_ycb_visual_mesh(model_id)` | Path to `visual.obj` |
 | `get_ycb_texture_file(model_id)` | Expected path to the optional `texture.png` |
 
+`mass_fraction` is the part's volume-weighted share of the object's mass; the fractions sum
+to 1, so total body mass does not depend on how many parts the decomposition produced.
+
 ```python
 from so101_nexus import (
-    get_ycb_collision_mesh,
+    get_ycb_collision_meshes,
     get_ycb_mesh_dir,
     get_ycb_texture_file,
     get_ycb_visual_mesh,
 )
 
 mesh_dir = get_ycb_mesh_dir("011_banana")
-collision = get_ycb_collision_mesh("011_banana")
+collision_parts = get_ycb_collision_meshes("011_banana")
 visual = get_ycb_visual_mesh("011_banana")
 texture = get_ycb_texture_file("011_banana")
 ```

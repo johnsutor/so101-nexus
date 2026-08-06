@@ -39,12 +39,22 @@ def _frames(normals):
     return frame
 
 
+def _mask(per_world_geoms, ngeom):
+    """Pack per-world target geom ids into the ``(num_envs, ngeom)`` boolean lookup."""
+    import torch
+
+    mask = torch.zeros((len(per_world_geoms), ngeom), dtype=torch.bool)
+    for world, geoms in enumerate(per_world_geoms):
+        mask[world, list(geoms)] = True
+    return mask
+
+
 def test_grasp_from_contacts_two_sided_and_isolation():
     import torch
 
     from so101_nexus.warp.base_env import _grasp_from_contacts
 
-    obj = torch.tensor([49, 49, 49])
+    obj = _mask([[49], [49], [49]], ngeom=60)
     gripper = torch.zeros(60, dtype=torch.bool)
     gripper[30] = True
     jaw = torch.zeros(60, dtype=torch.bool)
@@ -65,7 +75,7 @@ def test_grasp_from_contacts_two_sided_and_isolation():
         contact_frame=frames,
         normal_force=normal_force,
         nacon=5,
-        obj_geom=obj,
+        obj_mask=obj,
         gripper_mask=gripper,
         jaw_mask=jaw,
         threshold=0.5,
@@ -86,7 +96,7 @@ def test_grasp_from_contacts_rejects_same_side_straddle():
 
     from so101_nexus.warp.base_env import _grasp_from_contacts
 
-    obj = torch.tensor([49, 49])
+    obj = _mask([[49], [49]], ngeom=60)
     gripper = torch.zeros(60, dtype=torch.bool)
     gripper[30] = True
     jaw = torch.zeros(60, dtype=torch.bool)
@@ -103,7 +113,7 @@ def test_grasp_from_contacts_rejects_same_side_straddle():
         contact_frame=frames,
         normal_force=normal_force,
         nacon=4,
-        obj_geom=obj,
+        obj_mask=obj,
         gripper_mask=gripper,
         jaw_mask=jaw,
         threshold=0.5,
@@ -134,7 +144,7 @@ def test_grasp_from_contacts_one_sided_contact_is_never_a_grasp():
         contact_frame=_frames([[0.0, 0.0, 1.0]]),
         normal_force=torch.ones(1),
         nacon=1,
-        obj_geom=torch.tensor([49]),
+        obj_mask=_mask([[49]], ngeom=60),
         gripper_mask=gripper,
         jaw_mask=jaw,
         threshold=0.5,
@@ -150,7 +160,7 @@ def test_grasp_from_contacts_opposing_threshold_minus_one_is_contact_only():
 
     from so101_nexus.warp.base_env import _grasp_from_contacts
 
-    obj = torch.tensor([49])
+    obj = _mask([[49]], ngeom=60)
     gripper = torch.zeros(60, dtype=torch.bool)
     gripper[30] = True
     jaw = torch.zeros(60, dtype=torch.bool)
@@ -161,7 +171,7 @@ def test_grasp_from_contacts_opposing_threshold_minus_one_is_contact_only():
         contact_frame=_frames([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
         normal_force=torch.ones(2),
         nacon=2,
-        obj_geom=obj,
+        obj_mask=obj,
         gripper_mask=gripper,
         jaw_mask=jaw,
         threshold=0.5,
@@ -176,7 +186,7 @@ def test_grasp_from_contacts_empty_is_zero():
 
     from so101_nexus.warp.base_env import _grasp_from_contacts
 
-    obj = torch.tensor([5, 5])
+    obj = _mask([[5], [5]], ngeom=10)
     mask = torch.zeros(10, dtype=torch.bool)
     grasp = _grasp_from_contacts(
         contact_geom=torch.zeros((4, 2), dtype=torch.long),
@@ -184,7 +194,7 @@ def test_grasp_from_contacts_empty_is_zero():
         contact_frame=torch.zeros((4, 3, 3)),
         normal_force=torch.zeros(4),
         nacon=0,
-        obj_geom=obj,
+        obj_mask=obj,
         gripper_mask=mask,
         jaw_mask=mask,
         threshold=0.5,
@@ -192,3 +202,33 @@ def test_grasp_from_contacts_empty_is_zero():
         num_envs=2,
     )
     assert grasp.tolist() == [0.0, 0.0]
+
+
+def test_grasp_from_contacts_aggregates_across_object_parts():
+    """Fingers landing on different convex parts of one object still oppose.
+
+    A decomposed mesh spreads the two finger contacts over separate geoms of the
+    same body. Reducing per geom would leave each part one-sided and score 0.
+    """
+    import torch
+
+    from so101_nexus.warp.base_env import _grasp_from_contacts
+
+    gripper = torch.zeros(60, dtype=torch.bool)
+    gripper[30] = True
+    jaw = torch.zeros(60, dtype=torch.bool)
+    jaw[41] = True
+    grasp = _grasp_from_contacts(
+        contact_geom=torch.tensor([[49, 30], [52, 41]]),
+        contact_world=torch.tensor([0, 0]),
+        contact_frame=_frames([[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+        normal_force=torch.ones(2),
+        nacon=2,
+        obj_mask=_mask([[49, 52]], ngeom=60),
+        gripper_mask=gripper,
+        jaw_mask=jaw,
+        threshold=0.5,
+        opposing_threshold=0.3,
+        num_envs=1,
+    )
+    assert grasp.tolist() == [1.0]

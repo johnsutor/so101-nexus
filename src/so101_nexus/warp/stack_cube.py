@@ -56,20 +56,28 @@ from so101_nexus.warp.object_slots import (
     quat_mul_wxyz,
     random_yaw_quat_batch,
     sample_separated_polar,
+    slot_geom_masks,
 )
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
 
 # Contact budget per world, mirroring so101_nexus.warp.pick_env._contact_budget:
-# a generous floor for active grasping plus a per-slot allowance for the parked
-# slots' resting contacts. naconmax = nconmax * num_envs.
+# a generous floor for active grasping, a per-slot allowance for the parked
+# slots' resting contacts, and a small per-extra-part term (the convex parts of
+# one decomposed mesh never collide with each other). naconmax = nconmax *
+# num_envs.
 _STACK_NCONMAX_BASE = 192
 _STACK_NCONMAX_PER_SLOT = 16
+_STACK_NCONMAX_PER_EXTRA_PART = 2
 
 
-def _contact_budget(n_slots: int) -> tuple[int, int]:
-    nconmax = _STACK_NCONMAX_BASE + _STACK_NCONMAX_PER_SLOT * n_slots
+def _contact_budget(n_slots: int, n_collision_geoms: int) -> tuple[int, int]:
+    nconmax = (
+        _STACK_NCONMAX_BASE
+        + _STACK_NCONMAX_PER_SLOT * n_slots
+        + _STACK_NCONMAX_PER_EXTRA_PART * (n_collision_geoms - n_slots)
+    )
     return nconmax, nconmax * 2
 
 
@@ -155,7 +163,9 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             f.flush()
             mjm = mujoco.MjModel.from_xml_path(f.name)
         slots = extract_object_slots(mjm, slot_names, scene_objects)
-        default_nconmax, default_njmax = _contact_budget(len(slots))
+        default_nconmax, default_njmax = _contact_budget(
+            len(slots), sum(len(slot.geom_ids) for slot in slots)
+        )
 
         super().__init__(
             num_envs=num_envs,
@@ -182,9 +192,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         # Free-joint component offsets, reused by every slot write at reset.
         self._qpos_offsets = torch.arange(7, device=self.device)
         self._dof_offsets = torch.arange(6, device=self.device)
-        self._slot_geom = torch.tensor(
-            [s.geom_id for s in slots], dtype=torch.long, device=self.device
-        )
+        self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
         self._slot_spawn_z = torch.tensor(
             [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
         )
@@ -209,7 +217,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._a_dadr = self._slot_dadr[0].expand(num_envs).clone()
         self._b_qadr = self._slot_qadr[self._a_pool].expand(num_envs).clone()
         self._b_dadr = self._slot_dadr[self._a_pool].expand(num_envs).clone()
-        self._obj_geom = self._slot_geom[0].expand(num_envs).clone()
+        self._obj_geom_mask = self._slot_geom_masks[0].expand(num_envs, -1).clone()
         self.cube_a_color_names = [self._a_colors[0]] * num_envs
         self.cube_b_color_names = [self._b_colors[0]] * num_envs
         self._world_rows = torch.arange(num_envs, device=self.device)
@@ -391,9 +399,9 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._a_dadr[idx] = self._slot_dadr[a_sel]
         self._b_qadr[idx] = self._slot_qadr[b_sel]
         self._b_dadr[idx] = self._slot_dadr[b_sel]
-        obj_geom = self._obj_geom
-        assert obj_geom is not None  # set to a tensor in __init__
-        obj_geom[idx] = self._slot_geom[a_sel]
+        obj_mask = self._obj_geom_mask
+        assert obj_mask is not None  # set to a tensor in __init__
+        obj_mask[idx] = self._slot_geom_masks[a_sel]
         # One device read per tensor instead of three per world: indexing a CUDA
         # tensor element by element synchronizes on every element.
         for w, a_i, b_i in zip(idx.tolist(), a_sel.tolist(), b_sel_local.tolist(), strict=True):

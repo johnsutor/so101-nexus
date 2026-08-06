@@ -138,7 +138,7 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self._distractor_slots = slots[2:]
         self._n_distractors = config.n_distractors
         # Grasp detection always targets cube A; cube B is never picked up.
-        self._obj_geom_id = self._slot_a.geom_id
+        self._set_target_geoms(self._slot_a.geom_ids)
 
         self._prev_task_potential: float = 0.0
         self._prev_reach_progress: float = 0.0
