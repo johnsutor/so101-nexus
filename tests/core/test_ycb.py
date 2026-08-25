@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from so101_nexus import ycb_assets
@@ -52,6 +53,8 @@ class _FakeMesh:
     """Stands in for a trimesh mesh; convex by construction, so no decomposition."""
 
     volume = 1.0
+    vertices = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+    faces = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
 
     def __init__(self):
         self.exports: list[tuple[str, str | None]] = []
@@ -173,20 +176,29 @@ def _write_cached_parts(
     files: tuple[str, ...] = ("collision_000.obj",),
     decomposer: str | None = None,
 ) -> Path:
-    """Write a v2 collision decomposition cache entry and return its directory."""
-    parts_dir = mesh_dir / "collision_v2"
+    """Write a collision-v3 cache entry and return its directory."""
+    mesh_dir.mkdir(parents=True, exist_ok=True)
+    source = mesh_dir / "visual.obj"
+    source.write_text("v", encoding="utf-8")
+    parts_dir = mesh_dir / "collision_v3"
     parts_dir.mkdir(parents=True, exist_ok=True)
     for name in files:
         (parts_dir / name).write_text("c", encoding="utf-8")
-    (parts_dir / "parts.json").write_text(
-        json.dumps(
-            {
-                "decomposer": ycb_assets._decomposer_id() if decomposer is None else decomposer,
-                "parts": [{"file": name, "mass_fraction": 1.0 / len(files)} for name in files],
-            }
-        ),
-        encoding="utf-8",
-    )
+    decomposed = decomposer is not None
+    manifest = {
+        "model_id": mesh_dir.name,
+        "source": source.name,
+        "source_sha256": ycb_assets._sha256(source),
+        "decomposer": decomposer or ycb_assets._HULL_DECOMPOSER,
+        "settings": ycb_assets._COACD_SETTINGS if decomposed else None,
+        "hull_gap_p95_m": 0.0,
+        "hull_gap_max_m": 0.0,
+        "hull_gap_gate_m": ycb_assets._HULL_GAP_GATE_M,
+        "hull_gap_max_gate_m": ycb_assets._HULL_GAP_MAX_GATE_M,
+        "decomposed": decomposed,
+        "parts": [{"file": name, "mass_fraction": 1.0 / len(files)} for name in files],
+    }
+    (parts_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return parts_dir
 
 
@@ -261,6 +273,8 @@ def test_ensure_ycb_assets_returns_when_texture_extract_finds_nothing(
     monkeypatch.setattr(ycb_assets, "_extract_glb_texture", lambda _g, _p: False)
     fake_trimesh = types.SimpleNamespace(Scene=_FakeScene, load=lambda *_a, **_k: _FakeMesh())
     _patch_module(monkeypatch, "trimesh", fake_trimesh)
+    _fake_coacd(monkeypatch, [])
+    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
 
@@ -295,6 +309,8 @@ def test_ensure_ycb_assets_download_and_decomposition(
         types.SimpleNamespace(snapshot_download=_snapshot_download),
     )
     monkeypatch.setattr(ycb_assets, "_convert_glb_to_obj", _convert_glb_to_obj)
+    _fake_coacd(monkeypatch, [])
+    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
     assert mesh_dir == tmp_path / model_id
@@ -303,12 +319,19 @@ def test_ensure_ycb_assets_download_and_decomposition(
         tmp_path / "meshes" / model_id / "google_16k" / "textured.glb",
         tmp_path / model_id / "visual.obj",
     )
-    parts_dir = tmp_path / model_id / "collision_v2"
+    parts_dir = tmp_path / model_id / "collision_v3"
     assert mesh.exports[-1] == (str(parts_dir / "collision_000.obj"), "obj")
-    assert json.loads((parts_dir / "parts.json").read_text(encoding="utf-8")) == {
-        "decomposer": ycb_assets._decomposer_id(),
-        "parts": [{"file": "collision_000.obj", "mass_fraction": 1.0}],
-    }
+    manifest = json.loads((parts_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["source"] == "visual.obj"
+    assert manifest["source_sha256"] == ycb_assets._sha256(mesh_dir / "visual.obj")
+    assert manifest["parts"] == [
+        {
+            "file": "collision_000.obj",
+            "mass_fraction": 1.0,
+            "volume_m3": 1.0,
+            "n_vertices": 4,
+        }
+    ]
 
 
 def test_ensure_ycb_assets_scene_path_for_hull(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -331,10 +354,12 @@ def test_ensure_ycb_assets_scene_path_for_hull(monkeypatch: pytest.MonkeyPatch, 
         types.SimpleNamespace(snapshot_download=_snapshot_download),
     )
     monkeypatch.setattr(ycb_assets, "_convert_glb_to_obj", lambda _g, p: p.write_text("v"))
+    _fake_coacd(monkeypatch, [])
+    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     ycb_assets.ensure_ycb_assets(model_id)
     assert mesh.exports[-1] == (
-        str(tmp_path / model_id / "collision_v2" / "collision_000.obj"),
+        str(tmp_path / model_id / "collision_v3" / "collision_000.obj"),
         "obj",
     )
 
@@ -364,7 +389,7 @@ def test_collision_parts_reject_a_truncated_manifest(
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
     model_id = "058_golf_ball"
     parts_dir = _write_cached_parts(tmp_path / model_id)
-    (parts_dir / "parts.json").write_text('{"parts": [{"file":', encoding="utf-8")
+    (parts_dir / "manifest.json").write_text('{"parts": [{"file":', encoding="utf-8")
 
     assert not ycb_assets._collision_parts_are_current(parts_dir)
     with pytest.raises(FileNotFoundError, match="ensure_ycb_assets"):
@@ -381,12 +406,26 @@ def test_cached_parts_from_another_decomposer_are_rebuilt(
     """
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
     parts_dir = _write_cached_parts(tmp_path / "058_golf_ball", decomposer="coacd 0.0.1")
-
     monkeypatch.setattr(ycb_assets, "_decomposer_id", lambda: "coacd 9.9.9")
     assert not ycb_assets._collision_parts_are_current(parts_dir)
 
-    monkeypatch.setattr(ycb_assets, "_decomposer_id", lambda: ycb_assets._HULL_DECOMPOSER)
+    monkeypatch.setattr(ycb_assets, "_decomposer_id", lambda: ycb_assets._FALLBACK_DECOMPOSER)
     assert ycb_assets._collision_parts_are_current(parts_dir)
+
+
+def test_cached_parts_are_rebuilt_when_the_visual_scan_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """The source hash must prevent parts from another scan from reaching physics."""
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    mesh_dir = tmp_path / "058_golf_ball"
+    parts_dir = _write_cached_parts(mesh_dir)
+    assert ycb_assets._collision_parts_are_current(parts_dir)
+
+    (mesh_dir / "visual.obj").write_text("changed", encoding="utf-8")
+
+    assert not ycb_assets._collision_parts_are_current(parts_dir)
 
 
 def test_extract_glb_texture_accepts_orig_extension(
@@ -563,6 +602,7 @@ def _fake_coacd(monkeypatch: pytest.MonkeyPatch, events: list[tuple]) -> None:
     _patch_module(
         monkeypatch, "threadpoolctl", types.SimpleNamespace(threadpool_limits=_threadpool_limits)
     )
+    _patch_module(monkeypatch, "rtree", types.SimpleNamespace())
 
 
 def _fake_trimesh_with_hulls(monkeypatch: pytest.MonkeyPatch, volumes: list[float]) -> None:
@@ -572,26 +612,61 @@ def _fake_trimesh_with_hulls(monkeypatch: pytest.MonkeyPatch, volumes: list[floa
         hull = _FakeMesh()
         hull.volume = volumes[len(hulls)]
         hulls.append(hull)
-        return types.SimpleNamespace(convex_hull=hull)
+        return hull
 
     _patch_module(monkeypatch, "trimesh", types.SimpleNamespace(Scene=_FakeScene, Trimesh=_trimesh))
 
 
-def test_convex_parts_keeps_single_hull_for_convex_meshes(monkeypatch: pytest.MonkeyPatch):
-    """A box or a ball is its own hull; decomposing it only buys collision geoms."""
+def test_collision_build_keeps_an_accurate_single_hull(monkeypatch: pytest.MonkeyPatch):
+    """CoACD must not damage an object whose convex hull already fits its scan."""
     events: list[tuple] = []
     _fake_coacd(monkeypatch, events)
-    mesh = _FakeMesh()
+    monkeypatch.setattr(
+        ycb_assets,
+        "_hull_surface_gap",
+        lambda _hull, _mesh: (
+            ycb_assets._HULL_GAP_GATE_M,
+            ycb_assets._HULL_GAP_MAX_GATE_M,
+        ),
+    )
+    mesh = _ConcaveMesh()
 
-    assert ycb_assets._convex_parts(mesh) == [mesh.convex_hull]
+    build = ycb_assets._build_collision_geometry(mesh)
+
+    assert build.parts == (mesh.convex_hull,)
+    assert not build.decomposed
+    assert build.settings is None
     assert events == []
 
 
-@pytest.mark.parametrize("missing", ["coacd", "threadpoolctl"])
-def test_convex_parts_falls_back_to_single_hull_without_the_extra(
+def test_collision_build_uses_the_audited_coacd_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A poor hull fit must use uncapped parts whose vertices match MuJoCo's limit."""
+    events: list[tuple] = []
+    _fake_coacd(monkeypatch, events)
+    _fake_trimesh_with_hulls(monkeypatch, [1.0, 3.0])
+    monkeypatch.setattr(
+        ycb_assets,
+        "_hull_surface_gap",
+        lambda _hull, _mesh: (ycb_assets._HULL_GAP_GATE_M + 0.001, 0.0),
+    )
+
+    build = ycb_assets._build_collision_geometry(_ConcaveMesh())
+
+    assert build.decomposed
+    assert build.settings == ycb_assets._COACD_SETTINGS
+    assert events[1] == ("run_coacd", ycb_assets._COACD_SETTINGS)
+    assert build.settings["max_convex_hull"] == -1
+    assert build.settings["decimate"] is True
+    assert build.settings["max_ch_vertex"] == 128
+
+
+@pytest.mark.parametrize("missing", ["coacd", "threadpoolctl", "rtree"])
+def test_collision_build_falls_back_to_single_hull_without_the_extra(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, missing: str
 ):
-    """The decomposer is an optional extra: a plain install must still build scenes."""
+    """The decomposer is optional, so a plain install must still build scenes."""
     import logging
 
     _fake_coacd(monkeypatch, [])
@@ -599,73 +674,128 @@ def test_convex_parts_falls_back_to_single_hull_without_the_extra(
     mesh = _ConcaveMesh()
 
     with caplog.at_level(logging.WARNING, logger="so101_nexus.ycb_assets"):
-        parts = ycb_assets._convex_parts(mesh)
+        build = ycb_assets._build_collision_geometry(mesh)
 
-    assert parts == [mesh.convex_hull]
-    # The warning must name the package that is actually missing.
+    assert build.parts == (mesh.convex_hull,)
+    assert build.decomposer == ycb_assets._FALLBACK_DECOMPOSER
     assert missing in caplog.records[0].getMessage()
 
 
-def test_write_collision_parts_weights_mass_by_part_volume(
+def test_write_collision_parts_records_provenance_and_mass(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     events: list[tuple] = []
     _fake_coacd(monkeypatch, events)
     _fake_trimesh_with_hulls(monkeypatch, [1.0, 3.0])
+    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.004, 0.012))
+    source = tmp_path / "visual.obj"
+    source.write_text("visual", encoding="utf-8")
+    out_dir = tmp_path / "collision_v3"
 
-    ycb_assets._write_collision_parts(_ConcaveMesh(), tmp_path)
+    ycb_assets._write_collision_parts(
+        _ConcaveMesh(),
+        out_dir,
+        model_id="037_scissors",
+        source_path=source,
+    )
 
-    manifest = json.loads((tmp_path / "parts.json").read_text(encoding="utf-8"))
-    assert manifest["parts"] == [
-        {"file": "collision_000.obj", "mass_fraction": 0.25},
-        {"file": "collision_001.obj", "mass_fraction": 0.75},
-    ]
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert [part["mass_fraction"] for part in manifest["parts"]] == [0.25, 0.75]
     assert sum(part["mass_fraction"] for part in manifest["parts"]) == 1.0
-    # Scene geometry must not vary between runs: the search is seeded AND pinned
-    # to one OpenMP thread, because CoACD's thread scheduling changes the split.
+    assert manifest["model_id"] == "037_scissors"
+    assert manifest["source_sha256"] == ycb_assets._sha256(source)
+    assert manifest["settings"] == ycb_assets._COACD_SETTINGS
+    assert [part["n_vertices"] for part in manifest["parts"]] == [4, 4]
     assert events[0] == ("enter_limits", 1, "openmp")
-    assert events[1][0] == "run_coacd"
-    assert events[1][1]["seed"] == ycb_assets._COACD_SEED
+    assert events[1] == ("run_coacd", ycb_assets._COACD_SETTINGS)
     assert events[2] == ("exit_limits",)
 
 
 def test_write_collision_parts_drops_stale_parts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """A shorter decomposition must not leave orphan OBJs behind in the cache."""
-    (tmp_path).mkdir(parents=True, exist_ok=True)
+    tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "collision_007.obj").write_text("stale", encoding="utf-8")
-    _patch_module(monkeypatch, "trimesh", types.SimpleNamespace(Scene=_FakeScene))
+    source = tmp_path / "visual.obj"
+    source.write_text("visual", encoding="utf-8")
+    _fake_coacd(monkeypatch, [])
+    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
-    ycb_assets._write_collision_parts(_FakeMesh(), tmp_path)
+    ycb_assets._write_collision_parts(
+        _FakeMesh(),
+        tmp_path,
+        model_id="058_golf_ball",
+        source_path=source,
+    )
 
     assert sorted(p.name for p in tmp_path.glob("collision_*.obj")) == ["collision_000.obj"]
 
 
+def _exterior_collision_points(trimesh, parts, count: int) -> np.ndarray:
+    """Sample only the exterior faces of abutting convex parts."""
+    areas = np.asarray([part.area for part in parts], dtype=np.float64)
+    counts = np.maximum((count * areas / areas.sum()).astype(np.int64), 1)
+    planes = []
+    for part in parts:
+        hull = part.convex_hull
+        normals = np.asarray(hull.face_normals, dtype=np.float64)
+        offsets = np.einsum("ij,ij->i", normals, np.asarray(hull.triangles)[:, 0])
+        planes.append((normals, offsets))
+
+    kept = []
+    for part_index, (part, sample_count) in enumerate(zip(parts, counts, strict=True)):
+        points, face_ids = trimesh.sample.sample_surface(part, int(sample_count), seed=0)
+        points = np.asarray(points, dtype=np.float64)
+        probes = points + 5e-4 * np.asarray(part.face_normals)[face_ids]
+        interior = np.zeros(len(points), dtype=bool)
+        for other_index, (normals, offsets) in enumerate(planes):
+            if other_index != part_index:
+                interior |= ((probes @ normals.T) - offsets <= 0.0).all(axis=1)
+        kept.append(points[~interior])
+    return np.concatenate(kept)
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "model_id,min_convexity",
+    "model_id,decomposed",
     [
-        ("033_spatula", 0.55),  # 0.19 as a single hull
-        ("031_spoon", 0.60),  # 0.31 as a single hull
-        ("030_fork", 0.55),  # 0.45 as a single hull
+        ("009_gelatin_box", False),
+        ("011_banana", True),
+        ("030_fork", True),
+        ("031_spoon", True),
+        ("032_knife", True),
+        ("033_spatula", True),
+        ("037_scissors", True),
+        ("040_large_marker", False),
+        ("043_phillips_screwdriver", True),
+        ("058_golf_ball", False),
     ],
 )
-def test_decomposed_collision_geometry_tracks_the_visual_mesh(model_id: str, min_convexity: float):
-    """Collision volume must stay close to the scan, not balloon into a solid wedge.
-
-    Downloads and decomposes on a cold cache; cached runs only load the OBJs.
-    """
+def test_collision_geometry_tracks_the_visual_surface(model_id: str, decomposed: bool):
+    """The collision surface must not add more than 3.5 mm of bulk error."""
     pytest.importorskip("coacd")
+    pytest.importorskip("rtree")
     trimesh = pytest.importorskip("trimesh")
 
     ycb_assets.ensure_ycb_assets(model_id)
     visual = trimesh.load(str(ycb_assets.get_ycb_visual_mesh(model_id)), force="mesh")
     parts = [
-        trimesh.load(str(path), force="mesh").convex_hull
+        trimesh.load(str(path), force="mesh")
         for path in ycb_assets.get_ycb_collision_meshes(model_id)
     ]
-    convexity = abs(visual.volume) / sum(abs(part.volume) for part in parts)
-    assert convexity >= min_convexity, (
-        f"{model_id} collision volume is {1 / convexity:.2f}x the visual mesh "
-        f"(convexity {convexity:.2f} < {min_convexity})"
+    visual.update_faces(visual.nondegenerate_faces())
+    points = _exterior_collision_points(trimesh, parts, ycb_assets._HULL_GAP_SAMPLES)
+    distances = trimesh.proximity.closest_point(visual, points)[1]
+    p95 = float(np.percentile(distances, 95))
+    maximum = float(np.max(distances))
+
+    manifest = ycb_assets._read_manifest(ycb_assets._collision_dir(model_id))
+    assert manifest is not None
+    assert manifest["decomposed"] is decomposed
+    assert (len(parts) > 1) is decomposed
+    assert sum(part.mass_fraction for part in ycb_assets.get_ycb_collision_parts(model_id)) == (
+        pytest.approx(1.0)
     )
-    assert len(parts) > 1
+    if decomposed:
+        assert max(len(part.vertices) for part in parts) <= 128
+    assert p95 <= 0.0035, f"{model_id} adds {p95 * 1000:.2f} mm of p95 collision error"
+    assert maximum <= 0.016, f"{model_id} adds {maximum * 1000:.2f} mm of maximum collision error"

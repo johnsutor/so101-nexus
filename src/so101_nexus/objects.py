@@ -65,25 +65,24 @@ class CubeObject(SceneObject):
 
 
 class YCBObject(SceneObject):
-    """YCB dataset object identified by model_id (e.g. '003_cracker_box').
+    """YCB dataset object identified by ``model_id``.
 
-    The visual mesh is the original YCB scan; the collision geometry is a
-    **convex decomposition** of it (see ``ensure_ycb_assets``), so physics sees
-    the concavities that make an object graspable (a fork's handle, a spatula's
-    neck) instead of one solid wedge. The decomposition needs the optional
-    ``decomp`` extra (``pip install so101-nexus[decomp]``); without it the
-    collision geometry falls back to a single convex hull, and then:
+    The visual mesh is the original YCB scan. The collision geometry is a
+    measured convex decomposition of it (see ``ensure_ycb_assets``), so physics
+    sees concavities such as a fork handle or a spatula neck. A surface-error
+    gate keeps a single hull when that hull already matches the scan.
 
-    - The feature that makes an object graspable in reality is buried inside the
-      hull, so the fingers never touch it.
-    - A model whose hull is wider than the gripper can close on cannot be
-      grasped at all, no matter how good the policy is.
+    The decomposition needs the optional ``decomp`` extra
+    (``pip install so101-nexus[decomp]``). Without it, collision geometry falls
+    back to one convex hull:
 
-    Installing the extra after the assets were prepared rebuilds the cache on the
-    next ``ensure_ycb_assets`` call: the manifest records which decomposer wrote
-    the parts. Measure a candidate before building a task around it:
-    ``ensure_ycb_assets(model_id)`` then ``get_ycb_collision_meshes(model_id)``
-    gives the OBJ parts physics uses.
+    - The hull can bury the feature that makes an object graspable.
+    - A hull wider than the open gripper makes a grasp impossible.
+
+    Installing the extra after asset preparation rebuilds the cache on the next
+    ``ensure_ycb_assets`` call. The manifest records the scan hash, generator
+    configuration, and part properties. ``get_ycb_collision_meshes(model_id)``
+    returns the OBJ parts that physics uses.
 
     Parameters
     ----------

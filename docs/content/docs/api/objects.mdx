@@ -114,8 +114,8 @@ YCB mesh assets are downloaded from the Hugging Face Hub on first use and cached
 ```
 
 Each model directory holds `visual.obj`, the convex collision parts under
-`collision_v2/` (`collision_000.obj` ... plus a `parts.json` manifest), and, when
-extraction succeeds, `texture.png`.
+`collision_v3/` (`collision_000.obj` and more), and a `manifest.json` file. The
+directory also holds `texture.png` when the texture extraction succeeds.
 
 Creating a `YCBObject` and stepping an environment downloads whatever is missing. You can also trigger the download explicitly:
 
@@ -133,17 +133,29 @@ def ensure_ycb_assets(model_id: str) -> Path
 
 Downloads the mesh assets for `model_id` if they are not already cached, then returns the cache directory.
 
-`visual.obj` and the `collision_v2/` parts are the required geometry cache. The collision
-geometry is a convex decomposition of the visual scan, computed once with
-[CoACD](https://github.com/SarahWeiii/CoACD) and cached, so physics sees the concavities a
-single hull would fill in. It needs the `decomp` extra; see
-[Installation](/docs/getting-started/installation) for the extras matrix. Nearly convex
-models (the golf ball, the gelatin box) keep a single hull either way. The manifest records
-which decomposer produced the parts, so installing the extra later, or upgrading CoACD,
-rebuilds the cache instead of reusing coarser geometry. The function additionally attempts
-to extract `texture.png` from `meshes/{model_id}/google_16k/textured.glb`. Texture
-extraction is best effort: if a model or the locally installed `trimesh` does not expose a
-texture image, the environment still runs with the untextured visual mesh.
+`visual.obj` and the `collision_v3/` parts are the required geometry cache. The
+generator uses 20,000 deterministic surface samples to measure the convex hull
+against the visual scan. It keeps one hull when the p95 error is at most 3 mm
+and the maximum error is at most 10 mm. This gate keeps the gelatin box, large
+marker, and golf ball as one hull.
+
+The other models use the collision-aware [CoACD](https://github.com/SarahWeiii/CoACD)
+decomposition. CoACD has no object-level part limit. It limits each part to 128
+vertices, which matches the [MuJoCo mesh hull limit](https://mujoco.readthedocs.io/en/stable/XMLreference.html#asset-mesh-maxhullvert).
+The audited models use 3 to 19 parts. Their collision surfaces have 2.07 mm to
+3.02 mm of p95 error against the visual scans.
+
+The manifest records the source hash, the CoACD version, the complete
+configuration, the quality gates, and the part sizes. The cache rebuilds after
+the source or a generation input changes. An installation without the `decomp`
+extra can use an existing decomposition. Otherwise, it falls back to one convex
+hull. See [Installation](/docs/getting-started/installation) for the extras
+matrix.
+
+The function also attempts to extract `texture.png` from
+`meshes/{model_id}/google_16k/textured.glb`. Texture extraction is best effort.
+If no texture image is available, the environment uses the untextured visual
+mesh.
 
 ### Path helpers
 
