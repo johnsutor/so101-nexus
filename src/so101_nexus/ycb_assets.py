@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib
 import json
 import logging
+import math
 import os
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypedDict, cast
 
 from so101_nexus.constants import YCB_OBJECTS
 
@@ -20,32 +23,55 @@ logger = logging.getLogger(__name__)
 _HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
 _CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"
 
-_COLLISION_SUBDIR = "collision_v2"
-"""Cache subdirectory holding the convex decomposition.
+_COLLISION_SUBDIR = "collision_v3"
+"""Cache subdirectory for collision parts built with a measured surface-error gate."""
 
-Versioned: bump it whenever the decomposition changes, otherwise the parts
-cached by an older release keep winning the ``ensure_ycb_assets`` early return.
-"""
+_MANIFEST_NAME = "manifest.json"
 
-_MANIFEST_NAME = "parts.json"
+_FALLBACK_DECOMPOSER = "convex_hull"
+"""Manifest marker for a hull built without the ``decomp`` extra."""
 
-_HULL_DECOMPOSER = "convex_hull"
-"""Manifest marker for parts built without CoACD (the single-hull fallback)."""
+_HULL_DECOMPOSER = "none (hull kept)"
+"""Manifest marker for a measured hull that does not need decomposition."""
 
-# CoACD settings. The seed is fixed because scene geometry must not vary
-# between runs; preprocessing (watertight remeshing of the open YCB scans) is
-# what lifts the thin, concave models above the acceptance convexity, and the
-# hull cap keeps the per-object geom count affordable for contact budgets.
-_COACD_SEED = 0
-_COACD_THRESHOLD = 0.02
-_COACD_MAX_HULLS = 16
-_COACD_PREPROCESS_RESOLUTION = 100
+_HULL_GAP_SAMPLES = 20_000
+_HULL_GAP_SEED = 0
+_HULL_GAP_GATE_M = 0.003
+_HULL_GAP_MAX_GATE_M = 0.010
 
-_SINGLE_HULL_CONVEXITY = 0.95
-"""Volume ratio above which a model keeps its single convex hull.
 
-Boxes and balls are already their own hull; decomposing them only buys geoms.
-"""
+class _CoacdSettings(TypedDict):
+    threshold: float
+    max_convex_hull: int
+    preprocess_mode: str
+    preprocess_resolution: int
+    resolution: int
+    mcts_nodes: int
+    mcts_iterations: int
+    mcts_max_depth: int
+    pca: bool
+    merge: bool
+    decimate: bool
+    max_ch_vertex: int
+    seed: int
+
+
+_COACD_SETTINGS: _CoacdSettings = {
+    "threshold": 0.03,
+    "max_convex_hull": -1,
+    "preprocess_mode": "auto",
+    "preprocess_resolution": 50,
+    "resolution": 2000,
+    "mcts_nodes": 20,
+    "mcts_iterations": 150,
+    "mcts_max_depth": 3,
+    "pca": False,
+    "merge": True,
+    "decimate": True,
+    "max_ch_vertex": 128,
+    "seed": 0,
+}
+"""Audited CoACD configuration for the ten supported YCB scans."""
 
 
 class _ExportableMesh(Protocol):
@@ -83,6 +109,18 @@ class YCBCollisionPart:
     mass_fraction: float
 
 
+@dataclass(frozen=True, slots=True)
+class _CollisionBuild:
+    """Collision parts and the inputs that produced them."""
+
+    parts: tuple[_ExportableMesh, ...]
+    decomposer: str
+    decomposed: bool
+    settings: Mapping[str, object] | None
+    hull_gap_p95_m: float | None
+    hull_gap_max_m: float | None
+
+
 def _validate_model_id(model_id: str) -> None:
     if model_id not in YCB_OBJECTS:
         raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
@@ -100,11 +138,11 @@ def get_ycb_texture_file(model_id: str) -> Path:
     return _CACHE_DIR / model_id / "texture.png"
 
 
-def _load_exportable_mesh(glb_path: Path) -> _ExportableMesh:
-    """Load a GLB as a mesh object with `export` and `convex_hull`."""
+def _load_exportable_mesh(mesh_path: Path) -> _ExportableMesh:
+    """Load a mesh file as one object with ``export`` and ``convex_hull``."""
     import trimesh
 
-    scene_or_mesh = trimesh.load(str(glb_path), force="mesh")
+    scene_or_mesh = trimesh.load(str(mesh_path), force="mesh")
     if isinstance(scene_or_mesh, trimesh.Scene):
         return cast("_ExportableMesh", scene_or_mesh.dump(concatenate=True))
     return cast("_ExportableMesh", scene_or_mesh)
@@ -122,97 +160,126 @@ def _collision_dir(model_id: str) -> Path:
 
 
 def _decomposer_id() -> str:
-    """Identify the decomposer that would produce the parts, for cache keying.
-
-    Includes the CoACD version, because its splits change between releases, so a
-    cache written by another version is not the geometry this install builds.
-    Both packages of the ``decomp`` extra must be present: without
-    ``threadpoolctl`` the search is not thread-pinned, and ``_convex_parts``
-    falls back to a single hull rather than write geometry it cannot reproduce.
-    """
+    """Identify the installed generator for cache keying."""
     try:
         from importlib.metadata import PackageNotFoundError, version
 
-        version("threadpoolctl")
+        for package in ("threadpoolctl", "rtree"):
+            version(package)
         return f"coacd {version('coacd')}"
     except (ImportError, PackageNotFoundError):
-        return _HULL_DECOMPOSER
+        return _FALLBACK_DECOMPOSER
 
 
-def _convex_parts(mesh: _ExportableMesh) -> list[_ExportableMesh]:
-    """Decompose ``mesh`` into convex collision parts.
+def _hull_surface_gap(
+    hull: _ExportableMesh,
+    mesh: _ExportableMesh,
+) -> tuple[float, float]:
+    """Return the p95 and maximum distances from a hull surface to a scan."""
+    import numpy as np
+    import trimesh
 
-    Nearly convex models keep their single convex hull. The rest are handed to
-    CoACD, which is an optional extra (``pip install so101-nexus[decomp]``);
-    without it the single hull remains the fallback, so no existing install
-    breaks, it just keeps the coarse collision geometry.
+    points, _ = trimesh.sample.sample_surface(
+        hull,
+        _HULL_GAP_SAMPLES,
+        seed=_HULL_GAP_SEED,
+    )
+    scan = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, process=False)
+    scan.update_faces(scan.nondegenerate_faces())
+    distances = np.asarray(trimesh.proximity.closest_point(scan, points)[1], dtype=np.float64)
+    if distances.size == 0 or not np.isfinite(distances).all():
+        raise ValueError("The hull surface distance contains no finite samples.")
+    return float(np.percentile(distances, 95)), float(distances.max())
 
-    CoACD's MCTS search is parallelized over OpenMP, and its thread scheduling
-    changes the split it converges on: the same mesh and seed yield different
-    part counts run to run. Scene geometry must not vary between runs, so the
-    search is pinned to one thread (a few seconds per model, once, then cached).
-    The limit is scoped to this call and restored afterwards.
-    """
+
+def _build_collision_geometry(mesh: _ExportableMesh) -> _CollisionBuild:
+    """Build a measured hull or a collision-aware convex decomposition."""
     hull = mesh.convex_hull
-    hull_volume = abs(hull.volume)
-    # The YCB scans are open surfaces, so this is the divergence-theorem volume
-    # rather than a true enclosed one; logged because a model whose integral
-    # overshoots would skip decomposition without any other signal.
-    convexity = abs(mesh.volume) / hull_volume if hull_volume > 0.0 else 1.0
-    logger.debug("mesh convexity (volume / hull volume): %.3f", convexity)
-    if convexity >= _SINGLE_HULL_CONVEXITY:
-        return [hull]
     try:
         import coacd
+        import trimesh
         from threadpoolctl import threadpool_limits
+
+        importlib.import_module("rtree")
     except ImportError as exc:
         logger.warning(
-            "%s is not installed: collision geometry stays a single convex hull, "
-            "which physics sees as a solid wedge for concave models. "
-            "Install so101-nexus[decomp] for a multi-hull decomposition.",
-            exc.name or "coacd",
+            "%s is not installed: collision geometry stays a single convex hull. "
+            "Install so101-nexus[decomp] for measured multi-hull geometry.",
+            exc.name or "a decomposition dependency",
         )
-        return [hull]
+        return _CollisionBuild(
+            parts=(hull,),
+            decomposer=_FALLBACK_DECOMPOSER,
+            decomposed=False,
+            settings=None,
+            hull_gap_p95_m=None,
+            hull_gap_max_m=None,
+        )
 
-    import trimesh
+    hull_gap_p95_m, hull_gap_max_m = _hull_surface_gap(hull, mesh)
+    logger.debug(
+        "hull surface gap: p95=%.6f m, max=%.6f m",
+        hull_gap_p95_m,
+        hull_gap_max_m,
+    )
+    if hull_gap_p95_m <= _HULL_GAP_GATE_M and hull_gap_max_m <= _HULL_GAP_MAX_GATE_M:
+        return _CollisionBuild(
+            parts=(hull,),
+            decomposer=_HULL_DECOMPOSER,
+            decomposed=False,
+            settings=None,
+            hull_gap_p95_m=hull_gap_p95_m,
+            hull_gap_max_m=hull_gap_max_m,
+        )
 
     coacd.set_log_level("error")
     with threadpool_limits(limits=1, user_api="openmp"):
-        parts = coacd.run_coacd(
+        pieces = coacd.run_coacd(
             coacd.Mesh(mesh.vertices, mesh.faces),
-            threshold=_COACD_THRESHOLD,
-            max_convex_hull=_COACD_MAX_HULLS,
-            preprocess_mode="on",
-            preprocess_resolution=_COACD_PREPROCESS_RESOLUTION,
-            seed=_COACD_SEED,
+            **_COACD_SETTINGS,
         )
-    # CoACD parts are near-convex, not exactly convex; MuJoCo collides the hull
-    # of a mesh geom anyway, so hulling here keeps the exported OBJ and the
-    # compiled collider identical. A sliver part can fail to hull at all, which
-    # is the same "drop it" case as a zero-volume one.
-    hulls = []
-    for vertices, faces in parts:
-        try:
-            hulls.append(trimesh.Trimesh(vertices, faces).convex_hull)
-        except Exception:  # qhull errors are not importable without scipy here
-            logger.debug("dropping a degenerate CoACD part")
-    return [part for part in hulls if abs(part.volume) > 0.0] or [hull]
-
-
-def _write_collision_parts(mesh: _ExportableMesh, out_dir: Path) -> None:
-    """Export the convex decomposition of ``mesh`` and its manifest into ``out_dir``.
-
-    The manifest is the cache sentinel, so it is removed before the parts are
-    rewritten and published atomically: an interrupted export leaves no manifest
-    and the next call rebuilds, instead of wedging the cache behind a truncated
-    one that ``ensure_ycb_assets`` would accept forever.
-    """
-    parts = _convex_parts(mesh)
-    volumes = [abs(part.volume) for part in parts]
-    total = sum(volumes)
-    fractions = (
-        [volume / total for volume in volumes] if total > 0.0 else [1.0 / len(parts)] * len(parts)
+    parts = tuple(
+        cast("_ExportableMesh", trimesh.Trimesh(vertices, faces)) for vertices, faces in pieces
     )
+    parts = tuple(part for part in parts if abs(part.volume) > 0.0)
+    if not parts:
+        raise RuntimeError("CoACD produced no positive-volume collision parts.")
+    max_vertices = int(_COACD_SETTINGS["max_ch_vertex"])
+    if any(len(part.vertices) > max_vertices for part in parts):
+        raise RuntimeError(
+            f"CoACD produced a collision part with more than {max_vertices} vertices."
+        )
+    return _CollisionBuild(
+        parts=parts,
+        decomposer=_decomposer_id(),
+        decomposed=True,
+        settings=_COACD_SETTINGS,
+        hull_gap_p95_m=hull_gap_p95_m,
+        hull_gap_max_m=hull_gap_max_m,
+    )
+
+
+def _sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _write_collision_parts(
+    mesh: _ExportableMesh,
+    out_dir: Path,
+    *,
+    model_id: str,
+    source_path: Path,
+) -> None:
+    """Export collision parts and their generation manifest into ``out_dir``."""
+    build = _build_collision_geometry(mesh)
+    volumes = [abs(part.volume) for part in build.parts]
+    total = sum(volumes)
+    fractions = [volume / total for volume in volumes]
 
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = out_dir / _MANIFEST_NAME
@@ -220,15 +287,35 @@ def _write_collision_parts(mesh: _ExportableMesh, out_dir: Path) -> None:
     for stale in out_dir.glob("collision_*.obj"):
         stale.unlink()
     entries = []
-    for index, (part, fraction) in enumerate(zip(parts, fractions, strict=True)):
+    for index, (part, volume, fraction) in enumerate(
+        zip(build.parts, volumes, fractions, strict=True)
+    ):
         name = f"collision_{index:03d}.obj"
         part.export(str(out_dir / name), file_type="obj")
-        entries.append({"file": name, "mass_fraction": fraction})
+        entries.append(
+            {
+                "file": name,
+                "mass_fraction": fraction,
+                "volume_m3": volume,
+                "n_vertices": len(part.vertices),
+            }
+        )
+    manifest = {
+        "model_id": model_id,
+        "source": source_path.name,
+        "source_sha256": _sha256(source_path),
+        "decomposer": build.decomposer,
+        "settings": dict(build.settings) if build.settings is not None else None,
+        "hull_gap_p95_m": build.hull_gap_p95_m,
+        "hull_gap_max_m": build.hull_gap_max_m,
+        "hull_gap_gate_m": _HULL_GAP_GATE_M,
+        "hull_gap_max_gate_m": _HULL_GAP_MAX_GATE_M,
+        "decomposed": build.decomposed,
+        "mass_split": "part volume / total part volume",
+        "parts": entries,
+    }
     pending = manifest_path.with_suffix(".json.pending")
-    pending.write_text(
-        json.dumps({"decomposer": _decomposer_id(), "parts": entries}, indent=2),
-        encoding="utf-8",
-    )
+    pending.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     os.replace(pending, manifest_path)
 
 
@@ -294,48 +381,85 @@ def _texture_glb_path(model_id: str) -> Path:
     return orig if orig.exists() else base / "textured.glb"
 
 
-def _read_manifest(collision_dir: Path) -> dict | None:
-    """Return the parsed parts manifest, or ``None`` when it is absent or unusable.
+def _manifest_part_is_usable(part: object) -> bool:
+    if not isinstance(part, Mapping):
+        return False
+    part = cast("Mapping[str, object]", part)
+    name = part.get("file")
+    fraction_value = part.get("mass_fraction")
+    if not isinstance(name, str) or Path(name).name != name:
+        return False
+    if isinstance(fraction_value, bool) or not isinstance(fraction_value, (int, float)):
+        return False
+    fraction = float(fraction_value)
+    return math.isfinite(fraction) and fraction >= 0.0
 
-    Anything unreadable reads as absent so the cache rebuilds itself: the
-    manifest is the sentinel ``ensure_ycb_assets`` early-returns on, and a
-    truncated one would otherwise wedge the model behind a parse error forever.
-    """
+
+def _read_manifest(collision_dir: Path) -> dict | None:
+    """Return a usable collision manifest, or ``None``."""
     try:
         manifest = json.loads((collision_dir / _MANIFEST_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(manifest, dict) or not isinstance(manifest.get("parts"), list):
         return None
+    parts = manifest["parts"]
+    if not parts or not all(_manifest_part_is_usable(part) for part in parts):
+        return None
     return manifest
 
 
-def _collision_parts_are_current(collision_dir: Path) -> bool:
-    """Return True when the cached parts were built by this install's decomposer.
+def _manifest_source_matches(collision_dir: Path, manifest: Mapping[str, object]) -> bool:
+    source = collision_dir.parent / str(manifest.get("source", ""))
+    try:
+        return manifest.get("source_sha256") == _sha256(source)
+    except OSError:
+        return False
 
-    A cache written by a different CoACD version (or by the single-hull fallback
-    before the ``decomp`` extra was installed) is rebuilt, so scene geometry
-    always matches the decomposer that is actually present. The reverse is never
-    true: an install without CoACD keeps whatever is cached rather than
-    overwriting a real decomposition with a coarse hull.
-    """
+
+def _manifest_generator_matches(manifest: Mapping[str, object]) -> bool:
+    current = _decomposer_id()
+    if current == _FALLBACK_DECOMPOSER:
+        return True
+    gates_match = (
+        manifest.get("hull_gap_gate_m") == _HULL_GAP_GATE_M
+        and manifest.get("hull_gap_max_gate_m") == _HULL_GAP_MAX_GATE_M
+    )
+    if not gates_match:
+        return False
+    if manifest.get("decomposed"):
+        return manifest.get("decomposer") == current and manifest.get("settings") == _COACD_SETTINGS
+    return (
+        manifest.get("decomposer") == _HULL_DECOMPOSER
+        and manifest.get("settings") is None
+        and manifest.get("hull_gap_p95_m") is not None
+        and manifest.get("hull_gap_max_m") is not None
+    )
+
+
+def _collision_parts_are_current(collision_dir: Path) -> bool:
+    """Return true when all cached parts match the scan and generator inputs."""
     manifest = _read_manifest(collision_dir)
     if manifest is None:
         return False
-    current = _decomposer_id()
-    return manifest.get("decomposer") == current or current == _HULL_DECOMPOSER
+    parts_exist = all((collision_dir / part["file"]).is_file() for part in manifest["parts"])
+    return (
+        parts_exist
+        and _manifest_source_matches(collision_dir, manifest)
+        and _manifest_generator_matches(manifest)
+    )
 
 
 def ensure_ycb_assets(model_id: str) -> Path:
     """Download YCB mesh assets from HuggingFace if not already cached.
 
-    Downloads from the ai-habitat/ycb dataset and converts GLB meshes to OBJ
-    format for use with MuJoCo. The visual mesh is exported directly; the
-    collision geometry is a cached convex decomposition of it (see
-    :func:`get_ycb_collision_parts`), so physics sees the concavities a single
-    hull would fill in. Decomposition needs the optional ``decomp`` extra;
-    without it the collision geometry falls back to one convex hull, which is
-    what ``YCBObject`` warns about.
+    Downloads the ai-habitat/ycb meshes and converts them to OBJ for MuJoCo.
+    The visual mesh stays unchanged. A deterministic surface-error gate keeps
+    one collision hull when it fits the scan. Other objects use a cached CoACD
+    decomposition, so physics sees concavities that one hull fills.
+
+    Decomposition needs the optional ``decomp`` extra. Without it, collision
+    geometry falls back to one convex hull.
 
     Returns the directory containing the model's mesh files.
     """
@@ -383,7 +507,12 @@ def ensure_ycb_assets(model_id: str) -> Path:
     mesh_dir.mkdir(parents=True, exist_ok=True)
     _convert_glb_to_obj(glb_path, visual_path)
 
-    _write_collision_parts(_load_exportable_mesh(glb_path), collision_dir)
+    _write_collision_parts(
+        _load_exportable_mesh(visual_path),
+        collision_dir,
+        model_id=model_id,
+        source_path=visual_path,
+    )
     # Single-hull cache from a release before the decomposition; nothing reads it.
     (mesh_dir / "collision.obj").unlink(missing_ok=True)
     preferred_glb = _texture_glb_path(model_id)

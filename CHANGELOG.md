@@ -11,33 +11,31 @@ for the public-API and deprecation policy.
 
 ### Added
 
-- `decomp` extra (`coacd`, `threadpoolctl`) building multi-hull convex collision geometry for
-  YCB objects. `get_ycb_collision_parts(model_id)` returns the convex parts as
-  `YCBCollisionPart(path, mass_fraction)`, `get_ycb_collision_meshes(model_id)` returns just
-  their paths, and `ObjectSlot.geom_ids` lists every collision geom of a slot
+- `decomp` extra (`coacd`, `rtree`, `threadpoolctl`) for measured multi-hull YCB
+  collision geometry. `get_ycb_collision_parts(model_id)` returns the parts as
+  `YCBCollisionPart(path, mass_fraction)`. `get_ycb_collision_meshes(model_id)` returns their
+  paths. `ObjectSlot.geom_ids` lists each collision geom of a slot
   (`ObjectSlot.geom_id` stays the first one).
 
 ### Changed
 
-- **YCB collision geometry is now a convex decomposition of the scan, not a single convex
-  hull.** Physics saw a fork as a solid wedge and a spatula as a filled slab, burying the
-  feature a policy has to grasp; measured as visual volume over collision volume, the ten
-  shipped models go 0.19 to 0.66 (spatula), 0.31 to 0.74 (spoon), 0.36 to 0.74 (scissors),
-  0.45 to 0.76 (fork), 0.55 to 0.74 (knife), 0.65 to 0.94 (banana), 0.68 to 0.89
-  (screwdriver), 0.84 to 0.89 (large marker), with the gelatin box (0.97) and golf ball
-  (1.00) already convex and left as one hull. Parts are computed once with CoACD, pinned to
-  one OpenMP thread so the split is reproducible, and cached under
-  `~/.cache/so101_nexus/ycb/{model_id}/collision_v2/`; the versioned directory means an
-  existing single-hull cache is rebuilt rather than silently reused, and the manifest records
-  which decomposer wrote the parts, so installing the `decomp` extra later or upgrading CoACD
-  rebuilds them too. Without the extra the collision geometry falls back to the previous
-  single hull. Cube scenes are byte-identical. Each part carries a volume-weighted share of
-  the object's mass, so total body mass is unchanged.
+- **YCB collision geometry now uses a measured convex decomposition of the scan.** A
+  deterministic 20,000-point surface audit keeps one hull when its p95 error is at most 3 mm
+  and its maximum error is at most 10 mm. The gelatin box, large marker, and golf ball keep
+  one hull. The other seven objects use 3 to 19 CoACD parts. Their p95 collision error is
+  2.07 mm to 3.02 mm, instead of 5.78 mm to 25.65 mm for one hull. CoACD has no object-level
+  part limit, and each decomposed part has at most 128 vertices to match MuJoCo.
+- Collision caches now use
+  `~/.cache/so101_nexus/ycb/{model_id}/collision_v3/manifest.json`. The manifest records the
+  visual scan SHA-256, CoACD version, complete configuration, quality gates, part volumes,
+  and vertex counts. A changed source or generation input rebuilds the cache. An installation
+  without the `decomp` extra keeps a valid decomposition, or falls back to one hull. Each part
+  carries a volume-weighted mass share, so the total object mass stays unchanged.
 - `get_ycb_collision_mesh(model_id)` now returns the first convex part
-  (`collision_v2/collision_000.obj`, was `collision.obj`) and reads the decomposition
-  manifest, so it raises `FileNotFoundError` when the model has not been prepared; it was
-  previously a pure path computation that never touched disk. Call `ensure_ycb_assets` first.
-  `ensure_ycb_assets` also deletes the superseded `collision.obj` from an older cache.
+  (`collision_v3/collision_000.obj`, was `collision.obj`) and reads the decomposition
+  manifest. It raises `FileNotFoundError` when the model is not prepared. Call
+  `ensure_ycb_assets` first. `ensure_ycb_assets` also deletes the old `collision.obj` file
+  when it rebuilds a cache.
 - Grasp detection aggregates contact normals over every collision geom of the target before
   the opposing-normal test, so fingers landing on different parts of one object still read as
   a pinch. The MuJoCo env attribute `_obj_geom_id` is now `_obj_geom_ids` (NumPy array) plus

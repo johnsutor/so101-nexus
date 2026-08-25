@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-decomp = ["coacd>=1.0.5,<2", "threadpoolctl>=3.1,<4"]
+decomp = ["coacd>=1.0.13,<2", "rtree>=1.4,<2", "threadpoolctl>=3.1,<4"]
 viz = ["Pillow"]
 teleop = [
     "lerobot[feetech]>=0.5.0,<0.6",
