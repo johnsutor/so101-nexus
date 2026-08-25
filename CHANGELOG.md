@@ -11,6 +11,16 @@ for the public-API and deprecation policy.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.5.2] - 2026-08-25
+
+### Added
+
 - `decomp` extra (`coacd`, `rtree`, `threadpoolctl`) for measured multi-hull YCB
   collision geometry. `get_ycb_collision_parts(model_id)` returns the parts as
   `YCBCollisionPart(path, mass_fraction)`. `get_ycb_collision_meshes(model_id)` returns their
@@ -525,7 +535,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...0.5.0
 [0.4.13]: https://github.com/johnsutor/so101-nexus/compare/0.4.12...0.4.13
