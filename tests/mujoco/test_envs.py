@@ -32,10 +32,10 @@ from so101_nexus.config import (
     StackCubeConfig,
     TouchConfig,
 )
-from so101_nexus.constants import CUBE_COLOR_MAP, YCB_OBJECTS
+from so101_nexus.constants import CUBE_COLOR_MAP, GSO_OBJECTS, YCB_OBJECTS
 from so101_nexus.kinematics import EE_ACTION_DIM
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.objects import CubeObject, YCBObject
+from so101_nexus.objects import CubeObject, GSOObject, YCBObject
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -75,6 +75,7 @@ REWARD_RANGE_OVERRIDES: dict[str, tuple[float, float]] = {
 
 CUBE_COLORS = list(CUBE_COLOR_MAP.keys())
 YCB_MODEL_IDS = list(YCB_OBJECTS.keys())
+GSO_MODEL_IDS = list(GSO_OBJECTS.keys())
 MOVE_DIRECTIONS = ["up", "down", "left", "right", "forward", "backward"]
 # Control-mode families come from so101_nexus.config so this suite cannot drift
 # from the ControlMode literal when a new mode lands. Joint modes command the six
@@ -363,6 +364,18 @@ def test_pick_ycb_object(model_id):
         env.close()
 
 
+@pytest.mark.parametrize("model_id", GSO_MODEL_IDS)
+def test_pick_gso_object(model_id):
+    config = PickConfig(objects=[GSOObject(model_id=model_id)])
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset()
+        assert GSO_OBJECTS[model_id] in env.unwrapped.task_description  # type: ignore[attr-defined]
+        _run_episode(env)
+    finally:
+        env.close()
+
+
 def test_pick_multiple_cubes_with_distractors():
     """PickLift with a homogeneous cube pool and distractors spawns correctly."""
     objects: list[CubeObject] = [
@@ -385,6 +398,7 @@ def test_pick_mixed_pool_with_distractors():
         YCBObject(model_id="009_gelatin_box"),
         CubeObject(color="blue"),
         YCBObject(model_id="032_knife"),
+        GSOObject(model_id="CoQ10"),
     ]
     config = PickConfig(objects=objects, n_distractors=2)
     env = gym.make("MuJoCoPickLift-v1", config=config)
