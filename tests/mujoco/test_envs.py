@@ -382,9 +382,9 @@ def test_pick_multiple_cubes_with_distractors():
 
 def test_pick_mixed_pool_with_distractors():
     objects = [
-        YCBObject(model_id="011_banana"),
+        YCBObject(model_id="009_gelatin_box"),
         CubeObject(color="blue"),
-        YCBObject(model_id="058_golf_ball"),
+        YCBObject(model_id="032_knife"),
     ]
     config = PickConfig(objects=objects, n_distractors=2)
     env = gym.make("MuJoCoPickLift-v1", config=config)
@@ -396,7 +396,7 @@ def test_pick_mixed_pool_with_distractors():
         env.close()
 
 
-@pytest.mark.parametrize("model_id", ["011_banana", "030_fork", "031_spoon", "032_knife"])
+@pytest.mark.parametrize("model_id", ["030_fork", "031_spoon", "032_knife"])
 def test_pick_ycb_collision_geom_starts_above_floor(model_id):
     pytest.importorskip("coacd", reason="multi-hull collision needs the decomp extra")
     from so101_nexus.mujoco.spawn_utils import slot_world_min_z
@@ -1621,9 +1621,9 @@ def test_pick_hidden_slot_collisions_restore_when_slot_becomes_target():
 def test_pick_hidden_ycb_slots_are_inert_below_floor():
     """Same fix must hold for YCB pools with collision and visual geoms."""
     objects = [
-        YCBObject(model_id="011_banana"),
+        YCBObject(model_id="009_gelatin_box"),
         YCBObject(model_id="030_fork"),
-        YCBObject(model_id="058_golf_ball"),
+        YCBObject(model_id="032_knife"),
     ]
     config = PickConfig(objects=objects, n_distractors=0)
     env = gym.make("MuJoCoPickLift-v1", config=config)
@@ -1709,12 +1709,12 @@ def test_pick_and_place_color_reproducible_by_seed():
 
 def test_pick_and_place_ycb_object_task_description():
     """An explicit object pool names the carried object in the task description."""
-    config = PickAndPlaceConfig(objects=[YCBObject(model_id="011_banana")])
+    config = PickAndPlaceConfig(objects=[YCBObject(model_id="009_gelatin_box")])
     env = gym.make("MuJoCoPickAndPlace-v1", config=config)
     try:
         env.reset(seed=0)
         desc = env.unwrapped.task_description  # type: ignore[attr-defined]
-        assert "banana" in desc
+        assert "gelatin box" in desc
         assert "circle" in desc
         _run_episode(env)
     finally:
@@ -1737,7 +1737,7 @@ def test_pick_and_place_object_pose_tracks_selected_slot():
 
 def test_pick_and_place_info_keys_with_object_pool():
     """Placement info keys stay stable for a non-cube carried object."""
-    config = PickAndPlaceConfig(objects=[YCBObject(model_id="011_banana")])
+    config = PickAndPlaceConfig(objects=[YCBObject(model_id="009_gelatin_box")])
     env = gym.make("MuJoCoPickAndPlace-v1", config=config)
     expected = {
         "obj_to_target_dist",

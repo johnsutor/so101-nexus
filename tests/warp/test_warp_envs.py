@@ -311,7 +311,7 @@ def test_pick_object_pose_obs_tracks_cube():
     assert torch.allclose(obs[:, :3], env._target_pos(), atol=1e-5)
 
 
-@pytest.mark.parametrize("objects", [None, "033_spatula"])
+@pytest.mark.parametrize("objects", [None, "043_phillips_screwdriver"])
 def test_pick_contact_budget_headroom_and_grasp_range(objects):
     """The default budget must cover a decomposed pool, not just a single cube."""
     import torch
@@ -347,7 +347,7 @@ def test_pick_supports_heterogeneous_pool():
 
     # Single YCB object: constructs, resets, steps with finite observations.
     env = WarpPickLiftVectorEnv(
-        num_envs=2, config=PickConfig(objects=YCBObject("011_banana")), device="cpu", seed=0
+        num_envs=2, config=PickConfig(objects=YCBObject("009_gelatin_box")), device="cpu", seed=0
     )
     obs, _ = env.reset(seed=0)
     assert torch.isfinite(obs).all()
@@ -357,7 +357,7 @@ def test_pick_supports_heterogeneous_pool():
 
     # Mixed pool with a decomposed model: every world's target mask is exactly
     # the compiled mask of its selected slot, parts included.
-    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("011_banana")]
+    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("009_gelatin_box")]
     env2 = WarpPickLiftVectorEnv(
         num_envs=8, config=PickConfig(objects=pool, n_distractors=1), device="cpu", seed=1
     )

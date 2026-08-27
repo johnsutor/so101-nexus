@@ -55,7 +55,7 @@ def test_recording_env_kwargs_applies_pick_overrides() -> None:
         (320, 240),
         (640, 480),
         overrides=TeleopConfigOverrides(
-            object_specs=("cube:green", "ycb:011_banana"),
+            object_specs=("cube:green", "ycb:009_gelatin_box"),
             n_distractors=1,
         ),
     )
@@ -64,7 +64,7 @@ def test_recording_env_kwargs_applies_pick_overrides() -> None:
     assert isinstance(kwargs["config"].objects[0], CubeObject)
     assert kwargs["config"].objects[0].color == "green"
     assert isinstance(kwargs["config"].objects[1], YCBObject)
-    assert kwargs["config"].objects[1].model_id == "011_banana"
+    assert kwargs["config"].objects[1].model_id == "009_gelatin_box"
 
 
 def test_recording_env_kwargs_applies_stack_cube_overrides() -> None:

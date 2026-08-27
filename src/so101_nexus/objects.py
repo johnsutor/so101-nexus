@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from so101_nexus.constants import COLOR_MAP, YCB_OBJECTS, ColorName
+from so101_nexus.constants import COLOR_MAP, GSO_OBJECTS, YCB_OBJECTS, ColorName
 
 
 class SceneObject(ABC):
@@ -64,7 +64,35 @@ class CubeObject(SceneObject):
         return f"{self.color} cube"
 
 
-class YCBObject(SceneObject):
+class ScannedMeshObject(SceneObject):
+    """Shared base for dataset-scanned mesh objects (``YCBObject``, ``GSOObject``).
+
+    Both datasets feed the same convex-hull collision pipeline (see
+    ``so101_nexus.mesh_assets``): the visual mesh is the original scan, the
+    collision geometry is a measured convex decomposition of it, and a
+    surface-error gate keeps a single hull when that hull already matches the
+    scan. Backend builders dispatch on this base type rather than repeating
+    per-source ``isinstance`` checks.
+
+    Parameters
+    ----------
+    model_id : str
+        Dataset identifier. Must be a key in the subclass's object map.
+    mass_override : float, optional
+        Mass in kg to override the default mesh mass.
+    """
+
+    model_id: str
+    mass_override: float | None
+
+    def __init__(self, model_id: str, mass_override: float | None = None) -> None:
+        if mass_override is not None and mass_override <= 0:
+            raise ValueError(f"mass_override must be positive, got {mass_override}")
+        self.model_id = model_id
+        self.mass_override = mass_override
+
+
+class YCBObject(ScannedMeshObject):
     """YCB dataset object identified by ``model_id``.
 
     The visual mesh is the original YCB scan. The collision geometry is a
@@ -99,13 +127,45 @@ class YCBObject(SceneObject):
     ) -> None:
         if model_id not in YCB_OBJECTS:
             raise ValueError(f"model_id must be one of {list(YCB_OBJECTS)}, got {model_id!r}")
-        if mass_override is not None and mass_override <= 0:
-            raise ValueError(f"mass_override must be positive, got {mass_override}")
-        self.model_id = model_id
-        self.mass_override = mass_override
+        super().__init__(model_id, mass_override)
 
     def __repr__(self) -> str:  # noqa: D105
         return YCB_OBJECTS[self.model_id]
+
+
+class GSOObject(ScannedMeshObject):
+    """Google Scanned Objects (GSO) dataset object identified by ``model_id``.
+
+    Shares the ``YCBObject`` convex-hull collision pipeline (see
+    ``so101_nexus.mesh_assets``); the visual mesh is the mirrored GSO scan
+    (real-world scale, no rescale needed) and the collision geometry is a
+    measured convex decomposition of it, gated the same way as YCB's.
+
+    GSO ships no benchmark masses (unlike YCB, which has measured masses from
+    its physical objects), so the default mass for each ``model_id`` is a
+    hand-estimated volume-from-hull x assumed-density figure (see
+    ``GSO_MASSES`` in ``so101_nexus.constants``); pass ``mass_override`` to
+    replace it with a measured value.
+
+    Parameters
+    ----------
+    model_id : str
+        GSO dataset identifier. Must be a key in GSO_OBJECTS.
+    mass_override : float, optional
+        Mass in kg to override the default (hand-estimated) mesh mass.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        mass_override: float | None = None,
+    ) -> None:
+        if model_id not in GSO_OBJECTS:
+            raise ValueError(f"model_id must be one of {list(GSO_OBJECTS)}, got {model_id!r}")
+        super().__init__(model_id, mass_override)
+
+    def __repr__(self) -> str:  # noqa: D105
+        return GSO_OBJECTS[self.model_id]
 
 
 class MeshObject(SceneObject):

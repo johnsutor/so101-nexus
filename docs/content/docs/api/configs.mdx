@@ -324,7 +324,7 @@ Extends `EnvironmentConfig` with parameters for pick and lift tasks.
 from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
-    objects=[CubeObject(color="blue"), YCBObject("011_banana")],
+    objects=[CubeObject(color="blue"), YCBObject("009_gelatin_box")],
     n_distractors=2,
 )
 ```
@@ -360,7 +360,7 @@ from so101_nexus import PickAndPlaceConfig, YCBObject
 config = PickAndPlaceConfig(cube_colors="blue", target_colors="green")
 
 # Object-pool path (carries a YCB object):
-config = PickAndPlaceConfig(objects=[YCBObject("011_banana")], target_colors="green")
+config = PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")], target_colors="green")
 ```
 
 ### Additional Parameters

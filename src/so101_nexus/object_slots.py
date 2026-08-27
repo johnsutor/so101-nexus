@@ -5,7 +5,8 @@ of freejoint object bodies ("slots") into one compiled ``MjModel`` and select
 which slot is the active target (and which are distractors) per episode. This
 module holds the backend-neutral pieces of that machinery:
 
-- MJCF fragment builders for ``CubeObject``, ``YCBObject``, and ``MeshObject``.
+- MJCF fragment builders for ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``,
+  ``GSOObject``), and ``MeshObject``.
 - The full scene builder ``build_object_scene_xml`` parameterized by the
   ``<option>`` preset and robot model path, so MuJoCo and Warp emit identical
   bodies and assets while differing only in the integrator/solver preset.
@@ -18,15 +19,30 @@ import this module without triggering MuJoCo env registration. No torch import.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import mujoco
 import numpy as np
 
-from so101_nexus.constants import COLOR_MAP
-from so101_nexus.objects import CubeObject, MeshObject, SceneObject, YCBObject
+from so101_nexus.constants import COLOR_MAP, GSO_MASSES
+from so101_nexus.gso_assets import (
+    ensure_gso_assets,
+    get_gso_collision_parts,
+    get_gso_texture_file,
+    get_gso_visual_mesh,
+)
+from so101_nexus.objects import (
+    CubeObject,
+    GSOObject,
+    MeshObject,
+    ScannedMeshObject,
+    SceneObject,
+    YCBObject,
+)
 from so101_nexus.scene import SCENE_LIGHTS_XML, SCENE_VISUAL_XML
 from so101_nexus.ycb_assets import (
+    ensure_ycb_assets,
     get_ycb_collision_parts,
     get_ycb_texture_file,
     get_ycb_visual_mesh,
@@ -34,13 +50,68 @@ from so101_nexus.ycb_assets import (
 from so101_nexus.ycb_geometry import get_mujoco_ycb_rest_pose
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from pathlib import Path
+
+    from so101_nexus.mesh_assets import MeshCollisionPart
 
 # Default bounding radius used when an object exposes no geometry to measure.
 DEFAULT_BOUNDING_RADIUS = 0.025
 
-# Default per-object mass (kg) for YCB objects without a mass override.
+# Default per-object mass (kg) for YCB objects without a mass override. YCB
+# ships no per-object masses either, so every model uses this flat default;
+# GSO's hand-estimated per-model masses live in ``GSO_MASSES``.
 _DEFAULT_YCB_MASS = 0.01
+
+
+@dataclass(frozen=True, slots=True)
+class _ScannedMeshAccessors:
+    """Per-source functions ``build_object_scene_xml`` needs for a scanned mesh."""
+
+    ensure_assets: Callable[[str], Path]
+    collision_parts: Callable[[str], list[MeshCollisionPart]]
+    visual_mesh: Callable[[str], Path]
+    texture_file: Callable[[str], Path]
+    default_mass: Callable[[str], float]
+
+
+_SCANNED_MESH_ACCESSORS: dict[type[ScannedMeshObject], _ScannedMeshAccessors] = {
+    # Lambdas (not direct function refs) so a test's ``monkeypatch.setattr(
+    # object_slots, "get_ycb_collision_parts", ...)`` is honored: each call
+    # re-resolves the name from this module's globals instead of the binding
+    # captured when this dict literal ran.
+    YCBObject: _ScannedMeshAccessors(
+        ensure_assets=lambda model_id: ensure_ycb_assets(model_id),  # noqa: PLW0108
+        collision_parts=lambda model_id: get_ycb_collision_parts(model_id),  # noqa: PLW0108
+        visual_mesh=lambda model_id: get_ycb_visual_mesh(model_id),  # noqa: PLW0108
+        texture_file=lambda model_id: get_ycb_texture_file(model_id),  # noqa: PLW0108
+        default_mass=lambda _model_id: _DEFAULT_YCB_MASS,
+    ),
+    GSOObject: _ScannedMeshAccessors(
+        ensure_assets=lambda model_id: ensure_gso_assets(model_id),  # noqa: PLW0108
+        collision_parts=lambda model_id: get_gso_collision_parts(model_id),  # noqa: PLW0108
+        visual_mesh=lambda model_id: get_gso_visual_mesh(model_id),  # noqa: PLW0108
+        texture_file=lambda model_id: get_gso_texture_file(model_id),  # noqa: PLW0108
+        default_mass=lambda model_id: GSO_MASSES[model_id],
+    ),
+}
+
+
+def _accessors_for(obj: ScannedMeshObject) -> _ScannedMeshAccessors:
+    """Resolve the per-source accessors for a scanned-mesh object.
+
+    Uses ``isinstance`` (not an exact-type dict lookup) so a subclass of a
+    registered scanned-mesh type still resolves to its source's accessors.
+    """
+    for cls, accessors in _SCANNED_MESH_ACCESSORS.items():
+        if isinstance(obj, cls):
+            return accessors
+    raise KeyError(f"No scanned-mesh accessors registered for {type(obj)!r}")
+
+
+def ensure_scanned_mesh_assets(obj: ScannedMeshObject) -> None:
+    """Prefetch a scanned-mesh object's assets for its dataset source."""
+    _accessors_for(obj).ensure_assets(obj.model_id)
 
 
 def cube_bounding_radius(obj: CubeObject) -> float:
@@ -155,16 +226,17 @@ def build_object_scene_xml(
     body_entries = ""
 
     for i, (obj, slot) in enumerate(zip(objects, slot_names, strict=True)):
-        if isinstance(obj, YCBObject):
-            parts = get_ycb_collision_parts(obj.model_id)
+        if isinstance(obj, ScannedMeshObject):
+            accessors = _accessors_for(obj)
+            parts = accessors.collision_parts(obj.model_id)
             for k, part in enumerate(parts):
                 asset_entries += (
                     f'    <mesh name="pick_coll_{i}_{k}" file="{part.path.as_posix()}"/>\n'
                 )
-            visual_path = get_ycb_visual_mesh(obj.model_id).as_posix()
+            visual_path = accessors.visual_mesh(obj.model_id).as_posix()
             asset_entries += f'    <mesh name="pick_vis_{i}" file="{visual_path}"/>\n'
             material_name = None
-            texture_path = get_ycb_texture_file(obj.model_id)
+            texture_path = accessors.texture_file(obj.model_id)
             if texture_path.exists():
                 texture_name = f"pick_tex_{i}"
                 material_name = f"pick_mat_{i}"
@@ -176,7 +248,11 @@ def build_object_scene_xml(
                     f'    <material name="{material_name}" texture="{texture_name}" '
                     'texuniform="false"/>\n'
                 )
-            mass = obj.mass_override if obj.mass_override is not None else _DEFAULT_YCB_MASS
+            mass = (
+                obj.mass_override
+                if obj.mass_override is not None
+                else accessors.default_mass(obj.model_id)
+            )
             body_entries += mesh_xml_body(
                 slot,
                 i,
@@ -324,9 +400,10 @@ def extract_object_slots(
         qpos_addr = int(mjm.jnt_qposadr[joint_id])
         dof_addr = int(mjm.jnt_dofadr[joint_id])
 
-        if isinstance(obj, (YCBObject, MeshObject)):
+        if isinstance(obj, (ScannedMeshObject, MeshObject)):
             verts = _body_frame_collision_verts(mjm, geom_ids)
-            rest_quat, spawn_z = get_mujoco_ycb_rest_pose(verts)
+            model_id = obj.model_id if isinstance(obj, ScannedMeshObject) else None
+            rest_quat, spawn_z = get_mujoco_ycb_rest_pose(verts, model_id=model_id)
             # Footprint is measured in the resting orientation: the stable rest
             # pose can rotate a thin X/Y axis up, changing the horizontal extent
             # that the spawn separation samplers rely on.

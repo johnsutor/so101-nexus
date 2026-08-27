@@ -11,11 +11,27 @@ for the public-API and deprecation policy.
 
 ### Added
 
-### Changed
-
-### Fixed
-
-### Removed
+- `GSOObject` and 12 curated [Google Scanned Objects](https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/)
+  (`GSO_OBJECTS`), alongside the existing 10 `YCBObject` items, sharing the
+  same convex-hull collision pipeline. Assets download on demand from a
+  Hugging Face mirror (`SO101_GSO_HF_REPO` env override), cached at
+  `~/.cache/so101_nexus/gso/{model_id}/`. GSO ships no benchmark masses, so
+  `GSO_MASSES` holds a hand-estimated mass per object; pass `mass_override`
+  to replace it. See the GSO section of [Scene Objects and Assets](/docs/api/objects)
+  and `src/so101_nexus/GSO_PROVENANCE.md`.
+- `so101_nexus.mesh_assets`: the source-parameterized download/decompose/cache
+  engine `ycb_assets.py` and the new `gso_assets.py` both build on.
+- `so101_nexus.ycb_geometry.POSE_OVERRIDES`: settle-test-validated rest-pose
+  corrections for 7 objects (both datasets) whose default "thinnest axis up"
+  heuristic tips over under real physics. `get_mujoco_ycb_rest_pose` now takes
+  an optional `model_id` to look one up.
+- `so101_nexus.ycb_geometry.GRASP_ADVISORY`: an informational note on 4
+  objects whose real cross-section exceeds the SO-101 gripper's opening at
+  every sampled pose - not a construction-time error, but a prompt to
+  spot-check the object via teleoperation before a grasp task.
+- `scripts/validate_object_rest_poses.py`: the settle-test and grasp-screen
+  audit script behind the two additions above; its findings are recorded in
+  `src/so101_nexus/gso_pose_validation_results.json`.
 
 ## [0.5.2] - 2026-08-25
 

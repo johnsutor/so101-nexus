@@ -24,14 +24,17 @@ import numpy as np
 import torch
 
 from so101_nexus import (
-    ensure_ycb_assets,
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,
 )
 from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
 from so101_nexus.constants import COLOR_MAP, ColorName
-from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject, SceneObject, YCBObject
+from so101_nexus.object_slots import (
+    build_object_scene_xml,
+    ensure_scanned_mesh_assets,
+    extract_object_slots,
+)
+from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
 from so101_nexus.observations import (
     GazeDirection,
     GazeState,
@@ -129,8 +132,8 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._n_distractors = config.n_distractors
         distractor_pool = list(config.distractors) if self._n_distractors else []
         for obj in distractor_pool:
-            if isinstance(obj, YCBObject):
-                ensure_ycb_assets(obj.model_id)
+            if isinstance(obj, ScannedMeshObject):
+                ensure_scanned_mesh_assets(obj)
         self._d_pool = len(distractor_pool)
         self._d_offset = self._a_pool + self._b_pool
         scene_objects: list[SceneObject] = [

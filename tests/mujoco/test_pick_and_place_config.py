@@ -106,7 +106,7 @@ class TestDistractorValidation:
         assert len(recwarn) == 0
 
     def test_non_cube_distractors_never_warn(self, recwarn):
-        PickAndPlaceConfig(distractors=[YCBObject("011_banana")], n_distractors=1)
+        PickAndPlaceConfig(distractors=[YCBObject("009_gelatin_box")], n_distractors=1)
         assert len(recwarn) == 0
 
 

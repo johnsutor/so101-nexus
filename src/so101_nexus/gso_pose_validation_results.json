@@ -1,0 +1,322 @@
+{
+  "009_gelatin_box": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 6.701380032202776,
+    "settle_rotation_delta_deg": 7.1198903529232025,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "011_banana": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 1.9239752260562413,
+    "settle_rotation_delta_deg": 1.018932460134546,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "030_fork": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.068879539993333,
+    "settle_rotation_delta_deg": 8.00910673140078e-06,
+    "grasp_pass": true,
+    "grasp_height_fraction": 0.85,
+    "grasp_yaw_deg": 120.0,
+    "grasp_width_mm": 24.35177651821131,
+    "override_quat": [
+      0.9487688362649201,
+      0.05192379329375049,
+      0.015387636719621154,
+      0.3112954154154558
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=19.1mm, drot=0.0deg)",
+      "override accepted: quat=[0.9487688362649201, 0.05192379329375049, 0.015387636719621154, 0.3112954154154558]"
+    ]
+  },
+  "031_spoon": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 6.9659670714159665,
+    "settle_rotation_delta_deg": 1.7797475602147106,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "032_knife": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 3.6103424167378106,
+    "settle_rotation_delta_deg": 8.22099954320336,
+    "grasp_pass": true,
+    "grasp_height_fraction": 0.85,
+    "grasp_yaw_deg": 90.0,
+    "grasp_width_mm": 27.564817436085605,
+    "override_quat": [
+      0.9370767109522925,
+      0.3489106280209861,
+      0.010219865920332777,
+      -0.006645734376632088
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=40.6mm, drot=49.2deg)",
+      "override accepted: quat=[0.9370767109522925, 0.3489106280209861, 0.010219865920332777, -0.006645734376632088]"
+    ]
+  },
+  "033_spatula": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.523918951978694,
+    "settle_rotation_delta_deg": 0.1560484842418065,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "037_scissors": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.237290515990635,
+    "settle_rotation_delta_deg": 0.25415636611119125,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "040_large_marker": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.104670108933244,
+    "settle_rotation_delta_deg": 0.025516853383843005,
+    "grasp_pass": true,
+    "grasp_height_fraction": 0.15,
+    "grasp_yaw_deg": 0.0,
+    "grasp_width_mm": 18.581599869991074,
+    "override_quat": [
+      0.9868061963150316,
+      -0.0036756068674924118,
+      0.1618641914243856,
+      6.605258629754342e-05
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=13.2mm, drot=18.6deg)",
+      "override accepted: quat=[0.9868061963150316, -0.0036756068674924118, 0.1618641914243856, 6.605258629754342e-05]"
+    ]
+  },
+  "043_phillips_screwdriver": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 1.840119661400067,
+    "settle_rotation_delta_deg": 1.1580608141205704,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": [
+      0.9869994957430818,
+      0.02660164354705449,
+      0.02117028873260648,
+      0.1570864947679341
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=13.0mm, drot=18.5deg)",
+      "override accepted: quat=[0.9869994957430818, 0.02660164354705449, 0.02117028873260648, 0.1570864947679341]"
+    ]
+  },
+  "058_golf_ball": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 7.007797141468333,
+    "settle_rotation_delta_deg": 17.78666526113016,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Pony_C_Clamp_1440": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 5.9443857993649525,
+    "settle_rotation_delta_deg": 6.04360755373522,
+    "grasp_pass": true,
+    "grasp_height_fraction": 0.85,
+    "grasp_yaw_deg": 0.0,
+    "grasp_width_mm": 27.289227366924425,
+    "override_quat": [
+      0.7252865768758933,
+      -0.2984139667764899,
+      0.36029176430034454,
+      -0.5050725991515618
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=22.6mm, drot=3.0deg)",
+      "override accepted: quat=[0.7252865768758933, -0.2984139667764899, 0.36029176430034454, -0.5050725991515618]"
+    ]
+  },
+  "Cole_Hardware_Mini_Honey_Dipper": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 1.5765153330665331,
+    "settle_rotation_delta_deg": 5.159289453316725,
+    "grasp_pass": true,
+    "grasp_height_fraction": 0.85,
+    "grasp_yaw_deg": 0.0,
+    "grasp_width_mm": 18.270835696488728,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "OXO_Soft_Works_Can_Opener_SnapLock": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.097789645894282,
+    "settle_rotation_delta_deg": 0.0,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": [
+      0.9124123190985273,
+      -0.0022104422621626748,
+      -0.005014702029669815,
+      0.40923553934843887
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=20.0mm, drot=0.1deg)",
+      "override accepted: quat=[0.9124123190985273, -0.0022104422621626748, -0.005014702029669815, 0.40923553934843887]"
+    ]
+  },
+  "3M_Vinyl_Tape_Green_1_x_36_yd": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.644031655643943,
+    "settle_rotation_delta_deg": 0.694074006856339,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Shurtape_Gaffers_Tape_Silver_2_x_60_yd": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.1011290463156254,
+    "settle_rotation_delta_deg": 0.4426478208243436,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": [
+      0.700240155426634,
+      -0.01148416578855433,
+      0.7137190536397818,
+      -0.01170261234763929
+    ],
+    "dropped": false,
+    "notes": [
+      "heuristic settle failed (dx=126.4mm, drot=57.1deg)",
+      "override accepted: quat=[0.700240155426634, -0.01148416578855433, 0.7137190536397818, -0.01170261234763929]"
+    ]
+  },
+  "Big_O_Sponges_Assorted_Cellulose_12_pack": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 3.633726558664299,
+    "settle_rotation_delta_deg": 0.39533116748748764,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.3780054116009954,
+    "settle_rotation_delta_deg": 0.690946198671808,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "CoQ10": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 2.7359602663235942,
+    "settle_rotation_delta_deg": 1.2858670917266446,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Wilton_Pearlized_Sugar_Sprinkles_525_oz_Gold": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 4.023235710701997,
+    "settle_rotation_delta_deg": 4.046256349465329,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Marc_Anthony_Strictly_Curls_Curl_Envy_Perfect_Curl_Cream_6_fl_oz_bottle": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 1.9281538901392699,
+    "settle_rotation_delta_deg": 0.5745727954267529,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Black_Elderberry_Syrup_54_oz_Gaia_Herbs": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 1.9056773436593837,
+    "settle_rotation_delta_deg": 0.60287143951437,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  },
+  "Nestle_Raisinets_Milk_Chocolate_35_oz_992_g": {
+    "settle_pass": true,
+    "settle_translation_delta_mm": 5.079655930227817,
+    "settle_rotation_delta_deg": 2.8708982378855294,
+    "grasp_pass": false,
+    "grasp_height_fraction": null,
+    "grasp_yaw_deg": null,
+    "grasp_width_mm": null,
+    "override_quat": null,
+    "dropped": false,
+    "notes": []
+  }
+}

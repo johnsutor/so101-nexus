@@ -49,10 +49,10 @@ from so101_nexus import PickConfig, CubeObject, YCBObject
 config = PickConfig(objects=CubeObject(color="blue"))
 
 # Or a real-world scanned object; YCB assets download on first use.
-config = PickConfig(objects=YCBObject(model_id="011_banana"))
+config = PickConfig(objects=YCBObject(model_id="009_gelatin_box"))
 ```
 
-Ten YCB models ship, including `011_banana` and `058_golf_ball`. The full list and every
+Ten YCB models ship, including `009_gelatin_box` and `032_knife`. The full list and every
 constructor parameter for `CubeObject`, `YCBObject`, and `MeshObject` are in the
 [Objects reference](/docs/api/objects).
 
@@ -67,8 +67,8 @@ from so101_nexus import PickConfig, CubeObject, YCBObject
 config = PickConfig(
     objects=[
         CubeObject(color="blue"),
-        YCBObject(model_id="058_golf_ball"),
-        YCBObject(model_id="011_banana"),
+        YCBObject(model_id="032_knife"),
+        YCBObject(model_id="009_gelatin_box"),
     ],
 )
 ```
@@ -287,7 +287,7 @@ PickLift environments. Adds the object pool, distractors, and `lift_threshold`.
 from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
-    objects=[CubeObject(color="blue"), YCBObject(model_id="011_banana")],
+    objects=[CubeObject(color="blue"), YCBObject(model_id="009_gelatin_box")],
     n_distractors=1,
     lift_threshold=0.06,
 )

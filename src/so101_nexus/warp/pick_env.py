@@ -20,14 +20,17 @@ import numpy as np
 import torch
 
 from so101_nexus import (
-    ensure_ycb_assets,
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,
 )
 from so101_nexus.config import ControlMode, PickConfig, describe_pick_target
 from so101_nexus.constants import sample_color
-from so101_nexus.object_slots import build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import SceneObject, YCBObject
+from so101_nexus.object_slots import (
+    build_object_scene_xml,
+    ensure_scanned_mesh_assets,
+    extract_object_slots,
+)
+from so101_nexus.objects import ScannedMeshObject, SceneObject
 from so101_nexus.observations import (
     GazeDirection,
     GazeState,
@@ -147,8 +150,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             them ``pick_slot_{i}``.
         """
         for obj in scene_objects:
-            if isinstance(obj, YCBObject):
-                ensure_ycb_assets(obj.model_id)
+            if isinstance(obj, ScannedMeshObject):
+                ensure_scanned_mesh_assets(obj)
         self._n_total_slots = len(scene_objects)
         # ``_n_pool`` is the carried/distractor boundary: ``_select_active_slots``
         # draws from ``[0, _n_pool)`` and ``_parse_target_index`` range-checks a

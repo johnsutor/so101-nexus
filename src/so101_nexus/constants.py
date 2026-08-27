@@ -44,6 +44,50 @@ YCB_OBJECTS: dict[str, str] = {
     "058_golf_ball": "golf ball",
 }
 
+GSO_OBJECTS: dict[str, str] = {
+    "Pony_C_Clamp_1440": "C-clamp",
+    "Cole_Hardware_Mini_Honey_Dipper": "honey dipper",
+    "OXO_Soft_Works_Can_Opener_SnapLock": "can opener",
+    "3M_Vinyl_Tape_Green_1_x_36_yd": "tape roll",
+    "Shurtape_Gaffers_Tape_Silver_2_x_60_yd": "gaffer tape roll",
+    "Big_O_Sponges_Assorted_Cellulose_12_pack": "sponge pack",
+    "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup": "ramekin",
+    "CoQ10": "supplement bottle",
+    "Wilton_Pearlized_Sugar_Sprinkles_525_oz_Gold": "sprinkles canister",
+    "Marc_Anthony_Strictly_Curls_Curl_Envy_Perfect_Curl_Cream_6_fl_oz_bottle": "lotion bottle",
+    "Black_Elderberry_Syrup_54_oz_Gaia_Herbs": "syrup bottle",
+    "Nestle_Raisinets_Milk_Chocolate_35_oz_992_g": "candy box",
+}
+
+GSO_MASSES: dict[str, float] = {
+    # GSO ships no benchmark masses (unlike YCB); each value is convex-hull
+    # volume times an assumed effective density for the packaged object.
+    # 448 cm^3 hull, ~0.78 g/cm^3 effective (open steel frame)
+    "Pony_C_Clamp_1440": 0.350,
+    # 26 cm^3 hull, ~0.70 g/cm^3 effective (solid wood)
+    "Cole_Hardware_Mini_Honey_Dipper": 0.018,
+    # 318 cm^3 hull, ~0.57 g/cm^3 effective (plastic + metal gears)
+    "OXO_Soft_Works_Can_Opener_SnapLock": 0.180,
+    # 244 cm^3 hull, ~0.41 g/cm^3 effective (vinyl roll + card)
+    "3M_Vinyl_Tape_Green_1_x_36_yd": 0.100,
+    # 895 cm^3 hull, ~0.56 g/cm^3 effective (cloth tape roll)
+    "Shurtape_Gaffers_Tape_Silver_2_x_60_yd": 0.500,
+    # 149 cm^3 hull, ~1.01 g/cm^3 effective (packed sponges)
+    "Big_O_Sponges_Assorted_Cellulose_12_pack": 0.150,
+    # 233 cm^3 hull, ~0.52 g/cm^3 effective (hollow bowl)
+    "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup": 0.120,
+    # 139 cm^3 hull, ~0.54 g/cm^3 effective (bottle + pills)
+    "CoQ10": 0.075,
+    # 214 cm^3 hull, ~0.84 g/cm^3 effective (sugar-filled canister)
+    "Wilton_Pearlized_Sugar_Sprinkles_525_oz_Gold": 0.180,
+    # 941 cm^3 hull, ~0.24 g/cm^3 effective (squeeze bottle, mostly cream)
+    "Marc_Anthony_Strictly_Curls_Curl_Envy_Perfect_Curl_Cream_6_fl_oz_bottle": 0.230,
+    # 459 cm^3 hull, ~0.59 g/cm^3 effective (glass bottle + syrup)
+    "Black_Elderberry_Syrup_54_oz_Gaia_Herbs": 0.270,
+    # 248 cm^3 hull, ~0.46 g/cm^3 effective (cardboard box + candy)
+    "Nestle_Raisinets_Milk_Chocolate_35_oz_992_g": 0.115,
+}
+
 
 def validate_color_config(colors: ColorConfig, field_name: str) -> None:
     """Raise ``ValueError`` on an empty list or a color name not in ``COLOR_MAP``."""
