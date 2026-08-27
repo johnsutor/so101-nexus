@@ -311,7 +311,7 @@ def test_pick_object_pose_obs_tracks_cube():
     assert torch.allclose(obs[:, :3], env._target_pos(), atol=1e-5)
 
 
-@pytest.mark.parametrize("objects", [None, "033_spatula"])
+@pytest.mark.parametrize("objects", [None, "043_phillips_screwdriver"])
 def test_pick_contact_budget_headroom_and_grasp_range(objects):
     """The default budget must cover a decomposed pool, not just a single cube."""
     import torch
@@ -342,12 +342,12 @@ def test_pick_supports_heterogeneous_pool():
     import torch
 
     from so101_nexus.config import PickConfig
-    from so101_nexus.objects import CubeObject, YCBObject
+    from so101_nexus.objects import CubeObject, GSOObject, YCBObject
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
     # Single YCB object: constructs, resets, steps with finite observations.
     env = WarpPickLiftVectorEnv(
-        num_envs=2, config=PickConfig(objects=YCBObject("011_banana")), device="cpu", seed=0
+        num_envs=2, config=PickConfig(objects=YCBObject("009_gelatin_box")), device="cpu", seed=0
     )
     obs, _ = env.reset(seed=0)
     assert torch.isfinite(obs).all()
@@ -355,9 +355,24 @@ def test_pick_supports_heterogeneous_pool():
     assert torch.isfinite(obs).all()
     assert torch.isfinite(reward).all()
 
+    # Single GSO object: constructs, resets, steps with finite observations.
+    env_gso = WarpPickLiftVectorEnv(
+        num_envs=2, config=PickConfig(objects=GSOObject("CoQ10")), device="cpu", seed=0
+    )
+    obs_gso, _ = env_gso.reset(seed=0)
+    assert torch.isfinite(obs_gso).all()
+    obs_gso, reward_gso, _, _, _ = env_gso.step(torch.zeros((2, 6)))
+    assert torch.isfinite(obs_gso).all()
+    assert torch.isfinite(reward_gso).all()
+
     # Mixed pool with a decomposed model: every world's target mask is exactly
     # the compiled mask of its selected slot, parts included.
-    pool = [CubeObject(color="red"), CubeObject(color="blue"), YCBObject("011_banana")]
+    pool = [
+        CubeObject(color="red"),
+        CubeObject(color="blue"),
+        YCBObject("009_gelatin_box"),
+        GSOObject("CoQ10"),
+    ]
     env2 = WarpPickLiftVectorEnv(
         num_envs=8, config=PickConfig(objects=pool, n_distractors=1), device="cpu", seed=1
     )

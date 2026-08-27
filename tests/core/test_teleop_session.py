@@ -217,7 +217,7 @@ def test_build_recording_config_applies_overrides_before_camera_wiring() -> None
         (320, 240),
         (640, 480),
         overrides=TeleopConfigOverrides(
-            object_specs=("cube:green", "ycb:011_banana"),
+            object_specs=("cube:green", "ycb:009_gelatin_box"),
             n_distractors=1,
             reset_settle_frames=4,
         ),
@@ -229,7 +229,7 @@ def test_build_recording_config_applies_overrides_before_camera_wiring() -> None
     assert isinstance(cfg.objects[0], CubeObject)
     assert cfg.objects[0].color == "green"
     assert isinstance(cfg.objects[1], YCBObject)
-    assert cfg.objects[1].model_id == "011_banana"
+    assert cfg.objects[1].model_id == "009_gelatin_box"
     assert any(isinstance(o, WristCamera) for o in cfg.observations)
     assert any(isinstance(o, OverheadCamera) for o in cfg.observations)
 
@@ -270,7 +270,7 @@ def test_recording_env_kwargs_applies_overrides_to_registered_config_kwargs(monk
         (320, 240),
         (640, 480),
         overrides=TeleopConfigOverrides(
-            object_specs=("cube:green", "ycb:011_banana"),
+            object_specs=("cube:green", "ycb:009_gelatin_box"),
             n_distractors=1,
         ),
     )

@@ -3,7 +3,8 @@
 The carried object is chosen per episode from a compiled object pool (shared with
 the unified pick env via ``so101_nexus.object_slots``); the goal is a visible,
 non-colliding disc whose colour is randomized per episode. Supported carried
-objects: ``CubeObject``, ``YCBObject``, ``MeshObject``.
+objects: ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``, ``GSOObject``),
+``MeshObject``.
 
 When ``PickAndPlaceConfig.n_distractors > 0``, one freejoint slot per entry in
 ``PickAndPlaceConfig.distractors`` is compiled after the carried pool; each reset
@@ -23,7 +24,6 @@ import mujoco
 import numpy as np
 
 from so101_nexus import (
-    ensure_ycb_assets,
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,
 )
@@ -40,8 +40,13 @@ from so101_nexus.mujoco.spawn_utils import (
     place_freejoint_slot,
     set_slot_contacts,
 )
-from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject, SceneObject, YCBObject
+from so101_nexus.object_slots import (
+    ObjectSlot,
+    build_object_scene_xml,
+    ensure_scanned_mesh_assets,
+    extract_object_slots,
+)
+from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
 from so101_nexus.rewards import (
     object_static_ok,
     place_grasp_potential,
@@ -98,8 +103,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         distractor_pool = list(config.distractors) if config.n_distractors else []
         scene_objects += distractor_pool
         for obj in scene_objects:
-            if isinstance(obj, YCBObject):
-                ensure_ycb_assets(obj.model_id)
+            if isinstance(obj, ScannedMeshObject):
+                ensure_scanned_mesh_assets(obj)
         slot_names = [f"pick_slot_{i}" for i in range(n_carried)] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))
         ]

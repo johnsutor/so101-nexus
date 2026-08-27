@@ -28,10 +28,10 @@ def test_object_from_spec_parses_cube() -> None:
 
 
 def test_object_from_spec_parses_ycb() -> None:
-    obj = object_from_spec("ycb:011_banana")
+    obj = object_from_spec("ycb:009_gelatin_box")
 
     assert isinstance(obj, YCBObject)
-    assert obj.model_id == "011_banana"
+    assert obj.model_id == "009_gelatin_box"
 
 
 def test_object_from_mapping_parses_mesh() -> None:
@@ -70,7 +70,7 @@ def test_object_from_spec_rejects_mesh_string_specs() -> None:
 def test_apply_config_overrides_updates_pick_objects_and_distractors() -> None:
     cfg = apply_config_overrides(
         PickConfig(),
-        TeleopConfigOverrides(object_specs=("cube:green", "ycb:011_banana"), n_distractors=1),
+        TeleopConfigOverrides(object_specs=("cube:green", "ycb:009_gelatin_box"), n_distractors=1),
     )
 
     assert isinstance(cfg, PickConfig)
@@ -78,7 +78,7 @@ def test_apply_config_overrides_updates_pick_objects_and_distractors() -> None:
     assert isinstance(cfg.objects[0], CubeObject)
     assert cfg.objects[0].color == "green"
     assert isinstance(cfg.objects[1], YCBObject)
-    assert cfg.objects[1].model_id == "011_banana"
+    assert cfg.objects[1].model_id == "009_gelatin_box"
 
 
 def test_apply_config_overrides_updates_stack_cube_distractors() -> None:
@@ -138,7 +138,7 @@ def test_apply_config_overrides_ignores_pick_specific_options_for_non_pick_confi
 
     cfg = apply_config_overrides(
         base,
-        TeleopConfigOverrides(object_specs=("ycb:011_banana",), n_distractors=1),
+        TeleopConfigOverrides(object_specs=("ycb:009_gelatin_box",), n_distractors=1),
     )
 
     assert isinstance(cfg, MoveConfig)
@@ -186,7 +186,7 @@ def test_load_profile_json_merges_common_task_and_env_sections(tmp_path) -> None
     path.write_text(
         '{"common":{"ground_colors":["white"]},'
         '"pick":{"objects":[{"type":"cube","color":"green"},'
-        '{"type":"ycb","model_id":"011_banana"}],"n_distractors":1},'
+        '{"type":"ycb","model_id":"009_gelatin_box"}],"n_distractors":1},'
         '"envs":{"MuJoCoPickLift-v1":{"spawn_max_radius":0.22}}}',
         encoding="utf-8",
     )
@@ -198,7 +198,7 @@ def test_load_profile_json_merges_common_task_and_env_sections(tmp_path) -> None
     assert isinstance(overrides.objects[0], CubeObject)
     assert overrides.objects[0].color == "green"
     assert isinstance(overrides.objects[1], YCBObject)
-    assert overrides.objects[1].model_id == "011_banana"
+    assert overrides.objects[1].model_id == "009_gelatin_box"
     assert overrides.n_distractors == 1
     assert overrides.spawn_max_radius == 0.22
 
@@ -328,7 +328,7 @@ def test_overrides_to_mapping_round_trips_through_from_mapping() -> None:
     import json
 
     overrides = TeleopConfigOverrides(
-        objects=(CubeObject(color="blue"), YCBObject(model_id="011_banana")),
+        objects=(CubeObject(color="blue"), YCBObject(model_id="009_gelatin_box")),
         n_distractors=2,
         ground_colors=("red", "green"),
         spawn_max_radius=0.3,

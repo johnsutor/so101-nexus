@@ -483,7 +483,7 @@ def test_normalized_init_config_includes_env_overrides() -> None:
         -90,
         [],
         True,
-        ["cube:green", "ycb:011_banana"],
+        ["cube:green", "ycb:009_gelatin_box"],
         1,
         ["white"],
         ["yellow", "orange"],
@@ -498,7 +498,7 @@ def test_normalized_init_config_includes_env_overrides() -> None:
     )
 
     overrides = config["env_overrides"]
-    assert overrides.object_specs == ("cube:green", "ycb:011_banana")
+    assert overrides.object_specs == ("cube:green", "ycb:009_gelatin_box")
     assert overrides.n_distractors == 1
     assert overrides.ground_colors == ("white",)
     assert overrides.robot_colors == ("yellow", "orange")
@@ -624,7 +624,7 @@ def test_normalized_init_config_includes_success_hold_seconds() -> None:
 def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> None:
     state = teleop_app._customization_ui_state_from_config(
         PickConfig(
-            objects=[CubeObject(color="green"), YCBObject(model_id="011_banana")],
+            objects=[CubeObject(color="green"), YCBObject(model_id="009_gelatin_box")],
             n_distractors=1,
             ground_colors=["white"],
             robot_colors="yellow",
@@ -640,7 +640,7 @@ def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> N
     assert state.common_visible is True
     assert state.pick_visible is True
     assert state.pick_and_place_visible is False
-    assert state.object_specs == ["cube:green", "ycb:011_banana"]
+    assert state.object_specs == ["cube:green", "ycb:009_gelatin_box"]
     assert state.n_distractors == 1
     assert state.ground_colors == ["white"]
     assert state.robot_colors == ["yellow"]

@@ -21,7 +21,6 @@ import mujoco
 import numpy as np
 
 from so101_nexus import (
-    ensure_ycb_assets,
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,
 )
@@ -33,8 +32,13 @@ from so101_nexus.mujoco.spawn_utils import (
     place_freejoint_slot,
     sample_separated_positions,
 )
-from so101_nexus.object_slots import ObjectSlot, build_object_scene_xml, extract_object_slots
-from so101_nexus.objects import CubeObject, SceneObject, YCBObject
+from so101_nexus.object_slots import (
+    ObjectSlot,
+    build_object_scene_xml,
+    ensure_scanned_mesh_assets,
+    extract_object_slots,
+)
+from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
     object_static_ok,
@@ -112,8 +116,8 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         # two-cube scene stays identical.
         distractor_pool = list(config.distractors) if config.n_distractors else []
         for obj in distractor_pool:
-            if isinstance(obj, YCBObject):
-                ensure_ycb_assets(obj.model_id)
+            if isinstance(obj, ScannedMeshObject):
+                ensure_scanned_mesh_assets(obj)
         scene_objects: list[SceneObject] = [cube_a_obj, cube_b_obj, *distractor_pool]
         slot_names = ["cube_a", "cube_b"] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))

@@ -12,7 +12,7 @@ def test_touch_threshold_vector_matches_selected_bounding_radius():
     from so101_nexus.objects import CubeObject, YCBObject
     from so101_nexus.warp.touch_env import WarpTouchVectorEnv
 
-    pool = [CubeObject(half_size=0.02, color="red"), YCBObject("011_banana")]
+    pool = [CubeObject(half_size=0.02, color="red"), YCBObject("009_gelatin_box")]
     env = WarpTouchVectorEnv(num_envs=16, config=TouchConfig(objects=pool), device="cpu", seed=0)
     env.reset(seed=0)
     radius = env._target_bounding_radius()
@@ -28,11 +28,29 @@ def test_pnp_ycb_object_target_offset_and_finite_reward():
     from so101_nexus.objects import YCBObject
     from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
 
-    config = PickAndPlaceConfig(objects=[YCBObject("011_banana")])
+    config = PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")])
     env = WarpPickAndPlaceVectorEnv(num_envs=4, config=config, device="cpu", seed=0)
     obs, _ = env.reset(seed=0)
     assert torch.isfinite(obs).all()
     # TargetOffset (the trailing 3 dims of the default obs) equals disc - object.
+    expected = env._target_disc_pos() - env._target_pos()
+    assert torch.allclose(obs[:, -3:], expected, atol=1e-5)
+    _, reward, _, _, info = env.step(torch.zeros((4, 6)))
+    assert torch.isfinite(reward).all()
+    assert "obj_to_target_dist" in info
+
+
+def test_pnp_gso_object_target_offset_and_finite_reward():
+    import torch
+
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.objects import GSOObject
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    config = PickAndPlaceConfig(objects=[GSOObject("CoQ10")])
+    env = WarpPickAndPlaceVectorEnv(num_envs=4, config=config, device="cpu", seed=0)
+    obs, _ = env.reset(seed=0)
+    assert torch.isfinite(obs).all()
     expected = env._target_disc_pos() - env._target_pos()
     assert torch.allclose(obs[:, -3:], expected, atol=1e-5)
     _, reward, _, _, info = env.step(torch.zeros((4, 6)))
@@ -71,7 +89,7 @@ def test_per_world_task_descriptions_and_reducer():
     from so101_nexus.objects import CubeObject, YCBObject
     from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
 
-    pool = [CubeObject(color="red"), YCBObject("011_banana")]
+    pool = [CubeObject(color="red"), YCBObject("009_gelatin_box")]
     env = WarpPickLiftVectorEnv(num_envs=8, config=PickConfig(objects=pool), device="cpu", seed=0)
     _, info = env.reset(seed=0)
     assert len(env.task_descriptions) == 8

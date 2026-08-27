@@ -63,8 +63,6 @@ def _env_kwargs(env_id: str) -> dict:
         }
     # YCB-based envs: extract model_id from env_id name
     _YCB_ENV_TO_MODEL: dict[str, str] = {
-        "MuJoCoPickBananaLift-v1": "011_banana",
-        "MuJoCoPickGolfBallLift-v1": "058_golf_ball",
         "MuJoCoPickForkLift-v1": "030_fork",
     }
     model_id = _YCB_ENV_TO_MODEL.get(env_id)

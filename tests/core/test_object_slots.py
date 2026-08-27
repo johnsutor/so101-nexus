@@ -22,7 +22,7 @@ from so101_nexus.object_slots import (
     mesh_xml_body,
     object_bounding_radius,
 )
-from so101_nexus.objects import CubeObject, MeshObject, YCBObject
+from so101_nexus.objects import CubeObject, GSOObject, MeshObject, YCBObject
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 from so101_nexus.ycb_assets import YCBCollisionPart
 
@@ -72,9 +72,11 @@ class TestXmlBuilders:
 
     def test_collision_geom_name(self):
         assert collision_geom_name("pick_slot_0", CubeObject()) == "pick_slot_0_geom"
-        banana = YCBObject("011_banana")
-        assert collision_geom_name("pick_slot_1", banana) == "pick_slot_1_collision_0"
-        assert collision_geom_name("pick_slot_1", banana, part=2) == "pick_slot_1_collision_2"
+        gelatin_box = YCBObject("009_gelatin_box")
+        assert collision_geom_name("pick_slot_1", gelatin_box) == "pick_slot_1_collision_0"
+        assert collision_geom_name("pick_slot_1", gelatin_box, part=2) == "pick_slot_1_collision_2"
+        clamp = GSOObject("Pony_C_Clamp_1440")
+        assert collision_geom_name("pick_slot_2", clamp) == "pick_slot_2_collision_0"
 
     def test_cube_bounding_radius(self):
         assert cube_bounding_radius(CubeObject(half_size=0.0125)) == pytest.approx(
@@ -125,7 +127,7 @@ class TestXmlBuilders:
         monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: texture_path)
 
         xml = build_object_scene_xml(
-            [YCBObject(model_id="011_banana")],
+            [YCBObject(model_id="009_gelatin_box")],
             ["pick_slot_0"],
             [0.1, 0.2, 0.3, 1.0],
             option_xml=MUJOCO_SCENE_OPTION_XML,
@@ -164,7 +166,7 @@ class TestXmlBuilders:
         monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: texture_path)
 
         xml = build_object_scene_xml(
-            [YCBObject(model_id="011_banana")],
+            [YCBObject(model_id="009_gelatin_box")],
             ["pick_slot_0"],
             [0.1, 0.2, 0.3, 1.0],
             option_xml=MUJOCO_SCENE_OPTION_XML,
@@ -174,6 +176,32 @@ class TestXmlBuilders:
         assert 'file="C:/cache/ycb/visual.obj"' in xml
         assert 'file="C:/cache/ycb/texture.png"' in xml
         assert r"C:\cache\ycb" not in xml
+
+    def test_gso_scene_xml_binds_cached_texture(self, monkeypatch, tmp_path):
+        from so101_nexus import object_slots
+
+        collision_path = tmp_path / "collision.obj"
+        visual_path = tmp_path / "visual.obj"
+        texture_path = tmp_path / "texture.png"
+        texture_path.write_text("texture", encoding="utf-8")
+        monkeypatch.setattr(
+            object_slots,
+            "get_gso_collision_parts",
+            lambda _m: [YCBCollisionPart(collision_path, 1.0)],
+        )
+        monkeypatch.setattr(object_slots, "get_gso_visual_mesh", lambda _m: visual_path)
+        monkeypatch.setattr(object_slots, "get_gso_texture_file", lambda _m: texture_path)
+
+        xml = build_object_scene_xml(
+            [GSOObject(model_id="CoQ10")],
+            ["pick_slot_0"],
+            [0.1, 0.2, 0.3, 1.0],
+            option_xml=MUJOCO_SCENE_OPTION_XML,
+            robot_xml_path=_ROBOT_XML,
+        )
+        assert f'<texture name="pick_tex_0" type="2d" file="{texture_path}"/>' in xml
+        assert '<material name="pick_mat_0" texture="pick_tex_0" texuniform="false"/>' in xml
+        assert 'material="pick_mat_0"' in xml
 
 
 class TestSlotExtraction:
@@ -245,6 +273,36 @@ class TestSlotExtraction:
         assert slot.bounding_radius == pytest.approx(rotated_radius, abs=1e-6)
         assert slot.bounding_radius != pytest.approx(naive_radius, abs=1e-6)
 
+    def test_extract_gso_slot_applies_its_pose_override(self, monkeypatch, tmp_path):
+        """Pony_C_Clamp_1440 has a POSE_OVERRIDES entry; the compiled slot's
+        rest_quat must be that override, not the thin-axis-up heuristic guess -
+        proving object_slots wires ``model_id`` through to the rest-pose lookup."""
+        from so101_nexus import object_slots
+        from so101_nexus.ycb_geometry import POSE_OVERRIDES
+
+        model_id = "Pony_C_Clamp_1440"
+        override_quat = np.array(POSE_OVERRIDES[model_id])
+        visual = _write_box_obj(tmp_path / "visual.obj", (-0.02, -0.03, -0.01), (0.02, 0.03, 0.01))
+        monkeypatch.setattr(
+            object_slots, "get_gso_collision_parts", lambda _m: [YCBCollisionPart(visual, 1.0)]
+        )
+        monkeypatch.setattr(object_slots, "get_gso_visual_mesh", lambda _m: visual)
+        monkeypatch.setattr(object_slots, "get_gso_texture_file", lambda _m: tmp_path / "none.png")
+
+        obj = GSOObject(model_id=model_id, mass_override=0.35)
+        xml, slot_names = _cube_scene([obj])
+        so_dir = get_so101_mujoco_model_path().parent
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", dir=so_dir, delete=True) as f:
+            f.write(xml)
+            f.flush()
+            mjm = mujoco.MjModel.from_xml_path(f.name)
+        slot = extract_object_slots(mjm, slot_names, [obj])[0]
+
+        assert slot.geom_id >= 0
+        body_id = int(mjm.geom_bodyid[slot.geom_id])
+        assert float(mjm.body_mass[body_id]) == pytest.approx(0.35, rel=1e-9)
+        np.testing.assert_allclose(slot.rest_quat, override_quat)
+
 
 def _write_box_obj(path, lo, hi):
     """Write an axis-aligned box OBJ spanning ``lo`` to ``hi``."""
@@ -285,6 +343,7 @@ class TestMultiPartCollision:
 
     def _compile(self, monkeypatch, tmp_path, parts):
         from so101_nexus import object_slots
+        from so101_nexus.ycb_geometry import POSE_OVERRIDES
 
         visual = _write_box_obj(
             tmp_path / "visual.obj",
@@ -294,8 +353,12 @@ class TestMultiPartCollision:
         monkeypatch.setattr(object_slots, "get_ycb_collision_parts", lambda _m: parts)
         monkeypatch.setattr(object_slots, "get_ycb_visual_mesh", lambda _m: visual)
         monkeypatch.setattr(object_slots, "get_ycb_texture_file", lambda _m: tmp_path / "none.png")
+        # This fixture probes the thin-axis-up heuristic in isolation, so
+        # suspend the settle-validated pose correction for this model_id: the
+        # synthetic slab is not that object's real mesh.
+        monkeypatch.delitem(POSE_OVERRIDES, "009_gelatin_box", raising=False)
 
-        obj = YCBObject(model_id="011_banana", mass_override=self.MASS)
+        obj = YCBObject(model_id="009_gelatin_box", mass_override=self.MASS)
         xml, slot_names = _cube_scene([obj])
         so_dir = get_so101_mujoco_model_path().parent
         with tempfile.NamedTemporaryFile("w", suffix=".xml", dir=so_dir, delete=True) as f:

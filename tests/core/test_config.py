@@ -1168,22 +1168,22 @@ class TestPickAndPlaceObjectPool:
     def test_explicit_object_pool(self):
         from so101_nexus.objects import YCBObject
 
-        cfg = PickAndPlaceConfig(objects=[YCBObject("011_banana")])
+        cfg = PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")])
         pool = cfg.object_pool()
         assert len(pool) == 1
         assert isinstance(pool[0], YCBObject)
-        assert cfg.task_description == "Pick up the banana and place it on the blue circle."
+        assert cfg.task_description == "Pick up the gelatin box and place it on the blue circle."
 
     def test_objects_with_non_default_cube_sugar_raises(self):
         from so101_nexus.objects import YCBObject
 
         with pytest.raises(ValueError, match="object pool and non-default cube sugar"):
-            PickAndPlaceConfig(objects=[YCBObject("011_banana")], cube_colors="green")
+            PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")], cube_colors="green")
 
     def test_objects_with_default_cube_sugar_ok(self):
         from so101_nexus.objects import YCBObject
 
-        cfg = PickAndPlaceConfig(objects=[YCBObject("011_banana")])
+        cfg = PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")])
         assert cfg.cube_colors == "red"
 
     def test_min_object_target_separation_alias(self):

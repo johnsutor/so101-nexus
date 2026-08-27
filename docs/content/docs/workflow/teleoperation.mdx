@@ -141,8 +141,8 @@ reset_settle_frames = 5
 n_distractors = 1
 objects = [
   { type = "cube", color = "green" },
-  { type = "ycb", model_id = "011_banana" },
-  { type = "ycb", model_id = "058_golf_ball" },
+  { type = "ycb", model_id = "009_gelatin_box" },
+  { type = "ycb", model_id = "032_knife" },
 ]
 
 [pick_and_place]
@@ -164,7 +164,7 @@ uv run so101-nexus teleop \
 ```
 
 The profile object schema matches the classes in [Scene Objects](/docs/api/objects). String
-specs such as `cube:blue` and `ycb:011_banana` work for built-in object choices. Mesh objects
+specs such as `cube:blue` and `ycb:009_gelatin_box` work for built-in object choices. Mesh objects
 use mapping syntax because file paths may contain separator characters:
 
 ```toml
@@ -189,7 +189,7 @@ from so101_nexus import CubeObject, PickConfig, YCBObject
 
 def build_config(env_id, base_config):
     return PickConfig(
-        objects=[CubeObject(color="green"), YCBObject("011_banana")],
+        objects=[CubeObject(color="green"), YCBObject("009_gelatin_box")],
         n_distractors=1,
     )
 ```

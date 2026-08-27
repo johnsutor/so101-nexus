@@ -20,6 +20,7 @@ from so101_nexus.config import (
     SO101_TCP_SITE_NAME,
     ControlMode,
     EnvironmentConfig,
+    GsoModelId,
     LookAtConfig,
     MoveConfig,
     MoveDirection,
@@ -38,6 +39,8 @@ from so101_nexus.config import (
 )
 from so101_nexus.constants import (
     COLOR_MAP,
+    GSO_MASSES,
+    GSO_OBJECTS,
     YCB_OBJECTS,
     ColorConfig,
     ColorName,
@@ -50,6 +53,16 @@ from so101_nexus.gaze import (
     object_in_view,
 )
 from so101_nexus.grasp import opposing_normals_ok
+from so101_nexus.gso_assets import (
+    GSOCollisionPart,
+    ensure_gso_assets,
+    get_gso_collision_mesh,
+    get_gso_collision_meshes,
+    get_gso_collision_parts,
+    get_gso_mesh_dir,
+    get_gso_texture_file,
+    get_gso_visual_mesh,
+)
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
     EE_DELTA_ACTION_SCALE,
@@ -63,7 +76,9 @@ from so101_nexus.lerobot_dataset import (
 )
 from so101_nexus.objects import (
     CubeObject,
+    GSOObject,
     MeshObject,
+    ScannedMeshObject,
     SceneObject,
     YCBObject,
 )
@@ -187,6 +202,8 @@ __all__ = [
     "EE_DELTA_ACTION_SCALE",
     "EE_ORIENTATION_WEIGHT",
     "EXTENDED_POSE",
+    "GSO_MASSES",
+    "GSO_OBJECTS",
     "JOINT_CONTROL_MODES",
     "POSES",
     "REST_POSE",
@@ -204,10 +221,13 @@ __all__ = [
     "CubeObject",
     "EndEffectorPose",
     "EnvironmentConfig",
+    "GSOCollisionPart",
+    "GSOObject",
     "GazeDirection",
     "GazeState",
     "GraspState",
     "GripperContactForce",
+    "GsoModelId",
     "JointEfforts",
     "JointPositions",
     "JointVelocities",
@@ -228,6 +248,7 @@ __all__ = [
     "RewardConfig",
     "RobotCameraPreset",
     "RobotConfig",
+    "ScannedMeshObject",
     "SceneObject",
     "StackCubeConfig",
     "TargetOffset",
@@ -242,9 +263,16 @@ __all__ = [
     "dataset_row_to_sim_qpos",
     "describe_pick_target",
     "direction_to_object",
+    "ensure_gso_assets",
     "ensure_ycb_assets",
     "gaze_angle_rad",
     "gaze_cosine",
+    "get_gso_collision_mesh",
+    "get_gso_collision_meshes",
+    "get_gso_collision_parts",
+    "get_gso_mesh_dir",
+    "get_gso_texture_file",
+    "get_gso_visual_mesh",
     "get_mujoco_ycb_rest_pose",
     "get_so101_mujoco_model_dir",
     "get_so101_mujoco_model_path",

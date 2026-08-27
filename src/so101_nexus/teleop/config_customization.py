@@ -19,11 +19,12 @@ from typing import Any, cast
 from so101_nexus.constants import (
     COLOR_MAP,
     CUBE_COLOR_MAP,
+    GSO_OBJECTS,
     YCB_OBJECTS,
     ColorConfig,
     ColorName,
 )
-from so101_nexus.objects import CubeObject, MeshObject, SceneObject, YCBObject
+from so101_nexus.objects import CubeObject, GSOObject, MeshObject, SceneObject, YCBObject
 
 ConfigFactory = Callable[[str, object | None], object | dict[str, Any]]
 
@@ -80,9 +81,11 @@ def default_cube_color_choices() -> list[str]:
 
 def default_object_choices() -> list[str]:
     """Return built-in object spec strings for teleop UI controls."""
-    return [f"cube:{color}" for color in COLOR_MAP] + [
-        f"ycb:{model_id}" for model_id in YCB_OBJECTS
-    ]
+    return (
+        [f"cube:{color}" for color in COLOR_MAP]
+        + [f"ycb:{model_id}" for model_id in YCB_OBJECTS]
+        + [f"gso:{model_id}" for model_id in GSO_OBJECTS]
+    )
 
 
 def color_tuple_from_names(
@@ -107,9 +110,13 @@ def object_from_spec(spec: str) -> SceneObject:
         return CubeObject(color=_validate_color(parts[0], field_name="cube color"))
     if kind == "ycb" and len(parts) == 1:
         return YCBObject(model_id=parts[0])
+    if kind == "gso" and len(parts) == 1:
+        return GSOObject(model_id=parts[0])
     if kind == "mesh":
         raise ValueError("mesh objects must use mapping syntax to avoid ambiguous path parsing")
-    raise ValueError(f"object spec {spec!r} must be cube:<color> or ycb:<model_id>")
+    raise ValueError(
+        f"object spec {spec!r} must be cube:<color>, ycb:<model_id>, or gso:<model_id>"
+    )
 
 
 def object_from_mapping(raw: Mapping[str, Any]) -> SceneObject:
@@ -121,6 +128,8 @@ def object_from_mapping(raw: Mapping[str, Any]) -> SceneObject:
         )
     if kind == "ycb":
         return YCBObject(model_id=str(_required(raw, "model_id")))
+    if kind == "gso":
+        return GSOObject(model_id=str(_required(raw, "model_id")))
     if kind == "mesh":
         return MeshObject(
             collision_mesh_path=str(_required(raw, "collision_mesh_path")),
@@ -254,6 +263,8 @@ def object_to_mapping(obj: SceneObject) -> dict[str, Any]:
         }  # ponytail: schema drops mass, see object_from_mapping
     if isinstance(obj, YCBObject):
         return {"type": "ycb", "model_id": obj.model_id}
+    if isinstance(obj, GSOObject):
+        return {"type": "gso", "model_id": obj.model_id}
     if isinstance(obj, MeshObject):
         return {
             "type": "mesh",

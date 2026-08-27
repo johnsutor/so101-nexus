@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from so101_nexus import ycb_assets
+from so101_nexus import mesh_assets, ycb_assets
 from so101_nexus.constants import YCB_OBJECTS
 from so101_nexus.ycb_assets import get_ycb_mesh_dir
 
@@ -133,10 +133,7 @@ def test_convert_glb_to_obj_handles_mesh(monkeypatch: pytest.MonkeyPatch, tmp_pa
 def test_get_ycb_texture_file_returns_cache_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
 
-    assert (
-        ycb_assets.get_ycb_texture_file("058_golf_ball")
-        == tmp_path / "058_golf_ball" / "texture.png"
-    )
+    assert ycb_assets.get_ycb_texture_file("032_knife") == tmp_path / "032_knife" / "texture.png"
 
 
 def test_extract_glb_texture_saves_material_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -274,7 +271,7 @@ def test_ensure_ycb_assets_returns_when_texture_extract_finds_nothing(
     fake_trimesh = types.SimpleNamespace(Scene=_FakeScene, load=lambda *_a, **_k: _FakeMesh())
     _patch_module(monkeypatch, "trimesh", fake_trimesh)
     _fake_coacd(monkeypatch, [])
-    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
+    monkeypatch.setattr(mesh_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
 
@@ -310,7 +307,7 @@ def test_ensure_ycb_assets_download_and_decomposition(
     )
     monkeypatch.setattr(ycb_assets, "_convert_glb_to_obj", _convert_glb_to_obj)
     _fake_coacd(monkeypatch, [])
-    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
+    monkeypatch.setattr(mesh_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
     assert mesh_dir == tmp_path / model_id
@@ -355,7 +352,7 @@ def test_ensure_ycb_assets_scene_path_for_hull(monkeypatch: pytest.MonkeyPatch, 
     )
     monkeypatch.setattr(ycb_assets, "_convert_glb_to_obj", lambda _g, p: p.write_text("v"))
     _fake_coacd(monkeypatch, [])
-    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
+    monkeypatch.setattr(mesh_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     ycb_assets.ensure_ycb_assets(model_id)
     assert mesh.exports[-1] == (
@@ -366,7 +363,7 @@ def test_ensure_ycb_assets_scene_path_for_hull(monkeypatch: pytest.MonkeyPatch, 
 
 def test_collision_and_visual_mesh_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "058_golf_ball"
+    model_id = "032_knife"
     parts_dir = _write_cached_parts(tmp_path / model_id, ("collision_000.obj", "collision_001.obj"))
     assert ycb_assets.get_ycb_collision_meshes(model_id) == [
         parts_dir / "collision_000.obj",
@@ -379,7 +376,7 @@ def test_collision_and_visual_mesh_paths(monkeypatch: pytest.MonkeyPatch, tmp_pa
 def test_collision_parts_require_prepared_assets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
     with pytest.raises(FileNotFoundError, match="ensure_ycb_assets"):
-        ycb_assets.get_ycb_collision_parts("058_golf_ball")
+        ycb_assets.get_ycb_collision_parts("032_knife")
 
 
 def test_collision_parts_reject_a_truncated_manifest(
@@ -387,7 +384,7 @@ def test_collision_parts_reject_a_truncated_manifest(
 ):
     """A half-written manifest must read as absent, not wedge the cache forever."""
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "058_golf_ball"
+    model_id = "032_knife"
     parts_dir = _write_cached_parts(tmp_path / model_id)
     (parts_dir / "manifest.json").write_text('{"parts": [{"file":', encoding="utf-8")
 
@@ -405,11 +402,11 @@ def test_cached_parts_from_another_decomposer_are_rebuilt(
     rather than overwriting it with a coarse hull.
     """
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    parts_dir = _write_cached_parts(tmp_path / "058_golf_ball", decomposer="coacd 0.0.1")
-    monkeypatch.setattr(ycb_assets, "_decomposer_id", lambda: "coacd 9.9.9")
+    parts_dir = _write_cached_parts(tmp_path / "032_knife", decomposer="coacd 0.0.1")
+    monkeypatch.setattr(mesh_assets, "_decomposer_id", lambda: "coacd 9.9.9")
     assert not ycb_assets._collision_parts_are_current(parts_dir)
 
-    monkeypatch.setattr(ycb_assets, "_decomposer_id", lambda: ycb_assets._FALLBACK_DECOMPOSER)
+    monkeypatch.setattr(mesh_assets, "_decomposer_id", lambda: ycb_assets._FALLBACK_DECOMPOSER)
     assert ycb_assets._collision_parts_are_current(parts_dir)
 
 
@@ -419,7 +416,7 @@ def test_cached_parts_are_rebuilt_when_the_visual_scan_changes(
 ):
     """The source hash must prevent parts from another scan from reaching physics."""
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    mesh_dir = tmp_path / "058_golf_ball"
+    mesh_dir = tmp_path / "032_knife"
     parts_dir = _write_cached_parts(mesh_dir)
     assert ycb_assets._collision_parts_are_current(parts_dir)
 
@@ -458,7 +455,7 @@ def test_extract_glb_texture_accepts_orig_extension(
 def test_texture_glb_path_prefers_orig(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """When both textured.glb.orig and textured.glb exist, the .orig wins."""
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "011_banana"
+    model_id = "009_gelatin_box"
     base = tmp_path / "meshes" / model_id / "google_16k"
     base.mkdir(parents=True)
     glb = base / "textured.glb"
@@ -472,7 +469,7 @@ def test_texture_glb_path_prefers_orig(monkeypatch: pytest.MonkeyPatch, tmp_path
 def test_texture_glb_path_falls_back_to_glb(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """When only textured.glb exists, _texture_glb_path returns it."""
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "011_banana"
+    model_id = "009_gelatin_box"
     base = tmp_path / "meshes" / model_id / "google_16k"
     base.mkdir(parents=True)
     glb = base / "textured.glb"
@@ -486,7 +483,7 @@ def test_ensure_ycb_assets_downloads_orig_when_partial_cache_lacks_it(
 ):
     """Partial caches with only textured.glb must pull .orig before extraction."""
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "011_banana"
+    model_id = "009_gelatin_box"
 
     mesh_dir = tmp_path / model_id
     mesh_dir.mkdir(parents=True)
@@ -535,7 +532,7 @@ def test_ensure_ycb_assets_logs_warning_when_extraction_fails(
     import logging
 
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
-    model_id = "011_banana"
+    model_id = "009_gelatin_box"
 
     mesh_dir = tmp_path / model_id
     mesh_dir.mkdir(parents=True)
@@ -622,7 +619,7 @@ def test_collision_build_keeps_an_accurate_single_hull(monkeypatch: pytest.Monke
     events: list[tuple] = []
     _fake_coacd(monkeypatch, events)
     monkeypatch.setattr(
-        ycb_assets,
+        mesh_assets,
         "_hull_surface_gap",
         lambda _hull, _mesh: (
             ycb_assets._HULL_GAP_GATE_M,
@@ -647,7 +644,7 @@ def test_collision_build_uses_the_audited_coacd_configuration(
     _fake_coacd(monkeypatch, events)
     _fake_trimesh_with_hulls(monkeypatch, [1.0, 3.0])
     monkeypatch.setattr(
-        ycb_assets,
+        mesh_assets,
         "_hull_surface_gap",
         lambda _hull, _mesh: (ycb_assets._HULL_GAP_GATE_M + 0.001, 0.0),
     )
@@ -673,7 +670,7 @@ def test_collision_build_falls_back_to_single_hull_without_the_extra(
     _patch_module(monkeypatch, missing, None)
     mesh = _ConcaveMesh()
 
-    with caplog.at_level(logging.WARNING, logger="so101_nexus.ycb_assets"):
+    with caplog.at_level(logging.WARNING, logger="so101_nexus.mesh_assets"):
         build = ycb_assets._build_collision_geometry(mesh)
 
     assert build.parts == (mesh.convex_hull,)
@@ -687,7 +684,7 @@ def test_write_collision_parts_records_provenance_and_mass(
     events: list[tuple] = []
     _fake_coacd(monkeypatch, events)
     _fake_trimesh_with_hulls(monkeypatch, [1.0, 3.0])
-    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.004, 0.012))
+    monkeypatch.setattr(mesh_assets, "_hull_surface_gap", lambda _h, _m: (0.004, 0.012))
     source = tmp_path / "visual.obj"
     source.write_text("visual", encoding="utf-8")
     out_dir = tmp_path / "collision_v3"
@@ -695,14 +692,14 @@ def test_write_collision_parts_records_provenance_and_mass(
     ycb_assets._write_collision_parts(
         _ConcaveMesh(),
         out_dir,
-        model_id="037_scissors",
+        model_id="031_spoon",
         source_path=source,
     )
 
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert [part["mass_fraction"] for part in manifest["parts"]] == [0.25, 0.75]
     assert sum(part["mass_fraction"] for part in manifest["parts"]) == 1.0
-    assert manifest["model_id"] == "037_scissors"
+    assert manifest["model_id"] == "031_spoon"
     assert manifest["source_sha256"] == ycb_assets._sha256(source)
     assert manifest["settings"] == ycb_assets._COACD_SETTINGS
     assert [part["n_vertices"] for part in manifest["parts"]] == [4, 4]
@@ -718,12 +715,12 @@ def test_write_collision_parts_drops_stale_parts(monkeypatch: pytest.MonkeyPatch
     source = tmp_path / "visual.obj"
     source.write_text("visual", encoding="utf-8")
     _fake_coacd(monkeypatch, [])
-    monkeypatch.setattr(ycb_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
+    monkeypatch.setattr(mesh_assets, "_hull_surface_gap", lambda _h, _m: (0.0, 0.0))
 
     ycb_assets._write_collision_parts(
         _FakeMesh(),
         tmp_path,
-        model_id="058_golf_ball",
+        model_id="032_knife",
         source_path=source,
     )
 

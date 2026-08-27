@@ -81,6 +81,21 @@ YcbModelId = Literal[
     "058_golf_ball",
 ]
 
+GsoModelId = Literal[
+    "Pony_C_Clamp_1440",
+    "Cole_Hardware_Mini_Honey_Dipper",
+    "OXO_Soft_Works_Can_Opener_SnapLock",
+    "3M_Vinyl_Tape_Green_1_x_36_yd",
+    "Shurtape_Gaffers_Tape_Silver_2_x_60_yd",
+    "Big_O_Sponges_Assorted_Cellulose_12_pack",
+    "BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup",
+    "CoQ10",
+    "Wilton_Pearlized_Sugar_Sprinkles_525_oz_Gold",
+    "Marc_Anthony_Strictly_Curls_Curl_Envy_Perfect_Curl_Cream_6_fl_oz_bottle",
+    "Black_Elderberry_Syrup_54_oz_Gaia_Herbs",
+    "Nestle_Raisinets_Milk_Chocolate_35_oz_992_g",
+]
+
 SO101_JOINT_NAMES: tuple[str, ...] = (
     "shoulder_pan",
     "shoulder_lift",
@@ -1015,10 +1030,11 @@ class PickConfig(EnvironmentConfig):
         Pool of scene objects to sample from. Accepts a single ``SceneObject``,
         a list of ``SceneObject``, or ``None`` (defaults to ``[CubeObject()]``).
         A single object is automatically wrapped in a list.
-        ``YCBObject`` entries collide as a convex decomposition of the scan, which
-        needs the ``decomp`` extra; without it they fall back to a single convex
-        hull that makes several YCB models ungraspable regardless of the policy.
-        Read ``YCBObject``'s docstring before putting one in a grasping task's pool.
+        ``YCBObject``/``GSOObject`` entries collide as a convex decomposition of
+        the scan, which needs the ``decomp`` extra; without it they fall back to
+        a single convex hull that makes several models ungraspable regardless of
+        the policy. Read ``YCBObject``'s docstring before putting a scanned-mesh
+        object in a grasping task's pool.
     n_distractors : int
         Number of distractor objects to place. 0 means single-object scene.
     lift_threshold : float
@@ -1082,7 +1098,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
     The carried object is chosen per episode from an object pool. By default the
     pool is one cube per colour in ``cube_colors`` (so selecting the target slot
     reproduces the legacy per-episode cube-colour variation); pass ``objects`` to
-    carry ``YCBObject`` / ``MeshObject`` instead. The goal disc colour is sampled
+    carry ``YCBObject`` / ``GSOObject`` / ``MeshObject`` instead. The goal disc colour is sampled
     from ``target_colors``.
 
     Parameters

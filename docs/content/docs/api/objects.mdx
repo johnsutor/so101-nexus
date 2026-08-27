@@ -6,10 +6,10 @@ description: Constructor reference for cubes, YCB objects, and meshes, plus the 
 Scene objects define what the robot interacts with. All object types live in `so101_nexus` and share the abstract `SceneObject` base class.
 
 ```python
-from so101_nexus import CubeObject, MeshObject, YCBObject
+from so101_nexus import CubeObject, GSOObject, MeshObject, YCBObject
 ```
 
-All three concrete object types work on the MuJoCo and MuJoCo Warp backends, which build their scenes through the same `so101_nexus.object_slots.build_object_scene_xml`.
+All four concrete object types work on the MuJoCo and MuJoCo Warp backends, which build their scenes through the same `so101_nexus.object_slots.build_object_scene_xml`.
 
 ## SceneObject (abstract)
 
@@ -69,6 +69,17 @@ repr(banana)  # "banana"
 | `043_phillips_screwdriver` | phillips screwdriver |
 | `058_golf_ball` | golf ball |
 
+Every rest pose above is settle-tested against real MuJoCo physics (see
+[`get_mujoco_ycb_rest_pose()`](#get_mujoco_ycb_rest_pose)); a few needed a
+corrected orientation because the default "thinnest axis up" guess tips over
+under real dynamics. A handful of objects (both YCB and GSO) also have a
+**grasp advisory**: a geometric screen found no tested cross-section that
+fits inside the SO-101 gripper's aperture, so the object is likely too wide
+to close on with this arm. This is advisory only, not a construction-time
+error - spot-check via teleoperation or a policy rollout before relying on a
+flagged object for a real grasp task. The current list is in
+`so101_nexus.ycb_geometry.GRASP_ADVISORY`.
+
 Passing any other `model_id` raises an error. The same mapping is available at runtime:
 
 ```python
@@ -77,6 +88,65 @@ from so101_nexus import YCB_OBJECTS
 for model_id, name in YCB_OBJECTS.items():
     print(f"{model_id}: {name}")
 ```
+
+
+## GSOObject
+
+A [Google Scanned Objects](https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/)
+(GSO) object loaded from mesh files, sharing `YCBObject`'s convex-hull
+collision pipeline. Assets are downloaded on first use and cached (see [GSO
+assets](#gso-assets)).
+
+```python
+from so101_nexus import GSOObject
+
+clamp = GSOObject("Pony_C_Clamp_1440")
+repr(clamp)  # "C-clamp"
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model_id` | `str` | required | GSO model identifier. Must be a key in `GSO_OBJECTS`. |
+| `mass_override` | `float \| None` | `None` | Override the default mass. Uses the hand-estimated mass when `None`. |
+
+`__repr__()` returns the human-readable name from the `GSO_OBJECTS` dictionary.
+
+Unlike YCB, GSO ships no benchmark-measured masses. Each `model_id`'s default
+mass in `GSO_MASSES` is a hand estimate: convex-hull volume from the mirrored
+scan times an assumed effective density for the filled/packaged object,
+rounded to the nearest 5 g. Pass `mass_override` to replace it with a
+measured value.
+
+### Model IDs
+
+`model_id` must be one of the twelve supported IDs, which are also the members of the `GsoModelId` type alias:
+
+| Model ID | `GSO_OBJECTS` name |
+|----------|--------------------|
+| `Pony_C_Clamp_1440` | C-clamp |
+| `Cole_Hardware_Mini_Honey_Dipper` | honey dipper |
+| `OXO_Soft_Works_Can_Opener_SnapLock` | can opener |
+| `3M_Vinyl_Tape_Green_1_x_36_yd` | tape roll |
+| `Shurtape_Gaffers_Tape_Silver_2_x_60_yd` | gaffer tape roll |
+| `Big_O_Sponges_Assorted_Cellulose_12_pack` | sponge pack |
+| `BIA_Porcelain_Ramekin_With_Glazed_Rim_35_45_oz_cup` | ramekin |
+| `CoQ10` | supplement bottle |
+| `Wilton_Pearlized_Sugar_Sprinkles_525_oz_Gold` | sprinkles canister |
+| `Marc_Anthony_Strictly_Curls_Curl_Envy_Perfect_Curl_Cream_6_fl_oz_bottle` | lotion bottle |
+| `Black_Elderberry_Syrup_54_oz_Gaia_Herbs` | syrup bottle |
+| `Nestle_Raisinets_Milk_Chocolate_35_oz_992_g` | candy box |
+
+Passing any other `model_id` raises an error. The same mapping is available at runtime:
+
+```python
+from so101_nexus import GSO_OBJECTS
+
+for model_id, name in GSO_OBJECTS.items():
+    print(f"{model_id}: {name}")
+```
+
+See the [YCB section above](#ycbobject) for the grasp advisory note; it
+applies to GSO objects too.
 
 ## MeshObject
 
@@ -207,6 +277,82 @@ rm -rf ~/.cache/so101_nexus/ycb/011_banana
 
 **Firewall or proxy.** Downloads go through the Hugging Face Hub client. Behind a proxy, set the standard `HTTPS_PROXY`, `HF_ENDPOINT`, or `HF_HUB_DISABLE_TELEMETRY` variables.
 
+## GSO assets
+
+GSO mesh assets are downloaded from a Hugging Face mirror on first use and cached at:
+
+```
+~/.cache/so101_nexus/gso/{model_id}/
+```
+
+The cache layout, manifest format, CoACD decomposition, and texture
+extraction are identical to [YCB assets](#ycb-assets) above - both datasets
+share the same generator (`so101_nexus.mesh_assets`), just with a different
+source repository and cache subdirectory.
+
+Creating a `GSOObject` and stepping an environment downloads whatever is missing. You can also trigger the download explicitly:
+
+```python
+from so101_nexus import ensure_gso_assets
+
+path = ensure_gso_assets("Pony_C_Clamp_1440")
+```
+
+### `ensure_gso_assets()`
+
+```python
+def ensure_gso_assets(model_id: str) -> Path
+```
+
+Downloads the mesh assets for `model_id` if they are not already cached, then returns the cache directory.
+
+### Path helpers
+
+These mirror the [YCB path helpers](#path-helpers): they resolve cache paths and never trigger a download. Call `ensure_gso_assets` first if the assets may not be present yet.
+
+| Function | Returns |
+|----------|---------|
+| `get_gso_mesh_dir(model_id)` | The model's cache directory |
+| `get_gso_collision_parts(model_id)` | `GSOCollisionPart(path, mass_fraction)` per convex part |
+| `get_gso_collision_meshes(model_id)` | Paths of the convex collision parts |
+| `get_gso_collision_mesh(model_id)` | Path of the first convex collision part |
+| `get_gso_visual_mesh(model_id)` | Path to `visual.obj` |
+| `get_gso_texture_file(model_id)` | Expected path to the optional `texture.png` |
+
+```python
+from so101_nexus import (
+    get_gso_collision_meshes,
+    get_gso_mesh_dir,
+    get_gso_texture_file,
+    get_gso_visual_mesh,
+)
+
+mesh_dir = get_gso_mesh_dir("Pony_C_Clamp_1440")
+collision_parts = get_gso_collision_meshes("Pony_C_Clamp_1440")
+visual = get_gso_visual_mesh("Pony_C_Clamp_1440")
+texture = get_gso_texture_file("Pony_C_Clamp_1440")
+```
+
+Each helper validates `model_id` against the supported set and raises on an unknown ID.
+
+### Custom source repository
+
+Assets are fetched from a Hugging Face dataset mirror by default. Override the source with `SO101_GSO_HF_REPO`, which is useful for private mirrors or custom object sets that follow the same directory layout:
+
+```bash
+export SO101_GSO_HF_REPO="your-org/your-gso-repo"
+```
+
+### Download troubleshooting
+
+**Interrupted download.** A partial cache directory is not repaired automatically. Delete it and retry:
+
+```bash
+rm -rf ~/.cache/so101_nexus/gso/Pony_C_Clamp_1440
+```
+
+**Firewall or proxy.** Downloads go through the Hugging Face Hub client. Behind a proxy, set the standard `HTTPS_PROXY`, `HF_ENDPOINT`, or `HF_HUB_DISABLE_TELEMETRY` variables.
+
 ## Simulation assets
 
 These helpers resolve paths to the assets bundled with the package.
@@ -234,15 +380,19 @@ Return the directory and the `so101.xml` path of the vendored MuJoCo Menagerie m
 def get_mujoco_ycb_rest_pose(
     verts: np.ndarray,
     margin: float = 0.002,
+    model_id: str | None = None,
 ) -> tuple[np.ndarray, float]
 ```
 
-Computes a stable rest orientation and spawn height for a YCB mesh by rotating its thinnest axis to point up.
+Computes a stable rest orientation and spawn height for a scanned mesh (YCB or GSO). `model_id`
+looks up a settle-test-validated correction in `POSE_OVERRIDES` first; without a match, the mesh's
+thinnest axis is rotated to point up as a guess.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `verts` | `np.ndarray` | required | Vertex array of the object mesh |
 | `margin` | `float` | `0.002` | Offset above the surface to avoid interpenetration |
+| `model_id` | `str \| None` | `None` | Dataset identifier to check against `POSE_OVERRIDES` before falling back to the heuristic |
 
 Returns `(quaternion, spawn_z)`, where `quaternion` is a NumPy array in wxyz order and `spawn_z` is the spawn height in meters.
 

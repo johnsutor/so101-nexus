@@ -6,7 +6,8 @@ backed by a MuJoCo scene built dynamically from a ``PickConfig`` object list.
 The shared object-slot machinery (XML builders, ``ObjectSlot`` metadata) lives
 in ``so101_nexus.object_slots``.
 
-Supported object types: ``CubeObject``, ``YCBObject``, ``MeshObject``.
+Supported object types: ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``,
+``GSOObject``), ``MeshObject``.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ import mujoco
 import numpy as np
 
 from so101_nexus import (
-    ensure_ycb_assets,
     get_so101_mujoco_model_dir,
     get_so101_mujoco_model_path,
 )
@@ -38,9 +38,10 @@ from so101_nexus.mujoco.spawn_utils import (
 from so101_nexus.object_slots import (
     ObjectSlot,
     build_object_scene_xml,
+    ensure_scanned_mesh_assets,
     extract_object_slots,
 )
-from so101_nexus.objects import SceneObject, YCBObject
+from so101_nexus.objects import ScannedMeshObject, SceneObject
 from so101_nexus.rewards import reach_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
@@ -51,7 +52,8 @@ _SO101_XML = get_so101_mujoco_model_path()
 class PickEnv(SO101NexusMuJoCoBaseEnv):
     """Shared base for the MuJoCo pick environments (not directly registered).
 
-    Handles ``CubeObject``, ``YCBObject``, and ``MeshObject`` from
+    Handles ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``, ``GSOObject``),
+    and ``MeshObject`` from
     ``PickConfig.objects``. One object is randomly chosen as the target per
     episode; ``config.n_distractors`` others are placed as distractors.
 
@@ -85,10 +87,10 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         n_pool = len(scene_objects)
         n_slots = 1 + self._n_distractors
 
-        # Ensure YCB assets are on disk before building XML
+        # Ensure scanned-mesh assets (YCB, GSO) are on disk before building XML
         for obj in scene_objects:
-            if isinstance(obj, YCBObject):
-                ensure_ycb_assets(obj.model_id)
+            if isinstance(obj, ScannedMeshObject):
+                ensure_scanned_mesh_assets(obj)
 
         # Body slot names: one per pool object (not just active slots).
         # Slots beyond n_slots will be hidden off-world at reset time.

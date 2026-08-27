@@ -139,6 +139,7 @@ ignore = [
 "**/tests/**/*.py" = ["D", "PT006"]
 ".github/**/*.py" = ["D"]
 "examples/**/*.py" = ["D"]
+"scripts/**/*.py" = ["D"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 12

@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, cast
 
 from so101_nexus.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus.env_ids import Backend, env_ids_for_backend
-from so101_nexus.objects import CubeObject, SceneObject, YCBObject
+from so101_nexus.objects import CubeObject, GSOObject, SceneObject, YCBObject
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
     color_tuple_from_names,
@@ -177,6 +177,8 @@ def _object_spec_from_scene_object(obj: SceneObject) -> str | None:
         return f"cube:{obj.color}"
     if isinstance(obj, YCBObject):
         return f"ycb:{obj.model_id}"
+    if isinstance(obj, GSOObject):
+        return f"gso:{obj.model_id}"
     return None
 
 
