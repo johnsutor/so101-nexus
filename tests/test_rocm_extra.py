@@ -25,11 +25,28 @@ def test_rocm_extra_declared() -> None:
 
 
 def test_default_extras_do_not_reference_rocm_index() -> None:
-    """``train``/``warp`` still declare bare ``torch``, unaffected by rocm."""
+    """``train`` and ``warp`` resolve torch from the default package index."""
     extras = PYPROJECT["project"]["optional-dependencies"]
     for extra in ("train", "warp"):
-        assert extras[extra].count("torch") == 1
-        assert "torch" in extras[extra]
+        torch_requirements = [
+            dependency for dependency in extras[extra] if dependency.startswith("torch")
+        ]
+        assert len(torch_requirements) == 1
+        assert all("rocm" not in dependency for dependency in torch_requirements)
+
+
+def test_warp_extra_pins_compatible_runtime_versions() -> None:
+    """The Warp runtime pins versions that its released package smoke test supports."""
+    warp = PYPROJECT["project"]["optional-dependencies"]["warp"]
+    assert "torch<2.10" in warp
+    assert "warp-lang>=1.14,<1.16" in warp
+
+
+def test_test_group_pins_compatible_torchcodec() -> None:
+    """The test suite uses a TorchCodec release compatible with the Warp Torch cap."""
+    test_dependencies = PYPROJECT["dependency-groups"]["test"]
+    assert "torch<2.10" in test_dependencies
+    assert "torchcodec<0.10" in test_dependencies
 
 
 def test_torch_sources_route_only_the_rocm_extra_to_the_rocm_index() -> None:
@@ -50,10 +67,11 @@ def test_rocm_index_is_explicit_and_points_at_rocm72() -> None:
 
 
 def test_rocm_conflicts_with_extras_and_groups_pinning_incompatible_torch() -> None:
-    """rocm (torch>=2.11) can never resolve alongside lerobot's torch<2.11 pin."""
+    """ROCm cannot combine with dependency sets that pin incompatible Torch versions."""
     conflicts = PYPROJECT["tool"]["uv"]["conflicts"]
     rocm_pairs = [{frozenset(m.items()) for m in pair} for pair in conflicts]
     assert frozenset({("extra", "rocm")}) in {p for pair in rocm_pairs for p in pair}
     assert {frozenset({("extra", "rocm")}), frozenset({("extra", "teleop")})} in rocm_pairs
     assert {frozenset({("extra", "rocm")}), frozenset({("group", "test")})} in rocm_pairs
     assert {frozenset({("extra", "rocm")}), frozenset({("group", "dev")})} in rocm_pairs
+    assert {frozenset({("extra", "rocm")}), frozenset({("extra", "warp")})} in rocm_pairs

@@ -43,7 +43,7 @@ A name whose only safe behavior would be a breaking change, for example a path t
 
 - **Python**: 3.12 and 3.13, verified in continuous integration.
 - **Operating systems**: Linux and macOS are exercised in continuous integration for the MuJoCo backend.
-- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.4 for GPU execution. Warp has no ROCm/AMD support.
+- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.8 for GPU execution. Warp has no ROCm/AMD support.
 - **Accelerators**: `so101-nexus[rocm]` builds MuJoCo-backend training against AMD's ROCm 7.2 PyTorch index on Linux x86_64, with the resolution constraints covered in [Installation](/docs/getting-started/installation).
 
 ## Determinism

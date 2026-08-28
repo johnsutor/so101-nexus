@@ -1,6 +1,6 @@
 [project]
 name = "so101-nexus"
-version = "0.5.3"
+version = "0.5.4"
 description = "End-to-end simulation and training stack for the SO-101 arm: record demonstrations, clone behavior, and reinforce with GPU-parallel MuJoCo / MuJoCo Warp environments, built on LeRobot"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -45,7 +45,8 @@ train = [
 ]
 warp = [
     "mujoco-warp>=3.9.0.1,<3.10",
-    "torch",
+    "torch<2.10",
+    "warp-lang>=1.14,<1.16",
 ]
 rocm = [
     "torch; sys_platform == 'linux' and platform_machine == 'x86_64'",
@@ -58,6 +59,7 @@ conflicts = [
     [{ extra = "rocm" }, { extra = "teleop" }],
     [{ extra = "rocm" }, { group = "test" }],
     [{ extra = "rocm" }, { group = "dev" }],
+    [{ extra = "rocm" }, { extra = "warp" }],
 ]
 
 [tool.uv.sources]
@@ -95,6 +97,8 @@ test = [
     "imageio[ffmpeg]",
     "Pillow",
     "lerobot[feetech]>=0.5.0,<0.6",
+    "torch<2.10",
+    "torchcodec<0.10",
 ]
 visual = ["litellm", "Pillow", "imageio[ffmpeg]"]
 

@@ -9,6 +9,16 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-27
+
+### Fixed
+
+- `so101-nexus[warp]` now constrains `warp-lang` to `>=1.14,<1.16` and
+  `torch` to `<2.10`. `mujoco-warp==3.9.0.1` leaves both dependencies
+  unconstrained. Pip selected `warp-lang==1.16.0`, which failed CPU Warp sensor
+  code generation, and a CUDA 13 Torch build, which rejected a CUDA 12.8 NVIDIA
+  driver. The package now resolves Warp 1.15.0 and Torch 2.9.1+cu128.
+
 ## [0.5.3] - 2026-08-27
 
 ### Added
@@ -557,7 +567,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.3...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.4...HEAD
+[0.5.4]: https://github.com/johnsutor/so101-nexus/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/johnsutor/so101-nexus/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...0.5.1
