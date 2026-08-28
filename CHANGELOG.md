@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-27
+
 ### Added
 
 - `CylinderObject`, `SphereObject`, and `PyramidObject` add solid-color
@@ -555,7 +557,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.3...HEAD
+[0.5.3]: https://github.com/johnsutor/so101-nexus/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/johnsutor/so101-nexus/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/johnsutor/so101-nexus/compare/0.4.13...0.5.0
