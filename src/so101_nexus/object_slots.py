@@ -5,8 +5,8 @@ of freejoint object bodies ("slots") into one compiled ``MjModel`` and select
 which slot is the active target (and which are distractors) per episode. This
 module holds the backend-neutral pieces of that machinery:
 
-- MJCF fragment builders for ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``,
-  ``GSOObject``), and ``MeshObject``.
+- MJCF fragment builders for geometric primitives, ``ScannedMeshObject``
+  (``YCBObject``, ``GSOObject``), and ``MeshObject``.
 - The full scene builder ``build_object_scene_xml`` parameterized by the
   ``<option>`` preset and robot model path, so MuJoCo and Warp emit identical
   bodies and assets while differing only in the integrator/solver preset.
@@ -34,10 +34,14 @@ from so101_nexus.gso_assets import (
 )
 from so101_nexus.objects import (
     CubeObject,
+    CylinderObject,
     GSOObject,
     MeshObject,
+    PrimitiveObject,
+    PyramidObject,
     ScannedMeshObject,
     SceneObject,
+    SphereObject,
     YCBObject,
 )
 from so101_nexus.scene import SCENE_LIGHTS_XML, SCENE_VISUAL_XML
@@ -119,13 +123,20 @@ def cube_bounding_radius(obj: CubeObject) -> float:
     return float(obj.half_size * np.sqrt(2))
 
 
+def primitive_bounding_radius(obj: PrimitiveObject) -> float:
+    """Return a primitive's horizontal bounding radius."""
+    if isinstance(obj, (CubeObject, PyramidObject)):
+        return float(obj.half_size * np.sqrt(2))
+    return obj.half_size
+
+
 def collision_geom_name(slot_name: str, obj: SceneObject, part: int = 0) -> str:
     """Return the name of a slot's collision/contact geom.
 
-    Mesh-backed slots (YCB, custom) carry one geom per convex part of their
-    collision decomposition, numbered from zero; cubes carry a single box geom.
+    Mesh-backed slots carry one geom per convex part of their collision
+    decomposition, numbered from zero. Geometric primitives carry one geom.
     """
-    if isinstance(obj, CubeObject):
+    if isinstance(obj, PrimitiveObject):
         return f"{slot_name}_geom"
     return _mesh_collision_geom_name(slot_name, part)
 
@@ -142,6 +153,61 @@ def cube_xml_body(slot_name: str, obj: CubeObject) -> str:
         f'    <body name="{slot_name}" pos="0.15 0 {hs}">\n'
         f'      <freejoint name="{slot_name}_joint"/>\n'
         f'      <geom name="{slot_name}_geom" type="box" size="{hs} {hs} {hs}"\n'
+        f'            rgba="{r} {g} {b} {a}" mass="{obj.mass}"\n'
+        f'            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"\n'
+        f'            solref="0.01 1" solimp="0.95 0.99 0.001"/>\n'
+        f"    </body>\n"
+    )
+
+
+def pyramid_xml_asset(asset_index: int, obj: PyramidObject) -> str:
+    """Return the MJCF mesh asset for a square pyramid."""
+    hs = obj.half_size
+    vertices = (
+        (-hs, -hs, -hs),
+        (hs, -hs, -hs),
+        (hs, hs, -hs),
+        (-hs, hs, -hs),
+        (0.0, 0.0, hs),
+    )
+    faces = ((0, 2, 1), (0, 3, 2), (0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4))
+    vertex_values = " ".join(str(value) for vertex in vertices for value in vertex)
+    face_values = " ".join(str(value) for face in faces for value in face)
+    return (
+        f'    <mesh name="primitive_pyramid_{asset_index}" vertex="{vertex_values}" '
+        f'face="{face_values}"/>\n'
+    )
+
+
+def _primitive_geom_spec(obj: PrimitiveObject, asset_index: int) -> str:
+    if isinstance(obj, CubeObject):
+        return f'type="box" size="{obj.half_size} {obj.half_size} {obj.half_size}"'
+    if isinstance(obj, CylinderObject):
+        return f'type="cylinder" size="{obj.half_size} {obj.half_size}"'
+    if isinstance(obj, SphereObject):
+        return f'type="sphere" size="{obj.half_size}"'
+    if isinstance(obj, PyramidObject):
+        return f'type="mesh" mesh="primitive_pyramid_{asset_index}"'
+    raise TypeError(f"Unsupported primitive type: {type(obj)}")
+
+
+def primitive_visual_xml_geom(geom_name: str, obj: PrimitiveObject, asset_index: int = 0) -> str:
+    """Return a non-colliding MJCF geom for a geometric primitive."""
+    r, g, b, a = COLOR_MAP[obj.color]
+    return (
+        f'      <geom name="{geom_name}" {_primitive_geom_spec(obj, asset_index)} '
+        f'rgba="{r} {g} {b} {a}" contype="0" conaffinity="0"/>\n'
+    )
+
+
+def primitive_xml_body(slot_name: str, obj: PrimitiveObject, asset_index: int) -> str:
+    """Return the MJCF ``<body>`` fragment for one freejoint primitive slot."""
+    hs = obj.half_size
+    r, g, b, a = COLOR_MAP[obj.color]
+    return (
+        f'    <body name="{slot_name}" pos="0.15 0 {hs}">\n'
+        f'      <freejoint name="{slot_name}_joint"/>\n'
+        f'      <geom name="{slot_name}_geom" {_primitive_geom_spec(obj, asset_index)}\n'
         f'            rgba="{r} {g} {b} {a}" mass="{obj.mass}"\n'
         f'            contype="1" conaffinity="1" condim="4" friction="1 0.05 0.001"\n'
         f'            solref="0.01 1" solimp="0.95 0.99 0.001"/>\n'
@@ -270,8 +336,11 @@ def build_object_scene_xml(
                 f' scale="{obj.scale} {obj.scale} {obj.scale}"/>\n'
             )
             body_entries += mesh_xml_body(slot, i, obj.mass)
-        elif isinstance(obj, CubeObject):
-            body_entries += cube_xml_body(slot, obj)
+        elif isinstance(obj, PyramidObject):
+            asset_entries += pyramid_xml_asset(i, obj)
+            body_entries += primitive_xml_body(slot, obj, i)
+        elif isinstance(obj, PrimitiveObject):
+            body_entries += primitive_xml_body(slot, obj, i)
         else:
             raise TypeError(f"Unsupported object type: {type(obj)}")
 
@@ -303,8 +372,8 @@ class ObjectSlot:
     layout and apply to a scalar ``MjData`` (MuJoCo) and a batched
     ``mjw.Data`` column (Warp) alike. ``rest_quat`` is a NumPy ``wxyz`` vector;
     backends convert to tensors as needed. ``geom_ids`` holds every collision
-    geom of the slot (one per convex part of a decomposed mesh, one for a cube),
-    which is what contact scans must aggregate over.
+    geom of the slot (one per convex part of a decomposed mesh, one for a
+    geometric primitive), which is what contact scans must aggregate over.
     """
 
     __slots__ = (
@@ -346,7 +415,7 @@ def _slot_collision_geom_ids(
 ) -> tuple[int, ...]:
     """Return every collision geom id of a slot body, in XML order."""
     geom_ids: list[int] = []
-    if isinstance(obj, CubeObject):
+    if isinstance(obj, PrimitiveObject):
         geom_id = int(mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, f"{slot_name}_geom"))
         geom_ids = [geom_id] if geom_id >= 0 else []
     else:
@@ -389,9 +458,9 @@ def extract_object_slots(
 ) -> list[ObjectSlot]:
     """Read per-slot runtime metadata from a compiled ``MjModel``.
 
-    For cubes the rest pose is identity and the spawn height is the half-size;
-    for mesh-backed objects (YCB, custom) the stable rest orientation and floor
-    clearance come from the union of the compiled collision-part vertices.
+    For geometric primitives the rest pose is identity and the spawn height is
+    the half-size. For mesh-backed objects (YCB, custom), the stable rest
+    orientation and floor clearance come from compiled collision-part vertices.
     """
     slots: list[ObjectSlot] = []
     for slot_name, obj in zip(slot_names, objects, strict=True):
@@ -412,10 +481,10 @@ def extract_object_slots(
             rotated_xy = (verts @ rot.reshape(3, 3).T)[:, :2]
             xy_extent = np.ptp(rotated_xy, axis=0)
             bounding_radius = float(np.linalg.norm(xy_extent) / 2)
-        elif isinstance(obj, CubeObject):
+        elif isinstance(obj, PrimitiveObject):
             rest_quat = np.array([1.0, 0.0, 0.0, 0.0])
             spawn_z = obj.half_size
-            bounding_radius = cube_bounding_radius(obj)
+            bounding_radius = primitive_bounding_radius(obj)
         else:
             raise TypeError(f"Unsupported object type: {type(obj)}")
 
@@ -440,8 +509,8 @@ def object_bounding_radius(obj: SceneObject, compiled_verts: np.ndarray | None =
     mesh vertices (pass ``compiled_verts``), falling back to
     ``DEFAULT_BOUNDING_RADIUS`` when unavailable.
     """
-    if isinstance(obj, CubeObject):
-        return cube_bounding_radius(obj)
+    if isinstance(obj, PrimitiveObject):
+        return primitive_bounding_radius(obj)
     if compiled_verts is not None:
         xy_extent = np.ptp(compiled_verts[:, :2], axis=0)
         return float(np.linalg.norm(xy_extent) / 2)

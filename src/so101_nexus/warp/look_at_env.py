@@ -12,9 +12,10 @@ import warp as wp
 
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
-from so101_nexus.constants import COLOR_MAP, sample_color
+from so101_nexus.constants import sample_color
 from so101_nexus.gaze import gaze_angle_rad, object_in_view
-from so101_nexus.objects import CubeObject
+from so101_nexus.object_slots import primitive_visual_xml_geom, pyramid_xml_asset
+from so101_nexus.objects import PrimitiveObject, PyramidObject
 from so101_nexus.observations import CameraObservation, GazeDirection, GazeState
 from so101_nexus.rewards import orientation_progress, simple_reward
 from so101_nexus.scene import WARP_SCENE_OPTION_XML, build_robot_floor_scene_xml
@@ -60,20 +61,17 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             config = LookAtConfig()
         ground_rgba = sample_color(config.ground_colors)
         target = config.objects[0]
-        assert isinstance(target, CubeObject)
+        assert isinstance(target, PrimitiveObject)
+        marker_assets = pyramid_xml_asset(0, target) if isinstance(target, PyramidObject) else ""
         marker_xml = ""
         if any(isinstance(c, CameraObservation) for c in (config.observations or [])):
-            cr, cg, cb, ca = COLOR_MAP[target.color]
-            hs = target.half_size
-            marker_xml = (
-                f'    <geom name="look_target" type="box" size="{hs} {hs} {hs}" '
-                f'rgba="{cr} {cg} {cb} {ca}" contype="0" conaffinity="0"/>\n'
-            )
+            marker_xml = primitive_visual_xml_geom("look_target", target)
         xml_string = build_robot_floor_scene_xml(
             ground_rgba,
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
             overhead_camera_xml=SO101NexusWarpVectorEnv._overhead_camera_xml(config),
+            extra_assets=marker_assets,
             extra_bodies=marker_xml,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:

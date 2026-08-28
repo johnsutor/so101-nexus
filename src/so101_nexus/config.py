@@ -23,7 +23,7 @@ from so101_nexus.kinematics import (
     EE_DELTA_ACTION_SCALE,
     EE_ORIENTATION_WEIGHT,
 )
-from so101_nexus.objects import CubeObject, SceneObject
+from so101_nexus.objects import CubeObject, PrimitiveObject, SceneObject
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -1495,7 +1495,7 @@ class LookAtConfig(EnvironmentConfig):
     objects : list[SceneObject] or SceneObject, optional
         Object(s) to sample as the look-at target. Accepts a single
         SceneObject, a list, or None (defaults to [CubeObject()]).
-        Only CubeObject targets are currently supported.
+        Only solid-color geometric primitives are supported.
     fov_deg : float or None
         Vertical field of view (degrees) of the wrist camera used for the gaze
         axis. The task succeeds when the target lies within the camera's field
@@ -1531,9 +1531,9 @@ class LookAtConfig(EnvironmentConfig):
                 GazeState(),
             ]
         for obj in self.objects:
-            if not isinstance(obj, CubeObject):
+            if not isinstance(obj, PrimitiveObject):
                 raise TypeError(
-                    f"LookAtConfig only supports CubeObject targets, got {type(obj).__name__}"
+                    f"LookAtConfig only supports PrimitiveObject targets, got {type(obj).__name__}"
                 )
 
     @property

@@ -11,6 +11,10 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `CylinderObject`, `SphereObject`, and `PyramidObject` add solid-color
+  geometric primitives to dynamic MuJoCo and MuJoCo Warp scenes. Each uses the
+  same `half_size`, `mass`, and `color` contract as `CubeObject`, and fills the
+  same bounding cube.
 - `GSOObject` and 12 curated [Google Scanned Objects](https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/)
   (`GSO_OBJECTS`), alongside the existing 10 `YCBObject` items, sharing the
   same convex-hull collision pipeline. Assets download on demand from a

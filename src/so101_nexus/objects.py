@@ -10,6 +10,7 @@ environments use to auto-generate task description strings.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 from so101_nexus.constants import COLOR_MAP, GSO_OBJECTS, YCB_OBJECTS, ColorName
 
@@ -31,18 +32,20 @@ class SceneObject(ABC):
         """Return a natural-language description of this object."""
 
 
-class CubeObject(SceneObject):
-    """Axis-aligned box for use in simulation scenes.
+class PrimitiveObject(SceneObject):
+    """Shared base class for solid-color geometric primitives.
 
     Parameters
     ----------
     half_size : float
-        Half-extent of each side in metres.
+        Half the side length of the cube that contains the primitive, in metres.
     mass : float
         Object mass in kg.
     color : ColorName
         Named color from COLOR_MAP (e.g. "red", "blue").
     """
+
+    shape_name: ClassVar[str]
 
     def __init__(
         self,
@@ -50,6 +53,8 @@ class CubeObject(SceneObject):
         mass: float = 0.01,
         color: ColorName = "red",
     ) -> None:
+        if type(self) is PrimitiveObject:
+            raise TypeError("PrimitiveObject is an abstract base class")
         if half_size <= 0:
             raise ValueError(f"half_size must be positive, got {half_size}")
         if mass <= 0:
@@ -61,7 +66,31 @@ class CubeObject(SceneObject):
         self.color = color
 
     def __repr__(self) -> str:  # noqa: D105
-        return f"{self.color} cube"
+        return f"{self.color} {self.shape_name}"
+
+
+class CubeObject(PrimitiveObject):
+    """Axis-aligned box for use in simulation scenes."""
+
+    shape_name = "cube"
+
+
+class CylinderObject(PrimitiveObject):
+    """Cylinder that fills the same cube as a :class:`CubeObject`."""
+
+    shape_name = "cylinder"
+
+
+class SphereObject(PrimitiveObject):
+    """Sphere that fills the same cube as a :class:`CubeObject`."""
+
+    shape_name = "sphere"
+
+
+class PyramidObject(PrimitiveObject):
+    """Square pyramid that fills the same cube as a :class:`CubeObject`."""
+
+    shape_name = "pyramid"
 
 
 class ScannedMeshObject(SceneObject):

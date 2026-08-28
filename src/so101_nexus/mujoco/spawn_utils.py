@@ -153,14 +153,14 @@ def place_freejoint_slot(
 ) -> None:
     """Place an active object slot at ``xy`` with random yaw, resting on the floor.
 
-    ``slot`` is an ``so101_nexus.object_slots.ObjectSlot``; cubes use the analytic
-    spawn height while mesh-backed objects clear the floor via their compiled
-    collision geom.
+    ``slot`` is an ``so101_nexus.object_slots.ObjectSlot``; geometric primitives
+    use analytic spawn heights while mesh-backed objects clear the floor via their
+    compiled collision geom.
     """
-    from so101_nexus.objects import CubeObject
+    from so101_nexus.objects import PrimitiveObject
 
     x, y = xy
-    if isinstance(slot.obj, CubeObject):
+    if isinstance(slot.obj, PrimitiveObject):
         data.qpos[slot.qpos_addr : slot.qpos_addr + 3] = [x, y, slot.spawn_z]
         data.qpos[slot.qpos_addr + 3 : slot.qpos_addr + 7] = random_yaw_quat(rng)
         return

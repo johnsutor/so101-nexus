@@ -76,10 +76,14 @@ from so101_nexus.lerobot_dataset import (
 )
 from so101_nexus.objects import (
     CubeObject,
+    CylinderObject,
     GSOObject,
     MeshObject,
+    PrimitiveObject,
+    PyramidObject,
     ScannedMeshObject,
     SceneObject,
+    SphereObject,
     YCBObject,
 )
 from so101_nexus.observations import (
@@ -219,6 +223,7 @@ __all__ = [
     "ColorName",
     "ControlMode",
     "CubeObject",
+    "CylinderObject",
     "EndEffectorPose",
     "EnvironmentConfig",
     "GSOCollisionPart",
@@ -244,12 +249,15 @@ __all__ = [
     "PickAndPlaceConfig",
     "PickConfig",
     "Pose",
+    "PrimitiveObject",
+    "PyramidObject",
     "RenderConfig",
     "RewardConfig",
     "RobotCameraPreset",
     "RobotConfig",
     "ScannedMeshObject",
     "SceneObject",
+    "SphereObject",
     "StackCubeConfig",
     "TargetOffset",
     "TargetPosition",
