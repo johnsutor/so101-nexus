@@ -44,7 +44,7 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | `teleop` | Gradio demonstration recorder: `lerobot[feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
-| `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.4 | `pip install "so101-nexus[warp]"` |
+| `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.8 | `pip install "so101-nexus[warp]"` |
 | `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
 
 Extras combine: `pip install "so101-nexus[teleop,train]"`.
