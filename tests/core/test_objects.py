@@ -2,10 +2,13 @@ import pytest
 
 from so101_nexus.objects import (
     CubeObject,
+    CylinderObject,
     GSOObject,
     MeshObject,
+    PyramidObject,
     ScannedMeshObject,
     SceneObject,
+    SphereObject,
     YCBObject,
 )
 
@@ -35,6 +38,9 @@ class TestSceneObjectBase:
     def test_all_have_repr(self):
         objects: list[SceneObject] = [
             CubeObject(),
+            CylinderObject(),
+            SphereObject(),
+            PyramidObject(),
             YCBObject(model_id="009_gelatin_box"),
             GSOObject(model_id="CoQ10"),
             MeshObject(
@@ -63,6 +69,33 @@ class TestCubeObject:
     def test_invalid_color(self):
         with pytest.raises(ValueError, match="color must be one of"):
             CubeObject(color="fuschia")
+
+
+@pytest.mark.parametrize(
+    ("object_type", "shape_name"),
+    [
+        (CylinderObject, "cylinder"),
+        (SphereObject, "sphere"),
+        (PyramidObject, "pyramid"),
+    ],
+)
+class TestShapeObjects:
+    def test_defaults(self, object_type, shape_name):
+        obj = object_type()
+        assert obj.half_size > 0
+        assert obj.mass > 0
+        assert repr(obj) == f"red {shape_name}"
+
+    def test_accepts_cube_colors(self, object_type, shape_name):
+        assert repr(object_type(color="green")) == f"green {shape_name}"
+
+    def test_rejects_invalid_size(self, object_type, shape_name):
+        with pytest.raises(ValueError, match="half_size must be positive"):
+            object_type(half_size=-0.01)
+
+    def test_rejects_invalid_color(self, object_type, shape_name):
+        with pytest.raises(ValueError, match="color must be one of"):
+            object_type(color="fuschia")
 
 
 class TestYCBObject:

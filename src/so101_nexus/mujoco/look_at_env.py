@@ -4,41 +4,31 @@ from __future__ import annotations
 
 import math
 import tempfile
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 import mujoco
 import numpy as np
 
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
-from so101_nexus.constants import COLOR_MAP, sample_color
+from so101_nexus.constants import sample_color
 from so101_nexus.gaze import object_in_view
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus.object_slots import primitive_visual_xml_geom, pyramid_xml_asset
+from so101_nexus.objects import PrimitiveObject, PyramidObject
 from so101_nexus.rewards import orientation_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML, SCENE_LIGHTS_XML, SCENE_VISUAL_XML
-
-if TYPE_CHECKING:
-    from so101_nexus.objects import CubeObject
 
 _SO101_DIR = get_so101_mujoco_model_dir()
 _SO101_XML = get_so101_mujoco_model_path()
 
 
-def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
-    """Build MuJoCo XML string for the look-at scene (robot + floor + target object).
-
-    Only CubeObject is supported for the look-at target; the cube is placed as a
-    kinematic mocap body so the robot can orient toward it. Per the cross-backend
-    contract (body_type="kinematic"), the target is purely visual: collision is
-    disabled (contype=0 conaffinity=0) so the arm passes through it, and as a mocap
-    body it is unaffected by gravity or contact (its pose is driven via
-    data.mocap_pos/mocap_quat, set each reset). This prevents the arm from bumping
-    the reference frame, which a dynamic freejoint box previously allowed.
-    """
+def _build_look_at_scene_xml(obj: PrimitiveObject, ground_rgba: list[float]) -> str:
+    """Build a MuJoCo XML string with a kinematic visual target primitive."""
     robot_path = str(_SO101_XML)
     gr, gg, gb, ga = ground_rgba
-    hs = obj.half_size
-    cr, cg, cb, ca = COLOR_MAP[obj.color]
+    asset_entries = pyramid_xml_asset(0, obj) if isinstance(obj, PyramidObject) else ""
+    asset_section = f"  <asset>\n{asset_entries}  </asset>\n\n" if asset_entries else ""
     return f"""\
 <mujoco model="look_at_scene">
   <compiler angle="radian"/>
@@ -46,17 +36,14 @@ def _build_look_at_scene_xml(obj: CubeObject, ground_rgba: list[float]) -> str:
   <include file="{robot_path}"/>
   {MUJOCO_SCENE_OPTION_XML}
 
-{SCENE_VISUAL_XML}
+{asset_section}{SCENE_VISUAL_XML}
 
   <worldbody>
 {SCENE_LIGHTS_XML}
     <geom name="floor" type="plane" size="0 0 0.01" rgba="{gr} {gg} {gb} {ga}"
           pos="0 0 0" contype="1" conaffinity="1"/>
-    <body name="look_target" pos="0.15 0 {hs}" mocap="true">
-      <geom name="look_target_geom" type="box" size="{hs} {hs} {hs}"
-            rgba="{cr} {cg} {cb} {ca}"
-            contype="0" conaffinity="0"/>
-    </body>
+    <body name="look_target" pos="0.15 0 {obj.half_size}" mocap="true">
+{primitive_visual_xml_geom("look_target_geom", obj)}    </body>
   </worldbody>
 </mujoco>
 """
@@ -95,8 +82,8 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        # Use the first (and typically only) target object from config.
-        self._target_obj: CubeObject = config.objects[0]  # type: ignore[assignment]
+        # Look-at targets are visual primitives on a kinematic mocap body.
+        self._target_obj: PrimitiveObject = config.objects[0]  # type: ignore[assignment]
 
         ground_rgba = sample_color(config.ground_colors)
         xml_string = _build_look_at_scene_xml(self._target_obj, ground_rgba)

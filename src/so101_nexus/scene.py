@@ -56,6 +56,7 @@ def build_robot_floor_scene_xml(
     option_xml: str,
     robot_xml_path: str,
     overhead_camera_xml: str = "",
+    extra_assets: str = "",
     extra_bodies: str = "",
 ) -> str:
     """Build a robot + floor MJCF with no in-scene target marker.
@@ -76,11 +77,14 @@ def build_robot_floor_scene_xml(
         Optional ``<camera>`` element injected into the worldbody, used when an
         ``OverheadCamera`` observation renders on the Warp backend. Empty by
         default (no overhead camera).
+    extra_assets : str
+        Optional ``<asset>`` entries used by ``extra_bodies``. Empty by default.
     extra_bodies : str
         Optional extra ``<worldbody>`` XML (for example a visual-only target
         marker geom rendered by the Warp camera path). Empty by default.
     """
     gr, gg, gb, ga = ground_rgba
+    asset_section = f"  <asset>\n{extra_assets}  </asset>\n\n" if extra_assets else ""
     return f"""\
 <mujoco model="robot_floor_scene">
   <compiler angle="radian"/>
@@ -88,7 +92,7 @@ def build_robot_floor_scene_xml(
   <include file="{robot_xml_path}"/>
   {option_xml}
 
-{SCENE_VISUAL_XML}
+{asset_section}{SCENE_VISUAL_XML}
 
   <worldbody>
 {SCENE_LIGHTS_XML}

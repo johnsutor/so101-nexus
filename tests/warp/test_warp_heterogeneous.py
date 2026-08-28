@@ -21,6 +21,38 @@ def test_touch_threshold_vector_matches_selected_bounding_radius():
     assert radius.unique().numel() > 1
 
 
+@pytest.mark.parametrize(
+    ("object_type", "shape_name"),
+    [
+        ("CylinderObject", "cylinder"),
+        ("SphereObject", "sphere"),
+        ("PyramidObject", "pyramid"),
+    ],
+)
+def test_pick_geometric_primitive(object_type, shape_name):
+    import torch
+
+    from so101_nexus.config import PickConfig
+    from so101_nexus.objects import CylinderObject, PyramidObject, SphereObject
+    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+
+    objects = {
+        "CylinderObject": CylinderObject,
+        "SphereObject": SphereObject,
+        "PyramidObject": PyramidObject,
+    }
+    env = WarpPickLiftVectorEnv(
+        num_envs=2,
+        config=PickConfig(objects=[objects[object_type](half_size=0.02, color="green")]),
+        device="cpu",
+        seed=0,
+    )
+    obs, _ = env.reset(seed=0)
+
+    assert torch.isfinite(obs).all()
+    assert env.task_descriptions == [f"Pick up the green {shape_name}."] * 2
+
+
 def test_pnp_ycb_object_target_offset_and_finite_reward():
     import torch
 

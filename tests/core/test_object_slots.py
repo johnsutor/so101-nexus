@@ -22,7 +22,15 @@ from so101_nexus.object_slots import (
     mesh_xml_body,
     object_bounding_radius,
 )
-from so101_nexus.objects import CubeObject, GSOObject, MeshObject, YCBObject
+from so101_nexus.objects import (
+    CubeObject,
+    CylinderObject,
+    GSOObject,
+    MeshObject,
+    PyramidObject,
+    SphereObject,
+    YCBObject,
+)
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 from so101_nexus.ycb_assets import YCBCollisionPart
 
@@ -86,6 +94,24 @@ class TestXmlBuilders:
     def test_object_bounding_radius_cube(self):
         radius = object_bounding_radius(CubeObject(half_size=0.02))
         assert radius == pytest.approx(0.02 * np.sqrt(2))
+
+    @pytest.mark.parametrize(
+        ("obj", "geom_type", "geom_size"),
+        [
+            (CylinderObject(half_size=0.02, mass=0.03, color="blue"), "cylinder", "0.02 0.02"),
+            (SphereObject(half_size=0.02, mass=0.03, color="blue"), "sphere", "0.02"),
+            (PyramidObject(half_size=0.02, mass=0.03, color="blue"), "mesh", None),
+        ],
+    )
+    def test_primitive_scene_xml_fields(self, obj, geom_type, geom_size):
+        xml, _ = _cube_scene([obj])
+        assert f'type="{geom_type}"' in xml
+        assert 'mass="0.03"' in xml
+        assert "0.0 0.0 1.0 1.0" in xml  # blue rgba
+        if geom_size is not None:
+            assert f'size="{geom_size}' in xml
+        else:
+            assert '<mesh name="primitive_pyramid_0"' in xml
 
     def test_build_scene_xml_uses_warp_option(self):
         from so101_nexus.scene import WARP_SCENE_OPTION_XML
@@ -227,6 +253,29 @@ class TestSlotExtraction:
         np.testing.assert_allclose(slots[0].rest_quat, [1.0, 0.0, 0.0, 0.0])
         for slot in slots:
             assert slot.geom_id >= 0
+
+    def test_extract_equal_bounding_shape_slots(self):
+        half_size = 0.02
+        objects = [
+            CubeObject(half_size=half_size),
+            CylinderObject(half_size=half_size),
+            SphereObject(half_size=half_size),
+            PyramidObject(half_size=half_size),
+        ]
+        xml, slot_names = _cube_scene(objects)
+        so_dir = get_so101_mujoco_model_path().parent
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", dir=so_dir, delete=True) as f:
+            f.write(xml)
+            f.flush()
+            mjm = mujoco.MjModel.from_xml_path(f.name)
+        slots = extract_object_slots(mjm, slot_names, objects)
+
+        assert [slot.spawn_z for slot in slots] == pytest.approx([half_size] * len(objects))
+        assert [object_bounding_radius(obj) for obj in objects] == pytest.approx(
+            [half_size * np.sqrt(2), half_size, half_size, half_size * np.sqrt(2)]
+        )
+        for slot in slots:
+            np.testing.assert_allclose(slot.rest_quat, [1.0, 0.0, 0.0, 0.0])
 
     def test_mesh_bounding_radius_uses_rotated_footprint(self, tmp_path):
         # A box thin in X: the stable rest pose rotates X up, so the horizontal

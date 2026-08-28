@@ -2,6 +2,8 @@
 
 import pytest
 
+from so101_nexus.objects import CubeObject, CylinderObject, PyramidObject, SphereObject
+
 pytestmark = pytest.mark.warp
 
 # Tiny resolutions keep the CPU ray-trace fast while still exercising H != W.
@@ -243,16 +245,16 @@ def test_camera_only_config_has_empty_state():
     assert obs["wrist_camera"].shape == (2, WRIST_H, WRIST_W, 3)
 
 
-def test_lookat_renders_target_marker():
+@pytest.mark.parametrize("object_type", [CubeObject, CylinderObject, SphereObject, PyramidObject])
+def test_lookat_renders_target_marker(object_type):
     import torch
 
     from so101_nexus.config import LookAtConfig
-    from so101_nexus.objects import CubeObject
     from so101_nexus.observations import JointPositions, OverheadCamera
     from so101_nexus.warp.look_at_env import WarpLookAtVectorEnv
 
     cfg = LookAtConfig(
-        objects=[CubeObject(color="blue", half_size=0.03)],
+        objects=[object_type(color="blue", half_size=0.03)],
         observations=[JointPositions(), OverheadCamera(width=48, height=48)],
     )
     env = WarpLookAtVectorEnv(num_envs=2, config=cfg, device="cpu", seed=0)

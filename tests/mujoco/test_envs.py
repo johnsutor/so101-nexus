@@ -35,7 +35,14 @@ from so101_nexus.config import (
 from so101_nexus.constants import CUBE_COLOR_MAP, GSO_OBJECTS, YCB_OBJECTS
 from so101_nexus.kinematics import EE_ACTION_DIM
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
-from so101_nexus.objects import CubeObject, GSOObject, YCBObject
+from so101_nexus.objects import (
+    CubeObject,
+    CylinderObject,
+    GSOObject,
+    PyramidObject,
+    SphereObject,
+    YCBObject,
+)
 from so101_nexus.observations import (
     EndEffectorPose,
     GazeDirection,
@@ -352,6 +359,25 @@ def test_pick_cube_color(color):
         env.close()
 
 
+@pytest.mark.parametrize(
+    ("object_type", "shape_name"),
+    [
+        (CylinderObject, "cylinder"),
+        (SphereObject, "sphere"),
+        (PyramidObject, "pyramid"),
+    ],
+)
+def test_pick_geometric_primitive(object_type, shape_name):
+    config = PickConfig(objects=[object_type(half_size=0.02, color="green")])
+    env = gym.make("MuJoCoPickLift-v1", config=config)
+    try:
+        env.reset(seed=0)
+        assert env.unwrapped.task_description == f"Pick up the green {shape_name}."  # type: ignore[attr-defined]
+        _run_episode(env)
+    finally:
+        env.close()
+
+
 @pytest.mark.parametrize("model_id", YCB_MODEL_IDS)
 def test_pick_ycb_object(model_id):
     config = PickConfig(objects=[YCBObject(model_id=model_id)])
@@ -436,6 +462,25 @@ def test_look_at_cube_color(color):
     try:
         env.reset()
         assert color in env.unwrapped.task_description  # type: ignore[attr-defined]
+        _run_episode(env)
+    finally:
+        env.close()
+
+
+@pytest.mark.parametrize(
+    ("object_type", "shape_name"),
+    [
+        (CylinderObject, "cylinder"),
+        (SphereObject, "sphere"),
+        (PyramidObject, "pyramid"),
+    ],
+)
+def test_look_at_geometric_primitive(object_type, shape_name):
+    config = LookAtConfig(objects=[object_type(half_size=0.02, color="blue")])
+    env = gym.make("MuJoCoLookAt-v1", config=config)
+    try:
+        env.reset(seed=0)
+        assert env.unwrapped.task_description == f"Look at the blue {shape_name}."  # type: ignore[attr-defined]
         _run_episode(env)
     finally:
         env.close()

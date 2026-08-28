@@ -1,15 +1,23 @@
 ---
 title: Scene Objects and Assets
-description: Constructor reference for cubes, YCB objects, and meshes, plus the YCB download cache and bundled simulation asset helpers.
+description: Constructor reference for geometric primitives, YCB objects, and meshes, plus the YCB download cache and bundled simulation asset helpers.
 ---
 
 Scene objects define what the robot interacts with. All object types live in `so101_nexus` and share the abstract `SceneObject` base class.
 
 ```python
-from so101_nexus import CubeObject, GSOObject, MeshObject, YCBObject
+from so101_nexus import (
+    CubeObject,
+    CylinderObject,
+    GSOObject,
+    MeshObject,
+    PyramidObject,
+    SphereObject,
+    YCBObject,
+)
 ```
 
-All four concrete object types work on the MuJoCo and MuJoCo Warp backends, which build their scenes through the same `so101_nexus.object_slots.build_object_scene_xml`.
+All concrete object types work on the MuJoCo and MuJoCo Warp backends. Both backends build dynamic-object scenes through `so101_nexus.object_slots.build_object_scene_xml`.
 
 ## SceneObject (abstract)
 
@@ -33,6 +41,25 @@ repr(cube)  # "blue cube"
 | `color` | `ColorName` | `"red"` | Color of the cube. Must be a valid `ColorName`. |
 
 `__repr__()` returns `"{color} cube"`, for example `"red cube"`.
+
+## CylinderObject, SphereObject, and PyramidObject
+
+These solid-color primitives use the same `half_size`, `mass`, and `color`
+parameters as `CubeObject`. Each primitive fills the cube with side length
+`2 * half_size`: cylinders have that diameter and height, spheres have that
+diameter, and square pyramids have that base width and height.
+
+```python
+from so101_nexus import CylinderObject, PyramidObject, SphereObject
+
+cylinder = CylinderObject(half_size=0.02, color="blue")
+sphere = SphereObject(half_size=0.02, color="green")
+pyramid = PyramidObject(half_size=0.02, color="yellow")
+```
+
+`__repr__()` returns `"{color} cylinder"`, `"{color} sphere"`, or
+`"{color} pyramid"`. The valid colors are the same `ColorName` values that
+`CubeObject` accepts.
 
 ## YCBObject
 
