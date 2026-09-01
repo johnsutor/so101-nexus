@@ -400,6 +400,26 @@ def test_pnp_target_varies_per_world_and_respects_separation():
     assert not info["success"].any()
 
 
+def test_pnp_cube_side_length_reaches_compiled_geometry():
+    import mujoco
+
+    from so101_nexus.config import PickAndPlaceConfig
+    from so101_nexus.warp.pick_and_place import WarpPickAndPlaceVectorEnv
+
+    env = WarpPickAndPlaceVectorEnv(
+        num_envs=2,
+        config=PickAndPlaceConfig(cube_side_length_mm=25.4),
+        device="cpu",
+        seed=0,
+    )
+    try:
+        env.reset(seed=0)
+        geom_id = mujoco.mj_name2id(env._mjm, mujoco.mjtObj.mjOBJ_GEOM, "pick_slot_0_geom")
+        assert env._mjm.geom_size[geom_id] == pytest.approx([0.0127] * 3)
+    finally:
+        env.close()
+
+
 def test_pnp_distractors_active_per_world_and_clear_of_the_disc():
     """Each world activates exactly ``n_distractors`` pool slots inside the spawn
     annulus, clear of the goal disc and the carried object, and target selection

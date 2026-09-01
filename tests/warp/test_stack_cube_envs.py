@@ -34,6 +34,24 @@ def test_stack_cube_reset_obs_finite():
     assert "task_description" in info
 
 
+def test_stack_cube_side_length_reaches_compiled_geometry():
+    import mujoco
+
+    from so101_nexus.config import StackCubeConfig
+
+    env = _make_env(
+        num_envs=2,
+        config=StackCubeConfig(cube_side_length_mm=25.4),
+    )
+    try:
+        env.reset(seed=0)
+        for geom_name in ("cube_a_0_geom", "cube_b_0_geom"):
+            geom_id = mujoco.mj_name2id(env._mjm, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
+            assert env._mjm.geom_size[geom_id] == pytest.approx([0.0127] * 3)
+    finally:
+        env.close()
+
+
 def test_stack_cube_default_colors_red_on_blue():
     """Out of the box every world stacks the red cube on the blue cube."""
     env = _make_env(num_envs=4)

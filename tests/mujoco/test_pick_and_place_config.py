@@ -39,6 +39,10 @@ class TestConstructionValidation:
         with pytest.raises(ValueError, match="cube_half_size"):
             PickAndPlaceConfig(cube_half_size=0.001)
 
+    def test_combined_cube_size_inputs_raise(self):
+        with pytest.raises(ValueError, match="either cube_half_size or cube_side_length_mm"):
+            PickAndPlaceConfig(cube_half_size=0.0125, cube_side_length_mm=25.4)
+
     def test_negative_object_static_lin_threshold(self):
         with pytest.raises(ValueError, match="object_static_lin_threshold"):
             PickAndPlaceConfig(object_static_lin_threshold=-0.01)
@@ -115,6 +119,18 @@ class TestSharedConstants:
         env = PickAndPlaceEnv()
         assert env.cube_half_size == _CFG.cube_half_size
         env.close()
+
+    def test_cube_side_length_reaches_environment(self):
+        config = PickAndPlaceConfig(cube_side_length_mm=25.4)
+        env = PickAndPlaceEnv(config=config)
+        try:
+            env.reset(seed=0)
+            slot = env._slots[env._target_slot_idx]
+            assert env.cube_half_size == pytest.approx(0.0127)
+            assert [obj.half_size for obj in config.object_pool()] == pytest.approx([0.0127])
+            assert env.model.geom_size[slot.geom_id] == pytest.approx([0.0127] * 3)
+        finally:
+            env.close()
 
     def test_disc_radius_matches_core(self):
         env = PickAndPlaceEnv()

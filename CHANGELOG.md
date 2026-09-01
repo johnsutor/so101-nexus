@@ -9,6 +9,14 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `CubeObject` and `PyramidObject` now accept float `side_length_mm` values.
+  `CylinderObject` and `SphereObject` now accept float `diameter_mm` values.
+  `PickAndPlaceConfig` and `StackCubeConfig` now accept
+  `cube_side_length_mm`. The meter-based `half_size` and `cube_half_size`
+  defaults remain unchanged.
+
 ## [0.5.4] - 2026-08-27
 
 ### Fixed

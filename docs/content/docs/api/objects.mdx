@@ -25,18 +25,21 @@ Base class for all scene objects. Subclasses must implement `__repr__()`, which 
 
 ## CubeObject
 
-A solid-color cube with configurable size and mass.
+A solid-color cube with configurable size and mass. Set `side_length_mm` as a
+float in millimeters. The existing `half_size` argument remains available for
+meter-based code.
 
 ```python
 from so101_nexus import CubeObject
 
-cube = CubeObject(half_size=0.02, mass=0.015, color="blue")
+cube = CubeObject(side_length_mm=25.4, mass=0.015, color="blue")
 repr(cube)  # "blue cube"
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `half_size` | `float` | `0.0125` | Half the side length of the cube (meters) |
+| `half_size` | `float \| None` | `None` | Legacy half side length in meters. The default cube has `half_size=0.0125`. Do not combine with `side_length_mm`. |
+| `side_length_mm` | `float \| None` | `None` | Full cube side length in millimeters. |
 | `mass` | `float` | `0.01` | Mass of the cube (kg) |
 | `color` | `ColorName` | `"red"` | Color of the cube. Must be a valid `ColorName`. |
 
@@ -44,22 +47,23 @@ repr(cube)  # "blue cube"
 
 ## CylinderObject, SphereObject, and PyramidObject
 
-These solid-color primitives use the same `half_size`, `mass`, and `color`
-parameters as `CubeObject`. Each primitive fills the cube with side length
-`2 * half_size`: cylinders have that diameter and height, spheres have that
-diameter, and square pyramids have that base width and height.
+These solid-color primitives accept `mass` and `color` like `CubeObject`.
+`CylinderObject` and `SphereObject` use `diameter_mm`. `PyramidObject` uses
+`side_length_mm`. Each primitive keeps its existing `half_size` argument for
+meter-based code.
 
 ```python
 from so101_nexus import CylinderObject, PyramidObject, SphereObject
 
-cylinder = CylinderObject(half_size=0.02, color="blue")
-sphere = SphereObject(half_size=0.02, color="green")
-pyramid = PyramidObject(half_size=0.02, color="yellow")
+cylinder = CylinderObject(diameter_mm=25.4, color="blue")
+sphere = SphereObject(diameter_mm=12.7, color="green")
+pyramid = PyramidObject(side_length_mm=25.4, color="yellow")
 ```
 
-`__repr__()` returns `"{color} cylinder"`, `"{color} sphere"`, or
-`"{color} pyramid"`. The valid colors are the same `ColorName` values that
-`CubeObject` accepts.
+The cylinder height equals its diameter. The square pyramid height equals its
+base side length. `__repr__()` returns `"{color} cylinder"`, `"{color}
+sphere"`, or `"{color} pyramid"`. The valid colors are the same `ColorName`
+values that `CubeObject` accepts.
 
 ## YCBObject
 

@@ -15,6 +15,22 @@ from typing import ClassVar
 from so101_nexus.constants import COLOR_MAP, GSO_OBJECTS, YCB_OBJECTS, ColorName
 
 
+def _resolve_half_size(
+    half_size: float | None,
+    *,
+    length_mm: float | None,
+    length_name: str,
+) -> float:
+    """Return a half-size in metres from one millimeter size input."""
+    if half_size is not None and length_mm is not None:
+        raise ValueError(f"Specify either half_size or {length_name}, not both")
+    if length_mm is None:
+        return 0.0125 if half_size is None else half_size
+    if length_mm <= 0:
+        raise ValueError(f"{length_name} must be positive, got {length_mm}")
+    return length_mm / 2000.0
+
+
 class SceneObject(ABC):
     """Abstract base class for all scene objects.
 
@@ -74,11 +90,43 @@ class CubeObject(PrimitiveObject):
 
     shape_name = "cube"
 
+    def __init__(
+        self,
+        half_size: float | None = None,
+        mass: float = 0.01,
+        color: ColorName = "red",
+        *,
+        side_length_mm: float | None = None,
+    ) -> None:
+        super().__init__(
+            half_size=_resolve_half_size(
+                half_size, length_mm=side_length_mm, length_name="side_length_mm"
+            ),
+            mass=mass,
+            color=color,
+        )
+
 
 class CylinderObject(PrimitiveObject):
     """Cylinder that fills the same cube as a :class:`CubeObject`."""
 
     shape_name = "cylinder"
+
+    def __init__(
+        self,
+        half_size: float | None = None,
+        mass: float = 0.01,
+        color: ColorName = "red",
+        *,
+        diameter_mm: float | None = None,
+    ) -> None:
+        super().__init__(
+            half_size=_resolve_half_size(
+                half_size, length_mm=diameter_mm, length_name="diameter_mm"
+            ),
+            mass=mass,
+            color=color,
+        )
 
 
 class SphereObject(PrimitiveObject):
@@ -86,11 +134,43 @@ class SphereObject(PrimitiveObject):
 
     shape_name = "sphere"
 
+    def __init__(
+        self,
+        half_size: float | None = None,
+        mass: float = 0.01,
+        color: ColorName = "red",
+        *,
+        diameter_mm: float | None = None,
+    ) -> None:
+        super().__init__(
+            half_size=_resolve_half_size(
+                half_size, length_mm=diameter_mm, length_name="diameter_mm"
+            ),
+            mass=mass,
+            color=color,
+        )
+
 
 class PyramidObject(PrimitiveObject):
     """Square pyramid that fills the same cube as a :class:`CubeObject`."""
 
     shape_name = "pyramid"
+
+    def __init__(
+        self,
+        half_size: float | None = None,
+        mass: float = 0.01,
+        color: ColorName = "red",
+        *,
+        side_length_mm: float | None = None,
+    ) -> None:
+        super().__init__(
+            half_size=_resolve_half_size(
+                half_size, length_mm=side_length_mm, length_name="side_length_mm"
+            ),
+            mass=mass,
+            color=color,
+        )
 
 
 class ScannedMeshObject(SceneObject):
