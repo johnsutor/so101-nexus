@@ -17,6 +17,12 @@ for the public-API and deprecation policy.
   `cube_side_length_mm`. The meter-based `half_size` and `cube_half_size`
   defaults remain unchanged.
 
+### Changed
+
+- The documentation now lists the `viz` extra and clarifies visual observations,
+  episode termination, PickAndPlace static thresholds, LookAt targets, LeRobot
+  wrapper requirements, and rollout-recorder camera setup.
+
 ## [0.5.4] - 2026-08-27
 
 ### Fixed

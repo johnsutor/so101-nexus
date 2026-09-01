@@ -172,7 +172,7 @@ convention used by this library (synthetic calibration with `drive_mode=0`).
 
 ## Using LeRobot processors with SO101-Nexus envs
 
-`LeRobotEnvWrapper` requires a `Dict` observation space. Configure the env with at least one camera component (or pick another component beyond the default state-only set) before wrapping it.
+`LeRobotEnvWrapper` requires a `Dict` observation space. Configure at least one camera component before wrapping.
 
 ```python
 import so101_nexus.mujoco  # noqa: F401

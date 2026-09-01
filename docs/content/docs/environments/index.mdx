@@ -209,8 +209,7 @@ Default observation (23): `JointPositions` (6), `JointVelocities` (6), `EndEffec
 (7), `GazeDirection` (3), `GazeState` (1). `GazeDirection` is the unit vector from the
 wrist camera to the target; `GazeState` is the success predicate itself.
 
-Objects: `CubeObject` gaze targets only. There is nothing to grasp, so no grasp state is
-exposed.
+Objects: LookAt supports solid-color `CubeObject`, `CylinderObject`, `SphereObject`, and `PyramidObject` targets. There is nothing to grasp, so no grasp state is exposed.
 
 Task-specific field: `fov_deg`, the wrist camera's vertical field of view in degrees.
 Leave it at `None` (the default) to read the live camera FOV each step, so the success

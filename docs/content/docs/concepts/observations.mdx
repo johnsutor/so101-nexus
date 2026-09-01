@@ -86,7 +86,7 @@ config = PickConfig(observations=[
 ])
 ```
 
-When the observation list contains only state components, the observation is a flat NumPy array. When it contains one or more camera components, the observation becomes a dictionary with a `"state"` key (flat vector from all state components) plus one key per camera (e.g. `"wrist_camera"`, `"overhead_camera"`).
+With `obs_mode="state"` (the default), a list with a camera component produces a dictionary. Its `"state"` key holds every selected state component. Each camera has a separate key, such as `"wrist_camera"` or `"overhead_camera"`.
 
 ## Default Observations by Task
 
@@ -117,6 +117,8 @@ The observation contains whatever components are listed in `observations`. This 
 ### `obs_mode="visual"`
 
 Designed for vision-based policies. Requires at least one camera component (e.g. `WristCamera()` or `OverheadCamera()`) in the `observations` list. Construction raises an error if no camera component is present.
+
+The returned dictionary contains the camera keys and a `"state"` key with `JointPositions` only. `info["privileged_state"]` contains the full selected state for a critic or diagnostic code, not as policy input.
 
 ```python
 from so101_nexus import PickConfig, JointPositions, WristCamera
