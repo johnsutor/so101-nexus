@@ -359,6 +359,9 @@ from so101_nexus import PickAndPlaceConfig, YCBObject
 # Default cube path (carries a colored cube onto the disc):
 config = PickAndPlaceConfig(cube_colors="blue", target_colors="green")
 
+# Default cubes with a float millimeter side length:
+millimeter_config = PickAndPlaceConfig(cube_side_length_mm=25.4)
+
 # Object-pool path (carries a YCB object):
 config = PickAndPlaceConfig(objects=[YCBObject("009_gelatin_box")], target_colors="green")
 ```
@@ -374,7 +377,8 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `target_disc_radius` | `float` | `0.05` | Radius of the target disc (meters) |
 | `min_object_target_separation` | `float \| None` | `None` | Minimum object/disc spawn separation (meters); `None` falls back to `min_cube_target_separation` |
 | `cube_colors` | `ColorConfig` | `"red"` | Color(s) for the default cube pool (compatibility sugar) |
-| `cube_half_size` | `float` | `0.0125` | Half-size of the default cube(s) (meters) |
+| `cube_half_size` | `float \| None` | `None` | Legacy half-size of the default cube(s) in meters. Defaults to `0.0125` when neither size input is set. |
+| `cube_side_length_mm` | `float \| None` | `None` | Full side length of the default cube(s) in millimeters. Do not combine with `cube_half_size`. |
 | `cube_mass` | `float` | `0.01` | Mass of the default cube(s) (kg) |
 | `min_cube_target_separation` | `float` | `0.0375` | Deprecated alias for `min_object_target_separation` |
 | `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
@@ -414,7 +418,8 @@ These are in addition to all `EnvironmentConfig` parameters.
 |-----------|------|---------|-------------|
 | `cube_a_colors` | `ColorConfig` | `"red"` | Color(s) for cube A, the cube that gets picked up and stacked |
 | `cube_b_colors` | `ColorConfig` | `"blue"` | Color(s) for cube B, the stationary stacking base |
-| `cube_half_size` | `float` | `0.0125` | Half-extent of each cube (meters); both cubes share the same size |
+| `cube_half_size` | `float \| None` | `None` | Legacy half-extent of each cube in meters. Defaults to `0.0125` when neither size input is set. |
+| `cube_side_length_mm` | `float \| None` | `None` | Full side length of each cube in millimeters. Do not combine with `cube_half_size`. |
 | `cube_mass` | `float` | `0.01` | Mass of each cube (kg); both cubes share the same mass |
 | `min_cube_separation` | `float` | `0.04` | Minimum spawn separation between the two cubes (meters), on top of their combined bounding radii |
 | `stack_alignment_margin` | `float` | `0.005` | Alignment tolerance (meters) for the stacked success check |

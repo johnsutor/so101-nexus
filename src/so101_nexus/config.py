@@ -953,6 +953,18 @@ def _default_distractor_cubes(half_size: float, mass: float) -> list[SceneObject
     ]
 
 
+def _resolve_cube_half_size(
+    cube_half_size: float | None,
+    cube_side_length_mm: float | None,
+) -> float:
+    """Return a cube half-size in metres from one millimeter size input."""
+    if cube_side_length_mm is None:
+        return 0.0125 if cube_half_size is None else cube_half_size
+    if cube_half_size is not None:
+        raise ValueError("Specify either cube_half_size or cube_side_length_mm, not both")
+    return CubeObject(side_length_mm=cube_side_length_mm).half_size
+
+
 def _require_non_negative(**values: float) -> None:
     """Raise ``ValueError`` naming the first keyword whose value is negative."""
     for name, value in values.items():
@@ -1117,8 +1129,12 @@ class PickAndPlaceConfig(EnvironmentConfig):
         falls back to ``min_cube_target_separation``.
     cube_colors : ColorConfig
         Cube color(s) for the default cube pool (compatibility sugar).
-    cube_half_size : float
-        Half-size of the default cube(s) in metres (compatibility sugar).
+    cube_half_size : float, optional
+        Legacy half-size of the default cube(s) in metres. Defaults to 0.0125
+        when neither size input is set.
+    cube_side_length_mm : float, optional
+        Full side length of the default cube(s) in millimeters. Do not combine
+        with ``cube_half_size``.
     cube_mass : float
         Mass of the default cube(s) in kg (compatibility sugar).
     min_cube_target_separation : float
@@ -1152,12 +1168,13 @@ class PickAndPlaceConfig(EnvironmentConfig):
         self,
         cube_colors: ColorConfig = "red",
         target_colors: ColorConfig = "blue",
-        cube_half_size: float = 0.0125,
+        cube_half_size: float | None = None,
         cube_mass: float = 0.01,
         target_disc_radius: float = 0.05,
         min_cube_target_separation: float = 0.0375,
         *,
         objects: list[SceneObject] | SceneObject | None = None,
+        cube_side_length_mm: float | None = None,
         min_object_target_separation: float | None = None,
         object_static_lin_threshold: float = 0.01,
         object_static_ang_threshold: float = 0.5,
@@ -1167,12 +1184,14 @@ class PickAndPlaceConfig(EnvironmentConfig):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        cube_half_size = _resolve_cube_half_size(cube_half_size, cube_side_length_mm)
         non_default_cube_sugar = [
             name
             for name, value, default in (
                 ("cube_colors", cube_colors, "red"),
                 ("cube_half_size", cube_half_size, 0.0125),
                 ("cube_mass", cube_mass, 0.01),
+                ("cube_side_length_mm", cube_side_length_mm, None),
             )
             if value != default
         ]
@@ -1187,6 +1206,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
         self.cube_colors = cube_colors
         self.target_colors = target_colors
         self.cube_half_size = cube_half_size
+        self.cube_side_length_mm = cube_side_length_mm
         self.cube_mass = cube_mass
         self.target_disc_radius = target_disc_radius
         self.min_object_target_separation = (
@@ -1320,8 +1340,12 @@ class StackCubeConfig(EnvironmentConfig):
         Color(s) for cube A, the cube that gets picked up and stacked.
     cube_b_colors : ColorConfig
         Color(s) for cube B, the stationary stacking base.
-    cube_half_size : float
-        Half-extent of each cube in metres. Both cubes share the same size.
+    cube_half_size : float, optional
+        Legacy half-extent of each cube in metres. Defaults to 0.0125 when
+        neither size input is set.
+    cube_side_length_mm : float, optional
+        Full side length of each cube in millimeters. Do not combine with
+        ``cube_half_size``.
     cube_mass : float
         Mass of each cube in kg. Both cubes share the same mass.
     min_cube_separation : float
@@ -1358,7 +1382,7 @@ class StackCubeConfig(EnvironmentConfig):
         self,
         cube_a_colors: ColorConfig = "red",
         cube_b_colors: ColorConfig = "blue",
-        cube_half_size: float = 0.0125,
+        cube_half_size: float | None = None,
         cube_mass: float = 0.01,
         min_cube_separation: float = 0.04,
         stack_alignment_margin: float = 0.005,
@@ -1366,13 +1390,17 @@ class StackCubeConfig(EnvironmentConfig):
         cube_static_ang_threshold: float = 0.5,
         distractors: list[SceneObject] | SceneObject | None = None,
         n_distractors: int = 0,
+        *,
+        cube_side_length_mm: float | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        cube_half_size = _resolve_cube_half_size(cube_half_size, cube_side_length_mm)
         self.cube_a_colors = cube_a_colors
         self.cube_b_colors = cube_b_colors
         self.cube_half_size = cube_half_size
         self.cube_mass = cube_mass
+        self.cube_side_length_mm = cube_side_length_mm
         self.min_cube_separation = min_cube_separation
         self.stack_alignment_margin = stack_alignment_margin
         self.cube_static_lin_threshold = cube_static_lin_threshold

@@ -70,6 +70,24 @@ class TestCubeObject:
         with pytest.raises(ValueError, match="color must be one of"):
             CubeObject(color="fuschia")
 
+    @pytest.mark.parametrize(
+        ("object_type", "dimension"),
+        [
+            (CubeObject, "side_length_mm"),
+            (CylinderObject, "diameter_mm"),
+            (SphereObject, "diameter_mm"),
+            (PyramidObject, "side_length_mm"),
+        ],
+    )
+    def test_converts_millimeter_dimensions(self, object_type, dimension):
+        obj = object_type(**{dimension: 25.4})
+
+        assert obj.half_size == pytest.approx(0.0127)
+
+    def test_rejects_ambiguous_size_inputs(self):
+        with pytest.raises(ValueError, match="either half_size or side_length_mm"):
+            CubeObject(half_size=0.0125, side_length_mm=25.0)
+
 
 @pytest.mark.parametrize(
     ("object_type", "shape_name"),
