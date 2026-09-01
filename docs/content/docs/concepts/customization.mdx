@@ -131,9 +131,7 @@ language-conditioned policies. Read it off `env.unwrapped.task_description`.
 
 ## Cameras and visual observations
 
-Add `WristCamera` or `OverheadCamera` to `observations` and the observation becomes a
-dictionary: a `"state"` key holding the flat vector from all state components, plus one
-key per camera.
+With the default `obs_mode="state"`, add `WristCamera` or `OverheadCamera` to `observations`. The observation becomes a dictionary. Its `"state"` key holds the selected state components. Each camera has a separate key.
 
 ```python
 import gymnasium as gym

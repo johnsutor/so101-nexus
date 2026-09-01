@@ -157,7 +157,7 @@ reward = RewardConfig(reaching=0.25, grasping=0.25, task_objective=0.25, complet
 | `action_delta_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of consecutive action deltas |
 | `energy_penalty` | `float` | `0.0` | Penalty coefficient on L2 norm of the action vector |
 | `tanh_shaping_scale` | `float` | `5.0` | Scale factor for tanh reward shaping |
-| `velocity_shaping_scale` | `float` | `15.0` | Scale factor for tanh velocity shaping (only read by `PickAndPlaceConfig`'s task potential) |
+| `velocity_shaping_scale` | `float` | `15.0` | Scale factor for tanh velocity shaping in PickAndPlace and StackCube task potentials |
 
 A "potential-shaped delta" pays the *change* in progress since the previous
 step rather than the raw value, so dwelling at a fixed state (e.g. holding an
@@ -224,9 +224,10 @@ config = EnvironmentConfig(obs_mode="state")
 | `spawn_min_radius` | `float` | `0.10` | Minimum spawn distance from the robot base |
 | `spawn_max_radius` | `float` | `0.30` | Maximum spawn distance from the robot base |
 | `spawn_angle_half_range_deg` | `float` | `90.0` | Half-range of spawn angle in degrees |
-| `obs_mode` | `ObsMode` | `"state"` | Observation mode: `"state"` or `"visual"` |
+| `obs_mode` | `ObsMode` | `"state"` | Observation mode. `"state"` returns all selected components. `"visual"` returns cameras and joint positions. `info["privileged_state"]` has the full selected state. |
 | `robot_colors` | `ColorConfig` | `"yellow"` | Robot body color(s) |
 | `robot_init_qpos_noise` | `float` | `0.02` | Noise added to initial joint positions |
+| `terminate_on_success` | `bool` | `True` | End the episode when the success predicate becomes true. When `False`, only the step cap truncates the episode. |
 | `observations` | `list[Observation] \| None` | `None` | Observation components to include. Task-specific configs provide defaults when `None`. |
 
 ### Validation
@@ -381,6 +382,8 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `cube_side_length_mm` | `float \| None` | `None` | Full side length of the default cube(s) in millimeters. Do not combine with `cube_half_size`. |
 | `cube_mass` | `float` | `0.01` | Mass of the default cube(s) (kg) |
 | `min_cube_target_separation` | `float` | `0.0375` | Deprecated alias for `min_object_target_separation` |
+| `object_static_lin_threshold` | `float` | `0.01` | Maximum carried-object linear speed (m/s) for success |
+| `object_static_ang_threshold` | `float` | `0.5` | Maximum carried-object angular speed (rad/s) for success |
 | `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
 | `n_distractors` | `int` | `0` | Number of distractor objects placed alongside the carried object each episode, sampled without replacement from `distractors` |
 | `min_object_separation` | `float` | `0.04` | Minimum spawn separation between the carried object and the distractors (meters), on top of their bounding radii |
@@ -482,7 +485,7 @@ config = LookAtConfig(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Target object(s). Only `CubeObject` is supported. Defaults to `[CubeObject()]`. |
+| `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Target object(s). `CubeObject`, `CylinderObject`, `SphereObject`, and `PyramidObject` are supported. Defaults to `[CubeObject()]`. |
 | `fov_deg` | `float \| None` | `None` | Wrist-camera vertical FOV in degrees; success = target within `fov_deg / 2` of the optical axis. `None` reads the live camera FOV. |
 
 The `MuJoCoLookAt-v1` and `WarpLookAt-v1` registrations default `max_episode_steps` to 256; override it at construction via `gym.make(..., max_episode_steps=N)` (MuJoCo) or `gym.make_vec(..., max_episode_steps=N)` (Warp).

@@ -10,7 +10,9 @@ SO101-Nexus follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). 
 The public, supported surface is:
 
 - Every name exported from the top-level package, `so101_nexus.__all__` (configs, rewards, observation components, scene objects, asset helpers, and the LeRobot adapter helpers).
-- The documented Gymnasium environment IDs registered by `import so101_nexus.mujoco` (`MuJoCoTouch-v1`, `MuJoCoLookAt-v1`, `MuJoCoMove-v1`, `MuJoCoPickLift-v1`, `MuJoCoPickAndPlace-v1`, `MuJoCoStackCube-v1`) and their documented `gym.make` keyword arguments.
+- The documented Gymnasium environment IDs and construction keyword arguments:
+  - `import so101_nexus.mujoco` registers `MuJoCoTouch-v1`, `MuJoCoLookAt-v1`, `MuJoCoMove-v1`, `MuJoCoPickLift-v1`, `MuJoCoPickAndPlace-v1`, and `MuJoCoStackCube-v1`.
+  - `import so101_nexus.warp` registers `WarpTouch-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`, and `WarpStackCube-v1`.
 - `so101_nexus.__version__`.
 
 The following are internal and may change at any time without a major version bump:

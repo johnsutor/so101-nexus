@@ -28,7 +28,13 @@ one action per call, then clear the cache in `reset()`.
 import gymnasium as gym
 import numpy as np
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from so101_nexus import SO101_JOINT_NAMES
+from so101_nexus import (
+    JointPositions,
+    OverheadCamera,
+    PickConfig,
+    SO101_JOINT_NAMES,
+    WristCamera,
+)
 from so101_nexus.policy_adapters import RolloutRecorder
 from so101_nexus.teleop.dataset import FieldSelection, build_features
 import so101_nexus.mujoco  # noqa: F401
@@ -43,10 +49,19 @@ class MyPolicy:
     def reset(self):
         pass
 
-
 policy = MyPolicy()
 
-env = gym.make("MuJoCoPickLift-v1", render_mode="rgb_array", control_mode="pd_joint_pos")
+
+config = PickConfig(
+    obs_mode="visual",
+    observations=[JointPositions(), WristCamera(), OverheadCamera()],
+)
+env = gym.make(
+    "MuJoCoPickLift-v1",
+    config=config,
+    render_mode="rgb_array",
+    control_mode="pd_joint_pos",
+)
 action_features = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
 follower_features = {**action_features, "wrist": (480, 640, 3), "overhead": (480, 640, 3)}
 features = build_features(FieldSelection(), follower_features, action_features)

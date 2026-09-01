@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -370,3 +371,49 @@ def test_pick_and_place_baseline_matches_bc_ppo_docstring() -> None:
     assert "excluded until the environment is fixed" not in training, (
         "the PickAndPlace 'excluded' claim is stale: bc_ppo_warp.py solves it"
     )
+
+
+def test_installation_lists_every_package_extra() -> None:
+    """Installation docs must list every supported package extra."""
+    extras = tomllib.loads(_read(ROOT / "pyproject.toml"))["project"]["optional-dependencies"]
+    installation = _read(DOCS / "getting-started" / "installation.mdx")
+    documented = set(re.findall(r"^\| `([^`]+)` \|", installation, re.MULTILINE))
+
+    assert documented == set(extras), (
+        "installation docs extras differ from pyproject.toml: "
+        f"documented={sorted(documented)}, expected={sorted(extras)}"
+    )
+
+
+def test_policy_adapter_example_configures_default_cameras() -> None:
+    """The recorder example must provide each camera that it reads by default."""
+    policies = _read(DOCS / "api" / "policies.mdx")
+    match = re.search(r"## End-to-End Usage\n\n```python\n(.*?)```", policies, re.DOTALL)
+
+    assert match, "could not locate the policy adapter end-to-end example"
+    example = match.group(1)
+    assert re.search(
+        r"config = PickConfig\(\n"
+        r'    obs_mode="visual",\n'
+        r"    observations=\[JointPositions\(\), WristCamera\(\), OverheadCamera\(\)\],\n"
+        r"\)",
+        example,
+    )
+    assert re.search(
+        r"env = gym\.make\(\n"
+        r'    "MuJoCoPickLift-v1",\n'
+        r"    config=config,",
+        example,
+    )
+
+
+def test_lerobot_wrapper_docs_require_a_camera_component() -> None:
+    """The LeRobot wrapper docs must state the Dict observation requirement."""
+    pages = (
+        DOCS / "api" / "lerobot-processors.mdx",
+        DOCS / "concepts" / "lerobot.mdx",
+    )
+    for page in pages:
+        text = _read(page)
+        assert "at least one camera component" in text
+        assert "or another non-default observation" not in text

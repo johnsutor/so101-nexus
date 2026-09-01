@@ -24,9 +24,9 @@ def make_lerobot_env(
 ) -> gym.Env
 ```
 
-Build a `LeRobotEnvWrapper` around a registered SO101-Nexus env id. Extra keyword arguments are forwarded to `gymnasium.make`.
+Build a `LeRobotEnvWrapper` around a registered `MuJoCo*-v1` environment ID. Extra keyword arguments are forwarded to `gymnasium.make`.
 
-The wrapped env must have a `Dict` observation space, which means at least one camera component (`WristCamera` or `OverheadCamera`) or another non-default observation must be configured. Wrapping the default state-only env raises `TypeError`.
+The wrapped env must have a `Dict` observation space. Configure at least one camera component (`WristCamera` or `OverheadCamera`). Wrapping the default state-only env raises `TypeError`.
 
 ```python
 import so101_nexus.mujoco  # noqa: F401

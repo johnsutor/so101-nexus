@@ -1,9 +1,9 @@
 ---
 title: Core Package
-description: Environment registration plus the full export surface of so101_nexus.
+description: Environment registration and key top-level exports from so101_nexus.
 ---
 
-`so101_nexus` provides shared types, configuration classes, scene objects, observation components, asset helpers, and the environment registry. Backends live under `so101_nexus.mujoco` and `so101_nexus.warp` and are registered by importing them.
+`so101_nexus` provides shared types, configuration classes, scene objects, observation components, asset helpers, and environment registration. Backends live under `so101_nexus.mujoco` and `so101_nexus.warp` and are registered by importing them.
 
 ```python
 import so101_nexus
@@ -77,6 +77,7 @@ Returns the SO101-Nexus environment IDs for whichever backends are currently imp
 | `ObsMode` | `Literal["state", "visual"]` |
 | `MoveDirection` | `Literal["up", "down", "left", "right", "forward", "backward"]` |
 | `YcbModelId` | Literal union of 10 YCB object IDs (see [Scene Objects and Assets](/docs/api/objects)) |
+| `GsoModelId` | Literal union of 12 GSO object IDs (see [Scene Objects and Assets](/docs/api/objects)) |
 
 ### Constants
 
@@ -86,6 +87,8 @@ Returns the SO101-Nexus environment IDs for whichever backends are currently imp
 | `DIRECTION_VECTORS` | `dict[MoveDirection, tuple]` | Maps direction names to unit vectors |
 | `COLOR_MAP` | `dict[str, list[float]]` | Maps color names to RGBA values |
 | `YCB_OBJECTS` | `dict[str, str]` | Maps YCB model IDs to human-readable names |
+| `GSO_OBJECTS` | `dict[str, str]` | Maps GSO model IDs to human-readable names |
+| `GSO_MASSES` | `dict[str, float]` | Maps GSO model IDs to default mass estimates in kilograms |
 | `ROBOT_CAMERA_PRESETS` | `dict[str, RobotCameraPreset]` | Named camera mounting presets for SO-100 and SO-101 |
 | `ASSETS_DIR` | `Path` | Root directory for bundled assets |
 | `SO101_DIR` | `Path` | Asset directory for the SO-101 arm (URDF/XML retained for teleop calibration; the MuJoCo backend loads the menagerie MJCF) |
@@ -100,7 +103,7 @@ All configuration classes have sensible defaults. See [Configuration Classes](/d
 | `RobotConfig` | Rest pose, grasp force threshold, velocity threshold, end-effector solver knobs |
 | `RobotCameraPreset` | Named preset combining camera mounting parameters |
 | `RewardConfig` | Reward component weights with a `compute()` method |
-| `EnvironmentConfig` | Base environment parameters (spawn region, obs mode, episode length) |
+| `EnvironmentConfig` | Base environment parameters (spawn region, observation mode, reset settling, termination) |
 | `PickConfig` | Extends `EnvironmentConfig` for pick/lift tasks |
 | `PickAndPlaceConfig` | Extends `EnvironmentConfig` for pick-and-place tasks |
 | `StackCubeConfig` | Extends `EnvironmentConfig` for stack-cube tasks |
@@ -139,9 +142,15 @@ See [Scene Objects and Assets](/docs/api/objects) for full reference.
 | Class | Description |
 |-------|-------------|
 | `SceneObject` | Abstract base for all scene objects |
+| `PrimitiveObject` | Abstract base for solid-color geometric primitives |
 | `CubeObject` | A colored cube with configurable size and mass |
+| `CylinderObject` | A colored cylinder with configurable diameter and mass |
+| `SphereObject` | A colored sphere with configurable diameter and mass |
+| `PyramidObject` | A colored square pyramid with configurable size and mass |
 | `YCBObject` | A YCB benchmark object loaded from mesh assets |
+| `GSOObject` | A Google Scanned Object loaded from mesh assets |
 | `MeshObject` | A custom mesh object loaded from collision and visual mesh files |
+| `ScannedMeshObject` | A mesh-backed scanned object base class |
 
 ### Functions
 
