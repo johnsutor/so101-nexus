@@ -54,13 +54,18 @@ observation layouts are versioned and tested with the package.
 | `envs/MuJoCoMove-v1.py`       | Move the end-effector a set offset  | 256   | 22        | MuJoCo  |
 | `envs/MuJoCoPickLift-v1.py`   | Grasp and lift an object            | 1024  | 31        | MuJoCo  |
 | `envs/MuJoCoPickAndPlace-v1.py` | Place an object on a goal disc    | 1024  | 43        | MuJoCo  |
+| `envs/MuJoCoPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | MuJoCo |
 | `envs/MuJoCoStackCube-v1.py`  | Stack one cube on another           | 1024  | 43        | MuJoCo  |
 | `envs/WarpTouch-v1.py`        | Touch the target object             | 512   | 31        | Warp    |
 | `envs/WarpLookAt-v1.py`       | Point the wrist camera at an object | 256   | 23        | Warp    |
 | `envs/WarpMove-v1.py`         | Move the end-effector a set offset  | 256   | 22        | Warp    |
 | `envs/WarpPickLift-v1.py`     | Grasp and lift an object            | 1024  | 31        | Warp    |
 | `envs/WarpPickAndPlace-v1.py` | Place an object on a goal disc      | 1024  | 43        | Warp    |
+| `envs/WarpPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | Warp |
 | `envs/WarpStackCube-v1.py`    | Stack one cube on another           | 1024  | 43        | Warp    |
+
+The v2 entry points require a library build that includes `PickAndPlaceV2Config`.
+See the [environment reference](https://so101-nexus.com/docs/environments) for the versioned placement contract.
 
 State dimensions are the default observation layout; they change with the
 `observations` component list. Task semantics are identical across the two

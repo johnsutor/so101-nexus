@@ -1310,7 +1310,7 @@ class PickAndPlaceConfig(EnvironmentConfig):
 
     def __repr__(self) -> str:  # noqa: D105
         return (
-            f"PickAndPlaceConfig(objects={self.objects!r}, "
+            f"{type(self).__name__}(objects={self.objects!r}, "
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size}, "
             f"n_distractors={self.n_distractors})"
         )
@@ -1322,6 +1322,115 @@ class PickAndPlaceConfig(EnvironmentConfig):
             self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
         )
         return describe_place_target(self.object_pool()[0], target_name)
+
+
+class PickAndPlaceV2Config(PickAndPlaceConfig):
+    """Configure footprint-center placement with sustained physical support.
+
+    Parameters
+    ----------
+    target_disc_radius : float
+        Visible acceptance radius in meters. ``goal_thresh`` must equal this radius.
+    placement_mode : {"center"}
+        Center the projected visual footprint on the visible disc.
+    footprint_scanlines : int
+        Number of midpoint scanlines for projected triangle-union quadrature.
+    support_min_weight_fraction : float
+        Minimum upward table force as a fraction of the object's weight.
+    support_force_tolerance : float
+        Absolute floor for the allowed robot or other-object contact force, in newtons.
+    support_relative_force_tolerance : float
+        Relative floor for the force tolerance, as a fraction of object weight.
+    placement_dwell_time : float
+        Required consecutive settled, unsupported-by-robot table time in seconds.
+    **kwargs
+        Forwarded to ``PickAndPlaceConfig``.
+    """
+
+    def __init__(
+        self,
+        *,
+        target_disc_radius: float = 0.05,
+        placement_mode: Literal["center"] = "center",
+        footprint_scanlines: int = 256,
+        support_min_weight_fraction: float = 0.9,
+        support_force_tolerance: float = 0.001,
+        support_relative_force_tolerance: float = 0.01,
+        placement_dwell_time: float = 0.2,
+        **kwargs,
+    ) -> None:
+        if placement_mode != "center":
+            raise ValueError(
+                "placement_mode must be 'center'. Overlap and containment are different tasks."
+            )
+        goal_thresh = kwargs.pop("goal_thresh", target_disc_radius)
+        if goal_thresh != target_disc_radius:
+            raise ValueError("goal_thresh must equal target_disc_radius for center placement.")
+        if (
+            isinstance(footprint_scanlines, bool)
+            or not isinstance(footprint_scanlines, int)
+            or footprint_scanlines < 1
+        ):
+            raise ValueError("footprint_scanlines must be a positive integer.")
+        positive = {
+            "target_disc_radius": target_disc_radius,
+            "placement_dwell_time": placement_dwell_time,
+            "support_min_weight_fraction": support_min_weight_fraction,
+        }
+        nonnegative = {
+            "support_force_tolerance": support_force_tolerance,
+            "support_relative_force_tolerance": support_relative_force_tolerance,
+            "object_static_lin_threshold": kwargs.get("object_static_lin_threshold", 0.01),
+            "object_static_ang_threshold": kwargs.get("object_static_ang_threshold", 0.5),
+        }
+        for name, value in (positive | nonnegative).items():
+            if not math.isfinite(value) or value < 0 or (name in positive and value == 0):
+                requirement = "positive" if name in positive else "nonnegative"
+                raise ValueError(f"{name} must be finite and {requirement}.")
+        if support_min_weight_fraction > 1 or support_relative_force_tolerance >= 1:
+            raise ValueError("Support weight fractions must not exceed their physical limits.")
+        super().__init__(target_disc_radius=target_disc_radius, goal_thresh=goal_thresh, **kwargs)
+        self.placement_mode = placement_mode
+        self.footprint_scanlines = footprint_scanlines
+        self.support_min_weight_fraction = support_min_weight_fraction
+        self.support_force_tolerance = support_force_tolerance
+        self.support_relative_force_tolerance = support_relative_force_tolerance
+        self.placement_dwell_time = placement_dwell_time
+
+    def describe_target(self, obj: object, target_name: str) -> str:
+        """Return the instruction for the sampled object and target color."""
+        return (
+            f"Pick up the {obj!r}, center it on the {target_name} circle, "
+            "and release it onto the table."
+        )
+
+    @property
+    def task_description(self) -> str:
+        """Return the instruction for the first configured object and target color."""
+        target_name = (
+            self.target_colors if isinstance(self.target_colors, str) else self.target_colors[0]
+        )
+        return self.describe_target(self.object_pool()[0], target_name)
+
+    @property
+    def placement_contract(self) -> dict[str, Any]:
+        """Return JSON-safe evaluator semantics and configured thresholds."""
+        return {
+            "task_version": 2,
+            "placement_mode": self.placement_mode,
+            "geometric_reference": "projected_visual_triangle_union_area_centroid",
+            "geometry_method": "exact_symmetry_or_midpoint_scanline_union",
+            "footprint_scanlines": self.footprint_scanlines,
+            "target_region": "closed_disc",
+            "target_radius": self.target_disc_radius,
+            "support_surface": "floor",
+            "support_min_weight_fraction": self.support_min_weight_fraction,
+            "support_force_tolerance": self.support_force_tolerance,
+            "support_relative_force_tolerance": self.support_relative_force_tolerance,
+            "placement_dwell_time": self.placement_dwell_time,
+            "object_static_lin_threshold": self.object_static_lin_threshold,
+            "object_static_ang_threshold": self.object_static_ang_threshold,
+        }
 
 
 class StackCubeConfig(EnvironmentConfig):

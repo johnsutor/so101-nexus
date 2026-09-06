@@ -11,6 +11,14 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `MuJoCoPickAndPlace-v2`, `WarpPickAndPlace-v2`, and `PickAndPlaceV2Config`
+  add center placement against the visible target disc.
+  The evaluator uses the projected visual footprint centroid, force-qualified
+  table support, center-of-mass motion, and a simulation-time dwell interval.
+  Separate diagnostics explain geometry, support, and motion failures.
+  Both library recorders save immutable per-episode placement contracts.
+  V1 predicates and existing recorded outcomes remain unchanged.
+
 - `CubeObject` and `PyramidObject` now accept float `side_length_mm` values.
   `CylinderObject` and `SphereObject` now accept float `diameter_mm` values.
   `PickAndPlaceConfig` and `StackCubeConfig` now accept

@@ -1017,8 +1017,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         public_action = np.asarray(action, dtype=np.float64)
         self.data.ctrl[self._actuator_ids] = self._action_to_ctrl(action)
 
-        for _ in range(self._N_SUBSTEPS):
-            mujoco.mj_step(self.model, self.data)
+        self._advance_physics()
 
         obs, info = self._observe()
         info["energy_norm"] = float(np.linalg.norm(public_action))
@@ -1031,6 +1030,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         terminated = self.config.terminate_on_success and bool(info.get("success", False))
 
         return obs, reward, terminated, False, info
+
+    def _advance_physics(self) -> None:
+        """Advance one control interval without reset-time task updates."""
+        for _ in range(self._N_SUBSTEPS):
+            mujoco.mj_step(self.model, self.data)
 
     def _render_camera_params(self) -> dict[str, Any]:
         """Free-camera params for the configured render view (overhead or side)."""

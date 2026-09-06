@@ -43,6 +43,28 @@ REWARD_COMPONENT_FEATURE_KEYS: tuple[str, ...] = tuple(
 SCALAR_KEYS: tuple[str, ...] = (REWARD_KEY, SUCCESS_KEY, DONE_KEY, *REWARD_COMPONENT_FEATURE_KEYS)
 
 
+def save_recorded_episode(dataset: Any, placement_contract: dict | None = None) -> None:
+    """Save an episode with an immutable evaluator contract outside policy features."""
+    if placement_contract is None:
+        dataset.save_episode()
+        return
+
+    import json
+    from pathlib import Path
+
+    metadata = json.dumps(placement_contract, indent=2, allow_nan=False)
+    directory = Path(dataset.root) / "meta" / "placement_contracts"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"episode_{dataset.num_episodes:06d}.json"
+    with path.open("x") as stream:
+        stream.write(metadata)
+    try:
+        dataset.save_episode()
+    except Exception:
+        path.unlink()
+        raise
+
+
 @dataclass(frozen=True)
 class FieldSelection:
     """Which fields the user opted to persist into the LeRobot dataset."""

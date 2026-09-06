@@ -36,6 +36,7 @@ from so101_nexus.teleop.dataset import (
     FieldSelection,
     build_features,
     build_frame,
+    save_recorded_episode,
 )
 from so101_nexus.teleop.leader import (
     ROBOT_JOINT_NAMES,
@@ -1020,7 +1021,7 @@ def _cb_approve_episode(session: dict):
             )
             dataset.add_frame(frame)
 
-        dataset.save_episode()
+        save_recorded_episode(dataset, s.placement_contract)
     except Exception as exc:
         with contextlib.suppress(Exception):
             dataset.clear_episode_buffer()

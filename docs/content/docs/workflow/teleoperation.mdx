@@ -93,6 +93,13 @@ overrides to `meta/so101_nexus_env.json` inside the dataset. That file is itself
 reproduces a recording's environment. It captures UI and CLI overrides only; a separate
 `--env-config-profile` used at record time is not merged in.
 
+For pick-and-place v2, both the teleop recorder and `RolloutRecorder` also save
+`meta/placement_contracts/episode_NNNNNN.json`.
+Each file stores the episode's [resolved evaluator contract](/docs/environments#evaluator-diagnostics).
+The recorder refuses to overwrite an existing contract.
+It does not add these diagnostics to policy features or relabel legacy episodes.
+See the [placement contract](/docs/environments#success-conditions) for benchmark migration rules.
+
 On first recording the app creates a simulator-only calibration file at
 `$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json`, or under the LeRobot default
 calibration root when that variable is unset. No physical follower calibration is needed.

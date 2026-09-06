@@ -17,14 +17,28 @@ from __future__ import annotations
 from typing import ClassVar
 
 import mujoco
+import mujoco_warp as mjw
 import numpy as np
 import torch
 import warp as wp
 
-from so101_nexus.config import ControlMode, PickAndPlaceConfig, describe_place_target
+from so101_nexus.config import (
+    ControlMode,
+    PickAndPlaceConfig,
+    PickAndPlaceV2Config,
+    describe_place_target,
+)
 from so101_nexus.constants import COLOR_MAP
+from so101_nexus.object_slots import extract_object_slots
 from so101_nexus.objects import CubeObject
 from so101_nexus.observations import TargetOffset, TargetPosition
+from so101_nexus.placement import (
+    SlotGeometry,
+    compiled_slot_geometry,
+    resolved_placement_contract,
+    support_state,
+    visual_reference,
+)
 from so101_nexus.rewards import (
     object_static_ok,
     place_grasp_potential,
@@ -75,7 +89,12 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         render_mode: str | None = None,
     ) -> None:
         if config is None:
-            config = PickAndPlaceConfig()
+            config = self.default_config_cls()
+        is_v2 = issubclass(self.default_config_cls, PickAndPlaceV2Config)
+        if not isinstance(config, PickAndPlaceConfig) or (
+            isinstance(config, PickAndPlaceV2Config) != is_v2
+        ):
+            raise TypeError(f"{type(self).__name__} requires {self.default_config_cls.__name__}.")
         scene_objects = config.object_pool()
         n_carried = len(scene_objects)
         # Distractor slots are only compiled when requested, so the default
@@ -127,6 +146,18 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
 
     def _target_disc_pos(self) -> torch.Tensor:
         return self._mocap_pos[:, self._target_mocap_id, :]
+
+    def _placement_reference_pos(self) -> torch.Tensor:
+        """Return the reference point for the placement reward."""
+        return self._target_pos()
+
+    def _placement_success(
+        self,
+        is_obj_placed: torch.Tensor,
+        is_obj_static: torch.Tensor,
+        is_grasped: torch.Tensor,
+    ) -> torch.Tensor:
+        return is_obj_placed & is_obj_static & (is_grasped < 0.5)
 
     def _obj_placement_state(
         self, obj_pos: torch.Tensor, target_pos: torch.Tensor
@@ -180,7 +211,8 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         idx = mask.nonzero(as_tuple=True)[0]
         if idx.numel() == 0:
             return
-        obj_pos = self._target_pos()
+        obj_pos = self._placement_reference_pos()
+        self._initial_obj_z[idx] = obj_pos[idx, 2]
         target_pos = self._target_disc_pos()
         is_grasped = self._is_grasping()
         _, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
@@ -275,7 +307,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
     def _compute_reward_terminated(
         self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, dict]:
-        obj_pos = self._target_pos()
+        obj_pos = self._placement_reference_pos()
         target_pos = self._target_disc_pos()
         tcp_to_obj = torch.linalg.norm(obj_pos - self._tcp_pos(), dim=1)
         obj_to_target, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
@@ -292,7 +324,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         # diagnostic. Mirrors PickAndPlaceEnv._get_info (MuJoCo); see
         # docs/superpowers/plans/
         # 2026-07-26-place-success-predicate-and-terminate-flag.md.
-        success = is_obj_placed & is_obj_static & (is_grasped < 0.5)
+        success = self._placement_success(is_obj_placed, is_obj_static, is_grasped)
         scale = self.config.reward.tanh_shaping_scale
         # reaching/grasping are potential-shaped deltas, not raw state values
         # (dwelling at "reached and grasped, never placed" must pay ~0/step, see
@@ -334,3 +366,260 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             "target_index": self._target_slot.clone(),
         }
         return reward.to(torch.float32), success, info
+
+
+class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
+    """Center the visual footprint on the disc with sustained table support.
+
+    V2 uses an uncaptured physics loop to inspect every physics substep. This
+    costs GPU launch throughput relative to the unchanged v1 graph. Contact
+    reduction and footprint evaluation stay on the selected Torch device.
+    """
+
+    config: PickAndPlaceV2Config
+    default_config_cls: ClassVar[type[PickAndPlaceV2Config]] = PickAndPlaceV2Config
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        slots = extract_object_slots(
+            self._mjm,
+            [f"pick_slot_{i}" for i in range(self._n_pool)],
+            self._slot_objs[: self._n_pool],
+        )
+        self._placement_geometry = [
+            SlotGeometry(
+                torch.as_tensor(geometry.triangles, dtype=torch.float32, device=self.device),
+                None
+                if geometry.symmetry_center is None
+                else torch.as_tensor(
+                    geometry.symmetry_center, dtype=torch.float32, device=self.device
+                ),
+            )
+            for geometry in compiled_slot_geometry(self._mjm, slots)
+        ]
+        body_ids = [
+            int(self._mjm.body_rootid[self._mjm.geom_bodyid[slot.geom_ids[0]]]) for slot in slots
+        ]
+        self._placement_body_ids = torch.tensor(body_ids, device=self.device)
+        weights = [
+            float(self._mjm.body_subtreemass[body]) * float(np.linalg.norm(self._mjm.opt.gravity))
+            for body in body_ids
+        ]
+        self._placement_weights = torch.tensor(weights, device=self.device)
+        self._placement_weights_host = weights
+        self._placement_timesteps = wp.to_torch(self.model.opt.timestep)
+        base_id = mujoco.mj_name2id(self._mjm, mujoco.mjtObj.mjOBJ_BODY, "base")
+        self._placement_robot_geom_mask = torch.as_tensor(
+            self._mjm.body_rootid[self._mjm.geom_bodyid] == base_id, device=self.device
+        )
+        self._placement_floor_geom = mujoco.mj_name2id(self._mjm, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        self._placement_xpos = wp.to_torch(self.data.xpos)
+        self._placement_xmat = wp.to_torch(self.data.xmat)
+        self._placement_xipos = wp.to_torch(self.data.xipos)
+        self._placement_subtree_com = wp.to_torch(self.data.subtree_com)
+        self._placement_cvel = wp.to_torch(self.data.cvel)
+        self._placement_dwell = torch.zeros(self.num_envs, device=self.device, dtype=torch.float64)
+        self._placement_contact_rows = torch.arange(self.data.naconmax, device=self.device)
+        self._ensure_contact_force_buffers()
+        self._placement_evaluation: dict | None = None
+
+    def _capture_step_graph(self) -> None:
+        # Base construction runs before slot geometry and dwell tensors exist.
+        # V1 still captures its original graph through the inherited method.
+        self._step_graph = None
+
+    def _describe_target(self, obj) -> str:
+        return self.config.describe_target(obj, self.target_color_name)
+
+    def _generic_task_description(self) -> str:
+        return (
+            f"Pick up the object, center it on the {self.target_color_name} circle, "
+            "and release it onto the table."
+        )
+
+    def _visual_reference_pos(self) -> torch.Tensor:
+        """Return footprint union XY and lowest visual Z without host geometry copies."""
+        reference = torch.empty((self.num_envs, 3), device=self.device)
+        for slot, geometry in enumerate(self._placement_geometry):
+            worlds = (self._target_slot == slot).nonzero(as_tuple=True)[0]
+            body = self._placement_body_ids[slot]
+            # Bound transformed triangles independently of the total world count.
+            chunk_size = max(1, min(32, 262144 // max(1, geometry.triangles.shape[0])))
+            for start in range(0, worlds.numel(), chunk_size):
+                rows = worlds[start : start + chunk_size]
+                rotation = self._placement_xmat[rows, body]
+                position = self._placement_xpos[rows, body]
+                reference[rows] = visual_reference(
+                    geometry, rotation, position, scanlines=self.config.footprint_scanlines
+                )
+        return reference
+
+    def _placement_reference_pos(self) -> torch.Tensor:
+        if self._placement_evaluation is not None:
+            return self._placement_evaluation["reference"]
+        return self._visual_reference_pos()
+
+    def _placement_contact_forces(self) -> torch.Tensor:
+        """Read solved contact forces without a device-to-host contact count."""
+        with wp.ScopedDevice(self._wp_device):
+            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
+        assert self._force_view is not None
+        return self._force_view
+
+    def _support_info(self) -> dict[str, torch.Tensor]:
+        assert self._obj_geom_mask is not None
+        force = self._placement_contact_forces()
+        geoms = self._contact_geom_view.long()
+        raw_worlds = self._contact_world_view.long()
+        worlds = raw_worlds.clamp(0, self.num_envs - 1)
+        g1 = geoms[:, 0].clamp(0, self._mjm.ngeom - 1)
+        g2 = geoms[:, 1].clamp(0, self._mjm.ngeom - 1)
+        valid = (
+            (self._placement_contact_rows < self._nacon_view[0])
+            & (raw_worlds >= 0)
+            & (raw_worlds < self.num_envs)
+            & (geoms >= 0).all(dim=1)
+            & (geoms < self._mjm.ngeom).all(dim=1)
+        )
+        target1 = self._obj_geom_mask[worlds, g1]
+        target2 = self._obj_geom_mask[worlds, g2]
+        valid &= target1 ^ target2
+        other = torch.where(target1, g2, g1)
+        table_contact = valid & (other == self._placement_floor_geom)
+        robot_contact = valid & self._placement_robot_geom_mask[other]
+        other_contact = valid & ~table_contact & ~robot_contact
+        world_force = (self._contact_frame_view * force[:, :3, None]).sum(dim=1)
+        sign = target2.to(force.dtype) - target1.to(force.dtype)
+        magnitude = torch.linalg.norm(force[:, :3], dim=1)
+        table_force = torch.zeros(self.num_envs, device=self.device)
+        robot_force = torch.zeros_like(table_force)
+        other_force = torch.zeros_like(table_force)
+        table_force.scatter_add_(
+            0, worlds, torch.where(table_contact, world_force[:, 2] * sign, 0.0)
+        )
+        robot_force.scatter_add_(0, worlds, torch.where(robot_contact, magnitude, 0.0))
+        other_force.scatter_add_(0, worlds, torch.where(other_contact, magnitude, 0.0))
+        bodies = self._placement_body_ids[self._target_slot]
+        cvel = self._placement_cvel[self._world_rows, bodies]
+        # cvel uses the root subtree COM as its spatial reference. Translate it
+        # to the target body's inertial COM, not the free-joint frame origin.
+        offset = (
+            self._placement_xipos[self._world_rows, bodies]
+            - self._placement_subtree_com[self._world_rows, bodies]
+        )
+        com_velocity = cvel[:, 3:] + torch.linalg.cross(cvel[:, :3], offset)
+        linear_speed = torch.linalg.norm(com_velocity, dim=1)
+        angular_speed = torch.linalg.norm(cvel[:, :3], dim=1)
+        table_ok, robot_ok, other_ok, static, qualified = support_state(
+            table_force,
+            robot_force,
+            other_force,
+            self._placement_weights[self._target_slot],
+            linear_speed,
+            angular_speed,
+            min_weight_fraction=self.config.support_min_weight_fraction,
+            force_tolerance=self.config.support_force_tolerance,
+            relative_force_tolerance=self.config.support_relative_force_tolerance,
+            lin_threshold=self.config.object_static_lin_threshold,
+            ang_threshold=self.config.object_static_ang_threshold,
+        )
+        return {
+            "supported_by_table": table_ok,
+            "supported_by_robot": robot_ok,
+            "supported_by_other": other_ok,
+            "table_support_force": table_force,
+            "robot_support_force": robot_force,
+            "other_support_force": other_force,
+            "object_linear_speed": linear_speed,
+            "object_angular_speed": angular_speed,
+            "is_obj_static": static,
+            "qualified": qualified,
+        }
+
+    def _placement_info(self) -> dict:
+        support = self._support_info()
+        reference = self._visual_reference_pos()
+        distance = torch.linalg.norm(reference[:, :2] - self._target_disc_pos()[:, :2], dim=1)
+        geometric_ok = distance <= self.config.target_disc_radius
+        placed = geometric_ok & support.pop("qualified")
+        return {
+            **support,
+            "placement_contract": resolved_placement_contract(
+                self.config,
+                self._slot_objs[: self._n_pool],
+                self._placement_weights_host,
+                self._placement_timesteps.cpu().tolist(),
+                self._target_slot.cpu().tolist(),
+            ),
+            "placement_centroid_xy": reference[:, :2],
+            "geometric_placement_ok": geometric_ok,
+            # Snapshot timers before same-step autoreset clears completed worlds.
+            "placement_dwell": self._placement_dwell.clone(),
+            "is_obj_placed": placed,
+            "success": placed & (self._placement_dwell >= self.config.placement_dwell_time),
+            "obj_to_target_dist": distance,
+            "reference": reference,
+        }
+
+    def _obj_placement_state(
+        self, obj_pos: torch.Tensor, target_pos: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._placement_evaluation is not None:
+            return (
+                self._placement_evaluation["obj_to_target_dist"],
+                self._placement_evaluation["is_obj_placed"],
+            )
+        distance = torch.linalg.norm(obj_pos[:, :2] - target_pos[:, :2], dim=1)
+        return distance, (distance <= self.config.target_disc_radius) & self._support_info()[
+            "qualified"
+        ]
+
+    def _is_obj_static(self) -> torch.Tensor:
+        if self._placement_evaluation is not None:
+            return self._placement_evaluation["is_obj_static"]
+        return self._support_info()["is_obj_static"]
+
+    def _placement_success(
+        self,
+        is_obj_placed: torch.Tensor,
+        is_obj_static: torch.Tensor,
+        is_grasped: torch.Tensor,
+    ) -> torch.Tensor:
+        return is_obj_placed & (self._placement_dwell >= self.config.placement_dwell_time)
+
+    def _advance_physics(self) -> None:
+        for _ in range(self._N_SUBSTEPS):
+            mjw.step(self.model, self.data)
+            qualified = self._support_info()["qualified"]
+            self._placement_dwell.copy_(
+                torch.where(qualified, self._placement_dwell + self._placement_timesteps, 0.0)
+            )
+        # Match geometry and observations to the final integrated state.
+        mjw.forward(self.model, self.data)
+
+    def _task_reset(self, mask: torch.Tensor) -> None:
+        super()._task_reset(mask)
+        self._placement_dwell[mask] = 0.0
+
+    def reset(self, *, seed: int | None = None, options: dict | None = None):
+        """Reset all worlds and return their initial placement diagnostics."""
+        obs, info = super().reset(seed=seed, options=options)
+        placement = self._placement_info()
+        placement.pop("reference")
+        info.update(placement)
+        return obs, info
+
+    def _compute_reward_terminated(
+        self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+        placement = self._placement_info()
+        self._placement_evaluation = placement
+        try:
+            reward, success, info = super()._compute_reward_terminated(
+                energy_norm, action_delta_norm
+            )
+        finally:
+            self._placement_evaluation = None
+        placement.pop("reference")
+        info.update(placement)
+        return reward, success, info

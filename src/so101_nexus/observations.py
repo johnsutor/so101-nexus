@@ -245,11 +245,9 @@ class ObjectVelocity(Observation):
 
     The object's free-joint velocity: linear in world coordinates (m/s),
     angular in the object's local frame (rad/s), matching MuJoCo's free-joint
-    ``qvel`` layout. This is what the place and stack success predicates test
-    (``PickAndPlaceConfig.object_static_lin_threshold`` /
-    ``StackCubeConfig.cube_static_lin_threshold`` and their angular
-    counterparts); without it "the object has settled on the goal" and "the
-    object is sliding across it" are the same observation.
+    ``qvel`` layout. PickAndPlace-v1 and StackCube use these velocities for
+    settlement. PickAndPlace-v2 instead evaluates center-of-mass speed, which
+    can differ when an asset's inertial center is offset.
     """
 
     @property
