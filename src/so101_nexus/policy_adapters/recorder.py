@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.teleop.dataset import save_recorded_episode
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -167,7 +168,7 @@ class RolloutRecorder:
                 break
 
         if self.dataset is not None:
-            self.dataset.save_episode()
+            save_recorded_episode(self.dataset, info.get("placement_contract"))
 
         return EpisodeResult(
             success=bool(info.get("success", False)),

@@ -4,9 +4,8 @@ description: The six SO-101 tasks, with their IDs, state dimensions, success pre
 ---
 
 SO101-Nexus ships six Gymnasium-compatible manipulation tasks for the SO-101 arm.
-Importing `so101_nexus.mujoco` registers the single-environment `MuJoCo*-v1` IDs;
-importing `so101_nexus.warp` registers the GPU-batched `Warp*-v1` counterparts, which
-share the same task definitions and step caps.
+Import `so101_nexus.mujoco` for the single-environment IDs or `so101_nexus.warp` for the GPU-batched counterparts.
+Both backends expose the same task contracts, including versioned pick-and-place tasks.
 
 For a runnable loop, see the [quickstart](/docs/getting-started/quickstart). For the
 observation components themselves, see [Observations](/docs/concepts/observations); for
@@ -17,15 +16,15 @@ action spaces, see [Control modes](/docs/concepts/control-modes).
 | Task | MuJoCo ID | Warp ID | Config class | Max steps | State dim |
 | --- | --- | --- | --- | --- | --- |
 | Pick and lift an object | `MuJoCoPickLift-v1` | `WarpPickLift-v1` | `PickConfig` | 1024 | 31 |
-| Place a cube on a target disc | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
+| Center an object on a target disc | `MuJoCoPickAndPlace-v2` | `WarpPickAndPlace-v2` | `PickAndPlaceV2Config` | 1024 | 43 |
+| Legacy origin-distance placement | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
 | Stack cube A on cube B | `MuJoCoStackCube-v1` | `WarpStackCube-v1` | `StackCubeConfig` | 1024 | 43 |
 | Touch an object on the table | `MuJoCoTouch-v1` | `WarpTouch-v1` | `TouchConfig` | 512 | 31 |
 | Gaze at an object | `MuJoCoLookAt-v1` | `WarpLookAt-v1` | `LookAtConfig` | 256 | 23 |
 | Move the TCP a fixed distance | `MuJoCoMove-v1` | `WarpMove-v1` | `MoveConfig` | 256 | 22 |
 
 State dim is the width of the default state observation. It changes if you override
-`observations` on the config. `all_registered_env_ids()` returns these six IDs for each
-backend you have imported.
+`observations` on the config. `all_registered_env_ids()` returns all versions for each imported backend.
 
 ## Success conditions
 
@@ -34,12 +33,19 @@ Every task publishes a binary `success` flag in the `info` dict.
 **PickLift** succeeds when the object is grasped and its height above the spawn pose
 exceeds `lift_threshold` (default 0.05 m). Both conditions must hold on the same step.
 
-**PickAndPlace** succeeds when the cube is placed, settled, and released: its XY distance
-to the target disc is within `goal_thresh` (default 0.025 m) and it has come back down to
-table height, its linear and angular speeds are below the static thresholds, and
-`is_grasped < 0.5`. Letting go is mandatory. The arm's own motion is not part of the
-predicate: `is_robot_static` is reported in `info` as a diagnostic only, so a policy may
-still be retreating when the episode succeeds.
+**PickAndPlace v2** requires the area centroid of the object's projected visual footprint inside the visible target disc.
+The footprint is the union of projected triangles, not an asset origin, bounding box, or convex hull.
+The table must support the settled object without significant robot or other-object contact for a continuous interval.
+The evaluator samples physical support and object motion at every physics substep.
+It checks the centroid at the current control step.
+An open gripper alone does not prove release.
+
+**PickAndPlace v1** retains the legacy predicate.
+The free-joint origin must lie within `goal_thresh` of the disc center in XY.
+Its height must stay less than 10 mm above its initial height.
+The object must pass the speed thresholds and `is_grasped < 0.5`.
+The visible disc remains larger than the default acceptance radius.
+This version does not verify physical table support.
 
 **StackCube** succeeds when cube A's horizontal offset from cube B is within
 `sqrt(2) * cube_half_size + stack_alignment_margin` and its height above cube B is within
@@ -127,22 +133,73 @@ Wrist camera:
 
 <Accordion title="PickAndPlace">
 
-Task description: `Pick up the {object!r} and place it on the {target_color} circle.`
+For new evaluations, use `MuJoCoPickAndPlace-v2` or `WarpPickAndPlace-v2` with `PickAndPlaceV2Config`.
+The instruction explicitly asks the agent to center the object and release it onto the table.
+`target_disc_radius` defines both the visible disc and the accepted centroid region.
+For precision placement, reduce that radius. The visible disc shrinks with it.
+
+### Geometry and physical support
+
+The evaluator projects the original visual mesh onto the horizontal table plane.
+Midpoint scanlines integrate the union of projected triangle intervals.
+Overlapping triangles count once. Concavities and holes remain part of the measurement.
+The approximation depends on the scanline count and object orientation.
+Thin features below the scanline spacing can affect its accuracy.
+It does not define a universal submillimeter error guarantee for arbitrary custom meshes.
+For a single box, cylinder, or sphere, the evaluator uses its exact symmetry center instead of scanlines.
+
+The support predicate uses the solved force on the target object from contacts with the `floor` geom.
+The required upward force scales with the object's compiled mass and gravity.
+Robot and other-object forces use sums of individual contact-force magnitudes, so opposite contacts cannot cancel.
+Above the configured tolerance, even lateral contact disqualifies placement.
+This conservative rule prevents a single open finger from satisfying the release requirement.
+Motion thresholds use center-of-mass linear speed and angular speed, not the velocity of the asset origin.
+Any failed physical condition clears the dwell interval. Reset clears it without credit for reset-time simulation.
+The arm can retreat while the object remains settled.
+Some scanned collision meshes retain solver motion even when they appear at rest.
+Those states do not pass the settlement predicate.
+Inspect the motion and force diagnostics before changing thresholds or comparing results across timesteps.
+
+Warp uses the same geometry and support predicates.
+Its v2 physics path samples contacts after each substep instead of replaying the v1 multi-substep CUDA graph.
+This costs throughput, especially for detailed scanned meshes.
+V1 retains its existing fast path.
+
+### Evaluator diagnostics
+
+`info` separates `geometric_placement_ok`, `supported_by_table`, `supported_by_robot`,
+`supported_by_other`, `is_obj_static`, and `placement_dwell`.
+It also reports `placement_centroid_xy`, individual support forces, object speeds, and `placement_contract`.
+The contract identifies the task version, geometric reference, target region, approximation, and thresholds.
+It includes the active target index and per-object identity and force limits.
+MuJoCo reports one physics timestep. Warp reports its device timestep array and one target index per world.
+These fields do not enter policy observations automatically.
+The [config reference](/docs/api/configs#pickandplacev2config) owns the default thresholds.
+
+### Migration
+
+V1 registrations, instructions, predicates, and recorded outcomes remain unchanged.
+V2 results are a different benchmark. Do not compare success rates without the task version and resolved contract.
+Do not relabel completed v1 records with v2 results.
+The library recorders preserve v2 contracts as [episode metadata](/docs/workflow/teleoperation#recorded-dataset-format).
+
+V2 supports center placement only. It does not offer overlap or containment modes.
+Objects can extend beyond the disc if their footprint centroid lies inside it.
+Tip-only overlap is not sufficient.
+Full containment requires a different task, including a pre-episode feasibility check.
 
 Default observation (43): `JointPositions` (6), `JointVelocities` (6), `EndEffectorPose`
 (7), `GraspState` (1), `GazeState` (1), `TargetPosition` (3), `ObjectPose` (7),
-`ObjectVelocity` (6), `ObjectOffset` (3), `TargetOffset` (3). `ObjectVelocity` is the
-settling term of the success check, so keep it if you shrink the observation.
+`ObjectVelocity` (6), `ObjectOffset` (3), `TargetOffset` (3).
+`ObjectVelocity` exposes free-joint velocity. V2 evaluates center-of-mass motion separately.
+The linear velocities can differ when an asset's inertial center is offset.
 
-Objects: one colored cube plus a flat target disc. Both colors are sampled per episode
-from `PickAndPlaceConfig` and named in the task description. `n_distractors` draws extra
-objects without replacement from the `distractors` pool; they stay clear of the disc and
-never enter the observation or the task description.
+Objects: the carried pool accepts primitives, scanned objects, and custom meshes.
+MuJoCo samples the object and target color per episode.
+Warp samples the object but fixes the target color at model construction.
+`n_distractors` selects extra objects from the separate `distractors` pool.
 
-Task-specific fields: `goal_thresh` (0.025 m, the XY placement tolerance),
-`target_disc_radius` (0.05 m), `cube_half_size`, `cube_mass`,
-`min_cube_target_separation` (0.0375 m, the minimum spawn gap between cube and disc), and
-`min_object_separation` (0.04 m, the gap between the carried object and distractors).
+V1 uses `PickAndPlaceConfig`. V2 uses `PickAndPlaceV2Config`, which inherits the same object-pool and observation parameters.
 Full field list in [Configs](/docs/api/configs).
 
 Overhead camera:

@@ -398,6 +398,40 @@ because the task description names the carried object by color alone.
 
 When `observations` is not specified: `[JointPositions(), JointVelocities(), EndEffectorPose(), GraspState(), GazeState(), TargetPosition(), ObjectPose(), ObjectVelocity(), ObjectOffset(), TargetOffset()]` (43 dimensions).
 
+## PickAndPlaceV2Config
+
+This config extends `PickAndPlaceConfig` for the [v2 center-placement contract](/docs/environments#success-conditions).
+Use it with the v2 environment IDs. V1 and v2 reject the other version's config.
+
+```python
+from so101_nexus import PickAndPlaceV2Config, YCBObject
+
+config = PickAndPlaceV2Config(
+    objects=[YCBObject("011_banana")],
+    target_disc_radius=0.05,
+)
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `placement_mode` | `Literal["center"]` | `"center"` | Only center placement is supported |
+| `target_disc_radius` | `float` | `0.05` | Visible and evaluated acceptance radius in meters |
+| `goal_thresh` | `float` | Same as radius | Must equal `target_disc_radius`, otherwise construction fails |
+| `footprint_scanlines` | `int` | `256` | Midpoint rows for projected triangle-union integration |
+| `support_min_weight_fraction` | `float` | `0.9` | Required upward table force as a fraction of compiled object weight |
+| `support_force_tolerance` | `float` | `0.001` | Absolute floor for robot and other-object force tolerance, in newtons |
+| `support_relative_force_tolerance` | `float` | `0.01` | Relative floor for the same tolerance, as a fraction of object weight |
+| `placement_dwell_time` | `float` | `0.2` | Consecutive seconds of physical support and settled motion |
+| `object_static_lin_threshold` | `float` | `0.01` | Maximum center-of-mass linear speed in m/s |
+| `object_static_ang_threshold` | `float` | `0.5` | Maximum angular speed in rad/s |
+
+The resolved contact-force tolerance is the larger of the absolute and relative values.
+All numerical thresholds must be finite.
+The radius, dwell time, and minimum weight fraction must be positive.
+The minimum weight fraction must not exceed one. The relative force tolerance must be less than one.
+The scanline count must be a positive integer.
+`placement_contract` returns JSON-safe evaluator metadata without simulator state.
+
 ---
 
 ## StackCubeConfig

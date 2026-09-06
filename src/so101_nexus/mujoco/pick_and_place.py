@@ -30,10 +30,11 @@ from so101_nexus import (
 from so101_nexus.config import (
     ControlMode,
     PickAndPlaceConfig,
+    PickAndPlaceV2Config,
     describe_place_target,
 )
 from so101_nexus.constants import COLOR_MAP, sample_color_name
-from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
+from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv, _observation_scoped
 from so101_nexus.mujoco.spawn_utils import (
     activate_distractor_slots,
     hide_freejoint_slot,
@@ -47,6 +48,12 @@ from so101_nexus.object_slots import (
     extract_object_slots,
 )
 from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
+from so101_nexus.placement import (
+    compiled_slot_geometry,
+    resolved_placement_contract,
+    support_state,
+    visual_reference,
+)
 from so101_nexus.rewards import (
     object_static_ok,
     place_grasp_potential,
@@ -88,7 +95,12 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         robot_init_qpos_noise: float = 0.02,
     ):
         if config is None:
-            config = PickAndPlaceConfig()
+            config = self.default_config_cls()
+        expects_v2 = issubclass(self.default_config_cls, PickAndPlaceV2Config)
+        if not isinstance(config, PickAndPlaceConfig) or (
+            isinstance(config, PickAndPlaceV2Config) != expects_v2
+        ):
+            raise TypeError(f"{type(self).__name__} requires {self.default_config_cls.__name__}.")
         self._init_common(
             config=config,
             render_mode=render_mode,
@@ -208,6 +220,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             return self._get_target_pos() - self._get_object_pose()[:3]
         return super()._get_component_data(component)
 
+    def _placement_reference_pos(self) -> np.ndarray:
+        """Return the object reference for placement and reward calculations."""
+        return self._get_object_pose()[:3]
+
+    def _placement_success(
+        self, is_obj_placed: bool, is_obj_static: bool, is_grasped: float
+    ) -> bool:
+        return is_obj_placed and is_obj_static and is_grasped < 0.5
+
+    def _describe_target(self, obj: SceneObject, target_name: str) -> str:
+        return describe_place_target(obj, target_name)
+
     def _obj_placement_state(
         self, obj_pos: np.ndarray, target_pos: np.ndarray
     ) -> tuple[float, bool]:
@@ -260,7 +284,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _get_info(self) -> dict:
         tcp_pos = self._get_tcp_pose()[:3]
-        obj_pos = self._get_object_pose()[:3]
+        obj_pos = self._placement_reference_pos()
         target_pos = self._get_target_pos()
         is_grasped = self._is_grasping()
 
@@ -278,7 +302,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # diagnostic. Mirrors WarpPickAndPlaceVectorEnv._compute_reward_terminated;
         # see docs/superpowers/plans/
         # 2026-07-26-place-success-predicate-and-terminate-flag.md.
-        success = is_obj_placed and is_obj_static and is_grasped < 0.5
+        success = self._placement_success(is_obj_placed, is_obj_static, is_grasped)
 
         info = {
             "obj_to_target_dist": obj_to_target_dist,
@@ -332,8 +356,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _refresh_reset_reference_state(self) -> None:
         """Refresh the placement, reach, and grasp baselines from the post-settle pose."""
-        self._initial_obj_z = float(self._get_object_pose()[2])
-        obj_pos = self._get_object_pose()[:3]
+        obj_pos = self._placement_reference_pos()
+        self._initial_obj_z = float(obj_pos[2])
         target_pos = self._get_target_pos()
         is_grasped = self._is_grasping()
         _, is_obj_placed = self._obj_placement_state(obj_pos, target_pos)
@@ -379,7 +403,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # The disc colour is sampled per episode (reproducible under reset(seed=...)).
         self.target_color_name = sample_color_name(self.config.target_colors, rng)
         self.model.geom_rgba[self._target_geom_id] = COLOR_MAP[self.target_color_name]
-        self.task_description = describe_place_target(target_obj, self.target_color_name)
+        self.task_description = self._describe_target(target_obj, self.target_color_name)
 
         min_r = self.config.spawn_min_radius
         max_r = self.config.spawn_max_radius
@@ -445,3 +469,181 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
                     break
             placed.append((x, y, radius))
         return [(x, y) for x, y, _ in placed]
+
+
+class PickAndPlaceV2Env(PickAndPlaceEnv):
+    """Place the visual footprint center on the disc with sustained table support."""
+
+    config: PickAndPlaceV2Config
+    default_config_cls: ClassVar[type[PickAndPlaceConfig]] = PickAndPlaceV2Config
+
+    def __init__(
+        self,
+        config: PickAndPlaceV2Config | None = None,
+        render_mode: str | None = None,
+        control_mode: ControlMode = "pd_joint_pos",
+        robot_init_qpos_noise: float = 0.02,
+    ):
+        super().__init__(config, render_mode, control_mode, robot_init_qpos_noise)
+        self._placement_geometry = compiled_slot_geometry(self.model, self._slots)
+        self._placement_body_ids = [
+            int(self.model.body_rootid[self.model.geom_bodyid[slot.geom_id]])
+            for slot in self._slots
+        ]
+        self._placement_weights = [
+            float(self.model.body_subtreemass[body] * np.linalg.norm(self.model.opt.gravity))
+            for body in self._placement_body_ids
+        ]
+        self._floor_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        robot_root = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "base")
+        robot_bodies = np.zeros(self.model.nbody, dtype=bool)
+        robot_bodies[robot_root] = True
+        for body in range(robot_root + 1, self.model.nbody):
+            robot_bodies[body] = robot_bodies[self.model.body_parentid[body]]
+        self._placement_robot_geoms = robot_bodies[self.model.geom_bodyid]
+        self._placement_force_buffer = np.zeros(6)
+        self._placement_velocity_buffer = np.zeros(6)
+        self._placement_dwell = 0.0
+        self._placement_objects = [slot.obj for slot in self._slots]
+
+    @_observation_scoped
+    def _placement_reference_pos(self) -> np.ndarray:
+        """Use the projected visual union center and its lowest world-space point."""
+        index = self._target_slot_idx
+        body = self._placement_body_ids[index]
+        rotation = self.data.xmat[body].reshape(3, 3)
+        return visual_reference(
+            self._placement_geometry[index],
+            rotation,
+            self.data.xpos[body],
+            scanlines=self.config.footprint_scanlines,
+        )
+
+    @_observation_scoped
+    def _support_info(self) -> dict:
+        """Read solved contact forces and COM motion without advancing the dwell."""
+        table_force = robot_force = other_force = 0.0
+        contacts = self.data.contact
+        geoms = contacts.geom[: self.data.ncon]
+        is_object = self._obj_geom_mask[geoms]
+        rows = np.flatnonzero(is_object[:, 0] != is_object[:, 1])
+        force = self._placement_force_buffer
+        for row in rows:
+            object_first = bool(is_object[row, 0])
+            other = int(geoms[row, 1] if object_first else geoms[row, 0])
+            mujoco.mj_contactForce(self.model, self.data, row, force)
+            if other == self._floor_geom_id:
+                # The contact frame maps positive force onto geom2.
+                upward = float(contacts.frame[row].reshape(3, 3)[:, 2] @ force[:3])
+                table_force += -upward if object_first else upward
+            elif self._placement_robot_geoms[other]:
+                robot_force += float(np.linalg.norm(force[:3]))
+            elif other != self._target_geom_id:
+                other_force += float(np.linalg.norm(force[:3]))
+
+        velocity = self._placement_velocity_buffer
+        mujoco.mj_objectVelocity(
+            self.model,
+            self.data,
+            mujoco.mjtObj.mjOBJ_BODY,
+            self._placement_body_ids[self._target_slot_idx],
+            velocity,
+            0,
+        )
+        # mjOBJ_BODY measures motion at the inertial-frame center, not the freejoint origin.
+        linear_speed = float(np.linalg.norm(velocity[3:]))
+        angular_speed = float(np.linalg.norm(velocity[:3]))
+        table_ok, robot_supported, other_supported, static, qualified = support_state(
+            table_force,
+            robot_force,
+            other_force,
+            self._placement_weights[self._target_slot_idx],
+            linear_speed,
+            angular_speed,
+            min_weight_fraction=self.config.support_min_weight_fraction,
+            force_tolerance=self.config.support_force_tolerance,
+            relative_force_tolerance=self.config.support_relative_force_tolerance,
+            lin_threshold=self.config.object_static_lin_threshold,
+            ang_threshold=self.config.object_static_ang_threshold,
+        )
+        return {
+            "supported_by_table": bool(table_ok),
+            "supported_by_robot": bool(robot_supported),
+            "supported_by_other": bool(other_supported),
+            "table_support_force": table_force,
+            "robot_support_force": robot_force,
+            "other_support_force": other_force,
+            "object_linear_speed": linear_speed,
+            "object_angular_speed": angular_speed,
+            "is_obj_static": bool(static),
+            "qualified": bool(qualified),
+        }
+
+    @_observation_scoped
+    def _placement_info(self) -> dict:
+        """Return current placement diagnostics without changing the physics clock."""
+        support = self._support_info().copy()
+        qualified = support.pop("qualified")
+        reference = self._placement_reference_pos()
+        distance = float(np.linalg.norm(reference[:2] - self._get_target_pos()[:2]))
+        geometric_ok = distance <= self.config.target_disc_radius
+        placed = geometric_ok and qualified
+        return {
+            **support,
+            "placement_contract": resolved_placement_contract(
+                self.config,
+                self._placement_objects,
+                self._placement_weights,
+                float(self.model.opt.timestep),
+                self._target_slot_idx,
+            ),
+            "placement_centroid_xy": reference[:2].tolist(),
+            "obj_to_target_dist": distance,
+            "geometric_placement_ok": geometric_ok,
+            "is_obj_placed": placed,
+            "placement_dwell": self._placement_dwell,
+            "success": placed and self._placement_dwell >= self.config.placement_dwell_time,
+        }
+
+    def _obj_placement_state(
+        self, obj_pos: np.ndarray, target_pos: np.ndarray
+    ) -> tuple[float, bool]:
+        info = self._placement_info()
+        return info["obj_to_target_dist"], info["is_obj_placed"]
+
+    def _is_obj_static(self) -> bool:
+        return self._support_info()["is_obj_static"]
+
+    def _placement_success(
+        self, is_obj_placed: bool, is_obj_static: bool, is_grasped: float
+    ) -> bool:
+        return is_obj_placed and self._placement_dwell >= self.config.placement_dwell_time
+
+    def _describe_target(self, obj: SceneObject, target_name: str) -> str:
+        return self.config.describe_target(obj, target_name)
+
+    def _get_info(self) -> dict:
+        # Direct info queries need the same local memo window as _observe().
+        previous_cache = self._read_cache
+        if previous_cache is None:
+            self._read_cache = {}
+        try:
+            info = super()._get_info()
+            info.update(self._placement_info())
+            return info
+        finally:
+            self._read_cache = previous_cache
+
+    def _task_reset(self) -> None:
+        self._placement_dwell = 0.0
+        super()._task_reset()
+
+    def _advance_physics(self) -> None:
+        for _ in range(self._N_SUBSTEPS):
+            mujoco.mj_step(self.model, self.data)
+            if self._support_info()["qualified"]:
+                self._placement_dwell += float(self.model.opt.timestep)
+            else:
+                self._placement_dwell = 0.0
+        # Match geometry and observations to the final integrated state.
+        mujoco.mj_forward(self.model, self.data)

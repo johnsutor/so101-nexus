@@ -91,6 +91,7 @@ class RecordingState:
     episode_wrist_images: list[np.ndarray] = field(default_factory=list)
     episode_overhead_images: list[np.ndarray] = field(default_factory=list)
     task_description: str = ""
+    placement_contract: dict[str, Any] | None = None
     episode_duration: float = 0.0
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
@@ -112,6 +113,7 @@ class RecordingState:
         self.episode_wrist_images.clear()
         self.episode_overhead_images.clear()
         self.task_description = ""
+        self.placement_contract = None
         self.episode_duration = 0.0
         self.live_frame = None
         self.live_overhead_frame = None
@@ -365,6 +367,7 @@ def _append_step_buffers(
         state.episode_successes.append(0.0)
         state.episode_dones.append(0.0)
     else:
+        state.placement_contract = step_info.info.get("placement_contract")
         state.episode_successes.append(float(bool(step_info.info.get("success", False))))
         state.episode_dones.append(float(step_info.terminated or step_info.truncated))
     # Privileged state is the pre-step observation (s_t), aligned with

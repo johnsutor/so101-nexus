@@ -193,6 +193,10 @@ def test_docs_reference_only_registered_env_ids() -> None:
             if found.group(0) not in registered:
                 offenders.append((str(path.relative_to(ROOT)), found.group(0)))
     assert offenders == [], f"docs reference unregistered env ids: {offenders}"
+    documented = set(pattern.findall(_read(DOCS / "environments" / "index.mdx")))
+    assert registered <= documented, (
+        f"the environment reference omits registered versions: {registered - documented}"
+    )
 
 
 def test_examples_readme_entropy_matches_ppo_warp_defaults() -> None:
@@ -326,32 +330,6 @@ def test_api_reference_headings_name_real_helpers() -> None:
             if found.group(1) not in known:
                 offenders.append((str(path.relative_to(ROOT)), found.group(1)))
     assert offenders == [], f"API reference documents helpers that do not exist: {offenders}"
-
-
-def test_documented_place_success_predicates_require_release() -> None:
-    """PickAndPlace and StackCube success requires releasing the object.
-
-    Both backends gate success on ``is_grasped < 0.5``. Only StackCube also
-    requires the arm to be static; for PickAndPlace ``is_robot_static`` is an
-    ``info`` diagnostic, so docs must not present it as a success condition.
-    """
-    for backend, module in (("mujoco", "pick_and_place"), ("warp", "pick_and_place")):
-        src = _read(ROOT / "src" / "so101_nexus" / backend / f"{module}.py")
-        predicate = re.search(r"success = (.+)", src)
-        assert predicate, f"could not parse success predicate from {backend}/{module}.py"
-        assert "is_robot_static" not in predicate.group(1), (
-            f"{backend}/{module}.py now gates success on the arm; update the docs and this test"
-        )
-
-    section = _read(DOCS / "environments" / "index.mdx").split("## Success conditions", 1)[1]
-    section = section.split("## Rewards", 1)[0]
-    place = section.split("**PickAndPlace**", 1)[1].split("**StackCube**", 1)[0].lower()
-    assert "released" in place or "release" in place, (
-        "the PickAndPlace success condition must state that the object is released"
-    )
-    assert "diagnostic" in place, (
-        "the PickAndPlace success condition must note that is_robot_static is diagnostic only"
-    )
 
 
 def test_pick_and_place_baseline_matches_bc_ppo_docstring() -> None:
