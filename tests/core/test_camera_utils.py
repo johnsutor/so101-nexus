@@ -11,6 +11,7 @@ from so101_nexus.camera_utils import (
     _scene_bounds,
     compute_angled_camera_params,
     compute_overhead_camera_params,
+    compute_overhead_eye_target,
 )
 
 finite_center = st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False)
@@ -33,6 +34,23 @@ class TestSceneBounds:
 
 
 class TestComputeOverheadCameraParams:
+    @given(cx=finite_center, cy=finite_center, radius=positive_extent, margin=nonnegative_margin)
+    @settings(max_examples=200)
+    def test_default_framing_and_eye_target_agree(self, cx, cy, radius, margin):
+        kwargs = {"spawn_center": (cx, cy), "spawn_max_radius": radius, "margin": margin}
+        params = compute_overhead_camera_params(**kwargs)
+        eye, target = compute_overhead_eye_target(**kwargs)
+        assert math.isfinite(params["distance"])
+        assert params["distance"] > 0.0
+        assert params["elevation"] == -90
+        assert params["azimuth"] == 0
+        assert eye[0] == target[0]
+        assert eye[1] == target[1]
+        assert eye[2] > target[2]
+        assert target[2] == 0.0
+        np.testing.assert_array_equal(target, params["lookat"])
+        assert eye[2] == params["distance"]
+
     @given(
         cx=finite_center,
         cy=finite_center,
@@ -137,5 +155,6 @@ class TestComputeAngledCameraParams:
         assert set(angled) == {"lookat", "distance", "elevation", "azimuth"}
         np.testing.assert_array_equal(angled["lookat"], overhead["lookat"])
         assert angled["distance"] == pytest.approx(overhead["distance"] * 1.2)
+        assert angled["distance"] > overhead["distance"]
         assert angled["elevation"] == elev
         assert angled["azimuth"] == az

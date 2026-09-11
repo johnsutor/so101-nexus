@@ -138,6 +138,7 @@ def test_contact_force_reduction_handles_order_lateral_robot_force_and_stale_row
 def test_substep_support_loss_restarts_dwell(env, monkeypatch):
     import mujoco_warp as mjw
     import torch
+    import warp as wp
 
     _put_object(env, 0)
     _put_object(env, 1)
@@ -155,7 +156,9 @@ def test_substep_support_loss_restarts_dwell(env, monkeypatch):
 
     monkeypatch.setattr(env, "_support_info", support)
     monkeypatch.setattr(mjw, "step", lambda *args: None)
-    env._advance_physics()
+    # step() normally supplies the device context for this internal method.
+    with wp.ScopedDevice(env._wp_device):
+        env._advance_physics()
     assert env._placement_dwell[0] == pytest.approx(2 * env._mjm.opt.timestep)
     assert env._placement_dwell[1] >= env.config.placement_dwell_time
 

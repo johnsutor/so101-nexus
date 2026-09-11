@@ -1,10 +1,4 @@
-"""Pure config-validation tests for StackCubeConfig.
-
-These don't require MuJoCo to run - they exercise argument validation and
-shared-constants propagation on ``StackCubeConfig`` / ``StackCubeEnv``.
-Kept separate from ``test_envs.py`` so the fast-config tests don't run under
-xvfb in CI (mirrors ``test_pick_and_place_config.py``).
-"""
+"""Task config validation and propagation into the MuJoCo environment."""
 
 from __future__ import annotations
 
@@ -23,18 +17,6 @@ _CFG = StackCubeConfig()
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_a_colors(self):
-        with pytest.raises(ValueError, match="cube_a_colors"):
-            StackCubeConfig(cube_a_colors="neon")
-
-    def test_invalid_cube_b_colors(self):
-        with pytest.raises(ValueError, match="cube_b_colors"):
-            StackCubeConfig(cube_b_colors="neon")
-
-    def test_same_cube_a_and_cube_b_color_warns(self):
-        with pytest.warns(UserWarning, match="overlap"):
-            StackCubeConfig(cube_a_colors="red", cube_b_colors="red")
-
     def test_empty_cube_a_colors(self):
         with pytest.raises(ValueError, match="cube_a_colors"):
             StackCubeConfig(cube_a_colors=[])

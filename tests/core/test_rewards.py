@@ -35,11 +35,25 @@ class TestReachProgress:
     @settings(max_examples=200)
     def test_nonpositive_distance_clamped_to_zero(self, distance, scale):
         assert reach_progress(distance, scale=scale) == pytest.approx(1.0)
+        assert reach_progress(0.0, scale=scale) == 1.0
 
     @given(distance=finite_float, scale=positive_scale)
-    @settings(max_examples=100)
-    def test_scalar_path_returns_float(self, distance, scale):
-        assert isinstance(reach_progress(distance, scale=scale), float)
+    @settings(max_examples=200)
+    def test_scalar_path_is_finite_and_bounded(self, distance, scale):
+        value = reach_progress(distance, scale=scale)
+        assert isinstance(value, float)
+        assert math.isfinite(value)
+        assert 0.0 <= value <= 1.0
+
+    @given(
+        d1=st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False),
+        d2=st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False),
+        scale=positive_scale,
+    )
+    @settings(max_examples=200)
+    def test_progress_decreases_with_distance(self, d1, d2, scale):
+        near, far = sorted((d1, d2))
+        assert reach_progress(near, scale=scale) >= reach_progress(far, scale=scale) - 1e-12
 
 
 class TestOrientationProgress:
@@ -47,7 +61,9 @@ class TestOrientationProgress:
     @settings(max_examples=200)
     def test_matches_clamped_linear_formula(self, cos_similarity):
         expected = (max(-1.0, min(1.0, cos_similarity)) + 1.0) / 2.0
-        assert orientation_progress(cos_similarity) == pytest.approx(expected)
+        value = orientation_progress(cos_similarity)
+        assert value == pytest.approx(expected)
+        assert 0.0 <= value <= 1.0
 
 
 class TestSimpleReward:
@@ -62,6 +78,8 @@ class TestSimpleReward:
         shaped = (1.0 - completion_bonus) * progress
         expected = shaped + (1.0 - shaped) * success
         assert reward == pytest.approx(expected)
+        assert 0.0 <= reward <= 1.0
+        assert math.isfinite(reward)
 
     @given(progress=unit_float, completion_bonus=unit_float)
     @settings(max_examples=200)
@@ -71,7 +89,7 @@ class TestSimpleReward:
         lost = simple_reward(progress=progress, completion_bonus=completion_bonus, success=False)
         assert won == pytest.approx(1.0)
         assert lost <= 1.0 - completion_bonus + 1e-9
-        assert won >= lost - 1e-9
+        assert won >= lost - 1e-12
 
 
 class TestObjectStaticOk:
@@ -108,7 +126,7 @@ class TestCubeStackOffsetOk:
     """Mirrors ManiSkill StackCubeEnv.evaluate's xy_flag / z_flag check."""
 
     def test_exact_stack_pose_is_ok(self):
-        # Cube A centred directly above cube B by exactly 2 * half_size.
+        # Cube A centered directly above cube B by exactly 2 * half_size.
         assert cube_stack_offset_ok(0.0, 0.0, 0.025, cube_half_size=0.0125, margin=0.005)
 
     def test_within_margin_is_ok(self):
