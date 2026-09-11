@@ -56,7 +56,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
     config: MoveConfig
     default_config_cls: ClassVar[type[MoveConfig]] = MoveConfig
 
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
+    metadata = {**SO101NexusMuJoCoBaseEnv.metadata, "render_fps": 20}
 
     def __init__(
         self,

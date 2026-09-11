@@ -159,7 +159,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     must **never** call ``_is_grasping()``.
     """
 
-    metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}
+    metadata = {"render_modes": ["rgb_array", "depth_array", "human"], "render_fps": 50}
     model: mujoco.MjModel
     data: mujoco.MjData
     config: EnvironmentConfig
@@ -379,22 +379,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         obs_dict: dict[str, spaces.Space] = {
             "state": spaces.Box(low=-np.inf, high=np.inf, shape=(state_size,), dtype=np.float32),
         }
-        if self._wrist_cam_component is not None:
-            wc = self._wrist_cam_component
-            obs_dict["wrist_camera"] = spaces.Box(
-                low=0,
-                high=255,
-                shape=(wc.height, wc.width, 3),
-                dtype=np.uint8,
-            )
-        if self._overhead_cam_component is not None:
-            oc = self._overhead_cam_component
-            obs_dict["overhead_camera"] = spaces.Box(
-                low=0,
-                high=255,
-                shape=(oc.height, oc.width, 3),
-                dtype=np.uint8,
-            )
+        for comp in (self._wrist_cam_component, self._overhead_cam_component):
+            if comp is not None:
+                obs_dict.update(comp.observation_spaces())
         return spaces.Dict(obs_dict)
 
     def _reset_robot_joints(self, init_qpos: np.ndarray | None = None) -> np.ndarray:
@@ -824,7 +811,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 raise ValueError(f"Unsupported observation component: {comp!r}")
             else:
                 parts.append(getattr(self, reader)())
-        return np.concatenate(parts).astype(np.float32, copy=False)
+        return (
+            np.concatenate(parts).astype(np.float32, copy=False)
+            if parts
+            else np.empty(0, dtype=np.float32)
+        )
 
     @classmethod
     @cache
@@ -1054,8 +1045,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         )
 
     def render(self) -> np.ndarray | None:
-        """Render the current frame and return an RGB array, or None."""
-        if self.render_mode == "rgb_array":
+        """Return RGB pixels, metric depth, or None according to render mode."""
+        if self.render_mode in ("rgb_array", "depth_array"):
             if self._renderer is None:
                 self._renderer = mujoco.Renderer(
                     self.model,
@@ -1066,6 +1057,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
                 self._render_cam = mujoco.MjvCamera()
                 _configure_free_camera(self._render_cam, self._render_camera_params())
             self._renderer.update_scene(self.data, camera=self._render_cam)
+            if self.render_mode == "depth_array":
+                return self._render_depth(self._renderer)
+            self._renderer.disable_depth_rendering()
             return self._renderer.render()
         if self.render_mode == "human":
             if self._viewer is None:
@@ -1151,18 +1145,32 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         else:
             obs["state"] = state
 
-        if self._wrist_renderer is not None:
-            self._wrist_renderer.update_scene(self.data, camera=self._wrist_cam_id)
-            obs["wrist_camera"] = self._wrist_renderer.render()
-
-        overhead_renderer = self._overhead_obs_renderer
-        if overhead_renderer is not None:
-            if self._overhead_obs_cam is None:
-                raise RuntimeError("overhead camera id is not initialized")
-            overhead_renderer.update_scene(self.data, camera=self._overhead_obs_cam)
-            obs["overhead_camera"] = overhead_renderer.render()
+        for comp, renderer, camera in (
+            (self._wrist_cam_component, self._wrist_renderer, self._wrist_cam_id),
+            (self._overhead_cam_component, self._overhead_obs_renderer, self._overhead_obs_cam),
+        ):
+            if comp is None or renderer is None:
+                continue
+            if camera is None:
+                raise RuntimeError("camera is not initialized")
+            renderer.update_scene(self.data, camera=camera)
+            if "rgb" in comp.modalities:
+                renderer.disable_depth_rendering()
+                obs[comp.name] = renderer.render()
+            if "depth" in comp.modalities:
+                obs[f"{comp.name}_depth"] = self._render_depth(renderer)
 
         return obs
+
+    def _render_depth(self, renderer: mujoco.Renderer) -> np.ndarray:
+        renderer.enable_depth_rendering()
+        try:
+            depth = renderer.render()
+        finally:
+            renderer.disable_depth_rendering()
+        far = np.float32(self.model.vis.map.zfar * self.model.stat.extent)
+        # The OpenGL depth-buffer inversion can round background past the far plane.
+        return np.minimum(depth, far)
 
     def _get_info(self) -> dict:
         raise NotImplementedError

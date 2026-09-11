@@ -11,6 +11,11 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Wrist and overhead cameras support RGB, metric depth, or both through
+  `modalities` on native MuJoCo and MuJoCo Warp. Depth observations use separate
+  `*_camera_depth` keys with float32 distances in meters. Native MuJoCo also
+  supports `render_mode="depth_array"` for overhead and side views.
+
 - `MuJoCoPickAndPlace-v2`, `WarpPickAndPlace-v2`, and `PickAndPlaceV2Config`
   add center placement against the visible target disc.
   The evaluator uses the projected visual footprint centroid, force-qualified
@@ -30,6 +35,11 @@ for the public-API and deprecation policy.
 - The documentation now lists the `viz` extra and clarifies visual observations,
   episode termination, PickAndPlace static thresholds, LookAt targets, LeRobot
   wrapper requirements, and rollout-recorder camera setup.
+
+### Fixed
+
+- Native MuJoCo now accepts camera-only observation lists with an empty state
+  vector, matching Warp.
 
 ## [0.5.4] - 2026-08-27
 

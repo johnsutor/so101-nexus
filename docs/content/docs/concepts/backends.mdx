@@ -13,11 +13,16 @@ MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.Sync
 
 The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`.
 
-Warp envs route the same composable state observation components as MuJoCo (see the [component table](/docs/concepts/observations) for the full list, which the two backends share). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Camera observations return `uint8` image tensors of shape `(num_envs, height, width, 3)`, with per-world wrist-camera domain randomization.
+Warp envs route the same composable state observation components as MuJoCo (see the [component table](/docs/concepts/observations) for the full list, which the two backends share). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Cameras support RGB and depth, with per-world wrist-camera domain randomization. See [Depth observations](/docs/concepts/observations#depth-observations) for the output contract.
 
 ## Render Modes
 
-MuJoCo envs support Gymnasium `render_mode="human"` and `render_mode="rgb_array"` for visualization. The rendered view is selected by `RenderConfig(camera=...)`: the default top-down overhead view, or `camera="side"` for an angled tabletop bystander view (visualization only, never an observation). Warp envs do not implement `render()` because images are produced as observation tensors; passing a `render_mode` to `gym.make_vec()` is accepted for compatibility, warns, and is ignored, and `RenderConfig.camera` consequently has no effect there. Configure `WristCamera` or `OverheadCamera` in `observations` when a Warp policy needs pixels.
+MuJoCo envs support Gymnasium `render_mode="human"`, `render_mode="rgb_array"`, and `render_mode="depth_array"`.
+The depth render mode uses the same [metric depth contract](/docs/concepts/observations#depth-observations) as camera observations.
+The rendered view is selected by [RenderConfig](/docs/api/configs#renderconfig).
+Warp envs produce images through camera observations and do not implement `render()`.
+Passing `render_mode` to `gym.make_vec()` produces a warning and has no effect.
+For Warp RGB or depth, configure `WristCamera` or `OverheadCamera` in `observations`.
 
 ## Object Pools and the Batched Model
 
