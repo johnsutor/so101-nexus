@@ -1,14 +1,16 @@
 """Tests for obs_mode config validation."""
 
+import numpy as np
 import pytest
 
-from so101_nexus import PickConfig
-from so101_nexus.config import EnvironmentConfig, PickAndPlaceConfig
-from so101_nexus.mujoco.look_at_env import LookAtConfig, LookAtEnv
-from so101_nexus.mujoco.move_env import MoveConfig, MoveEnv
-from so101_nexus.mujoco.pick_and_place import PickAndPlaceEnv
-from so101_nexus.mujoco.pick_env import PickLiftEnv
-from so101_nexus.mujoco.touch_env import TouchConfig, TouchEnv
+from so101_nexus import (
+    EnvironmentConfig,
+    LookAtConfig,
+    MoveConfig,
+    PickAndPlaceConfig,
+    PickConfig,
+    TouchConfig,
+)
 from so101_nexus.observations import (
     EndEffectorPose,
     GraspState,
@@ -21,7 +23,6 @@ from so101_nexus.observations import (
     WristCamera,
 )
 
-# Default state observation components for each env type (matching test_envs.py)
 _PICK_STATE_OBS = [
     JointPositions,
     JointVelocities,
@@ -57,154 +58,52 @@ class TestObsModeConfig:
             EnvironmentConfig(obs_mode="invalid")
 
 
-class TestObsModeVisualPickEnv:
-    """Visual obs_mode tests using WristCamera in observations."""
-
-    def _pick_obs_with_camera(self):
-        return [cls() for cls in _PICK_STATE_OBS] + [WristCamera(width=64, height=48)]
-
-    def test_visual_obs_state_is_6d(self):
-        cfg = PickConfig(
-            obs_mode="visual",
-            observations=self._pick_obs_with_camera(),
-        )
-        env = PickLiftEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
+@pytest.mark.parametrize(
+    "task,config_cls,components,state_size,obs_mode",
+    [
+        pytest.param(
+            "PickLift", PickConfig, _PICK_STATE_OBS, _PICK_STATE_SIZE, "visual", id="pick-visual"
+        ),
+        pytest.param(
+            "PickLift", PickConfig, _PICK_STATE_OBS, _PICK_STATE_SIZE, "state", id="pick-state"
+        ),
+        pytest.param(
+            "PickAndPlace",
+            PickAndPlaceConfig,
+            _PICK_AND_PLACE_STATE_OBS,
+            _PICK_AND_PLACE_STATE_SIZE,
+            "visual",
+            id="place-visual",
+        ),
+        pytest.param(
+            "PickAndPlace",
+            PickAndPlaceConfig,
+            _PICK_AND_PLACE_STATE_OBS,
+            _PICK_AND_PLACE_STATE_SIZE,
+            "state",
+            id="place-state",
+        ),
+        pytest.param(
+            "Touch", TouchConfig, _TOUCH_STATE_OBS, _TOUCH_STATE_SIZE, "visual", id="touch-visual"
+        ),
+        pytest.param("LookAt", LookAtConfig, [JointPositions], 6, "visual", id="lookat-visual"),
+        pytest.param("Move", MoveConfig, [JointPositions], 6, "visual", id="move-visual"),
+    ],
+)
+def test_obs_mode_routes_state_and_privileged_state(
+    task, config_cls, components, state_size, obs_mode, env_factory
+):
+    config = config_cls(
+        obs_mode=obs_mode,
+        observations=[cls() for cls in components] + [WristCamera(width=64, height=48)],
+    )
+    env = env_factory(task=task, config=config)
+    obs, info = env.reset(seed=0)
+    assert isinstance(obs, dict)
+    assert obs["state"].dtype == np.float32
+    if obs_mode == "visual":
         assert obs["state"].shape == (6,)
-        env.close()
-
-    def test_visual_obs_privileged_state_in_info(self):
-        cfg = PickConfig(
-            obs_mode="visual",
-            observations=self._pick_obs_with_camera(),
-        )
-        env = PickLiftEnv(config=cfg)
-        obs, info = env.reset()
-        assert "privileged_state" in info
-        assert info["privileged_state"].shape == (_PICK_STATE_SIZE,)
-        env.close()
-
-    def test_state_mode_unchanged(self):
-        """Default obs_mode='state' still returns full state vector."""
-        cfg = PickConfig(
-            observations=self._pick_obs_with_camera(),
-        )
-        env = PickLiftEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
-        assert obs["state"].shape == (_PICK_STATE_SIZE,)
+        assert info["privileged_state"].shape == (state_size,)
+    else:
+        assert obs["state"].shape == (state_size,)
         assert "privileged_state" not in info
-        env.close()
-
-
-class TestObsModeVisualPickAndPlace:
-    def _pnp_obs_with_camera(self):
-        return [cls() for cls in _PICK_AND_PLACE_STATE_OBS] + [WristCamera(width=64, height=48)]
-
-    def test_visual_obs_state_is_6d(self):
-        cfg = PickAndPlaceConfig(
-            obs_mode="visual",
-            observations=self._pnp_obs_with_camera(),
-        )
-        env = PickAndPlaceEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
-        assert obs["state"].shape == (6,)
-        env.close()
-
-    def test_visual_obs_privileged_state_in_info(self):
-        cfg = PickAndPlaceConfig(
-            obs_mode="visual",
-            observations=self._pnp_obs_with_camera(),
-        )
-        env = PickAndPlaceEnv(config=cfg)
-        obs, info = env.reset()
-        assert "privileged_state" in info
-        assert info["privileged_state"].shape == (_PICK_AND_PLACE_STATE_SIZE,)
-        env.close()
-
-    def test_state_mode_unchanged(self):
-        cfg = PickAndPlaceConfig(
-            observations=self._pnp_obs_with_camera(),
-        )
-        env = PickAndPlaceEnv(config=cfg)
-        obs, info = env.reset()
-        assert obs["state"].shape == (_PICK_AND_PLACE_STATE_SIZE,)
-        assert "privileged_state" not in info
-        env.close()
-
-
-class TestObsModeVisualTouchEnv:
-    def _touch_obs_with_camera(self):
-        return [cls() for cls in _TOUCH_STATE_OBS] + [WristCamera(width=64, height=48)]
-
-    def test_visual_obs_state_is_6d(self):
-        cfg = TouchConfig(
-            obs_mode="visual",
-            observations=self._touch_obs_with_camera(),
-        )
-        env = TouchEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
-        assert obs["state"].shape == (6,)
-        env.close()
-
-    def test_visual_obs_privileged_state_in_info(self):
-        cfg = TouchConfig(
-            obs_mode="visual",
-            observations=self._touch_obs_with_camera(),
-        )
-        env = TouchEnv(config=cfg)
-        obs, info = env.reset()
-        assert "privileged_state" in info
-        assert info["privileged_state"].shape == (_TOUCH_STATE_SIZE,)
-        env.close()
-
-
-class TestObsModeVisualLookAtEnv:
-    def test_visual_obs_state_is_6d(self):
-        cfg = LookAtConfig(
-            obs_mode="visual",
-            observations=[JointPositions(), WristCamera(width=64, height=48)],
-        )
-        env = LookAtEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
-        assert obs["state"].shape == (6,)
-        env.close()
-
-    def test_visual_obs_privileged_state_in_info(self):
-        cfg = LookAtConfig(
-            obs_mode="visual",
-            observations=[JointPositions(), WristCamera(width=64, height=48)],
-        )
-        env = LookAtEnv(config=cfg)
-        obs, info = env.reset()
-        assert "privileged_state" in info
-        assert info["privileged_state"].shape == (6,)
-        env.close()
-
-
-class TestObsModeVisualMoveEnv:
-    def test_visual_obs_state_is_6d(self):
-        cfg = MoveConfig(
-            obs_mode="visual",
-            observations=[JointPositions(), WristCamera(width=64, height=48)],
-        )
-        env = MoveEnv(config=cfg)
-        obs, info = env.reset()
-        assert isinstance(obs, dict)
-        assert obs["state"].shape == (6,)
-        env.close()
-
-    def test_visual_obs_privileged_state_in_info(self):
-        cfg = MoveConfig(
-            obs_mode="visual",
-            observations=[JointPositions(), WristCamera(width=64, height=48)],
-        )
-        env = MoveEnv(config=cfg)
-        obs, info = env.reset()
-        assert "privileged_state" in info
-        assert info["privileged_state"].shape == (6,)
-        env.close()

@@ -216,6 +216,7 @@ def test_read_sim_qpos_reads_unwrapped_current_qpos() -> None:
 
 
 def test_read_gripper_limits_rad_reads_env_control_range() -> None:
+    """Envs without an explicit control mode retain absolute-radian bounds."""
     from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
 
     assert read_gripper_limits_rad(_FakeEnv()) == (0.25, 0.75)
@@ -261,13 +262,6 @@ def test_action_for_env_rejects_delta_control_modes(control_mode: str) -> None:
 
     with pytest.raises(ValueError, match=control_mode):
         action_for_env(_FakeDeltaEnv(control_mode), np.zeros(6))
-
-
-def test_control_bounds_helpers_accept_envs_without_a_control_mode() -> None:
-    """Envs that never declare a control mode keep working; only delta modes are refused."""
-    from so101_nexus.lerobot_adapter.normalization import read_gripper_limits_rad
-
-    assert read_gripper_limits_rad(_FakeEnv()) == (0.25, 0.75)
 
 
 def test_read_sim_qpos_supports_tensor_shape() -> None:

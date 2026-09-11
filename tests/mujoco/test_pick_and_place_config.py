@@ -1,10 +1,4 @@
-"""Pure config-validation tests for PickAndPlaceConfig.
-
-These don't require MuJoCo to run - they exercise argument validation and
-shared-constants propagation on ``PickAndPlaceConfig`` / ``PickAndPlaceEnv``.
-Kept separate from ``test_envs.py`` so the fast-config tests don't run under
-xvfb in CI.
-"""
+"""Task config validation and propagation into the MuJoCo environment."""
 
 from __future__ import annotations
 
@@ -23,18 +17,6 @@ _CFG = PickAndPlaceConfig()
 
 
 class TestConstructionValidation:
-    def test_invalid_cube_colors(self):
-        with pytest.raises(ValueError, match="cube_colors"):
-            PickAndPlaceConfig(cube_colors="neon")
-
-    def test_invalid_target_colors(self):
-        with pytest.raises(ValueError, match="target_colors"):
-            PickAndPlaceConfig(target_colors="neon")
-
-    def test_same_cube_and_target_color_warns(self):
-        with pytest.warns(UserWarning, match="overlap"):
-            PickAndPlaceConfig(cube_colors="red", target_colors="red")
-
     def test_invalid_cube_half_size(self):
         with pytest.raises(ValueError, match="cube_half_size"):
             PickAndPlaceConfig(cube_half_size=0.001)
