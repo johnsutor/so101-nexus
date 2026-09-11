@@ -64,7 +64,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
     config: LookAtConfig
     default_config_cls: ClassVar[type[LookAtConfig]] = LookAtConfig
 
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
+    metadata = {**SO101NexusMuJoCoBaseEnv.metadata, "render_fps": 20}
 
     def __init__(
         self,

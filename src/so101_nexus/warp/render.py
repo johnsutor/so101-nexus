@@ -1,4 +1,4 @@
-"""Batched RGB readout for the MuJoCo Warp renderer.
+"""Batched RGB and metric depth readout for the MuJoCo Warp renderer.
 
 ``mujoco_warp.render`` packs each rendered pixel into a single ``uint32`` (ABGR)
 inside ``RenderContext.rgb_data``. ``mujoco_warp.get_rgb`` unpacks that into
@@ -54,5 +54,42 @@ def unpack_rgb_uint8(rc, camera_index: int, out: wp.array) -> None:
         _unpack_rgb_uint8,
         dim=(n_worlds, height * width),
         inputs=[rc.rgb_data, rc.rgb_adr, camera_index],
+        outputs=[out],
+    )
+
+
+@wp.kernel
+def _read_depth_meters(
+    depth: wp.array2d[wp.float32],
+    depth_adr: wp.array[int],
+    camera_index: int,
+    far: float,
+    out: wp.array3d[wp.float32],
+):
+    worldid, yid, xid = wp.tid()
+    value = depth[worldid, depth_adr[camera_index] + yid * out.shape[2] + xid]
+    # Warp clears missed rays to zero; MuJoCo returns the far-plane distance.
+    out[worldid, yid, xid] = wp.where(value > 0.0, wp.min(value, far), far)
+
+
+def read_depth_meters(rc, camera_index: int, far: float, out: wp.array) -> None:
+    """Copy planar depth in meters, using the far plane for missing pixels.
+
+    Parameters
+    ----------
+    rc
+        Render context after ``mujoco_warp.render``.
+    camera_index
+        Index in the render context's active-camera list.
+    far
+        Model far clipping distance in meters.
+    out
+        Float32 Warp array of shape ``(num_worlds, height, width)``.
+    """
+    # get_depth normalizes and clamps to [0, 1], losing metric distances.
+    wp.launch(
+        _read_depth_meters,
+        dim=out.shape,
+        inputs=[rc.depth_data, rc.depth_adr, camera_index, far],
         outputs=[out],
     )

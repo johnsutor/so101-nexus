@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+from gymnasium import spaces
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -292,15 +293,32 @@ class CameraObservation(Observation):
         Image width in pixels.
     height : int
         Image height in pixels.
+    modalities : tuple of {"rgb", "depth"}
+        Requested outputs. Depth uses a separate ``<name>_depth`` key with
+        float32 optical-axis distances in meters and shape ``(height, width)``.
     """
 
     _name: str  # set by subclasses
 
-    def __init__(self, width: int = 640, height: int = 480) -> None:
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        *,
+        modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
+    ) -> None:
         if width <= 0 or height <= 0:
             raise ValueError(f"Camera dimensions must be > 0, got {width}x{height}")
         self.width = width
         self.height = height
+        if (
+            isinstance(modalities, str)
+            or not modalities
+            or any(m not in ("rgb", "depth") for m in modalities)
+            or len(set(modalities)) != len(modalities)
+        ):
+            raise ValueError("modalities must contain 'rgb', 'depth', or both without duplicates")
+        self.modalities = tuple(modalities)
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -311,7 +329,23 @@ class CameraObservation(Observation):
         return 0
 
     def __repr__(self) -> str:  # noqa: D105
-        return f"{type(self).__name__}(width={self.width}, height={self.height})"
+        return (
+            f"{type(self).__name__}(width={self.width}, height={self.height}, "
+            f"modalities={self.modalities!r})"
+        )
+
+    def observation_spaces(self) -> dict[str, spaces.Space]:
+        """Return unbatched spaces for the requested RGB and metric depth outputs."""
+        outputs: dict[str, spaces.Space] = {}
+        if "rgb" in self.modalities:
+            outputs[self.name] = spaces.Box(
+                0, 255, shape=(self.height, self.width, 3), dtype=np.uint8
+            )
+        if "depth" in self.modalities:
+            outputs[f"{self.name}_depth"] = spaces.Box(
+                0, np.inf, shape=(self.height, self.width), dtype=np.float32
+            )
+        return outputs
 
 
 _CameraObservation = CameraObservation
@@ -319,7 +353,7 @@ _CameraObservation = CameraObservation
 
 
 class WristCamera(CameraObservation):
-    """RGB image from the camera mounted on the robot's wrist.
+    """RGB and/or metric depth from the camera mounted on the robot's wrist.
 
     Parameters
     ----------
@@ -341,6 +375,8 @@ class WristCamera(CameraObservation):
         Nominal z-offset of the camera from the wrist.
     pos_z_noise : float
         Noise magnitude for camera z-position.
+    modalities : tuple of {"rgb", "depth"}
+        Requested outputs, defaulting to RGB only.
     """
 
     _name = "wrist_camera"
@@ -356,8 +392,10 @@ class WristCamera(CameraObservation):
         pos_y_noise: float = 0.01,
         pos_z_center: float = -0.04,
         pos_z_noise: float = 0.01,
+        *,
+        modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
     ) -> None:
-        super().__init__(width=width, height=height)
+        super().__init__(width=width, height=height, modalities=modalities)
         self.fov_deg_range = fov_deg_range
         self.pitch_deg_range = pitch_deg_range
         self.pos_x_noise = pos_x_noise
@@ -384,7 +422,7 @@ class WristCamera(CameraObservation):
 
 
 class OverheadCamera(CameraObservation):
-    """RGB image from the stationary camera above the workspace.
+    """RGB and/or metric depth from the stationary camera above the workspace.
 
     Parameters
     ----------
@@ -394,6 +432,8 @@ class OverheadCamera(CameraObservation):
         Image height in pixels.
     fov_deg : float
         Vertical field-of-view in degrees.
+    modalities : tuple of {"rgb", "depth"}
+        Requested outputs, defaulting to RGB only.
     """
 
     _name = "overhead_camera"
@@ -403,8 +443,10 @@ class OverheadCamera(CameraObservation):
         width: int = 640,
         height: int = 480,
         fov_deg: float = 45.0,
+        *,
+        modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
     ) -> None:
-        super().__init__(width=width, height=height)
+        super().__init__(width=width, height=height, modalities=modalities)
         self.fov_deg = fov_deg
 
 

@@ -87,7 +87,7 @@ from so101_nexus.observations import (
     OverheadCamera,
     WristCamera,
 )
-from so101_nexus.warp.render import unpack_rgb_uint8
+from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
 
 # Normalized-delta physical scale (radians), shared with the MuJoCo backend's
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
@@ -517,8 +517,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 mjm,
                 nworld=self.num_envs,
                 cam_res=cam_res,
-                render_rgb=True,
-                render_depth=False,
+                render_rgb=["rgb" in spec_by_id[cid].modalities for cid in active_ids],
+                render_depth=["depth" in spec_by_id[cid].modalities for cid in active_ids],
                 render_seg=False,
                 cam_active=cam_active,
                 use_precomputed_rays=use_precomputed_rays,
@@ -558,14 +558,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             "state": spaces.Box(-np.inf, np.inf, shape=(state_size,), dtype=np.float32),
         }
         for comp, _ in self._cam_specs:
-            obs_spaces[comp.name] = spaces.Box(
-                low=0, high=255, shape=(comp.height, comp.width, 3), dtype=np.uint8
-            )
+            obs_spaces.update(comp.observation_spaces())
         self.single_observation_space = spaces.Dict(obs_spaces)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
 
     def _render_camera_images(self) -> dict[str, torch.Tensor]:
-        """Render all active cameras and return ``name -> (N, H, W, 3)`` uint8 tensors."""
+        """Return requested RGB and metric depth tensors on the simulation device."""
         self._image_bufs = []
         images: dict[str, torch.Tensor] = {}
         with wp.ScopedDevice(self._wp_device):
@@ -573,10 +571,23 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             mjw.refit_bvh(self.model, self.data, self._render_ctx)
             mjw.render(self.model, self.data, self._render_ctx)
             for comp, cid in self._cam_specs:
-                buf = wp.empty((self.num_envs, comp.height, comp.width, 3), dtype=wp.uint8)
-                unpack_rgb_uint8(self._render_ctx, self._render_index[cid], buf)
-                self._image_bufs.append(buf)  # keep alive for the returned torch views
-                images[comp.name] = wp.to_torch(buf)
+                for modality in comp.modalities:
+                    shape = (self.num_envs, comp.height, comp.width)
+                    if modality == "rgb":
+                        buf = wp.empty((*shape, 3), dtype=wp.uint8)
+                        unpack_rgb_uint8(self._render_ctx, self._render_index[cid], buf)
+                        key = comp.name
+                    else:
+                        buf = wp.empty(shape, dtype=wp.float32)
+                        read_depth_meters(
+                            self._render_ctx,
+                            self._render_index[cid],
+                            self.mjm.vis.map.zfar * self.mjm.stat.extent,
+                            buf,
+                        )
+                        key = f"{comp.name}_depth"
+                    self._image_bufs.append(buf)  # keep alive for the returned torch views
+                    images[key] = wp.to_torch(buf)
         return images
 
     def _update_render_markers(self) -> None:

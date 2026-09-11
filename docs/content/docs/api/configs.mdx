@@ -24,7 +24,7 @@ render = RenderConfig(camera="side")
 |-----------|------|---------|-------------|
 | `width` | `int` | `640` | Render image width in pixels |
 | `height` | `int` | `480` | Render image height in pixels |
-| `camera` | `"overhead" \| "side"` | `"overhead"` | View used by `render_mode="rgb_array"` and as the initial `render_mode="human"` viewpoint. `"overhead"` looks straight down; `"side"` is an angled tabletop bystander view |
+| `camera` | `"overhead" \| "side"` | `"overhead"` | View for `rgb_array`, `depth_array`, and the initial `human` viewpoint. `"overhead"` looks straight down. `"side"` selects an angled view. |
 | `side_azimuth_deg` | `float` | `160.0` | Azimuth of the side view in degrees |
 | `side_elevation_deg` | `float` | `-30.0` | Elevation of the side view in degrees, in `[-90, 0)` |
 
@@ -279,6 +279,11 @@ Observation components are lightweight descriptor classes passed via the `observ
 
 ### Camera Components
 
+Both camera classes accept the keyword-only `modalities` parameter.
+Use `("rgb",)` for RGB, `("depth",)` for depth, or `("rgb", "depth")` for both.
+The default is `("rgb",)`. Empty, duplicate, and unknown modalities raise `ValueError`.
+See [Depth observations](/docs/concepts/observations#depth-observations) for output keys, units, shapes, and clipping behavior.
+
 #### `WristCamera`
 
 ```python
@@ -298,6 +303,7 @@ cam = WristCamera(width=224, height=224)
 | `pos_y_noise` | `float` | `0.01` | Position noise along y-axis |
 | `pos_z_center` | `float` | `-0.04` | Nominal z-offset from the wrist |
 | `pos_z_noise` | `float` | `0.01` | Position noise along z-axis |
+| `modalities` | `tuple[Literal["rgb", "depth"], ...]` | `("rgb",)` | Requested camera outputs |
 
 Properties: `fov_rad_range`, `pitch_rad_range` (converted to radians).
 
@@ -314,6 +320,7 @@ cam = OverheadCamera(width=320, height=240, fov_deg=45.0)
 | `width` | `int` | `640` | Image width in pixels |
 | `height` | `int` | `480` | Image height in pixels |
 | `fov_deg` | `float` | `45.0` | Vertical field-of-view in degrees |
+| `modalities` | `tuple[Literal["rgb", "depth"], ...]` | `("rgb",)` | Requested camera outputs |
 
 ---
 

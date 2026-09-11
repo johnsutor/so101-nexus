@@ -140,7 +140,7 @@ class RenderConfig:
     height : int
         Render image height in pixels.
     camera : {"overhead", "side"}
-        Free-camera view used by ``render_mode="rgb_array"`` and as the initial
+        Free-camera view used by ``rgb_array`` and ``depth_array``, and as the initial
         viewpoint of the ``render_mode="human"`` viewer. ``"overhead"`` looks
         straight down at the workspace; ``"side"`` is an angled tabletop
         bystander view. MuJoCo backend only; the Warp backend implements no

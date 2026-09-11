@@ -36,8 +36,8 @@ Camera components add image tensors to a dict-style observation space. They have
 
 | Component | Key | Description |
 | --- | --- | --- |
-| `WristCamera` | `"wrist_camera"` | RGB image from the camera mounted on the robot's wrist |
-| `OverheadCamera` | `"overhead_camera"` | RGB image from a stationary camera above the workspace |
+| `WristCamera` | `"wrist_camera"`, `"wrist_camera_depth"` | RGB or depth from the camera on the robot's wrist |
+| `OverheadCamera` | `"overhead_camera"`, `"overhead_camera_depth"` | RGB or depth from the stationary camera above the workspace |
 
 Camera components accept `width` and `height` parameters (default 640x480). `WristCamera` also supports domain randomization parameters for FOV and pitch.
 
@@ -54,7 +54,47 @@ wrist = WristCamera(width=224, height=224, fov_deg_range=(60.0, 90.0))
 overhead = OverheadCamera(width=320, height=240, fov_deg=45.0)
 ```
 
-Both backends render camera observations, and observation keys, shapes, and dtypes match. Pixel values do not: the MuJoCo backend rasterizes on CPU through per-env OpenGL renderers, while the MuJoCo Warp backend ray-traces all worlds in one batched pass on the simulation device, returning `uint8` tensors of shape `(num_envs, height, width, 3)`. Warp camera observations are independent of Gymnasium `render_mode`; `render_mode` visualization is MuJoCo-only. See [Backends](/docs/concepts/backends).
+Both backends render camera observations with the same keys, shapes, and dtypes, except for Warp's leading batch dimension.
+MuJoCo uses a separate OpenGL renderer for each environment. Warp traces rays for all worlds in one batch on the simulation device.
+The renderers produce different pixel values at the same simulator state.
+See [Backends](/docs/concepts/backends) for execution and render modes.
+
+### Depth observations
+
+Select depth on either camera component:
+
+```python
+from so101_nexus import JointPositions, OverheadCamera, TouchConfig, WristCamera
+
+config = TouchConfig(observations=[
+    JointPositions(),
+    WristCamera(width=224, height=224, modalities=("rgb", "depth")),
+    OverheadCamera(width=320, height=240, modalities=("depth",)),
+])
+```
+
+Use this config with either backend's [environment creation loop](/docs/getting-started/quickstart).
+The observation contains `state`, `wrist_camera`, `wrist_camera_depth`, and `overhead_camera_depth`.
+The [camera API](/docs/api/configs#camera-components) defines the accepted modalities and defaults.
+
+| Output | MuJoCo NumPy array | Warp torch tensor | Values |
+| --- | --- | --- | --- |
+| RGB | `(height, width, 3)`, `uint8` | `(num_envs, height, width, 3)`, `uint8` | Color channels from 0 to 255 |
+| Depth | `(height, width)`, `float32` | `(num_envs, height, width)`, `float32` | Optical-axis distance in meters |
+
+Depth measures distance along the camera's forward axis, rather than Euclidean distance along each pixel's ray.
+A flat surface parallel to the image plane has constant depth.
+RGB and depth share the camera pose, resolution, and field of view, including wrist randomization at reset.
+Warp depth stays on the simulation device. Returned images retain their values across later steps and resets.
+
+Missing surfaces and surfaces beyond the far clipping plane return the far distance, `model.vis.map.zfar * model.stat.extent`.
+For Warp, the host model is `envs.unwrapped.mjm`.
+Depth values are not normalized, so distances greater than one meter remain greater than one.
+Rasterization and ray tracing can disagree at silhouettes and near clipping boundaries.
+MuJoCo clips surfaces at its near plane. Warp can report hits closer than that plane.
+
+Depth arrays are numeric observations. The LeRobot camera adapter, RGB image processors, EnvHub wrapper, and video recorders retain their RGB interfaces.
+These interfaces do not record or prepare depth for policies automatically.
 
 ## Composing Observations
 
