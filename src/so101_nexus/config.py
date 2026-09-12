@@ -875,7 +875,7 @@ class EnvironmentConfig:
         self.robot_colors = robot_colors
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.terminate_on_success = terminate_on_success
-        self.observations = observations
+        self.observations: list[Observation] | None = observations
         if self.obs_mode not in ("state", "visual"):
             raise ValueError(f"obs_mode must be state|visual, got {self.obs_mode!r}")
         if self.obs_mode == "visual":

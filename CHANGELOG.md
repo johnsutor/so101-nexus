@@ -9,6 +9,25 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Changed
+
+- The Warp extra now uses MuJoCo Warp 3.13 and Warp language 1.15.
+  Warp language 1.16 and 1.17 remain excluded because they fail collision-kernel
+  loading and CUDA graph capture with this backend.
+  Torch remains below 2.10 to preserve CUDA 12.8 driver compatibility.
+  Refresh the Python lockfile, including MuJoCo 3.13.0, LeRobot 0.5.1,
+  Gymnasium 1.3.0, and current compatible development tools.
+
+### Fixed
+
+- Python Dependabot updates now preserve declared compatibility bounds and
+  exclude NumPy versions incompatible with LeRobot. This avoids failed NumPy
+  resolutions and Torch declaration rewrites across accelerator extras.
+
+- Primitive placement geometry now handles MuJoCo 3.13 enum comparisons, and
+  Warp cameras use the render-context background-color argument so RGB and
+  depth kernels compile on MuJoCo Warp 3.13.
+
 ## [0.6.0] - 2026-09-12
 
 ### Added

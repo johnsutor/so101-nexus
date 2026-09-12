@@ -124,7 +124,11 @@ def _dataset_features(robot):
         aggregate_pipeline_dataset_features,
         create_initial_features,
     )
-    from lerobot.datasets.utils import combine_feature_dicts
+
+    try:
+        from lerobot.datasets.feature_utils import combine_feature_dicts
+    except ImportError:
+        from lerobot.datasets.utils import combine_feature_dicts
     from lerobot.processor import make_default_processors
 
     teleop_action_processor, _, robot_observation_processor = make_default_processors()

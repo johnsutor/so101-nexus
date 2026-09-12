@@ -415,7 +415,7 @@ def _run_init_worker(
         leader = _connect_leader(robot_type, leader_port, leader_id)
         _append_init_log(init_state, "Creating LeRobot dataset...")
         action_features = {f"{name}.pos": float for name in joint_names}
-        follower_features = dict(action_features)
+        follower_features: dict[str, type[float] | tuple[int, int, int]] = dict(action_features)
         follower_features["wrist"] = (wrist_wh[1], wrist_wh[0], 3)
         follower_features["overhead"] = (overhead_wh[1], overhead_wh[0], 3)
         env_state_names = _resolve_env_state_names(

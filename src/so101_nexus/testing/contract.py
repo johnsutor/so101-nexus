@@ -57,7 +57,7 @@ def run_env_contract(
         assert obs is not None
         assert isinstance(info, dict)
 
-        task_desc = env.unwrapped.task_description  # type: ignore[attr-defined]
+        task_desc = env.unwrapped.get_wrapper_attr("task_description")
         assert isinstance(task_desc, str)
         assert task_desc
 

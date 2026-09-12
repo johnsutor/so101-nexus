@@ -260,7 +260,7 @@ def _adapt_space(space: gym.Space, joint_slice: slice | None) -> gym.spaces.Dict
         return gym.spaces.Dict(spaces)
     if not isinstance(space, gym.spaces.Box):
         raise TypeError(f"expected a Box or Dict observation space, got {type(space).__name__}")
-    spaces = {"environment_state": space}
+    spaces: dict[str, gym.Space] = {"environment_state": space}
     if joint_slice is not None:
         spaces["agent_pos"] = gym.spaces.Box(
             low=space.low[joint_slice], high=space.high[joint_slice], dtype=space.low.dtype
