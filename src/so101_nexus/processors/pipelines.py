@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from lerobot.processor import (
     AddBatchDimensionProcessorStep,
@@ -27,14 +27,15 @@ if TYPE_CHECKING:
 
     import gymnasium as gym
     import numpy as np
+    from lerobot.types import EnvTransition
 
 
-def _leader_action_to_transition(data: dict[str, Any]) -> dict[str, Any]:
+def _leader_action_to_transition(data: dict[str, Any]) -> EnvTransition:
     return create_transition(action=data["action"])
 
 
-def _leader_action_to_output(transition: dict[str, Any]) -> "np.ndarray":  # noqa: UP037
-    return transition["action"]
+def _leader_action_to_output(transition: EnvTransition) -> "np.ndarray":  # noqa: UP037
+    return cast("np.ndarray", transition["action"])
 
 
 def make_default_leader_action_pipeline(
@@ -98,12 +99,12 @@ def infer_lerobot_rename_map(keys: Iterable[str]) -> dict[str, str]:
     return rename
 
 
-def _env_observation_to_transition(data: dict[str, Any]) -> dict[str, Any]:
+def _env_observation_to_transition(data: dict[str, Any]) -> EnvTransition:
     return create_transition(observation=data["observation"])
 
 
-def _env_observation_to_output(transition: dict[str, Any]) -> dict[str, Any]:
-    return transition["observation"]
+def _env_observation_to_output(transition: EnvTransition) -> dict[str, Any]:
+    return cast("dict[str, Any]", transition["observation"])
 
 
 def make_default_env_observation_pipeline(

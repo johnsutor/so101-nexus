@@ -65,10 +65,17 @@ class _InitialLeaderFollower(Protocol):
 
 
 class _StepInfoLike(Protocol):
-    terminated: bool
-    truncated: bool
-    reward: float
-    info: dict[str, Any]
+    @property
+    def terminated(self) -> bool: ...
+
+    @property
+    def truncated(self) -> bool: ...
+
+    @property
+    def reward(self) -> float: ...
+
+    @property
+    def info(self) -> dict[str, Any]: ...
 
 
 @dataclass

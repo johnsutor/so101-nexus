@@ -102,10 +102,6 @@ _DELTA_ACTION_SCALE = (0.05, 0.05, 0.05, 0.05, 0.05, 0.2)
 # MuJoCo backend's _EE_WORKSPACE_RADIUS.
 _EE_WORKSPACE_RADIUS = 0.55
 
-# Opaque black, packed ABGR as mujoco_warp's RenderContext.background_color
-# expects. Matches the MuJoCo backend's clear colour for these skybox-free scenes.
-_BACKGROUND_COLOR_ABGR = np.uint32(0xFF000000)
-
 
 def _mat_to_quat(mat: torch.Tensor) -> torch.Tensor:
     """Batched rotation matrix ``(..., 3, 3)`` -> ``wxyz`` quaternion ``(..., 4)``.
@@ -529,12 +525,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 cam_active=cam_active,
                 use_precomputed_rays=use_precomputed_rays,
                 use_shadows=True,
+                # Match MuJoCo's clear color for these skybox-free scenes.
+                background_color=(0.0, 0.0, 0.0, 1.0),
             )
-            # mujoco_warp clears to a hardcoded blue-tinted (0.1, 0.1, 0.2) that
-            # corresponds to nothing in the model; these scenes carry no skybox,
-            # so MuJoCo clears to black. Packed ABGR uint32, matching io.py's
-            # pack_rgba_to_uint32 at render-context construction.
-            self._render_ctx.background_color = _BACKGROUND_COLOR_ABGR
             if self._wrist_cam is not None:
                 self._reallocate_per_world_cameras(mjm)
         self._build_camera_observation_space()

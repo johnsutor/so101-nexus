@@ -16,6 +16,12 @@ updates:
 
   - package-ecosystem: uv
     directory: /
+    # Preserve tested bounds and avoid rewriting Torch's extra-specific declarations.
+    versioning-strategy: lockfile-only
+    ignore:
+      # LeRobot 0.5 requires NumPy <2.3, even though the base library allows <3.
+      - dependency-name: numpy
+        versions: [">=2.3"]
     schedule:
       interval: weekly
       day: monday

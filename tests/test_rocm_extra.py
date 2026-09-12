@@ -38,8 +38,9 @@ def test_default_extras_do_not_reference_rocm_index() -> None:
 def test_warp_extra_pins_compatible_runtime_versions() -> None:
     """The Warp runtime pins versions that its released package smoke test supports."""
     warp = PYPROJECT["project"]["optional-dependencies"]["warp"]
+    assert "mujoco-warp>=3.13.0,<4" in warp
     assert "torch<2.10" in warp
-    assert "warp-lang>=1.14,<1.16" in warp
+    assert "warp-lang>=1.15,<1.16" in warp
 
 
 def test_test_group_pins_compatible_torchcodec() -> None:

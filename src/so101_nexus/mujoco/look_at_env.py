@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import tempfile
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import mujoco
 import numpy as np
@@ -83,7 +83,7 @@ class LookAtEnv(SO101NexusMuJoCoBaseEnv):
         )
 
         # Look-at targets are visual primitives on a kinematic mocap body.
-        self._target_obj: PrimitiveObject = config.objects[0]  # type: ignore[assignment]
+        self._target_obj = cast("PrimitiveObject", config.objects[0])
 
         ground_rgba = sample_color(config.ground_colors)
         xml_string = _build_look_at_scene_xml(self._target_obj, ground_rgba)

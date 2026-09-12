@@ -204,35 +204,37 @@ def test_gripper_contact_force_is_nonzero_while_the_jaw_squeezes():
         envs.close()
 
 
-@pytest.mark.parametrize("threshold,expected", [(0.3, 0.0), (-1.0, 1.0)])
-def test_grasp_opposing_normal_threshold_changes_the_warp_verdict(threshold, expected):
-    """The straddle rejection must be driven by the config field on Warp too.
-
-    A cube far too wide for the jaw is held at the TCP while the gripper closes,
-    so both finger sets press the same side of it. The default threshold must
-    reject that; ``-1.0``, the documented escape hatch back to bilateral contact
-    alone, must accept it. Same physics, only the config differs.
-    """
+def test_grasp_opposing_normal_threshold_changes_the_warp_verdict(env_factory):
+    """Both thresholds evaluate the same force-bearing, same-face contacts."""
+    import mujoco_warp as mjw
     import torch
+    import warp as wp
 
-    from so101_nexus.config import PickConfig, RobotConfig
-    from so101_nexus.objects import CubeObject
-    from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
+    from so101_nexus import CubeObject, PickConfig
 
-    config = PickConfig(
-        objects=[CubeObject(half_size=0.05, color="red")],
-        n_distractors=0,
-        robot=RobotConfig(grasp_opposing_normal_threshold=threshold),
-    )
-    envs = WarpPickLiftVectorEnv(num_envs=2, config=config, device="cpu", seed=0)
-    try:
-        envs.reset(seed=0)
-        close = torch.zeros(envs.action_space.shape)
-        close[:, -1] = envs._target_low[-1]
-        for _ in range(25):
-            cols = envs._target_qadr[:, None] + torch.arange(3, device=envs.device)
-            envs.qpos[envs._world_rows[:, None], cols] = envs._tcp_pos()
-            envs.step(close)
-        assert envs._is_grasping().tolist() == [expected, expected]
-    finally:
-        envs.close()
+    half_size = 0.05
+    env = env_factory(
+        "warp", task="PickLift", config=PickConfig(objects=[CubeObject(half_size=half_size)])
+    ).unwrapped
+    env.reset(seed=0)
+    close = env._joint_qpos().clone()
+    close[:, -1] = env._target_low[-1]
+    for _ in range(25):
+        env.step(close)
+
+    fingers = wp.to_torch(env.data.geom_xpos)[:, env._gripper_mask | env._jaw_mask]
+    pose = torch.zeros((env.num_envs, 7), device=env.device)
+    pose[:, :3] = fingers.mean(1)
+    # Match the native straddle test's 40 mm penetration to load both finger sets.
+    pose[:, 0] = fingers[:, :, 0].max(1).values + half_size - 0.04
+    pose[:, 3] = 1.0
+    cols = env._target_qadr[:, None] + torch.arange(7, device=env.device)
+    env.qpos[env._world_rows[:, None], cols] = pose
+    env.qvel.zero_()
+    with wp.ScopedDevice(env._wp_device):
+        mjw.forward(env.model, env.data)
+    env._contact_cache = None
+
+    assert env._is_grasping().tolist() == [0.0, 0.0]
+    env.config.robot.grasp_opposing_normal_threshold = -1.0
+    assert env._is_grasping().tolist() == [1.0, 1.0]

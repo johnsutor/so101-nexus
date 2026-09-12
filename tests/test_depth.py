@@ -119,6 +119,9 @@ def test_depth_matches_known_plane_distance(env_factory, backend, view):
     assert initial["state"].shape == ((2, 0) if backend == "warp" else (0,))
     base = env.unwrapped
     model = base.mjm if backend == "warp" else base.model
+    # Calibrate at two meters with a suitable near plane so OpenGL depth-buffer
+    # quantization does not dominate the metric-distance assertion.
+    model.vis.map.znear = 0.1 / model.stat.extent
     far = model.vis.map.zfar * model.stat.extent
     distance = 2 * far if view == "beyond_far" else 2.0
     if backend == "mujoco":

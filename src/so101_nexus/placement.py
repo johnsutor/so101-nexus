@@ -56,7 +56,7 @@ def _geom_triangles(model, geom_id: int) -> np.ndarray:
     """Return triangles in the compiled geom frame."""
     import mujoco
 
-    kind = model.geom_type[geom_id]
+    kind = int(model.geom_type[geom_id])
     size = model.geom_size[geom_id]
     if kind == mujoco.mjtGeom.mjGEOM_MESH:
         mesh_id = int(model.geom_dataid[geom_id])
@@ -200,7 +200,7 @@ def compiled_slot_geometry(
             rotation = body_rotation @ rotation_buffer.reshape(3, 3)
             position = body_position + body_rotation @ model.geom_pos[geom_id]
             chunks.append(local @ rotation.T + position)
-            if len(visual_ids) == 1 and model.geom_type[geom_id] in (
+            if len(visual_ids) == 1 and int(model.geom_type[geom_id]) in (
                 mujoco.mjtGeom.mjGEOM_BOX,
                 mujoco.mjtGeom.mjGEOM_CYLINDER,
                 mujoco.mjtGeom.mjGEOM_SPHERE,

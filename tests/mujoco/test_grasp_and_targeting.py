@@ -30,8 +30,6 @@ from so101_nexus.testing import component_slice
 _OPEN = np.array([0, 0, 0, 0, 0, 0, 1], dtype=np.float32)
 _CLOSE = np.array([0, 0, 0, 0, 0, 0, -1], dtype=np.float32)
 _LIFT = np.array([0, 0, 0.4, 0, 0, 0, -1], dtype=np.float32)
-#: 90 degree yaw, exactly normalized (MuJoCo renormalizes, but the test should not rely on it).
-_YAW_90 = np.array([1.0, 0.0, 0.0, 1.0]) / np.sqrt(2.0)
 
 
 def _pick_env(*, half_size=0.012, robot=None, objects=None, observations=None, n_distractors=0):
@@ -187,9 +185,8 @@ def test_pinching_a_decomposed_ycb_object_grasps_across_its_parts():
         env.reset(seed=0)
         slot = env._slots[0]
         assert len(slot.geom_ids) > 1, "screwdriver should decompose into multiple hulls"
-        # Stand the handle upright between the fingertips so the jaws close across
-        # its shaft rather than along it.
-        _pinch_the_target(env, quat=_YAW_90)
+        # Align the tool with the jaws so both sides load distinct convex parts.
+        _pinch_the_target(env)
         sides, loaded_geoms = _loaded_contacts(env)
         assert sides == {"gripper", "jaw"}
         # The point of the test: without contacts on more than one part it would
