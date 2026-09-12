@@ -411,7 +411,6 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # completion surface (must reach and grasp before lifting), so a raw
         # (dwelling) value lets a policy park at "reached and grasped, never
         # lifted" and collect up to their combined budget every step forever.
-        # See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
         reach_now = reach_progress(tcp_to_obj, scale=scale)
         reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
         grasp_delta = potential_shaping(is_grasped, self._prev_grasp_progress)

@@ -195,7 +195,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         completion surface (must reach and grasp before lifting), so a raw
         (dwelling) value lets a policy park at "reached and grasped, never
         lifted" and collect up to their combined budget every step forever.
-        See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
         """
         self._initial_obj_z = float(self._get_target_pose()[2])
         # lift_progress(0, ...) == 0 regardless of grasped (tanh(0) == 0), so the

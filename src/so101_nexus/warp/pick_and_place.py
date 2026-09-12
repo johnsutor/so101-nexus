@@ -190,7 +190,6 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
 
         Batched physics-query wrapper around ``rewards.place_task_potential``,
         the same formula as the MuJoCo backend's ``PickAndPlaceEnv._task_potential``.
-        See docs/superpowers/plans/2026-07-16-monotone-place-potential.md.
         """
         obj_to_target, _ = self._obj_placement_state(obj_pos, target_pos)
         height_gap = (obj_pos[:, 2] - self._initial_obj_z).clamp(min=0.0)
@@ -321,17 +320,11 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         # flung placements the arm-static check never inspects, and the still-held
         # placement the arm-static check accepts) and keeps the predicate
         # perceivable from vision. ``is_robot_static`` stays in ``info`` as a
-        # diagnostic. Mirrors PickAndPlaceEnv._get_info (MuJoCo); see
-        # docs/superpowers/plans/
-        # 2026-07-26-place-success-predicate-and-terminate-flag.md.
+        # diagnostic. Mirrors PickAndPlaceEnv._get_info (MuJoCo).
         success = self._placement_success(is_obj_placed, is_obj_static, is_grasped)
         scale = self.config.reward.tanh_shaping_scale
-        # reaching/grasping are potential-shaped deltas, not raw state values
-        # (dwelling at "reached and grasped, never placed" must pay ~0/step, see
-        # docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md), and
-        # both potentials are held up by is_obj_placed so the mandatory release
-        # on the goal and the post-place retreat pay no negative delta (see
-        # docs/superpowers/plans/2026-07-16-monotone-place-potential.md).
+        # Dwelling while grasped must pay ~0/step. Placement holds both potentials
+        # so releasing on the goal and retreating do not incur negative deltas.
         # Baselines seeded post-settle by _refresh_reset_reference_state.
         reach_now = place_reach_potential(tcp_to_obj, is_obj_placed, scale=scale)
         grasp_now = place_grasp_potential(is_grasped, is_obj_placed)

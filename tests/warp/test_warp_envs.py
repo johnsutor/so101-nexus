@@ -623,8 +623,7 @@ def test_pick_and_place_reward_no_dwelling_when_hovering():
     True so the test does not depend on driving a real contact-based grasp
     through physics, and the object is placed directly via ``qpos`` at a
     fixed "hovering above the goal, not yet lowered" pose, unchanged between
-    the two reward calls. See docs/superpowers/plans/
-    2026-07-12-potential-based-task-progress-shaping.md.
+    the two reward calls.
     """
     import torch
 
@@ -648,9 +647,8 @@ def test_pick_and_place_reward_no_dwelling_when_hovering():
     # The reward a fully-zero-delta formula would pay on the second call --
     # what the actual (delta-shaped) reward must match, since reach, grasp,
     # and task potential all held steady between the two identical hover
-    # snapshots (reaching/grasping are potential-shaped deltas too, same
-    # rationale as task_progress -- see docs/superpowers/plans/
-    # 2026-07-16-pick-grasp-potential-shaping.md). This assertion would fail
+    # snapshots (reaching/grasping are potential-shaped deltas too).
+    # This assertion would fail
     # against the pre-fix raw-value formula, which pays the same nonzero
     # reaching/grasping/task_objective credit on both calls.
     expected_no_dwelling_credit = env.config.reward.compute(
@@ -695,9 +693,7 @@ def test_pick_lift_reward_no_dwelling_at_fixed_height():
     # The reward a fully-zero-delta formula would pay on the second call --
     # what the actual (delta-shaped) reward must match, since reach, grasp,
     # and lift potential all held steady between the two identical snapshots
-    # (reaching/grasping are potential-shaped deltas too, same rationale as
-    # task_progress -- see docs/superpowers/plans/
-    # 2026-07-16-pick-grasp-potential-shaping.md). This assertion would fail
+    # (reaching/grasping are potential-shaped deltas too). This assertion would fail
     # against the pre-fix raw-value formula, which pays the same nonzero
     # reaching/grasping/task_objective credit on both calls.
     expected_no_dwelling_credit = env.config.reward.compute(

@@ -21,8 +21,7 @@ RTX 5090) purely through exploration, so the one thing worth fixing is its failu
 some seeds get stuck at a "grasp-hold-at-table" local optimum and never discover the lift,
 purely from exploration luck. Seeding the actor near the demos' actual grasp-lift behavior
 directly targets that, without touching PPO's own decisive fixes or trading away its GPU-batch
-throughput for MPC planning's kernel-launch-bound cost (see `docs/superpowers/specs/` for the
-RLPD-style off-policy alternative considered and deferred).
+throughput for MPC planning's kernel-launch-bound cost.
 
 **Action units.** The demo dataset records absolute joint-position targets (as commanded to a
 `pd_joint_pos` teleop session), but this recipe drives the env in PPO's proven

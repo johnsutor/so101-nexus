@@ -81,10 +81,7 @@ def test_pick_lift_reward_matches_mujoco_across_trajectory():
 
     The dwell step (unchanged state, reward held constant at 0) and the
     success step (reward clamped to 1.0) are load-bearing: those are exactly
-    the two behaviors docs/superpowers/plans/
-    2026-07-16-pick-grasp-potential-shaping.md's fix touches, so a backend
-    that drifted on either would be caught here, not just by each backend's
-    own dwelling-regression test in isolation.
+    the two behaviors potential shaping must preserve across backends.
     """
     import torch
 

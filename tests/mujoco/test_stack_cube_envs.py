@@ -273,8 +273,7 @@ def test_stack_cube_cube_static_thresholds_are_live_knobs():
 def test_stack_cube_hovering_earns_no_dwelling_task_objective_reward():
     """Hovering at a fixed task potential must score ~0 on the task_objective
     facet after the first step; mirrors the PickAndPlace regression test in
-    ``test_envs.py`` for the same reward-hacking trap (see
-    ``docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md``).
+    ``test_envs.py`` for the same reward-hacking trap.
     """
     env = gym.make("MuJoCoStackCube-v1")
     try:

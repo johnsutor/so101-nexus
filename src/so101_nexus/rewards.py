@@ -305,9 +305,7 @@ def place_task_potential(
       only the final settle instead of multiplying the transport gradient
       down to ~0 at realistic carry speeds, which a stillness *factor* does.
 
-    See docs/superpowers/plans/2026-07-16-monotone-place-potential.md for the
-    audit that motivated this shape. Accepts Python scalars, NumPy arrays, or
-    torch tensors.
+    Accepts Python scalars, NumPy arrays, or torch tensors.
 
     Parameters
     ----------

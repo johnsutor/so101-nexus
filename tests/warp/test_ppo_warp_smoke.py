@@ -263,8 +263,7 @@ def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
     (injected at the exact ``envs.step()`` boundary ``train()`` reads) must not
     propagate into the shared reward-scaler stats, the loss, or the optimizer
     step -- training must finish with finite losses instead of eventually
-    crashing on a poisoned ``RunningMeanStd``. See docs/superpowers/plans/
-    2026-07-16-pick-grasp-potential-shaping.md.
+    crashing on a poisoned ``RunningMeanStd``.
     """
     import importlib
 
