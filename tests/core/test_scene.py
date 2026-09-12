@@ -36,7 +36,10 @@ def test_warp_option_drops_unsupported_features():
 def test_robot_floor_builder_compiles_with_both_options():
     from so101_nexus.scene import build_robot_floor_scene_xml
 
-    for option in (MUJOCO_SCENE_OPTION_XML, WARP_SCENE_OPTION_XML):
+    for option, expected_noslip_iterations in (
+        (MUJOCO_SCENE_OPTION_XML, 3),
+        (WARP_SCENE_OPTION_XML, 0),
+    ):
         xml = build_robot_floor_scene_xml(
             [0.5, 0.5, 0.5, 1.0],
             option_xml=option,
@@ -48,6 +51,7 @@ def test_robot_floor_builder_compiles_with_both_options():
             f.write(xml)
             f.flush()
             model = mujoco.MjModel.from_xml_path(f.name)
+        assert model.opt.noslip_iterations == expected_noslip_iterations
         assert model.nq > 0
         # No target site/body: robot + floor only.
         assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "reach_target") == -1
