@@ -46,6 +46,33 @@ def test_wrist_camera_obs_shape_and_dtype():
     assert env.single_observation_space["wrist_camera"].shape == (WRIST_H, WRIST_W, 3)
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_camera_outputs_keep_independent_storage_across_steps(env_factory, device):
+    import torch
+
+    from so101_nexus import JointPositions, TouchConfig, WristCamera
+
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA is unavailable")
+    env = env_factory(
+        backend="warp",
+        device=device,
+        config=TouchConfig(
+            observations=[
+                JointPositions(),
+                WristCamera(width=WRIST_W, height=WRIST_H, modalities=("rgb", "depth")),
+            ]
+        ),
+    )
+    first, _ = env.reset(seed=0)
+    snapshots = {name: value.clone() for name, value in first.items()}
+    for _ in range(3):
+        current, *_ = env.step(env._joint_qpos().clone())
+        for name, expected in snapshots.items():
+            torch.testing.assert_close(first[name], expected)
+            assert current[name].data_ptr() != first[name].data_ptr()
+
+
 def test_overhead_only_uses_precomputed_rays_and_renders():
     import torch
 

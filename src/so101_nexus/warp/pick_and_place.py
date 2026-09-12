@@ -371,9 +371,8 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
 class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
     """Center the visual footprint on the disc with sustained table support.
 
-    V2 uses an uncaptured physics loop to inspect every physics substep. This
-    costs GPU launch throughput relative to the unchanged v1 graph. Contact
-    reduction and footprint evaluation stay on the selected Torch device.
+    CUDA captures physics, support checks, and dwell updates together while
+    preserving every substep check. CPU and capture failures use the same loop.
     """
 
     config: PickAndPlaceV2Config
@@ -422,11 +421,25 @@ class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
         self._placement_contact_rows = torch.arange(self.data.naconmax, device=self.device)
         self._ensure_contact_force_buffers()
         self._placement_evaluation: dict | None = None
+        self._capture_step_graph()
 
     def _capture_step_graph(self) -> None:
-        # Base construction runs before slot geometry and dwell tensors exist.
-        # V1 still captures its original graph through the inherited method.
-        self._step_graph = None
+        # Base construction precedes the support buffers; capture once they exist.
+        self._captured_support_parameters = self._support_parameters()
+        self._step_graph = (
+            self._capture_torch_graph(self._step_with_support, "Placement")
+            if hasattr(self, "_placement_dwell")
+            else None
+        )
+
+    def _support_parameters(self) -> tuple[float, ...]:
+        return (
+            self.config.support_min_weight_fraction,
+            self.config.support_force_tolerance,
+            self.config.support_relative_force_tolerance,
+            self.config.object_static_lin_threshold,
+            self.config.object_static_ang_threshold,
+        )
 
     def _describe_target(self, obj) -> str:
         return self.config.describe_target(obj, self.target_color_name)
@@ -461,10 +474,7 @@ class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
 
     def _placement_contact_forces(self) -> torch.Tensor:
         """Read solved contact forces without a device-to-host contact count."""
-        with wp.ScopedDevice(self._wp_device):
-            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
-        assert self._force_view is not None
-        return self._force_view
+        return self._contact_forces()[0]
 
     def _support_info(self) -> dict[str, torch.Tensor]:
         assert self._obj_geom_mask is not None
@@ -549,7 +559,7 @@ class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
                 self._slot_objs[: self._n_pool],
                 self._placement_weights_host,
                 self._placement_timesteps.cpu().tolist(),
-                self._target_slot.cpu().tolist(),
+                self._target_slot_host.copy(),
             ),
             "placement_centroid_xy": reference[:, :2],
             "geometric_placement_ok": geometric_ok,
@@ -588,6 +598,16 @@ class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
         return is_obj_placed & (self._placement_dwell >= self.config.placement_dwell_time)
 
     def _advance_physics(self) -> None:
+        # Captured scalar thresholds must never override later config changes.
+        if (
+            self._step_graph is not None
+            and self._support_parameters() == self._captured_support_parameters
+        ):
+            self._step_graph.replay()
+        else:
+            self._step_with_support()
+
+    def _step_with_support(self) -> None:
         for _ in range(self._N_SUBSTEPS):
             mjw.step(self.model, self.data)
             qualified = self._support_info()["qualified"]

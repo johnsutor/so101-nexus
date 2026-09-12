@@ -6,6 +6,53 @@ import pytest
 pytestmark = pytest.mark.warp
 
 
+def test_cuda_graph_replays_physics_and_substep_dwell(env_factory):
+    import torch
+    import warp as wp
+
+    from so101_nexus import PickAndPlaceV2Config
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is unavailable")
+    env = env_factory(
+        backend="warp",
+        task="PickAndPlace",
+        version=2,
+        device="cuda",
+        config=PickAndPlaceV2Config(reset_settle_frames=0),
+    )
+    assert env._step_graph is not None
+    env.reset(seed=3)
+    _put_object(env, 0)
+    _put_object(env, 1, height=2.0)
+    _forward(env)
+    graph = env._step_graph
+    with wp.ScopedDevice(env._wp_device):
+        for _ in range(3):
+            state = {
+                name: wp.clone(value)
+                for name, value in vars(env.data).items()
+                if isinstance(value, wp.array)
+            }
+            dwell = env._placement_dwell.clone()
+            env._advance_physics()
+            expected_qpos = env.qpos.clone()
+            expected_dwell = env._placement_dwell.clone()
+            for name, value in state.items():
+                wp.copy(getattr(env.data, name), value)
+            env._placement_dwell.copy_(dwell)
+            env._step_graph = None
+            env._advance_physics()
+            torch.testing.assert_close(env.qpos, expected_qpos)
+            torch.testing.assert_close(env._placement_dwell, expected_dwell)
+            assert env._placement_dwell[0] > dwell[0]
+            assert env._placement_dwell[1] == 0
+            env._step_graph = graph
+        env.config.support_min_weight_fraction = 100.0
+        env._advance_physics()
+        assert not env._placement_dwell.any()
+
+
 @pytest.fixture
 def env():
     from so101_nexus.config import PickAndPlaceV2Config

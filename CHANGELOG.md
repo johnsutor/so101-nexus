@@ -39,6 +39,11 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Warp center-placement physics, support checks, and dwell updates now use a CUDA
+  graph. Contact queries reuse transition results, camera outputs use Torch's
+  caching allocator, and PPO examples transfer episode statistics once per rollout.
+  Native MuJoCo batches ordinary physics substeps into one Python call.
+
 - The documentation now lists the `viz` extra and clarifies visual observations,
   episode termination, PickAndPlace static thresholds, LookAt targets, LeRobot
   wrapper requirements, and rollout-recorder camera setup.
