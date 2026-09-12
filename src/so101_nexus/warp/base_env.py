@@ -44,7 +44,7 @@ ignored with a warning.
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import mujoco_warp as mjw
@@ -88,6 +88,9 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Normalized-delta physical scale (radians), shared with the MuJoCo backend's
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
@@ -180,7 +183,7 @@ def _grasp_from_contacts(
     contact_world: torch.Tensor,
     contact_frame: torch.Tensor,
     normal_force: torch.Tensor,
-    nacon: int,
+    nacon: int | torch.Tensor,
     obj_mask: torch.Tensor,
     gripper_mask: torch.Tensor,
     jaw_mask: torch.Tensor,
@@ -210,21 +213,24 @@ def _grasp_from_contacts(
         reduction contact-sized rather than contacts-times-parts.
     """
     device = obj_mask.device
-    if nacon == 0:
-        return torch.zeros(num_envs, device=device)
-    geom = contact_geom[:nacon].long()
-    world = contact_world[:nacon].long().clamp(0, num_envs - 1)
+    ngeom = obj_mask.shape[1]
+    valid = (
+        (torch.arange(contact_geom.shape[0], device=device) < nacon)
+        & (contact_world >= 0)
+        & (contact_world < num_envs)
+        & (contact_geom >= 0).all(1)
+        & (contact_geom < ngeom).all(1)
+    )
+    geom = contact_geom.long().clamp(0, ngeom - 1)
+    world = contact_world.long().clamp(0, num_envs - 1)
     g1, g2 = geom[:, 0], geom[:, 1]
-    obj_is_g1 = obj_mask[world, g1.clamp(min=0)]
-    involved = obj_is_g1 | obj_mask[world, g2.clamp(min=0)]
-    other = torch.where(obj_is_g1, g2, g1).clamp(min=0)
-    force = normal_force[:nacon]
-    strong = involved & (force >= threshold)
-    # contact_frame's first row is the normal from geom1 to geom2; flip it when
-    # the object is geom1 so it points into the object for both orderings.
-    normal = contact_frame[:nacon, 0, :]
+    obj_is_g1 = obj_mask[world, g1]
+    involved = obj_is_g1 | obj_mask[world, g2]
+    other = torch.where(obj_is_g1, g2, g1)
+    strong = valid & involved & (normal_force >= threshold)
+    normal = contact_frame[:, 0, :]
     normal = torch.where(obj_is_g1[:, None], -normal, normal)
-    weighted = normal * (force * strong).unsqueeze(1)
+    weighted = torch.where(strong[:, None], normal * normal_force[:, None], 0.0)
 
     index = world.unsqueeze(1).expand(-1, 3)
     grip_n = torch.zeros((num_envs, 3), device=device)
@@ -412,6 +418,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._contact_ids: wp.array | None = None
         self._force_buf: wp.array | None = None
         self._force_view: torch.Tensor | None = None
+        self._contact_cache: dict[str, torch.Tensor] | None = None
         # reset(options={"target_index": ...}) pin, honoured by autoresets too.
         self._target_index_override: torch.Tensor | None = None
         self._ik_graph: torch.cuda.CUDAGraph | None = None
@@ -479,7 +486,6 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             (c for c in obs if isinstance(c, OverheadCamera)), None
         )
         self._has_cameras = self._wrist_cam is not None or self._overhead_cam is not None
-        self._image_bufs: list = []
         self._privileged_state: torch.Tensor | None = None
         if not self._has_cameras:
             return
@@ -563,8 +569,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
 
     def _render_camera_images(self) -> dict[str, torch.Tensor]:
-        """Return requested RGB and metric depth tensors on the simulation device."""
-        self._image_bufs = []
+        """Allocate independent images through Torch's cache and render into their storage."""
         images: dict[str, torch.Tensor] = {}
         with wp.ScopedDevice(self._wp_device):
             self._update_render_markers()
@@ -574,20 +579,21 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 for modality in comp.modalities:
                     shape = (self.num_envs, comp.height, comp.width)
                     if modality == "rgb":
-                        buf = wp.empty((*shape, 3), dtype=wp.uint8)
-                        unpack_rgb_uint8(self._render_ctx, self._render_index[cid], buf)
+                        buf = torch.empty((*shape, 3), dtype=torch.uint8, device=self.device)
+                        unpack_rgb_uint8(
+                            self._render_ctx, self._render_index[cid], wp.from_torch(buf)
+                        )
                         key = comp.name
                     else:
-                        buf = wp.empty(shape, dtype=wp.float32)
+                        buf = torch.empty(shape, dtype=torch.float32, device=self.device)
                         read_depth_meters(
                             self._render_ctx,
                             self._render_index[cid],
                             self.mjm.vis.map.zfar * self.mjm.stat.extent,
-                            buf,
+                            wp.from_torch(buf),
                         )
                         key = f"{comp.name}_depth"
-                    self._image_bufs.append(buf)  # keep alive for the returned torch views
-                    images[key] = wp.to_torch(buf)
+                    images[key] = buf
         return images
 
     def _update_render_markers(self) -> None:
@@ -685,60 +691,47 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             )
             self._step_graph = None
 
-    def _capture_ik_graph(self) -> None:
-        """Capture the fixed-iteration inverse-kinematics solve into a CUDA graph.
-
-        ``_solve_ee_ik`` is three iterations of small Warp kernels interleaved
-        with small torch reductions, so like ``mujoco_warp.step`` it is
-        launch-bound rather than compute-bound: replaying it as one graph removes
-        the per-launch overhead that dominates it.
-
-        Capture is driven by ``torch.cuda.graph`` rather than
-        ``wp.ScopedCapture`` because the loop allocates torch intermediates. Only
-        a capture torch itself opened routes those allocations to the graph's
-        private memory pool; under a Warp-opened capture the caching allocator
-        would reach for ``cudaMalloc`` and abort the capture. Warp launches are
-        steered onto the capturing stream with ``ScopedStream``, whose entry and
-        exit synchronization is disabled because cross-stream event waits are
-        illegal mid-capture and there is nothing outstanding to order against:
-        ``torch.cuda.graph`` synchronizes the device on entry.
-
-        Replay runs on torch's default stream, which Warp's device stream
-        implicitly synchronizes with, so it stays ordered against
-        ``_advance_physics`` exactly as the eager solve was.
-
-        CPU has no graph support, and capture failure is never fatal: both fall
-        back to calling ``_solve_ee_ik`` directly.
-        """
-        if self.control_mode not in EE_CONTROL_MODES or self.device.type != "cuda":
-            return
+    def _capture_torch_graph(
+        self, run: Callable[[], None], label: str
+    ) -> torch.cuda.CUDAGraph | None:
+        """Capture mixed Torch/Warp operations with Torch-owned allocation and streams."""
+        if self.device.type != "cuda":
+            return None
         try:
-            # Warm up on the same stream the eager path uses, so lazy module
-            # loads and linear-algebra workspace allocations are done before the
-            # capture opens. Identity orientation keeps the warmup solve well
-            # posed; the values are irrelevant, only the work they trigger.
-            self._ik_target_pos.copy_(self._tcp_pos())
-            self._ik_target_quat.zero_()
-            self._ik_target_quat[:, 0] = 1.0
             with wp.ScopedDevice(self._wp_device):
-                self._solve_ee_ik()
-            torch.cuda.synchronize()
+                run()
+            torch.cuda.synchronize(self.device)
             graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph, capture_error_mode="thread_local"):
-                capture_stream = wp.stream_from_torch(torch.cuda.current_stream())
+            with (
+                torch.cuda.device(self.device),
+                torch.cuda.graph(graph, capture_error_mode="thread_local"),
+            ):
+                stream = wp.stream_from_torch(torch.cuda.current_stream())
+                # Cross-stream waits are illegal during capture; Torch synchronizes on entry.
                 with (
                     wp.ScopedDevice(self._wp_device),
-                    wp.ScopedStream(capture_stream, sync_enter=False, sync_exit=False),
+                    wp.ScopedStream(stream, sync_enter=False, sync_exit=False),
+                    # Register Warp's temporary allocations with the external graph.
+                    wp.ScopedCapture(stream=stream, external=True),
                 ):
-                    self._solve_ee_ik()
-            self._ik_graph = graph
-        except Exception as exc:  # capture is an optimization; never block construction
+                    run()
+            return graph
+        except Exception as exc:
             warnings.warn(
-                f"Inverse-kinematics CUDA graph capture failed ({exc}); using the direct solve.",
+                f"{label} CUDA graph capture failed ({exc}); using direct execution.",
                 RuntimeWarning,
                 stacklevel=2,
             )
-            self._ik_graph = None
+            return None
+
+    def _capture_ik_graph(self) -> None:
+        """Capture the fixed-iteration inverse-kinematics solve for repeated commands."""
+        if self.control_mode not in EE_CONTROL_MODES or self.device.type != "cuda":
+            return
+        self._ik_target_pos.copy_(self._tcp_pos())
+        self._ik_target_quat.zero_()
+        self._ik_target_quat[:, 0] = 1.0
+        self._ik_graph = self._capture_torch_graph(self._solve_ee_ik, "Inverse-kinematics")
 
     def _advance_physics(self) -> None:
         """Advance ``_N_SUBSTEPS`` of physics via the captured graph or direct loop."""
@@ -1068,39 +1061,44 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             self._advance_physics()
         self._elapsed += 1
 
-        reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
-        info["energy_norm"] = energy_norm
-        info["action_delta_norm"] = action_delta_norm
-        terminated = (
-            success
-            if self.config.terminate_on_success
-            else torch.zeros_like(success, dtype=torch.bool)
-        )
-        truncated = self._elapsed >= self.max_episode_steps
-        done = terminated | truncated
-        # The transition's task descriptions (matching reward/terminated) are
-        # snapshotted before autoreset reassigns done worlds to new episodes.
-        info["task_description"] = tuple(self.task_descriptions)
-        if bool(done.any()):
-            with wp.ScopedDevice(self._wp_device):
-                self._write_reset_state(done)
-                mjw.forward(self.model, self.data)
-                # Settle-independent reset reference (matches reset()): done worlds
-                # get identical targets/baselines without settling.
-                self._refresh_reset_reference_state(done)
-            # Clear previous-action state for reset worlds so a new episode's
-            # first action_delta_norm is zero for any first action, not measured
-            # against the prior episode's final action. The robot settle that
-            # reset() applies is intentionally skipped here: mjw.step advances the
-            # whole batch, so settling only-done worlds would advance non-done
-            # worlds too. The reset reference above is settle-independent, so it
-            # matches reset() exactly; only the robot's first-frame settle transient
-            # differs (per-world warmstart left as an optimizer hint).
-            self._has_prev_action[done] = False
-        obs = self._compute_obs()
-        if self._privileged_state is not None:
-            info["privileged_state"] = self._privileged_state
-        return obs, reward, terminated, truncated, info
+        self._contact_cache = {}
+        try:
+            reward, success, info = self._compute_reward_terminated(energy_norm, action_delta_norm)
+            info["energy_norm"] = energy_norm
+            info["action_delta_norm"] = action_delta_norm
+            terminated = (
+                success
+                if self.config.terminate_on_success
+                else torch.zeros_like(success, dtype=torch.bool)
+            )
+            truncated = self._elapsed >= self.max_episode_steps
+            done = terminated | truncated
+            # The transition's task descriptions (matching reward/terminated) are
+            # snapshotted before autoreset reassigns done worlds to new episodes.
+            info["task_description"] = tuple(self.task_descriptions)
+            if bool(done.any()):
+                self._contact_cache.clear()
+                with wp.ScopedDevice(self._wp_device):
+                    self._write_reset_state(done)
+                    mjw.forward(self.model, self.data)
+                    # Settle-independent reset reference (matches reset()): done worlds
+                    # get identical targets/baselines without settling.
+                    self._refresh_reset_reference_state(done)
+                # Clear previous-action state for reset worlds so a new episode's
+                # first action_delta_norm is zero for any first action, not measured
+                # against the prior episode's final action. The robot settle that
+                # reset() applies is intentionally skipped here: mjw.step advances the
+                # whole batch, so settling only-done worlds would advance non-done
+                # worlds too. The reset reference above is settle-independent, so it
+                # matches reset() exactly; only the robot's first-frame settle transient
+                # differs (per-world warmstart left as an optimizer hint).
+                self._has_prev_action[done] = False
+            obs = self._compute_obs()
+            if self._privileged_state is not None:
+                info["privileged_state"] = self._privileged_state
+            return obs, reward, terminated, truncated, info
+        finally:
+            self._contact_cache = None
 
     def _finger_geom_mask(self, mjm: mujoco.MjModel, body_id: int, ngeom: int) -> torch.Tensor:
         """Boolean per-geom mask of ``condim==6`` contact geoms on a finger body."""
@@ -1178,20 +1176,17 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._force_buf = wp.zeros(naconmax, dtype=wp.spatial_vector, device=self._wp_device)
         self._force_view = wp.to_torch(self._force_buf)  # (naconmax, 6)
 
-    def _contact_forces(self) -> tuple[torch.Tensor, int]:
-        """Return the ``(naconmax, 6)`` contact-frame force view and live ``nacon``.
-
-        The view aliases one shared buffer that the next call overwrites, so a
-        caller must consume it before calling again. ``int(self._nacon_view[0])``
-        also forces a host synchronization, which is why callers read the forces
-        once rather than per contact.
-        """
+    def _contact_forces(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Read contact forces and the live contact count on the simulation device."""
         self._ensure_contact_force_buffers()
-        force_view = self._force_view
-        assert force_view is not None
-        with wp.ScopedDevice(self._wp_device):
-            mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
-        return force_view, int(self._nacon_view[0])
+        assert self._force_view is not None
+        cache = self._contact_cache
+        if cache is None or "forces" not in cache:
+            with wp.ScopedDevice(self._wp_device):
+                mjw.contact_force(self.model, self.data, self._contact_ids, False, self._force_buf)
+            if cache is not None:
+                cache["forces"] = self._force_view
+        return self._force_view, self._nacon_view[0]
 
     def _is_grasping(self) -> torch.Tensor:
         """Return ``(N,)`` float in {0, 1}: two-sided pinching grasp of the target object.
@@ -1201,8 +1196,11 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """
         if self._obj_geom_mask is None:
             return torch.zeros(self.num_envs, device=self.device)
+        cache = self._contact_cache
+        if cache is not None and "grasp" in cache:
+            return cache["grasp"]
         force_view, nacon = self._contact_forces()
-        return _grasp_from_contacts(
+        grasp = _grasp_from_contacts(
             contact_geom=self._contact_geom_view,
             contact_world=self._contact_world_view,
             contact_frame=self._contact_frame_view,
@@ -1215,6 +1213,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             opposing_threshold=self.config.robot.grasp_opposing_normal_threshold,
             num_envs=self.num_envs,
         )
+        if cache is not None:
+            cache["grasp"] = grasp
+        return grasp
 
     def _joint_efforts(self) -> torch.Tensor:
         """Return ``(N, 6)`` actuator generalized force for the controlled joints."""
@@ -1229,19 +1230,24 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """
         force_view, nacon = self._contact_forces()
         total = torch.zeros((self.num_envs, 3), device=self.device)
-        if nacon == 0:
-            return total
-        geom = self._contact_geom_view[:nacon].long()
-        world = self._contact_world_view[:nacon].long().clamp(0, self.num_envs - 1)
+        raw_geom = self._contact_geom_view
+        raw_world = self._contact_world_view
+        valid = (
+            (torch.arange(raw_geom.shape[0], device=self.device) < nacon)
+            & (raw_world >= 0)
+            & (raw_world < self.num_envs)
+            & (raw_geom >= 0).all(1)
+            & (raw_geom < self.mjm.ngeom).all(1)
+        )
+        geom = raw_geom.long().clamp(0, self.mjm.ngeom - 1)
+        world = raw_world.long().clamp(0, self.num_envs - 1)
         g1, g2 = geom[:, 0], geom[:, 1]
         finger = self._gripper_mask | self._jaw_mask
-        g1_finger, g2_finger = finger[g1.clamp(min=0)], finger[g2.clamp(min=0)]
-        sign = g2_finger.float() - g1_finger.float()  # zero unless exactly one side
-        frame = self._contact_frame_view[:nacon]
-        # mjw.contact_force reports the force on geom2 in the contact frame,
-        # whose rows are the normal and the two tangents.
-        world_force = (frame * force_view[:nacon, :3].unsqueeze(2)).sum(1)
-        total.scatter_add_(0, world.unsqueeze(1).expand(-1, 3), world_force * sign.unsqueeze(1))
+        sign = finger[g2].float() - finger[g1].float()
+        # Contact-frame rows are world-space axes; forces act on geom2.
+        world_force = (self._contact_frame_view * force_view[:, :3, None]).sum(1)
+        contribution = torch.where(valid[:, None], world_force * sign[:, None], 0.0)
+        total.scatter_add_(0, world[:, None].expand(-1, 3), contribution)
         return total
 
     def _parse_target_index(self, options: dict[str, Any] | None) -> torch.Tensor | None:

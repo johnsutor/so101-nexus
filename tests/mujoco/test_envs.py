@@ -1299,8 +1299,7 @@ def test_pick_and_place_hovering_earns_no_dwelling_task_objective_reward():
     improvement) must score ~0 on the task_objective facet on every step after
     the first, instead of paying out the full potential value every step
     forever. Genuine progress (the potential increasing) still earns real,
-    one-time credit -- see docs/superpowers/plans/
-    2026-07-12-potential-based-task-progress-shaping.md.
+    one-time credit.
     """
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:
@@ -1338,8 +1337,7 @@ def test_pick_and_place_reward_nonnegative_along_ideal_trajectory():
     are monotone non-decreasing along the ideal pick-carry-place trajectory,
     so the mandatory lift, the transport toward the goal at realistic arm
     speed, and the release on the goal all score >= 0, and transport pays a
-    real gradient (the stillness-multiplied product formula left ~1e-7). See
-    docs/superpowers/plans/2026-07-16-monotone-place-potential.md.
+    real gradient (the stillness-multiplied product formula left ~1e-7).
     """
     env = gym.make("MuJoCoPickAndPlace-v1")
     try:

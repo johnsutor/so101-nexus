@@ -267,7 +267,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         which is monotone non-decreasing along the ideal grasp-lift-carry-
         lower-settle trajectory so ``rewards.potential_shaping`` pays a
         positive delta for forward progress and ~0 for dwelling at any fixed
-        state. See docs/superpowers/plans/2026-07-16-monotone-place-potential.md.
+        state.
         """
         obj_to_target_dist, _ = self._obj_placement_state(obj_pos, target_pos)
         height_gap = max(0.0, float(obj_pos[2]) - self._initial_obj_z)
@@ -299,9 +299,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # flung placements the arm-static check never inspects, and the still-held
         # placement the arm-static check accepts) and keeps the predicate
         # perceivable from vision. ``is_robot_static`` stays in ``info`` as a
-        # diagnostic. Mirrors WarpPickAndPlaceVectorEnv._compute_reward_terminated;
-        # see docs/superpowers/plans/
-        # 2026-07-26-place-success-predicate-and-terminate-flag.md.
+        # diagnostic. Mirrors WarpPickAndPlaceVectorEnv._compute_reward_terminated.
         success = self._placement_success(is_obj_placed, is_obj_static, is_grasped)
 
         info = {
@@ -323,12 +321,8 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
 
     def _compute_reward(self, info: dict) -> float:
         scale = self.config.reward.tanh_shaping_scale
-        # reaching/grasping are potential-shaped deltas, not raw state values
-        # (dwelling at "reached and grasped, never placed" must pay ~0/step, see
-        # docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md), and
-        # both potentials are held up by is_obj_placed so the mandatory release
-        # on the goal and the post-place retreat pay no negative delta (see
-        # docs/superpowers/plans/2026-07-16-monotone-place-potential.md).
+        # Dwelling while grasped must pay ~0/step. Placement holds both potentials
+        # so releasing on the goal and retreating do not incur negative deltas.
         reach_now = place_reach_potential(
             info["tcp_to_obj_dist"], info["is_obj_placed"], scale=scale
         )

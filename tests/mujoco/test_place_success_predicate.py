@@ -3,8 +3,7 @@
 ``success`` requires the object to be within the goal tolerance, settled, and
 released. Arm joint velocity is reported in ``info`` but must never decide the
 outcome: the intended terminal behaviour is release-and-retreat, and gating on
-arm staticness scores the retreat itself as failure. See
-docs/superpowers/plans/2026-07-26-place-success-predicate-and-terminate-flag.md.
+arm staticness scores the retreat itself as failure.
 """
 
 from __future__ import annotations

@@ -223,8 +223,7 @@ grasp-lift behavior instead of a random init, without touching PPO's own decisiv
 fixes or trading GPU-batch throughput away for a planning bottleneck (an MPC-planning
 approach, TD-MPC2, was tried first and dropped for exactly that throughput reason --
 see the CHANGELOG). An [RLPD](https://arxiv.org/abs/2302.02948)-style off-policy
-alternative is designed but not yet built; see
-[`docs/superpowers/specs/2026-07-11-rlpd-demo-augmented-sac-warp-design.md`](../docs/superpowers/specs/2026-07-11-rlpd-demo-augmented-sac-warp-design.md).
+alternative was considered but remains unimplemented.
 
 ### Design notes
 

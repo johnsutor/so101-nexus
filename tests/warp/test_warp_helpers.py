@@ -204,6 +204,70 @@ def test_grasp_from_contacts_empty_is_zero():
     assert grasp.tolist() == [0.0, 0.0]
 
 
+def test_grasp_ignores_invalid_and_padded_contacts():
+    import torch
+
+    from so101_nexus.warp.base_env import _grasp_from_contacts
+
+    grasp = _grasp_from_contacts(
+        contact_geom=torch.tensor([[2, 0], [2, 1], [999, -1], [2, 0]]),
+        contact_world=torch.tensor([0, 0, 999, 0]),
+        contact_frame=_frames([[-1.0, 0, 0], [1.0, 0, 0], [0, 0, 1], [1.0, 0, 0]]),
+        normal_force=torch.tensor([1.0, 1.0, float("nan"), float("nan")]),
+        nacon=torch.tensor(3),
+        obj_mask=_mask([[2]], ngeom=3),
+        gripper_mask=torch.tensor([True, False, False]),
+        jaw_mask=torch.tensor([False, True, False]),
+        threshold=0.5,
+        opposing_threshold=0.3,
+        num_envs=1,
+    )
+    assert grasp.tolist() == [1.0]
+
+
+def test_step_reuses_contact_forces_but_external_queries_read_live_state(env_factory, monkeypatch):
+    import mujoco_warp as mjw
+
+    env = env_factory(backend="warp", task="PickLift")
+    env.reset(seed=0)
+    calls = 0
+    original = mjw.contact_force
+
+    def contact_force(*args):
+        nonlocal calls
+        calls += 1
+        return original(*args)
+
+    monkeypatch.setattr(mjw, "contact_force", contact_force)
+    for expected in (1, 2):
+        env.step(env._joint_qpos().clone())
+        assert calls == expected
+    env._is_grasping()
+    env._is_grasping()
+    assert calls == 4
+    env._elapsed[0] = env.max_episode_steps
+    _, _, _, truncated, _ = env.step(env._joint_qpos().clone())
+    assert truncated.tolist() == [True, False]
+    assert calls == 6
+    assert env._contact_cache is None
+
+
+def test_contact_query_can_be_captured_without_reading_count_on_cpu(env_factory):
+    import torch
+
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is unavailable")
+    env = env_factory(backend="warp", task="PickLift", device="cuda")
+    env.reset(seed=0)
+    result = torch.empty(env.num_envs, device=env.device)
+    graph = env._capture_torch_graph(lambda: result.copy_(env._is_grasping()), "Grasp")
+    assert graph is not None
+    for _ in range(2):
+        env.step(env._joint_qpos().clone())
+        graph.replay()
+        torch.testing.assert_close(result, env._is_grasping())
+
+
 def test_grasp_from_contacts_aggregates_across_object_parts():
     """Fingers landing on different convex parts of one object still oppose.
 

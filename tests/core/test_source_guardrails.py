@@ -40,8 +40,7 @@ PACKAGE_MODULES = ("so101_nexus", "so101_nexus.mujoco")
 
 # Directory-name fragments that are NOT project-owned and must be excluded from
 # prose/style scans. Vendored MuJoCo Menagerie models, mesh/asset blobs, and the
-# virtualenv ship third-party text we do not control; docs/superpowers is design
-# scratch space outside the package source trees.
+# virtualenv ship third-party text we do not control.
 EXCLUDED_DIR_NAMES = frozenset(
     {
         "menagerie",
@@ -53,7 +52,6 @@ EXCLUDED_DIR_NAMES = frozenset(
         "__pycache__",
         "node_modules",
         ".git",
-        "superpowers",
     }
 )
 

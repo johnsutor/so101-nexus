@@ -9,9 +9,7 @@ Procedural guide for writing a new task's reward, or auditing an existing one, s
 dense shaping helps training instead of becoming the thing the policy learns to
 game. Grounded in a real, previously-shipped bug: `PickAndPlaceEnv`'s
 `task_progress` term let a policy collect ~90% of the reward budget forever by
-hovering a grasped object above the goal without ever placing it (see
-`docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md` for
-the full writeup and the fix).
+hovering a grasped object above the goal without ever placing it.
 
 ## The core failure mode: dwelling rewards
 
@@ -79,8 +77,7 @@ actually gets stuck -- but it is not categorically impossible, so still check.
      `Phi`, so you are free to pick one that ranks states in the right order
      -- delta-shaping fixes dwelling, it cannot fix a potential that ranks a
      later phase below an earlier one. The three traps found in the shipped
-     pick-and-place potential
-     (`docs/superpowers/plans/2026-07-16-monotone-place-potential.md`):
+     pick-and-place potential:
      1. *Undo-factors*: a height-back-near-rest factor pays negative on the
         lift the task requires. Measure transport with a distance under which
         the lift is free, e.g. Chebyshev `max(xy_dist, height_gap)` (a plain
@@ -174,34 +171,19 @@ actually gets stuck -- but it is not categorically impossible, so still check.
 
 ## Worked example
 
-`docs/superpowers/plans/2026-07-12-potential-based-task-progress-shaping.md` is
-a complete worked application of this checklist to `PickAndPlaceEnv` and
-`PickLiftEnv` (both backends): problem diagnosis, the decision with citations
-mapped to concrete design choices, exact scope, and non-goals (why
-Touch/Move/LookAt were left unchanged). Read it alongside
-`so101_nexus/rewards.py`'s `potential_shaping` and `place_task_potential`
-docstrings for the concrete implementation pattern to copy.
+Read `potential_shaping` and `place_task_potential` in
+`src/so101_nexus/rewards.py` for the implementation shared by the MuJoCo and
+Warp backends.
 
-That plan's original "Non-goals" left `reaching`/`grasping` as flat dwelling
-terms, reasoning they carried a smaller combined budget and were not (yet) an
-exploited surface -- explicitly flagged to revisit "if evidence of the same
-failure mode surfaces there." It did:
-`docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md` is the
-follow-up that converts `reaching`/`grasping` to potential-shaped deltas too,
-once fixing `task_objective` alone made their combined flat budget the new
-dominant dwelling ceiling. Read both plans together; the second is a second
-application of this same checklist, not a different pattern.
+The pick-and-place reward needed three corrections. First, task progress became
+potential-shaped deltas to stop paying for hovering above the goal. Reaching and
+grasping then needed the same treatment because their combined dwelling reward
+became the next exploitable ceiling.
 
-`docs/superpowers/plans/2026-07-16-monotone-place-potential.md` is the third
-application, and the origin of checklist step 3's monotonicity walk: with
-every facet correctly delta-shaped, a recorded teleop episode's step-reward
-graph exposed that the potential itself was not monotone along the ideal
-trajectory -- the mandatory lift paid -0.09, carrying toward the goal paid
-~1e-7 (stillness-muted product), and releasing on the goal paid -0.25, so a
-perfect demonstration earned nothing but the terminal bonus. The fix swapped
-the product potential for the staged additive `place_task_potential` and
-added the `is_obj_placed` successor holds. Lesson: the 0.4.8/0.4.9 fixes
-chose the right *mechanism* (deltas) around the wrong *potential*; audit both.
+Finally, the potential itself had to increase along a successful trajectory.
+A product of lift, transport, and stillness terms penalized required motion and
+release. The staged additive `place_task_potential` and `is_obj_placed` successor
+holds address that problem. Audit both the shaping mechanism and its potential.
 
 ## Discovery
 

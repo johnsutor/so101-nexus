@@ -383,8 +383,7 @@ def test_bc_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
     propagate into the shared reward-scaler stats, the loss, or the optimizer
     step -- training must finish with finite losses instead of eventually
     crashing on a poisoned ``RunningMeanStd``. ``use_demos=False`` keeps this
-    test network-free. See docs/superpowers/plans/
-    2026-07-16-pick-grasp-potential-shaping.md.
+    test network-free.
     """
     import importlib
 

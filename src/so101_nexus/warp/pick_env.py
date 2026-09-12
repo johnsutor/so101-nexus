@@ -240,6 +240,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._target_qadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_dadr = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._target_slot = torch.zeros(num_envs, dtype=torch.long, device=self.device)
+        self._target_slot_host = [0] * num_envs
         self._initial_obj_z = torch.zeros(num_envs, device=self.device)
         self._prev_task_potential = torch.zeros(num_envs, device=self.device)
         self._prev_reach_progress = torch.zeros(num_envs, device=self.device)
@@ -348,6 +349,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # One device read per tensor instead of one per world: indexing a CUDA
         # tensor element by element synchronizes on every element.
         for world, slot in zip(idx.tolist(), target.tolist(), strict=True):
+            self._target_slot_host[world] = slot
             self.task_descriptions[world] = self._describe_target(self._slot_objs[slot])
 
     def _task_reset(self, mask: torch.Tensor) -> None:
@@ -409,7 +411,6 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # completion surface (must reach and grasp before lifting), so a raw
         # (dwelling) value lets a policy park at "reached and grasped, never
         # lifted" and collect up to their combined budget every step forever.
-        # See docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md.
         reach_now = reach_progress(tcp_to_obj, scale=scale)
         reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
         grasp_delta = potential_shaping(is_grasped, self._prev_grasp_progress)

@@ -939,9 +939,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     def _settle_after_reset(self) -> None:
         """Advance configured no-op frames after reset before returning observations."""
         # data.ctrl was set during robot reset and must remain held while settling.
-        for _ in range(self.config.reset_settle_frames):
-            for _ in range(self._N_SUBSTEPS):
-                mujoco.mj_step(self.model, self.data)
+        mujoco.mj_step(
+            self.model, self.data, nstep=self.config.reset_settle_frames * self._N_SUBSTEPS
+        )
 
     def _refresh_reset_reference_state(self) -> None:
         """Refresh task reference state after reset settling."""
@@ -1024,8 +1024,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _advance_physics(self) -> None:
         """Advance one control interval without reset-time task updates."""
-        for _ in range(self._N_SUBSTEPS):
-            mujoco.mj_step(self.model, self.data)
+        mujoco.mj_step(self.model, self.data, nstep=self._N_SUBSTEPS)
 
     def _render_camera_params(self) -> dict[str, Any]:
         """Free-camera params for the configured render view (overhead or side)."""

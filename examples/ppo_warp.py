@@ -590,6 +590,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     done_buf = torch.zeros((num_steps, num_envs), device=dev)
     val_buf = torch.zeros((num_steps, num_envs), device=dev)
 
+    episode_stats = torch.empty((num_steps, num_envs, 4), device=dev)
     ep_ret = torch.zeros(num_envs, device=dev)
     ep_len = torch.zeros(num_envs, device=dev)
     ep_succeeded = torch.zeros(num_envs, dtype=torch.bool, device=dev)
@@ -614,7 +615,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
 
     pg_loss = v_loss = entropy_loss = torch.tensor(0.0)
     approx_kl = torch.tensor(0.0)
-    clipfracs: list[float] = []
+    clipfracs: list[torch.Tensor] = []
     succ_rate = mean_ret = mean_len = 0.0
 
     for update in range(1, num_updates + 1):
@@ -623,7 +624,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
             optimizer.param_groups[0]["lr"] = frac * learning_rate
         ent_now = ent_coef + (ent_coef_final - ent_coef) * ((update - 1.0) / num_updates)
 
-        hold_sum = 0.0
+        hold_sum = torch.zeros((), device=dev)
         for step in range(num_steps):
             global_step += num_envs
             obs_buf[step] = next_obs
@@ -643,7 +644,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
             terminated = terminated.to(dev)
             done = (terminated | truncated.to(dev)).float()
             succ = info["success"].to(dev).bool()
-            hold_sum += float(succ.float().mean())
+            hold_sum += succ.float().mean()
 
             # Fire success_bonus once, on the step success is first reached: fixed horizon
             # suppresses `terminated`, so key off the true info["success"] instead.
@@ -655,24 +656,21 @@ def train(  # noqa: PLR0915, PLR0912, C901
             ep_ret += reward
             ep_len += 1
             ep_succeeded |= succ
+            episode_stats[step] = torch.stack((ep_ret, ep_len, ep_succeeded, done), dim=-1)
             done_mask = done.bool()
-            if bool(done_mask.any()):
-                idx = done_mask.nonzero(as_tuple=True)[0]
-                for r_, l_, s_ in zip(
-                    ep_ret[idx].tolist(),
-                    ep_len[idx].tolist(),
-                    ep_succeeded[idx].tolist(),
-                    strict=False,
-                ):
-                    ret_hist.append(r_)
-                    len_hist.append(l_)
-                    succ_hist.append(float(s_))
-                ep_ret[idx] = 0.0
-                ep_len[idx] = 0.0
-                ep_succeeded[idx] = False
+            ep_ret.masked_fill_(done_mask, 0.0)
+            ep_len.masked_fill_(done_mask, 0.0)
+            ep_succeeded &= ~done_mask
 
             next_obs = obs_norm(next_obs_raw, update=True)
             next_done = done
+
+        # Transfer episode diagnostics once per rollout, preserving step/world order.
+        completed = episode_stats.cpu()
+        for r_, l_, s_ in completed[completed[..., 3].bool(), :3].tolist():
+            ret_hist.append(r_)
+            len_hist.append(l_)
+            succ_hist.append(s_)
 
         with torch.no_grad():
             next_value = agent.get_value(next_obs).squeeze(-1)
@@ -710,7 +708,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
 
                 with torch.no_grad():
                     approx_kl = ((ratio - 1) - logratio).mean()
-                    clipfracs.append(((ratio - 1.0).abs() > clip_coef).float().mean().item())
+                    clipfracs.append(((ratio - 1.0).abs() > clip_coef).float().mean())
 
                 mb_adv = b_adv[mb]
                 if norm_adv and mb_adv.numel() > 1:
@@ -747,7 +745,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
         succ_rate = float(np.mean(succ_hist)) if succ_hist else 0.0
         mean_ret = float(np.mean(ret_hist)) if ret_hist else 0.0
         mean_len = float(np.mean(len_hist)) if len_hist else 0.0
-        hold_frac = hold_sum / num_steps
+        hold_frac = float(hold_sum / num_steps)
         sps = int(global_step / (time.time() - start_time))
 
         if succ_rate > best_success and len(succ_hist) >= 100:
@@ -769,7 +767,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 "losses/value_loss": v_loss.item(),
                 "losses/entropy": entropy_loss.item(),
                 "losses/approx_kl": approx_kl.item(),
-                "losses/clipfrac": float(np.mean(clipfracs)) if clipfracs else 0.0,
+                "losses/clipfrac": float(torch.stack(clipfracs).mean()) if clipfracs else 0.0,
             }
             if writer is not None:
                 for k, v in metrics.items():

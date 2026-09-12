@@ -3,6 +3,52 @@ import pytest
 pytestmark = pytest.mark.warp
 
 
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_episode_statistics_span_rollouts(module, monkeypatch):
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module(module)
+    make_envs = mod._make_envs
+    metrics = {}
+
+    def make(*args, **kwargs):
+        env = make_envs(*args, **kwargs)
+        original_step = env.step
+
+        def step(actions):
+            obs, _, terminated, truncated, info = original_step(actions)
+            info["success"] = torch.tensor([True, False])
+            return obs, torch.tensor([1.0, 2.0]), terminated, truncated, info
+
+        env.step = step
+        return env
+
+    class Writer:
+        def add_scalar(self, name, value, step):
+            metrics[name] = value
+
+    monkeypatch.setattr(mod, "_make_envs", make)
+    stats = mod.train(
+        num_envs=2,
+        num_steps=5,
+        total_timesteps=20,
+        num_minibatches=1,
+        update_epochs=1,
+        episode_length=3,
+        stagger_resets=False,
+        device="cpu",
+        writer=Writer(),
+        log=False,
+    )
+    assert stats["episodes"] == 6
+    assert stats["mean_return"] == 4.5
+    assert stats["success_rate"] == 0.5
+    assert metrics["charts/episodic_length"] == 3
+    assert metrics["charts/hold_frac"] == 0.5
+
+
 def test_ppo_warp_default_budget_matches_validated_picklift_recipe():
     import importlib
 
@@ -217,8 +263,7 @@ def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
     (injected at the exact ``envs.step()`` boundary ``train()`` reads) must not
     propagate into the shared reward-scaler stats, the loss, or the optimizer
     step -- training must finish with finite losses instead of eventually
-    crashing on a poisoned ``RunningMeanStd``. See docs/superpowers/plans/
-    2026-07-16-pick-grasp-potential-shaping.md.
+    crashing on a poisoned ``RunningMeanStd``.
     """
     import importlib
 

@@ -15,14 +15,15 @@ def env_factory():
 
     with ExitStack() as stack:
 
-        def make(backend="mujoco", task="Touch", **kwargs):
+        def make(backend="mujoco", task="Touch", version=1, **kwargs):
             pytest.importorskip(f"so101_nexus.{backend}")
             if backend == "warp":
                 pytest.importorskip("mujoco_warp")
                 pytest.importorskip("torch")
-                env = gym.make_vec(f"Warp{task}-v1", num_envs=2, device="cpu", **kwargs)
+                device = kwargs.pop("device", "cpu")
+                env = gym.make_vec(f"Warp{task}-v{version}", num_envs=2, device=device, **kwargs)
             else:
-                env = gym.make(f"MuJoCo{task}-v1", **kwargs)
+                env = gym.make(f"MuJoCo{task}-v{version}", **kwargs)
             stack.callback(env.close)
             return env
 

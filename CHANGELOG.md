@@ -39,6 +39,11 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Warp center-placement physics, support checks, and dwell updates now use a CUDA
+  graph. Contact queries reuse transition results, camera outputs use Torch's
+  caching allocator, and PPO examples transfer episode statistics once per rollout.
+  Native MuJoCo batches ordinary physics substeps into one Python call.
+
 - The documentation now lists the `viz` extra and clarifies visual observations,
   episode termination, PickAndPlace static thresholds, LookAt targets, LeRobot
   wrapper requirements, and rollout-recorder camera setup.
@@ -339,7 +344,7 @@ for the public-API and deprecation policy.
 
 - Teleop recorder UI: the episode progress counter is now one-indexed ("Episode 1 / 5" at the start of the first episode, matching the already-one-indexed "Recording episode 1/5..." status text) instead of showing "Episode 0 / 5" before any episode was recorded.
 - Teleop recorder UI: the dataset Repo ID warning now also flags a repo ID that already has a dataset on local disk (`HF_LEROBOT_HOME/<repo_id>`), flags (on blur) a repo ID that already exists as a dataset on the HuggingFace Hub, and warns when no `username/` namespace is given that the recording will be local-only and cannot be pushed to the Hub.
-- Pick-lift and pick-and-place `reaching`/`grasping` reward facets (both backends) are now potential-based shaping deltas, like `task_objective` since 0.4.8, instead of raw dwelling values: a policy that reaches and grasps but never finishes the task (lift/place) previously kept collecting up to 0.50/step (the combined `reaching + grasping` budget) indefinitely; it now collects that credit once, on genuine progress, same as `task_objective`. Non-terminal per-step reward for these two envs can now go as low as `-0.75` (default equal weights) instead of `0.0`, since these facets can swing negative on a genuine regression (e.g. losing a grasp) -- terminal (success) reward is unaffected, still clamped to `1.0`. See `docs/superpowers/plans/2026-07-16-pick-grasp-potential-shaping.md`.
+- Pick-lift and pick-and-place `reaching`/`grasping` reward facets (both backends) are now potential-based shaping deltas, like `task_objective` since 0.4.8, instead of raw dwelling values: a policy that reaches and grasps but never finishes the task (lift/place) previously kept collecting up to 0.50/step (the combined `reaching + grasping` budget) indefinitely; it now collects that credit once, on genuine progress, same as `task_objective`. Non-terminal per-step reward for these two envs can now go as low as `-0.75` (default equal weights) instead of `0.0`, since these facets can swing negative on a genuine regression (e.g. losing a grasp) -- terminal (success) reward is unaffected, still clamped to `1.0`.
 
 ### Fixed
 
@@ -370,7 +375,7 @@ for the public-API and deprecation policy.
 - Continuous integration coverage for Python 3.13 and macOS (MuJoCo backend).
 - Teleoperation records privileged state and success/done signals by default (#105).
 - `examples/bc_ppo_warp.py`: demo-seeded PPO for `WarpPickLift-v1` -- the same GPU-batched CleanRL PPO recipe as `ppo_warp.py`, plus behavior-cloning (BC) seeding from the 10-episode [`johnsutor/MuJoCoPickLift`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift) demonstrations: the actor is BC-pretrained on the demos before online PPO starts, and a persistent BC loss (`--bc-coef`) anchors the actor mean toward demo actions throughout training. Targets the one known weakness in `ppo_warp.py`'s current default recipe: a 5-seed sweep passed seeds 1-4 but seed 5 got stuck at a grasp-hold-at-table local optimum and never discovered the lift (`best_success=0.037`). Validated: same seed, same 30M-step recipe, demo-seeding alone rescues it to `best_success=0.993, final_success=0.983`. Demo actions are recomputed as the delta between consecutive recorded joint states (not the recorded absolute-position `action` column) since `ppo_warp.py`'s proven `pd_joint_delta_pos` control mode is left unchanged. `--use-demos false` recovers `ppo_warp.py` exactly.
-- `docs/superpowers/specs/2026-07-11-rlpd-demo-augmented-sac-warp-design.md`: design doc for an RLPD-style demo-augmented off-policy alternative, deferred as a follow-up.
+- An internal design for an RLPD-style demo-augmented off-policy alternative, deferred as a follow-up.
 - `examples/ppo_warp.py` / `examples/bc_ppo_warp.py`: added `rollout_video_from_checkpoint()`, which renders one deterministic MuJoCo rollout of a saved Warp PPO policy to an mp4 (the Warp backend runs GPU-parallel worlds and does not render, so the rollout is shown in the matching MuJoCo backend as a transfer figure). Both Colab notebooks (`ppo_warp_colab.ipynb`, `bc_ppo_warp_colab.ipynb`) now finish with a "Watch a sample rollout" step that plays the mp4 inline via `IPython.display.Video`.
 - Teleop and rollout-recorded LeRobot datasets now carry a per-facet reward breakdown alongside the existing scalar `reward` field: six always-on `reward_components.<name>` scalars (`reaching`, `grasping`, `task_objective`, `completion_bonus`, `action_delta_penalty`, `energy_penalty`) that sum exactly to `reward` on every frame. `RewardConfig.compute_components`/`compute_simple_components` produce the breakdown; unused buckets for single-objective envs (Touch/Move reach, LookAt orientation) are pinned at `0.0`.
 
