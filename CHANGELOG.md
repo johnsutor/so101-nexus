@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-12
+
 ### Added
 
 - `MuJoCoPickReturn-v1`, `WarpPickReturn-v1`, and `PickReturnConfig` require
@@ -611,7 +613,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.5.4...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/johnsutor/so101-nexus/compare/0.5.4...0.6.0
 [0.5.4]: https://github.com/johnsutor/so101-nexus/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/johnsutor/so101-nexus/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/johnsutor/so101-nexus/compare/0.5.1...0.5.2
