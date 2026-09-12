@@ -35,6 +35,12 @@ gymnasium.register(
 )
 
 gymnasium.register(
+    id="WarpPickReturn-v1",
+    vector_entry_point="so101_nexus.warp.pick_return:WarpPickReturnVectorEnv",
+    max_episode_steps=1024,
+)
+
+gymnasium.register(
     id="WarpPickAndPlace-v1",
     vector_entry_point="so101_nexus.warp.pick_and_place:WarpPickAndPlaceVectorEnv",
     max_episode_steps=1024,

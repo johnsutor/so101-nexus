@@ -82,6 +82,24 @@ class JointVelocities(Observation):
         return 6
 
 
+class RestingJointPositions(Observation):
+    """Configured resting angles of the five arm joints, in degrees (5-dim).
+
+    Uses ``RobotConfig.rest_qpos_deg`` in the same joint order as
+    :class:`JointPositions`, excluding the gripper. Reset noise and ``init_pose``
+    do not change this target. Unlike the legacy joint state components, this
+    component uses degrees, matching the public rest-pose configuration.
+    """
+
+    @property
+    def name(self) -> str:  # noqa: D102
+        return "resting_joint_positions"
+
+    @property
+    def size(self) -> int:  # noqa: D102
+        return 5
+
+
 class JointEfforts(Observation):
     """Actuator generalized force on each robot joint in N*m (6-dim).
 
@@ -149,7 +167,8 @@ class TargetOffset(Observation):
     - Manipulation tasks that carry an object to a goal (pick-and-place,
       stack-cube, both backends) return ``goal - object``, so the vector is
       object-relative and goes to zero when the object is on the goal.
-    - Tasks with no carried object (move) return ``goal - tcp``.
+    - Move and PickReturn return ``goal - tcp``. For PickReturn the goal is
+      the TCP position at the configured arm rest posture.
 
     Use :class:`ObjectOffset` when you specifically want ``object - tcp``; that
     one is gripper-relative in every task.

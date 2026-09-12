@@ -3,7 +3,7 @@ title: Backends
 description: Choosing between MuJoCo and MuJoCo Warp, and the vectorization, rendering, and physics differences between them.
 ---
 
-SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend adds native GPU-parallel batching for reinforcement learning. Both cover the same six tasks (Touch, LookAt, Move, PickLift, PickAndPlace, StackCube) on the same SO-101 arm, with the same env IDs modulo the `MuJoCo`/`Warp` prefix. See [Environments](/docs/environments) for the ID list.
+SO101-Nexus uses MuJoCo as its default simulation backend. A MuJoCo Warp backend adds native GPU-parallel batching for reinforcement learning. Both cover the same SO-101 tasks, with the same env IDs modulo the `MuJoCo`/`Warp` prefix. See [Environments](/docs/environments) for the ID list.
 
 The MuJoCo backend is stable. The MuJoCo Warp backend is experimental: its API and physics may change between minor releases. See [Stability and versioning](/docs/api/stability).
 

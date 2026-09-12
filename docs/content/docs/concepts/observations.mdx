@@ -15,10 +15,11 @@ State components produce fixed-size slices of the observation vector.
 | --- | --- | --- |
 | `JointPositions` | 6 | Current angle of each robot joint |
 | `JointVelocities` | 6 | Angular velocity of each robot joint (rad/s) |
+| `RestingJointPositions` | 5 | Configured resting arm angles in degrees, excluding the gripper (PickReturn) |
 | `JointEfforts` | 6 | Actuator force on each robot joint (N*m) |
 | `GripperContactForce` | 3 | World-frame resultant contact force on the two fingers (N) |
 | `EndEffectorPose` | 7 | TCP position (3) + quaternion orientation (4) |
-| `TargetOffset` | 3 | Vector to the goal: goal minus object in manipulation tasks, goal minus TCP elsewhere |
+| `TargetOffset` | 3 | Goal minus object for placement/stacking; goal minus TCP for Move and PickReturn |
 | `GazeDirection` | 3 | Unit vector from the wrist camera toward the target object |
 | `GazeState` | 1 | Binary in-frame flag (1.0 = the target object is inside the cone of half the wrist camera's vertical FOV) |
 | `GraspState` | 1 | Binary grasp flag (1.0 = grasping, 0.0 = not); requires two-sided contact with opposing normals |
@@ -29,6 +30,23 @@ State components produce fixed-size slices of the observation vector.
 
 `GazeDirection` and `GazeState` are anchored at the wrist camera, not at the gripper
 tip. Tasks without a target object (Move) do not support either component.
+
+### Rest target observations
+
+PickReturn includes `RestingJointPositions`, `TargetPosition`, and `TargetOffset`
+by default. The first contains the five configured arm angles in degrees,
+following `RobotConfig.rest_qpos_deg`. The existing `JointPositions` component
+reports current angles in radians; convert units before comparing them.
+`TargetPosition` gives the world-frame TCP position at the rest posture in meters.
+`TargetOffset` gives that position minus the current TCP position.
+The rest target stays fixed when reset randomizes the starting posture.
+
+This makes both the joint target and the relative end-effector target observable,
+similar to Habitat's relative resting-position sensor.
+In `obs_mode="visual"`, the existing actor state remains six joint positions;
+the configured rest components enter `info["privileged_state"]` with other state components.
+To expose rest targets directly to a camera-based actor, use `obs_mode="state"`
+and include the desired rest and camera components in `observations`.
 
 ### Camera Components
 

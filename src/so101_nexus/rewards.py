@@ -146,6 +146,102 @@ def _elementwise_max(a, b):
     return max(a, b)
 
 
+def pick_return_reach_potential(tcp_to_obj_dist, is_grasped, *, scale):
+    """Hold reach credit during a grasp despite changes in object-to-TCP offset.
+
+    Parameters
+    ----------
+    tcp_to_obj_dist : float or numpy.ndarray or torch.Tensor
+        Target distance from the TCP in meters.
+    is_grasped : bool or numpy.ndarray or torch.Tensor
+        Whether the target is currently grasped.
+    scale : float
+        Tanh distance steepness.
+    """
+    return _elementwise_max(reach_progress(tcp_to_obj_dist, scale=scale), 1.0 * (is_grasped > 0.5))
+
+
+def pick_return_success(
+    lift_height,
+    rest_error_deg,
+    is_grasped,
+    is_robot_static,
+    *,
+    lift_threshold,
+    return_threshold_deg,
+):
+    """Require a lifted grasp at the resting arm posture with low joint speed.
+
+    Parameters
+    ----------
+    lift_height : float or numpy.ndarray or torch.Tensor
+        Target height above the episode's reset reference, in meters.
+    rest_error_deg : float or numpy.ndarray or torch.Tensor
+        Maximum absolute error over the five arm joints, in degrees.
+    is_grasped, is_robot_static : bool or numpy.ndarray or torch.Tensor
+        Current target grasp and arm staticness predicates.
+    lift_threshold : float
+        Required lift clearance in meters.
+    return_threshold_deg : float
+        Accepted per-joint rest error in degrees.
+    """
+    return (
+        (is_grasped > 0.5)
+        & (lift_height > lift_threshold)
+        & (rest_error_deg <= return_threshold_deg)
+        & is_robot_static
+    )
+
+
+def pick_return_task_potential(
+    lift_height,
+    rest_error_deg,
+    arm_speed,
+    is_grasped,
+    *,
+    lift_threshold,
+    return_threshold_deg,
+    scale,
+    velocity_scale,
+    max_goal_height=0.08,
+):
+    """Additive lift, return, and settle potential in [0, 1].
+
+    Lift saturates at clearance. Return starts only after clearance; stillness
+    shapes only the final posture. Boolean gates keep transport gradients alive
+    while moving, following ManiSkill-HAB's staged Pick reward. Feed this value
+    through ``potential_shaping`` so dwelling pays zero and drops undo credit.
+
+    Parameters
+    ----------
+    lift_height : float or numpy.ndarray or torch.Tensor
+        Target height above its reset reference in meters.
+    rest_error_deg : float or numpy.ndarray or torch.Tensor
+        Maximum absolute arm-joint error in degrees.
+    arm_speed : float or numpy.ndarray or torch.Tensor
+        Maximum absolute arm-joint speed in rad/s, excluding the gripper.
+    is_grasped : bool or numpy.ndarray or torch.Tensor
+        Whether the selected object is currently grasped.
+    lift_threshold, return_threshold_deg : float
+        Success clearance in meters and posture tolerance in degrees.
+    scale, velocity_scale : float
+        Tanh steepness for angular return error (as a fraction of 180 degrees)
+        and final arm speed, respectively.
+    max_goal_height : float
+        Characteristic lift height in meters for tanh shaping. Lift credit is
+        normalized to one at ``lift_threshold`` and saturates there.
+    """
+    lift = lift_progress(lift_height, scale=1.0 / max_goal_height, grasped=True)
+    lift = lift / math.tanh(lift_threshold / max_goal_height)
+    lift = 1.0 - _elementwise_max(1.0 - lift, 0.0)
+    lifted = lift_height > lift_threshold
+    at_rest = rest_error_deg <= return_threshold_deg
+    normalized_error = _elementwise_max(rest_error_deg - return_threshold_deg, 0.0) / 180.0
+    returning = reach_progress(normalized_error, scale=scale)
+    still = reach_progress(arm_speed, scale=velocity_scale)
+    return (is_grasped > 0.5) * (lift + lifted * (returning + at_rest * still)) / 3.0
+
+
 def place_reach_potential(tcp_to_obj_dist, is_obj_placed, *, scale):
     """Reach potential for place tasks: ``max(reach_progress, is_obj_placed)``.
 

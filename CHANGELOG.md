@@ -11,6 +11,13 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- `MuJoCoPickReturn-v1`, `WarpPickReturn-v1`, and `PickReturnConfig` require
+  grasping and lifting the selected object, then returning the arm to its
+  configured rest posture with low joint velocity. Both backends support all
+  state and RGB/depth observation components, including the new five-angle
+  `RestingJointPositions` component in degrees. Shared staged reward potentials
+  prevent credit from dwelling or drop/regrasp cycles.
+
 - Wrist and overhead cameras support RGB, metric depth, or both through
   `modalities` on native MuJoCo and MuJoCo Warp. Depth observations use separate
   `*_camera_depth` keys with float32 distances in meters. Native MuJoCo also

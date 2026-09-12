@@ -199,6 +199,28 @@ def test_docs_reference_only_registered_env_ids() -> None:
     )
 
 
+def test_environment_table_state_dimensions_match_public_configs() -> None:
+    """New tasks must retain an accurate default observation schema."""
+    import so101_nexus
+
+    rows = re.findall(
+        r"\| `(MuJoCo[\w-]+)` \| `(Warp[\w-]+)` \| `(\w+Config)` \| (\d+) \| (\d+) \|",
+        _read(DOCS / "environments" / "index.mdx"),
+    )
+    assert rows
+    documented = set()
+    for mujoco_id, warp_id, config_name, _, dimensions in rows:
+        config = getattr(so101_nexus, config_name)()
+        actual = sum(component.size for component in config.observations)
+        assert actual == int(dimensions), config_name
+        documented.update((mujoco_id, warp_id))
+    registered = set()
+    for backend in ("mujoco", "warp"):
+        src = _read(ROOT / "src" / "so101_nexus" / backend / "__init__.py")
+        registered.update(re.findall(r'id="([^"]+)"', src))
+    assert documented == registered
+
+
 def test_examples_readme_entropy_matches_ppo_warp_defaults() -> None:
     """examples/README.md entropy flags must match ``ppo_warp.py`` Args defaults."""
     ppo = _read(ROOT / "examples" / "ppo_warp.py")

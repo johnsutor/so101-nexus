@@ -15,8 +15,8 @@ tags:
 # SO101-Nexus environments
 
 Twelve SO-101 manipulation environments, loadable through
-[LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub). Six tasks on a
-CPU MuJoCo backend and the same six on a GPU-batched MuJoCo Warp backend, from
+[LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub). Tasks run on a
+CPU MuJoCo backend or a GPU-batched MuJoCo Warp backend, from
 [so101-nexus](https://github.com/johnsutor/so101-nexus).
 
 ```python
@@ -53,6 +53,7 @@ observation layouts are versioned and tested with the package.
 | `envs/MuJoCoLookAt-v1.py`     | Point the wrist camera at an object | 256   | 23        | MuJoCo  |
 | `envs/MuJoCoMove-v1.py`       | Move the end-effector a set offset  | 256   | 22        | MuJoCo  |
 | `envs/MuJoCoPickLift-v1.py`   | Grasp and lift an object            | 1024  | 31        | MuJoCo  |
+| `envs/MuJoCoPickReturn-v1.py` | Pick and return the arm to rest     | 1024  | 42        | MuJoCo  |
 | `envs/MuJoCoPickAndPlace-v1.py` | Place an object on a goal disc    | 1024  | 43        | MuJoCo  |
 | `envs/MuJoCoPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | MuJoCo |
 | `envs/MuJoCoStackCube-v1.py`  | Stack one cube on another           | 1024  | 43        | MuJoCo  |
@@ -60,11 +61,13 @@ observation layouts are versioned and tested with the package.
 | `envs/WarpLookAt-v1.py`       | Point the wrist camera at an object | 256   | 23        | Warp    |
 | `envs/WarpMove-v1.py`         | Move the end-effector a set offset  | 256   | 22        | Warp    |
 | `envs/WarpPickLift-v1.py`     | Grasp and lift an object            | 1024  | 31        | Warp    |
+| `envs/WarpPickReturn-v1.py`   | Pick and return the arm to rest     | 1024  | 42        | Warp    |
 | `envs/WarpPickAndPlace-v1.py` | Place an object on a goal disc      | 1024  | 43        | Warp    |
 | `envs/WarpPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | Warp |
 | `envs/WarpStackCube-v1.py`    | Stack one cube on another           | 1024  | 43        | Warp    |
 
 The v2 entry points require a library build that includes `PickAndPlaceV2Config`.
+The PickReturn entry points require a library build that includes `PickReturnConfig`.
 See the [environment reference](https://so101-nexus.com/docs/environments) for the versioned placement contract.
 
 State dimensions are the default observation layout; they change with the
