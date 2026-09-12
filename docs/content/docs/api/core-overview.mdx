@@ -63,7 +63,7 @@ from so101_nexus.env_ids import all_registered_env_ids
 ids = all_registered_env_ids()
 ```
 
-Returns the SO101-Nexus environment IDs for whichever backends are currently imported: six `MuJoCo*-v1` ids with the MuJoCo backend imported, plus six `Warp*-v1` ids with the Warp backend imported.
+Returns the SO101-Nexus environment IDs for whichever backends are currently imported, including all registered task versions. See [Environments](/docs/environments) for the ID list.
 
 ## Exports by Category
 
@@ -105,6 +105,7 @@ All configuration classes have sensible defaults. See [Configuration Classes](/d
 | `RewardConfig` | Reward component weights with a `compute()` method |
 | `EnvironmentConfig` | Base environment parameters (spawn region, observation mode, reset settling, termination) |
 | `PickConfig` | Extends `EnvironmentConfig` for pick/lift tasks |
+| `PickReturnConfig` | Extends `PickConfig` for picking and returning the arm to rest |
 | `PickAndPlaceConfig` | Extends `EnvironmentConfig` for pick-and-place tasks |
 | `StackCubeConfig` | Extends `EnvironmentConfig` for stack-cube tasks |
 | `TouchConfig` | Extends PickConfig for touch-an-object tasks |
@@ -119,6 +120,7 @@ See [Observations](/docs/concepts/observations) for conceptual overview and [Con
 |-------|------|-------------|
 | `Observation` | Abstract base | Base class for all observation components |
 | `JointPositions` | State (6-dim) | Current joint angles |
+| `RestingJointPositions` | State (5-dim) | Configured resting arm angles in degrees |
 | `JointVelocities` | State (6-dim) | Current joint angular velocities (rad/s) |
 | `JointEfforts` | State (6-dim) | Actuator force on each joint (N*m) |
 | `GripperContactForce` | State (3-dim) | World-frame resultant contact force on the fingers (N) |

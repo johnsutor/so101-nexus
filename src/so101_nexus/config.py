@@ -34,6 +34,7 @@ from so101_nexus.observations import (
     ObjectOffset,
     ObjectPose,
     ObjectVelocity,
+    RestingJointPositions,
     TargetOffset,
     TargetPosition,
 )
@@ -1069,7 +1070,8 @@ class PickConfig(EnvironmentConfig):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        _warn_inert_velocity_scale(self.reward, type(self).__name__)
+        if not isinstance(self, PickReturnConfig):
+            _warn_inert_velocity_scale(self.reward, type(self).__name__)
         self.objects = _normalize_objects(objects, CubeObject())
         self.n_distractors = n_distractors
         self.lift_threshold = lift_threshold
@@ -1101,6 +1103,61 @@ class PickConfig(EnvironmentConfig):
         return (
             f"PickConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
             f"lift_threshold={self.lift_threshold}, max_goal_height={self.max_goal_height})"
+        )
+
+
+class PickReturnConfig(PickConfig):
+    """Pick an object and return to the configured arm rest posture.
+
+    Parameters
+    ----------
+    return_threshold_deg : float
+        Maximum absolute error of any of the five arm joints, in degrees.
+        The target is ``robot.rest_qpos_deg[:5]``; the gripper is excluded.
+    **kwargs
+        Forwarded to PickConfig. ``lift_threshold`` must be finite and positive.
+        ``robot.static_vel_threshold`` controls final arm staticness.
+        ``max_goal_height`` controls lift-shaping curvature in meters. Lift
+        progress saturates at ``lift_threshold`` so lifting farther cannot
+        outrank returning.
+    """
+
+    def __init__(self, return_threshold_deg: float = 5.0, **kwargs) -> None:
+        default_observations = kwargs.get("observations") is None
+        if kwargs.get("reward") is None:
+            kwargs["reward"] = RewardConfig(
+                reaching=0.15,
+                grasping=0.15,
+                task_objective=0.3,
+                completion_bonus=0.4,
+            )
+        super().__init__(**kwargs)
+        self.return_threshold_deg = return_threshold_deg
+        for name in ("return_threshold_deg", "lift_threshold", "max_goal_height"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and > 0, got {value}")
+        if not all(math.isfinite(value) for value in self.robot.rest_qpos_deg[:5]):
+            raise ValueError("robot.rest_qpos_deg arm angles must be finite")
+        if default_observations:
+            assert self.observations is not None
+            self.observations += [RestingJointPositions(), TargetPosition(), TargetOffset()]
+
+    @property
+    def task_description(self) -> str:
+        """Return the instruction for a batch with different target objects."""
+        return self.describe_target()
+
+    def describe_target(self, obj: SceneObject | None = None) -> str:
+        """Return an instruction naming the sampled target object."""
+        target = "selected object" if obj is None else repr(obj)
+        return f"Pick up the {target} and return the arm to rest while holding it."
+
+    def __repr__(self) -> str:  # noqa: D105
+        return (
+            f"PickReturnConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
+            f"lift_threshold={self.lift_threshold}, "
+            f"return_threshold_deg={self.return_threshold_deg})"
         )
 
 

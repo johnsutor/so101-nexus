@@ -50,13 +50,13 @@ Recorded MuJoCo teleoperation rollouts are published as LeRobot datasets:
 
 - **[Teleoperation](/docs/workflow/teleoperation).** Drive a simulated follower with a
   physical SO-100 or SO-101 leader arm and save LeRobot v3 datasets, cameras included.
-- **[Six manipulation tasks](/docs/environments).** PickLift, PickAndPlace, StackCube, Touch,
-  LookAt, and Move, all on the standard Gymnasium API.
+- **[Manipulation tasks](/docs/environments).** Pick, return to rest, place, stack, touch,
+  look, and move, all on the standard Gymnasium API.
 - **[Imitation learning and RL](/docs/workflow/training).** Behavior cloning from your demos,
   then PPO fine-tuning that keeps anchoring to them.
 - **[Configurable scenes](/docs/concepts/customization).** Swap objects, add distractors,
   randomize colors and spawn regions, tune rewards, and choose observation components.
 - **[LeRobot-native](/docs/concepts/lerobot).** Datasets, processors, and hardware drivers
   come from LeRobot rather than a parallel implementation.
-- **[GPU-parallel Warp backend](/docs/concepts/backends).** The same six tasks as batched
+- **[GPU-parallel Warp backend](/docs/concepts/backends).** The same tasks as batched
   vector environments for large-scale RL (optional, experimental, NVIDIA only).

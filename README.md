@@ -80,9 +80,9 @@ for _ in range(256):
 env.close()
 ```
 
-Six SO-101 manipulation tasks ship on MuJoCo: PickLift, PickAndPlace, StackCube, Touch,
-LookAt, and Move. The optional MuJoCo Warp backend (`so101-nexus[warp]`) registers the same
-six as GPU-parallel batched vector environments for large-scale RL. See the
+SO-101 manipulation tasks ship on MuJoCo, including picking, returning to rest, and placement.
+The optional MuJoCo Warp backend (`so101-nexus[warp]`) registers the same tasks
+as GPU-parallel batched vector environments for large-scale RL. See the
 [environment reference](https://so101-nexus.com/docs/environments).
 
 The same environments are published as a
@@ -126,7 +126,7 @@ Recorded MuJoCo teleoperation datasets are published on Hugging Face:
 ## Roadmap
 
 - [x] MuJoCo environments for the SO-101 arm
-- [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickAndPlace, StackCube
+- [x] SO-101 tasks: Touch, LookAt, Move, PickLift, PickReturn, PickAndPlace, StackCube
 - [x] Physical leader-arm teleop recorder for LeRobot datasets
 - [x] MuJoCo Warp backend for GPU-parallel throughput
 - [x] Stronger training baselines and exemplars for every environment

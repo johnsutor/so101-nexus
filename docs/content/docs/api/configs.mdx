@@ -355,6 +355,36 @@ When `observations` is not specified: `[JointPositions(), JointVelocities(), End
 
 ---
 
+## PickReturnConfig
+
+Extends `PickConfig` for the [pick-and-return task](/docs/environments#success-conditions).
+
+```python
+from so101_nexus import CubeObject, PickReturnConfig, RobotConfig
+
+config = PickReturnConfig(
+    objects=[CubeObject(color="blue"), CubeObject(color="red")],
+    return_threshold_deg=5.0,
+    robot=RobotConfig(rest_qpos_deg=(0.0, -90.0, 90.0, 37.8, 0.0, 0.0)),
+)
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `return_threshold_deg` | `float` | `5.0` | Maximum absolute error of each arm joint from the configured rest posture, in degrees |
+
+`return_threshold_deg`, `lift_threshold`, and `max_goal_height` must be finite and positive.
+The rest target uses the first five angles in `robot.rest_qpos_deg`.
+`robot.static_vel_threshold` controls final arm staticness.
+`reward.velocity_shaping_scale` shapes the final slowdown and is active for this task.
+The default reward weights are `reaching=0.15`, `grasping=0.15`,
+`task_objective=0.3`, and `completion_bonus=0.4`.
+Passing a `RewardConfig` replaces these weights with your configuration.
+`max_goal_height` controls the curvature of lift shaping in meters.
+Lift credit is normalized to one at `lift_threshold` and saturates there.
+See [task details](/docs/environments#task-details) for reward stages and default observations.
+An explicit `observations` list is preserved, including an empty list.
+
 ## PickAndPlaceConfig
 
 Extends `EnvironmentConfig` with parameters for pick-and-place tasks. The carried

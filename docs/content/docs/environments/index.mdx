@@ -1,9 +1,9 @@
 ---
 title: Environments
-description: The six SO-101 tasks, with their IDs, state dimensions, success predicates, and reward shape.
+description: SO-101 tasks, with their IDs, state dimensions, success predicates, and reward shape.
 ---
 
-SO101-Nexus ships six Gymnasium-compatible manipulation tasks for the SO-101 arm.
+SO101-Nexus ships Gymnasium-compatible manipulation tasks for the SO-101 arm.
 Import `so101_nexus.mujoco` for the single-environment IDs or `so101_nexus.warp` for the GPU-batched counterparts.
 Both backends expose the same task contracts, including versioned pick-and-place tasks.
 
@@ -16,6 +16,7 @@ action spaces, see [Control modes](/docs/concepts/control-modes).
 | Task | MuJoCo ID | Warp ID | Config class | Max steps | State dim |
 | --- | --- | --- | --- | --- | --- |
 | Pick and lift an object | `MuJoCoPickLift-v1` | `WarpPickLift-v1` | `PickConfig` | 1024 | 31 |
+| Pick and return the arm to rest | `MuJoCoPickReturn-v1` | `WarpPickReturn-v1` | `PickReturnConfig` | 1024 | 42 |
 | Center an object on a target disc | `MuJoCoPickAndPlace-v2` | `WarpPickAndPlace-v2` | `PickAndPlaceV2Config` | 1024 | 43 |
 | Legacy origin-distance placement | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
 | Stack cube A on cube B | `MuJoCoStackCube-v1` | `WarpStackCube-v1` | `StackCubeConfig` | 1024 | 43 |
@@ -32,6 +33,13 @@ Every task publishes a binary `success` flag in the `info` dict.
 
 **PickLift** succeeds when the object is grasped and its height above the spawn pose
 exceeds `lift_threshold` (default 0.05 m). Both conditions must hold on the same step.
+
+**PickReturn** requires a grasp of the selected object and lift above `lift_threshold`.
+Every arm joint must be within `return_threshold_deg` of its configured resting angle,
+and every arm joint speed must be below `robot.static_vel_threshold`.
+All conditions must hold on the same step. The gripper joint is excluded from the
+posture and speed checks so its opening can match the held object.
+Staticness is checked at the current step, without a dwell interval.
 
 **PickAndPlace v2** requires the area centroid of the object's projected visual footprint inside the visible target disc.
 The footprint is the union of projected triangles, not an asset origin, bounding box, or convex hull.
@@ -79,7 +87,7 @@ to get right, so the reward is how close the robot is right now: low when far aw
 smoothly toward `1.0` as it closes in, plus the bonus on success. Distance terms use tanh
 shaping rather than a hard cutoff, so reward rises gradually instead of jumping.
 
-**Multi-step tasks pay the change in progress.** PickLift, PickAndPlace, and StackCube use
+**Multi-step tasks pay the change in progress.** PickLift, PickReturn, PickAndPlace, and StackCube use
 potential-based shaping: outside the completion bonus, the reward is how much better this
 step is than the last, not how good the current state looks. Once the robot stops
 improving, that term drops to exactly zero. This removes the incentive to freeze in a
@@ -128,6 +136,46 @@ Wrist camera:
   <source src="https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1/resolve/main/videos/observation.images.wrist/chunk-000/file-000.mp4" type="video/mp4" />
   Open the <a href="https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0">PickLift episode viewer</a> instead.
 </video>
+
+</Accordion>
+
+<Accordion title="PickReturn">
+
+Task description: `Pick up the {object!r} and return the arm to rest while holding it.`
+
+The default state includes PickLift's components plus `RestingJointPositions`,
+`TargetPosition`, and `TargetOffset`. All state components and both RGB/depth
+cameras can be selected through `observations`.
+See [Observations](/docs/concepts/observations#rest-target-observations) for their units and reference frames.
+
+The target posture uses `robot.rest_qpos_deg`, independently of reset noise,
+`robot.init_pose`, or a reset-time `init_qpos` override. Arm targets outside the
+control bounds are rejected. Choose a posture with clearance for the object pool.
+Object selection, distractors, and target-index overrides work as in PickLift.
+See [PickReturnConfig](/docs/api/configs#pickreturnconfig) for configuration fields.
+
+The reward has three potential differences: reach, grasp, and task progress.
+Reach credit stays at its maximum during a grasp. Task progress adds lift,
+return, and final stillness stages. Lift credit saturates at clearance; return
+credit starts after clearance; stillness credit starts only at the rest posture.
+Return shaping normalizes the angular error beyond tolerance by 180 degrees,
+keeping useful credit for progress when the arm is far from rest.
+Dropping the object removes grasp and task credit. Dwelling before success pays
+zero, and a drop/regrasp cycle cannot accumulate net shaping credit.
+Both backends expose the weighted terms in `info["reward_components"]`, plus
+`rest_error_deg`, `arm_speed` (rad/s), `lift_height`, and `is_robot_static`.
+
+This follows Habitat's grasp-and-return task and ManiSkill-HAB's posture and
+staticness shaping, adapted to the SO-101's fixed base and five arm joints.
+References: [Habitat Pick implementation](https://github.com/facebookresearch/habitat-lab/blob/main/habitat-lab/habitat/tasks/rearrange/sub_tasks/pick_sensors.py)
+and [ManiSkill-HAB Pick implementation](https://github.com/arth-shukla/mshab/blob/main/mshab/envs/pick.py).
+
+MuJoCo measures lift from the object's post-settle reset height. Warp retains
+its spawn-height reference because partial autoresets cannot settle only the
+reset worlds. Reward potentials are initialized from the returned reset state
+on both backends, preventing reward jumps across episode boundaries.
+Success terminates by default. `terminate_on_success=False` permits continued
+evaluation and pays the completion reward on each successful step.
 
 </Accordion>
 
