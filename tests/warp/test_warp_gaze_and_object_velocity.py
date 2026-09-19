@@ -183,7 +183,8 @@ def test_move_task_rejects_object_components(component_name):
         WarpMoveVectorEnv(num_envs=2, config=config, device="cpu")
 
 
-def test_gaze_angle_matches_mujoco_at_matched_state():
+@pytest.mark.parametrize("seed", [0, 11, 29])
+def test_gaze_angle_matches_mujoco_at_matched_state(seed):
     """Both backends read their own camera arrays; at identical simulator state
     and identical camera extrinsics they must report the same bearing."""
     import gymnasium as gym
@@ -197,8 +198,8 @@ def test_gaze_angle_matches_mujoco_at_matched_state():
     m_env = gym.make("MuJoCoPickLift-v1", config=PickConfig())
     m = m_env.unwrapped
     try:
-        w.reset(seed=0)
-        m.reset(seed=0)
+        w.reset(seed=seed)
+        m.reset(seed=seed)
         m.data.qpos[:] = w.qpos[0].detach().cpu().numpy().astype(np.float64)
         m.data.qvel[:] = w.qvel[0].detach().cpu().numpy().astype(np.float64)
         mujoco.mj_forward(m.model, m.data)
@@ -207,9 +208,17 @@ def test_gaze_angle_matches_mujoco_at_matched_state():
         # shared FOV boundary is cross-checked in both directions.
         cam_pos = w._cam_xpos[0, w._wrist_cam_id].numpy().astype(np.float64)
         axis = -w._cam_xmat[0, w._wrist_cam_id, :, 2].numpy().astype(np.float64)
+        perpendicular = np.array([axis[1], -axis[0], 0.0])
+        perpendicular /= np.linalg.norm(perpendicular)
+        inside_angle = 0.1
         for target, expected_in_view in (
-            (np.array([0.25, 0.05, 0.10]), 0.0),
+            (cam_pos + perpendicular * 0.15, 0.0),
             (cam_pos + axis * 0.15, 1.0),
+            (
+                cam_pos
+                + (np.cos(inside_angle) * axis + np.sin(inside_angle) * perpendicular) * 0.15,
+                1.0,
+            ),
         ):
             m._gaze_target_pos = lambda t=target: t
             w._gaze_target_pos = lambda t=target: torch.tensor(t[None], dtype=torch.float32)

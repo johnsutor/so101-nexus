@@ -22,7 +22,12 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
-from so101_nexus.gaze import direction_to_object, gaze_angle_rad, gaze_cosine, object_in_view
+from so101_nexus.gaze import (
+    direction_to_object,
+    gaze_angle_between_rad,
+    gaze_cosine,
+    object_in_view,
+)
 from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
@@ -702,7 +707,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _gaze_angle_rad(self) -> float:
         """Return the angle between the optical axis and the target object."""
-        return float(gaze_angle_rad(self._gaze_cosine()))
+        return float(gaze_angle_between_rad(self._gaze_axis(), self._gaze_direction()))
 
     def _half_fov_rad(self) -> float:
         """Half the live wrist-camera vertical FOV (radians): the in-frame boundary."""

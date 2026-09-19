@@ -31,6 +31,7 @@ import numpy as np
 import torch
 
 from so101_nexus import observations_from_feature_names, privileged_state_feature_names
+from so101_nexus._reproducibility import seed_everything
 
 try:
     from examples.ppo_warp import Agent, _make_envs, _resolve_env_cls
@@ -48,12 +49,12 @@ class Args:
 
     checkpoint: str = "runs/WarpPickLift-v1__*/best_agent.pt"
     """path or glob to a training checkpoint (latest match is used for a glob)"""
-    env_id: str = "WarpPickLift-v1"
+    env_id: str | None = None
     num_envs: int = 512
-    episode_length: int = 512
+    episode_length: int | None = None
     seed: int = 12345
-    control_mode: str = "pd_joint_delta_pos"
-    hidden_dim: int = 256
+    control_mode: str | None = None
+    hidden_dim: int | None = None
 
 
 def main():
@@ -66,12 +67,19 @@ def main():
         raise FileNotFoundError(f"no checkpoint matched {args.checkpoint!r}")
     path = matches[-1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    seed_everything(args.seed, deterministic=True)
     ckpt = torch.load(path, map_location=device, weights_only=False)
     print(f"[eval] checkpoint={path} trained_step={ckpt['step']} saved_success={ckpt['success']}")
+    metadata = ckpt.get("metadata", {})
+    env_id = args.env_id or metadata.get("env_id", "WarpPickLift-v1")
+    control_mode = args.control_mode or metadata.get("control_mode", "pd_joint_delta_pos")
+    episode_length = args.episode_length or metadata.get("episode_length", 512)
+    hidden_dim = args.hidden_dim or metadata.get("hidden_dim", 256)
 
     names = ckpt.get("env_state_names")
+    saved_config = ckpt.get("env_config")
     default = privileged_state_feature_names(
-        _resolve_env_cls(args.env_id).default_config_cls().observations
+        _resolve_env_cls(env_id).default_config_cls().observations
     )
     if names and list(names) != default:
         # Silently evaluating a stale layout would report plausible-looking numbers.
@@ -79,23 +87,28 @@ def main():
             f"[eval] checkpoint pins a {len(names)}-dim layout, not the {len(default)}-dim default"
         )
     envs = _make_envs(
-        args.env_id,
+        env_id,
         args.num_envs,
         device,
         args.seed,
-        control_mode=args.control_mode,
-        episode_length=args.episode_length,
+        control_mode=control_mode,
+        episode_length=episode_length,
         observations=None if not names else observations_from_feature_names(names),
+        config=saved_config,
     )
     obs_dim = int(np.prod(envs.single_observation_space.shape))
     act_dim = int(np.prod(envs.single_action_space.shape))
-    agent = Agent(obs_dim, act_dim, args.hidden_dim).to(device)
+    agent = Agent(obs_dim, act_dim, hidden_dim).to(device)
     agent.load_state_dict(ckpt["model"])
     agent.eval()
     mean = ckpt["obs_mean"].to(device).float()
     var = ckpt["obs_var"].to(device).float()
 
+    norm_obs = ckpt.get("norm_obs", True)
+
     def norm(o):
+        if not norm_obs:
+            return o.to(device)
         return ((o.to(device) - mean) / torch.sqrt(var + 1e-8)).clamp(-10.0, 10.0)
 
     obs, _ = envs.reset(seed=args.seed)
@@ -103,7 +116,7 @@ def main():
     last_succ = torch.zeros(args.num_envs, dtype=torch.bool, device=device)
     ret = torch.zeros(args.num_envs, device=device)
     with torch.no_grad():
-        for _ in range(args.episode_length):
+        for _ in range(episode_length):
             action = agent.actor_mean(norm(obs))  # deterministic mean action
             obs, reward, _term, _trunc, info = envs.step(action)
             ret += reward.to(device)
@@ -112,7 +125,7 @@ def main():
     envs.close()
 
     print(
-        f"[eval] episodes={args.num_envs} horizon={args.episode_length} "
+        f"[eval] episodes={args.num_envs} horizon={episode_length} "
         f"success_rate(ever)={ever.float().mean().item():.4f} "
         f"hold_rate(final)={last_succ.float().mean().item():.4f} "
         f"mean_return={ret.mean().item():.2f}"

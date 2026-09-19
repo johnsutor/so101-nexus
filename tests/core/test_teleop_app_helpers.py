@@ -1175,11 +1175,13 @@ def test_discard_episode_restores_record_controls(fake_gradio) -> None:
     assert outputs[5]["value"] == ""
 
 
-def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) -> None:
+def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio, tmp_path) -> None:
     class _Dataset:
         repo_id = "local/test"
 
         def __init__(self) -> None:
+            self.root = tmp_path
+            self.num_episodes = 0
             self.frames = []
             self.saved = 0
 
@@ -1223,11 +1225,13 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio) 
     assert outputs[8]["interactive"] is True
 
 
-def test_approve_episode_forwards_reward_components_to_frames(fake_gradio) -> None:
+def test_approve_episode_forwards_reward_components_to_frames(fake_gradio, tmp_path) -> None:
     class _Dataset:
         repo_id = "local/test"
 
         def __init__(self) -> None:
+            self.root = tmp_path
+            self.num_episodes = 0
             self.frames = []
             self.saved = 0
 

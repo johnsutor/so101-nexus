@@ -56,8 +56,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from so101_nexus import observations_from_feature_names
+from so101_nexus import observations_from_feature_names, privileged_state_feature_names
 from so101_nexus._reproducibility import seed_everything
+from so101_nexus._run_metadata import training_metadata
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Args:
     exp_name: str = "ppo"
     seed: int = 1
     torch_deterministic: bool = True
+    torch_deterministic_warn_only: bool = False
     cuda: bool = True
 
     env_id: str = "WarpPickLift-v1"
@@ -307,6 +309,7 @@ def _make_envs(
     episode_length=512,
     terminate_on_success=False,
     observations=None,
+    config=None,
 ):
     """Build the batched Warp training env.
 
@@ -316,7 +319,8 @@ def _make_envs(
     as a ``bc_ppo_warp.py`` run pinned to its demo dataset's recorded components.
     """
     env_cls = _resolve_env_cls(env_id)
-    config = None if observations is None else env_cls.default_config_cls(observations=observations)
+    if config is None and observations is not None:
+        config = env_cls.default_config_cls(observations=observations)
     if not terminate_on_success:
         env_cls = _fixed_horizon(env_cls)
     return env_cls(
@@ -341,6 +345,7 @@ def evaluate_mujoco(
     seed,
     capture_video,
     observations=None,
+    config=None,
 ):
     """Deterministic eval in the matching ``MuJoCo*`` backend (a transfer figure).
 
@@ -361,7 +366,13 @@ def evaluate_mujoco(
         control_mode=control_mode,
         render_mode="rgb_array" if capture_video else None,
         max_episode_steps=episode_length,
-        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
+        **(
+            {"config": config}
+            if config is not None
+            else (
+                {} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}
+            )
+        ),
     )
     mean = obs_norm.rms.mean.to(device).float()
     var = obs_norm.rms.var.to(device).float()
@@ -417,9 +428,9 @@ def rollout_video_from_checkpoint(
     checkpoint: str,
     env_id: str,
     *,
-    control_mode: str = "pd_joint_delta_pos",
-    episode_length: int = 512,
-    hidden_dim: int = 256,
+    control_mode: str | None = None,
+    episode_length: int | None = None,
+    hidden_dim: int | None = None,
     seed: int = 12345,
     out_path: str = "runs/colab_rollout.mp4",
     fps: int = 30,
@@ -440,10 +451,16 @@ def rollout_video_from_checkpoint(
     import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    seed_everything(seed, deterministic=True)
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
+    metadata = ckpt.get("metadata", {})
+    control_mode = control_mode or metadata.get("control_mode", "pd_joint_delta_pos")
+    episode_length = episode_length or metadata.get("episode_length", 512)
+    hidden_dim = hidden_dim or metadata.get("hidden_dim", 256)
 
-    names = ckpt.get("env_state_names")
+    names = ckpt.get("env_state_names") or ckpt.get("metadata", {}).get("env_state_names")
     observations = None if not names else observations_from_feature_names(names)
+    saved_config = ckpt.get("env_config")
 
     # Probe a throwaway MuJoCo env for obs/act dimensions (flat privileged state,
     # matching the Warp training obs). The checkpoint stores the policy, obs-norm
@@ -453,7 +470,13 @@ def rollout_video_from_checkpoint(
         mujoco_id,
         control_mode=control_mode,
         max_episode_steps=episode_length,
-        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
+        **(
+            {"config": saved_config}
+            if saved_config is not None
+            else (
+                {} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}
+            )
+        ),
     )
     obs_shape = probe.observation_space.shape
     act_shape = probe.action_space.shape
@@ -467,7 +490,7 @@ def rollout_video_from_checkpoint(
     agent.load_state_dict(ckpt["model"])
     agent.eval()
 
-    obs_norm = ObsNormalizer(obs_dim, device, enabled=True)
+    obs_norm = ObsNormalizer(obs_dim, device, enabled=ckpt.get("norm_obs", True))
     obs_norm.rms.mean = ckpt["obs_mean"].to(device).double()
     obs_norm.rms.var = ckpt["obs_var"].to(device).double()
 
@@ -482,12 +505,14 @@ def rollout_video_from_checkpoint(
         seed=seed,
         capture_video=capture_video,
         observations=observations,
+        config=saved_config,
     )
     video_path = write_video(frames, out_path, fps=fps) if capture_video else None
     return metrics, video_path
 
 
-def _save(agent, obs_norm, path, step, success):
+def _save(agent, obs_norm, path, step, success, *, metadata=None, env_config=None):
+    """Save an inference snapshot, not the state required to resume training."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save(
         {
@@ -496,6 +521,11 @@ def _save(agent, obs_norm, path, step, success):
             "obs_var": obs_norm.rms.var.cpu(),
             "step": step,
             "success": success,
+            "checkpoint_type": "inference",
+            "checkpoint_version": 1,
+            "norm_obs": obs_norm.enabled,
+            "metadata": metadata or {},
+            "env_config": env_config,
         },
         path,
     )
@@ -535,6 +565,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     device="cuda",
     seed=1,
     torch_deterministic=True,
+    torch_deterministic_warn_only=False,
     save_dir=None,
     writer=None,
     log_freq=1,
@@ -545,6 +576,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
     Batch-size arguments are validated before any environment is constructed, so
     invalid configurations fail fast without paying the Warp model-build cost.
     """
+    run_config = locals().copy()
+    run_config.pop("writer")
     batch_size = num_envs * num_steps
     if num_minibatches < 1 or num_minibatches > batch_size:
         raise ValueError(f"num_minibatches must be in [1, {batch_size}], got {num_minibatches}")
@@ -560,7 +593,11 @@ def train(  # noqa: PLR0915, PLR0912, C901
     minibatch_size = batch_size // num_minibatches
     num_updates = total_timesteps // batch_size
 
-    seed_everything(seed, deterministic=torch_deterministic)
+    seed_everything(
+        seed,
+        deterministic=torch_deterministic,
+        deterministic_warn_only=torch_deterministic_warn_only,
+    )
     dev = torch.device(device)
     np_rng = np.random.default_rng(seed)
     policy_rng = torch.Generator(device=dev).manual_seed(seed + 1)
@@ -574,6 +611,18 @@ def train(  # noqa: PLR0915, PLR0912, C901
         control_mode=control_mode,
         episode_length=episode_length,
         terminate_on_success=terminate_on_success,
+    )
+    env_state_names = privileged_state_feature_names(envs.unwrapped.config.observations)
+    run_metadata = training_metadata(
+        device=dev,
+        env_config=envs.unwrapped.config,
+        env_id=env_id,
+        control_mode=control_mode,
+        episode_length=episode_length,
+        hidden_dim=hidden_dim,
+        seed=seed,
+        env_state_names=env_state_names,
+        run_config=run_config,
     )
     obs_dim = int(np.prod(envs.single_observation_space.shape))
     act_dim = int(np.prod(envs.single_action_space.shape))
@@ -751,7 +800,15 @@ def train(  # noqa: PLR0915, PLR0912, C901
         if succ_rate > best_success and len(succ_hist) >= 100:
             best_success = succ_rate
             if save_dir:
-                _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate)
+                _save(
+                    agent,
+                    obs_norm,
+                    f"{save_dir}/best_agent.pt",
+                    global_step,
+                    succ_rate,
+                    metadata=run_metadata,
+                    env_config=envs.unwrapped.config,
+                )
 
         if (writer is not None or log) and (update % log_freq == 0 or update == num_updates):
             metrics = {
@@ -804,7 +861,15 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 write_video(frames, f"{save_dir}/videos/eval_{global_step}.mp4", fps=30)
 
     if save_dir:
-        _save(agent, obs_norm, f"{save_dir}/agent.pt", global_step, succ_rate)
+        _save(
+            agent,
+            obs_norm,
+            f"{save_dir}/agent.pt",
+            global_step,
+            succ_rate,
+            metadata=run_metadata,
+            env_config=envs.unwrapped.config,
+        )
 
     envs.close()
     return {
@@ -876,6 +941,7 @@ def main():
         device=str(device),
         seed=args.seed,
         torch_deterministic=args.torch_deterministic,
+        torch_deterministic_warn_only=args.torch_deterministic_warn_only,
         save_dir=save_dir,
         writer=writer,
         log_freq=args.log_freq,

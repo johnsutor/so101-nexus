@@ -92,6 +92,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
         seed,
         capture_video,
         observations=None,
+        config=None,
     ):
         captured["kwargs"] = {
             "env_id": env_id,
@@ -101,6 +102,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
             "seed": seed,
             "capture_video": capture_video,
             "observations": observations,
+            "config": config,
         }
         captured["obs_norm_mean"] = obs_norm.rms.mean.detach().cpu().clone()
         captured["obs_norm_var"] = obs_norm.rms.var.detach().cpu().clone()
@@ -138,6 +140,7 @@ def test_rollout_video_from_checkpoint_wires_checkpoint(tmp_path, monkeypatch):
         "seed": 12345,
         "capture_video": True,
         "observations": None,  # no env_state_names recorded: env default layout
+        "config": None,
     }
     # Saved obs-norm stats and policy weights must load unchanged into the rollout.
     assert torch.allclose(captured["obs_norm_mean"], torch.zeros(obs_dim, dtype=torch.float64))
@@ -217,3 +220,24 @@ def test_rollout_video_from_checkpoint_honors_recorded_layout(tmp_path, monkeypa
     assert privileged_state_feature_names(captured["observations"]) == names
     assert captured["agent_weight"].shape[1] == obs_dim
     assert torch.allclose(captured["agent_weight"], expected_agent.actor_mean[0].weight.detach())
+
+
+def test_rollout_video_honors_disabled_observation_normalization(tmp_path, monkeypatch):
+    obs_dim, act_dim = _probe_dims()
+    ckpt_path = tmp_path / "agent.pt"
+    _write_synthetic_checkpoint(ckpt_path, obs_dim, act_dim)
+    payload = torch.load(ckpt_path, weights_only=False)
+    payload["norm_obs"] = False
+    torch.save(payload, ckpt_path)
+    captured = {}
+
+    def fake_evaluate(agent, obs_norm, device, **kwargs):
+        captured["enabled"] = obs_norm.enabled
+        return {}, []
+
+    monkeypatch.setattr(ppo_mod, "evaluate_mujoco", fake_evaluate)
+    ppo_mod.rollout_video_from_checkpoint(
+        str(ckpt_path), ENV_ID, hidden_dim=HIDDEN_DIM, capture_video=False
+    )
+
+    assert captured["enabled"] is False

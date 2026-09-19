@@ -27,6 +27,22 @@ action spaces, see [Control modes](/docs/concepts/control-modes).
 State dim is the width of the default state observation. It changes if you override
 `observations` on the config. `all_registered_env_ids()` returns all versions for each imported backend.
 
+## Seeded resets
+
+`reset(seed=...)` restarts the environment's random sequence. Subsequent resets without
+a seed continue the sequence. The [quickstart](/docs/getting-started/quickstart) also shows
+how to seed random action sampling.
+
+Warp accepts a scalar seed or one seed per world. Seeds must be integers from `0` through
+`2**32 - 1`. A scalar derives distinct streams for each world. An explicit list assigns
+each seed directly, so a world keeps its samples when moved to another batch position.
+Repeated entries produce identical random samples for matching episode counters and configuration.
+
+Each Warp world has separate task, robot, wrist-camera, and visualization-camera streams.
+Only worlds that reset advance their episode counters. Camera randomization does not change
+task sampling. GPU physics can still differ despite identical random samples.
+For training reproducibility and checkpoint limits, see [Training](/docs/workflow/training#reproducibility).
+
 ## Success conditions
 
 Every task publishes a binary `success` flag in the `info` dict.

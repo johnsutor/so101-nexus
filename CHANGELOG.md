@@ -11,6 +11,14 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Teleoperation accepts `--seed` and saves each episode's effective seed and
+  initial simulator state with the dataset.
+- Training snapshots record normalization settings, observation layouts,
+  configuration, dataset revisions, and runtime provenance. Snapshots remain
+  inference artifacts and do not support exact mid-training resume.
+- Training supports explicit best-effort Torch determinism through
+  `--torch-deterministic-warn-only`. Deterministic execution is strict by default.
+
 - Warp environments support batched `rgb_array` and `depth_array` visualization
   on the simulation device, including independently seeded side-camera placement
   per world and resampling on partial autoresets. Visualization renders only on
@@ -19,6 +27,29 @@ for the public-API and deprecation policy.
 - `RenderConfig` supports optional side-camera azimuth, elevation, and distance
   ranges, sampled reproducibly on reset across all MuJoCo tasks for RGB, depth,
   and human rendering. Existing fixed defaults remain unchanged.
+
+### Changed
+
+- Warp uses independent per-world, per-episode random streams for tasks, robot
+  poses, and cameras. Partial resets no longer advance unrelated worlds.
+  Explicit seed lists are honored, including through EnvHub. Seeded layouts
+  intentionally differ from earlier releases.
+- Scanned YCB and GSO assets use immutable repository revisions and separate
+  caches per repository and revision. Custom mirrors require an explicit
+  `SO101_YCB_HF_REVISION` or `SO101_GSO_HF_REVISION` commit SHA. Collision manifests
+  record source revisions and validate the hashes of generated collision parts.
+- Behavior-cloning runs resolve one immutable demonstration revision and load
+  all data shards in a stable order. `--demo-revision` selects a specific revision.
+
+### Fixed
+
+- Warp resets clear solver warm starts, simulation time, and integration inputs
+  for reset worlds, so prior episodes do not leak into seeded CPU trajectories.
+- MuJoCo PPO video evaluation no longer consumes the training policy RNG.
+- Checkpoint evaluation preserves disabled observation normalization instead of
+  silently normalizing and clipping policy inputs.
+- Gaze angles retain float32 precision near the camera axis, preserving
+  cross-backend agreement without relaxing numeric tolerances.
 
 ## [0.6.0] - 2026-09-12
 

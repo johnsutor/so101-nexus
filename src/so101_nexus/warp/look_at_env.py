@@ -13,7 +13,7 @@ import warp as wp
 from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
 from so101_nexus.config import ControlMode, LookAtConfig
 from so101_nexus.constants import sample_color
-from so101_nexus.gaze import gaze_angle_rad, object_in_view
+from so101_nexus.gaze import object_in_view
 from so101_nexus.object_slots import primitive_visual_xml_geom, pyramid_xml_asset
 from so101_nexus.objects import PrimitiveObject, PyramidObject
 from so101_nexus.observations import CameraObservation, GazeDirection, GazeState
@@ -117,10 +117,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         if n == 0:
             return
         half = self.config.spawn_half_size
-        xy = (
-            self._spawn_center
-            + (torch.rand((n, 2), generator=self._generator, device=self.device) * 2.0 - 1.0) * half
-        )
+        xy = self._spawn_center + (self._rng.rand("task", idx, 2) * 2.0 - 1.0) * half
         self._targets[idx, :2] = xy
         self._targets[idx, 2] = self._spawn_z
 
@@ -137,7 +134,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         self, energy_norm: torch.Tensor, action_delta_norm: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, dict]:
         cos_sim = self._gaze_cosine()
-        orientation_error = gaze_angle_rad(cos_sim)
+        orientation_error = self._gaze_angle_rad()
         success = object_in_view(orientation_error, self._half_fov_rad())
         progress = orientation_progress(cos_sim)
         base = simple_reward(

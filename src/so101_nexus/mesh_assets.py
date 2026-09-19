@@ -20,6 +20,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,26 @@ if TYPE_CHECKING:
     import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def asset_cache_config(
+    dataset: str, default_repo: str, default_revision: str
+) -> tuple[str, str, Path]:
+    """Resolve an immutable asset source and its isolated cache directory."""
+    prefix = f"SO101_{dataset.upper()}_HF"
+    repo = os.environ.get(f"{prefix}_REPO", default_repo)
+    revision = os.environ.get(f"{prefix}_REVISION")
+    if revision is None:
+        if repo != default_repo:
+            raise ValueError(f"Set {prefix}_REVISION to the custom repository's commit SHA.")
+        revision = default_revision
+    if re.fullmatch(r"[0-9a-fA-F]{40}", revision) is None:
+        raise ValueError(f"{prefix}_REVISION must be a 40-character commit SHA.")
+    revision = revision.lower()
+    repo_key = hashlib.sha256(repo.encode()).hexdigest()[:16]
+    cache = Path.home() / ".cache" / "so101_nexus" / dataset / repo_key / revision
+    return repo, revision, cache
+
 
 _COLLISION_SUBDIR = "collision_v3"
 """Cache subdirectory for collision parts built with a measured surface-error gate."""
@@ -253,6 +274,7 @@ def _write_collision_parts(
     *,
     model_id: str,
     source_path: Path,
+    asset_source: Mapping[str, str] | None = None,
 ) -> None:
     """Export collision parts and their generation manifest into ``out_dir``."""
     build = _build_collision_geometry(mesh)
@@ -277,12 +299,14 @@ def _write_collision_parts(
                 "mass_fraction": fraction,
                 "volume_m3": volume,
                 "n_vertices": len(part.vertices),
+                "sha256": _sha256(out_dir / name),
             }
         )
     manifest = {
         "model_id": model_id,
         "source": source_path.name,
         "source_sha256": _sha256(source_path),
+        "asset_source": dict(asset_source) if asset_source is not None else None,
         "decomposer": build.decomposer,
         "settings": dict(build.settings) if build.settings is not None else None,
         "hull_gap_p95_m": build.hull_gap_p95_m,
@@ -379,14 +403,25 @@ def _manifest_generator_matches(manifest: Mapping[str, object]) -> bool:
     )
 
 
+def _manifest_parts_match(collision_dir: Path, manifest: Mapping[str, object]) -> bool:
+    """Return true when every collision file matches its manifest digest."""
+    parts = cast("list[Mapping[str, object]]", manifest["parts"])
+    try:
+        return all(
+            part.get("sha256") == _sha256(collision_dir / cast("str", part["file"]))
+            for part in parts
+        )
+    except OSError:
+        return False
+
+
 def _collision_parts_are_current(collision_dir: Path) -> bool:
     """Return true when all cached parts match the scan and generator inputs."""
     manifest = _read_manifest(collision_dir)
     if manifest is None:
         return False
-    parts_exist = all((collision_dir / part["file"]).is_file() for part in manifest["parts"])
     return (
-        parts_exist
+        _manifest_parts_match(collision_dir, manifest)
         and _manifest_source_matches(collision_dir, manifest)
         and _manifest_generator_matches(manifest)
     )
@@ -406,6 +441,11 @@ def read_collision_parts(collision_dir: Path, error_hint: str) -> list[MeshColli
         raise FileNotFoundError(
             f"No usable collision decomposition cached at {collision_dir}; call {error_hint} first."
         )
+    if not _manifest_parts_match(collision_dir, manifest):
+        raise FileNotFoundError(
+            f"Collision files do not match the manifest at {collision_dir}; "
+            f"call {error_hint} again."
+        )
     return [
         MeshCollisionPart(collision_dir / entry["file"], float(entry["mass_fraction"]))
         for entry in manifest["parts"]
@@ -421,6 +461,7 @@ def ensure_scanned_mesh_assets(
     texture_path: Path,
     fetch: Callable[[], None],
     ensure_texture: Callable[[], None],
+    asset_source: Mapping[str, str] | None = None,
 ) -> Path:
     """Run the shared cache-check/download/decompose orchestration for one model.
 
@@ -432,16 +473,22 @@ def ensure_scanned_mesh_assets(
     re-fetch. Every other step - the cache-freshness check, the CoACD/hull
     decomposition, and the manifest write - is identical for every source.
     """
-    if _collision_parts_are_current(collision_dir) and visual_path.exists():
-        if not texture_path.exists():
-            ensure_texture()
-        return mesh_dir
+    from huggingface_hub.utils import WeakFileLock
 
-    fetch()
-    _write_collision_parts(
-        _load_exportable_mesh(visual_path),
-        collision_dir,
-        model_id=model_id,
-        source_path=visual_path,
-    )
+    mesh_dir.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = mesh_dir.parent / f".{mesh_dir.name}.lock"
+    with WeakFileLock(lock_path):
+        if _collision_parts_are_current(collision_dir) and visual_path.exists():
+            if not texture_path.exists():
+                ensure_texture()
+            return mesh_dir
+
+        fetch()
+        _write_collision_parts(
+            _load_exportable_mesh(visual_path),
+            collision_dir,
+            model_id=model_id,
+            source_path=visual_path,
+            asset_source=asset_source,
+        )
     return mesh_dir

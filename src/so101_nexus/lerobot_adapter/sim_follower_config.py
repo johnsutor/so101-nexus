@@ -15,6 +15,7 @@ class SimSOFollowerConfig(RobotConfig):
     """Configuration for a simulated SO follower controlled through LeRobot."""
 
     env_id: str
+    seed: int | None = None
     env_kwargs: dict[str, Any] = field(default_factory=dict)
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
     # Keep the SO body joints in LeRobot degree units by default. MolmoAct2

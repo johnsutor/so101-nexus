@@ -149,7 +149,12 @@ class WarpPickReturnVectorEnv(WarpPickLiftVectorEnv):
         super()._refresh_reset_reference_state(mask)
         self._seed_return_potentials(mask)
 
-    def reset(self, *, seed: int | None = None, options: dict | None = None):
+    def reset(
+        self,
+        *,
+        seed: int | list[int] | tuple[int, ...] | None = None,
+        options: dict | None = None,
+    ):
         """Seed reward potentials after settling, retaining Warp's spawn lift reference."""
         result = super().reset(seed=seed, options=options)
         self._seed_return_potentials(

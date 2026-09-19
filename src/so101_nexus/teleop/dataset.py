@@ -43,25 +43,42 @@ REWARD_COMPONENT_FEATURE_KEYS: tuple[str, ...] = tuple(
 SCALAR_KEYS: tuple[str, ...] = (REWARD_KEY, SUCCESS_KEY, DONE_KEY, *REWARD_COMPONENT_FEATURE_KEYS)
 
 
-def save_recorded_episode(dataset: Any, placement_contract: dict | None = None) -> None:
-    """Save an episode with an immutable evaluator contract outside policy features."""
-    if placement_contract is None:
-        dataset.save_episode()
-        return
-
+def save_recorded_episode(
+    dataset: Any,
+    placement_contract: dict | None = None,
+    *,
+    reproducibility: dict[str, Any] | None = None,
+) -> None:
+    """Save an episode with evaluator and reproducibility metadata."""
     import json
     from pathlib import Path
 
-    metadata = json.dumps(placement_contract, indent=2, allow_nan=False)
-    directory = Path(dataset.root) / "meta" / "placement_contracts"
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"episode_{dataset.num_episodes:06d}.json"
-    with path.open("x") as stream:
-        stream.write(metadata)
+    metadata_items = [
+        (directory_name, json.dumps(metadata, indent=2, allow_nan=False))
+        for directory_name, metadata in (
+            ("placement_contracts", placement_contract),
+            ("reproducibility", reproducibility),
+        )
+        if metadata is not None
+    ]
+    if not metadata_items:
+        dataset.save_episode()
+        return
+
+    root = Path(dataset.root)
+    paths: list[Path] = []
     try:
+        for directory_name, serialized in metadata_items:
+            directory = root / "meta" / directory_name
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / f"episode_{dataset.num_episodes:06d}.json"
+            with path.open("x") as stream:
+                paths.append(path)
+                stream.write(serialized)
         dataset.save_episode()
     except Exception:
-        path.unlink()
+        for path in paths:
+            path.unlink()
         raise
 
 

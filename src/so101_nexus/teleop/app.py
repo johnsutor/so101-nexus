@@ -809,7 +809,7 @@ def _cb_poll_init(session: dict, init_state: dict):
     s = session
     header = (
         f"**Env:** `{s['env_id']}` | **Robot:** `{s['robot_type']}` | "
-        f"**FPS:** {s['fps']} | **Max steps:** {s['max_steps']}"
+        f"**FPS:** {s['fps']} | **Max steps:** {s['max_steps']} | **Seed:** {s['seed']}"
     )
     n = s["state"].num_episodes
     return (
@@ -847,6 +847,7 @@ def _cb_start_recording(session: dict):
             "env_config_profile": session.get("env_config_profile"),
             "env_config_factory": session.get("env_config_factory"),
             "success_hold_seconds": session.get("success_hold_seconds", 0.5),
+            "seed": session.get("seed", 0),
         },
         daemon=True,
     ).start()
@@ -1021,7 +1022,16 @@ def _cb_approve_episode(session: dict):
             )
             dataset.add_frame(frame)
 
-        save_recorded_episode(dataset, s.placement_contract)
+        save_recorded_episode(
+            dataset,
+            s.placement_contract,
+            reproducibility={
+                "env_id": session["env_id"],
+                "seed": s.episode_seed,
+                "task_description": s.task_description,
+                "initial_sim_state": s.initial_sim_state,
+            },
+        )
     except Exception as exc:
         with contextlib.suppress(Exception):
             dataset.clear_episode_buffer()
@@ -1685,6 +1695,7 @@ def main(
     leader_port = args.leader_port
     leader_id_default = args.leader_id
     wrist_roll_offset = args.wrist_roll_offset_deg
+    seed = args.seed
     env_config_profile = args.env_config_profile
     env_config_factory = load_config_factory(args.env_config_factory)
     env_modules = list(args.env_modules)
@@ -1694,6 +1705,7 @@ def main(
     session: dict = {
         "env_config_profile": env_config_profile,
         "env_config_factory": env_config_factory,
+        "seed": seed,
     }
     init_state: dict = {
         "running": False,

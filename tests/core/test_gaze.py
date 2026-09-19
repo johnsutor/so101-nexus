@@ -5,7 +5,13 @@ import math
 import numpy as np
 import pytest
 
-from so101_nexus.gaze import direction_to_object, gaze_angle_rad, gaze_cosine, object_in_view
+from so101_nexus.gaze import (
+    direction_to_object,
+    gaze_angle_between_rad,
+    gaze_angle_rad,
+    gaze_cosine,
+    object_in_view,
+)
 
 _FORWARD = np.array([1.0, 0.0, 0.0])
 
@@ -54,6 +60,37 @@ def test_cosine_is_clamped_for_arccos():
     # push arccos out of its domain.
     axis = _FORWARD * (1.0 + 1e-7)
     assert np.isfinite(gaze_angle_rad(gaze_cosine(axis, _FORWARD * (1.0 + 1e-7))))
+
+
+def test_float32_near_axis_angle_is_numerically_stable():
+    torch = pytest.importorskip("torch")
+    axis = torch.tensor([[0.641421, -0.124511, -0.757029]], dtype=torch.float32)
+    axis = axis / axis.norm(dim=-1, keepdim=True)
+
+    angle = gaze_angle_between_rad(axis, axis)
+
+    torch.testing.assert_close(angle, torch.zeros_like(angle), rtol=0, atol=1e-7)
+
+
+def test_stable_angle_preserves_opposite_and_zero_direction_edges():
+    axis = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    directions = np.array([[-1.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float32)
+
+    np.testing.assert_allclose(
+        gaze_angle_between_rad(axis, directions), [np.pi, np.pi / 2.0], rtol=0, atol=1e-6
+    )
+
+
+def test_stable_angle_torch_broadcasts_and_preserves_zero_direction():
+    torch = pytest.importorskip("torch")
+    axis = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32)
+    directions = torch.tensor(
+        [[1.0, 1e-7, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=torch.float32
+    )
+
+    angles = gaze_angle_between_rad(axis, directions)
+
+    torch.testing.assert_close(angles, torch.tensor([1e-7, np.pi, np.pi / 2.0]), rtol=0, atol=1e-6)
 
 
 @pytest.mark.parametrize("dtype_name", ["float32", "float64"])

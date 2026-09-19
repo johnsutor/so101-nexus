@@ -6,6 +6,7 @@ with continuous actions.
 """
 
 import importlib
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from torch import nn, optim
 from torch.distributions.normal import Normal
 
 from so101_nexus._reproducibility import seed_everything
+from so101_nexus._run_metadata import training_metadata
 
 
 def import_backend_for_env_id(env_id: str) -> None:
@@ -38,6 +40,8 @@ class Args:
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
+    torch_deterministic_warn_only: bool = False
+    """warn instead of failing when PyTorch finds a nondeterministic operation"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
     track: bool = False
@@ -183,7 +187,7 @@ def maybe_log_wandb_rollout_video(
         if obs_tensor.dim() == 1:
             obs_tensor = obs_tensor.unsqueeze(0)
         with torch.no_grad():
-            action, _, _, _ = agent.get_action_and_value(obs_tensor)
+            action = agent.get_action_mean(obs_tensor)
         step_action = action.cpu().numpy()
         step_action = step_action[0]
         obs, _, terminated, truncated, _ = eval_env.step(step_action)
@@ -238,6 +242,12 @@ class Agent(nn.Module):
             x = x.view(x.shape[0], -1)
         return self.critic(self.network(x))
 
+    def get_action_mean(self, x):
+        """Return the deterministic policy mean without consuming an RNG stream."""
+        if len(x.shape) > 2:
+            x = x.view(x.shape[0], -1)
+        return self.actor_mean(self.network(x))
+
     def get_action_and_value(self, x, action=None):
         if len(x.shape) > 2:
             x = x.view(x.shape[0], -1)
@@ -279,7 +289,11 @@ if __name__ == "__main__":
         ),
     )
 
-    seed_everything(args.seed, deterministic=args.torch_deterministic)
+    seed_everything(
+        args.seed,
+        deterministic=args.torch_deterministic,
+        deterministic_warn_only=args.torch_deterministic_warn_only,
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
@@ -458,6 +472,13 @@ if __name__ == "__main__":
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
         torch.save(agent.state_dict(), model_path)
+        provenance = training_metadata(
+            device=device,
+            env_config=getattr(envs.envs[0].unwrapped, "config", None),
+            run_config=vars(args),
+        )
+        with open(f"{model_path}.json", "w", encoding="utf-8") as metadata_file:
+            json.dump(provenance, metadata_file, indent=2, sort_keys=True)
         print(f"model saved to {model_path}")
         import importlib
 

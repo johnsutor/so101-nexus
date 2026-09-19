@@ -22,6 +22,7 @@ class TeleopArgs:
     leader_port: str = "/dev/ttyACM0"
     leader_id: str = "so101_leader"
     wrist_roll_offset_deg: float = DEFAULT_WRIST_ROLL_OFFSET_DEG
+    seed: int = 0
     env_config_profile: str | None = None
     env_config_factory: str | None = None
     env_modules: Annotated[

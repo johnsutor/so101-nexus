@@ -11,8 +11,7 @@ scans, convert them to OBJ, and extract the embedded texture.
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from so101_nexus.constants import YCB_OBJECTS
 from so101_nexus.mesh_assets import (
@@ -32,14 +31,19 @@ from so101_nexus.mesh_assets import (
     _sha256,  # noqa: F401  (re-exported: patched by tests/core/test_ycb.py)
     _texture_image_from_material,
     _write_collision_parts,  # noqa: F401  (re-exported: called directly by tests/core/test_ycb.py)
+    asset_cache_config,
     ensure_scanned_mesh_assets,
     read_collision_parts,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 logger = logging.getLogger(__name__)
 
-_HF_REPO_ID = os.environ.get("SO101_YCB_HF_REPO", "ai-habitat/ycb")
-_CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "ycb"
+_HF_REPO_ID, _HF_REVISION, _CACHE_DIR = asset_cache_config(
+    "ycb", "ai-habitat/ycb", "29be64fdd95b4881f244152ad653058e0a48c28f"
+)
 
 # Backward-compatible public alias; the dataclass itself now lives in
 # ``mesh_assets`` so YCB and GSO share one type.
@@ -149,6 +153,7 @@ def ensure_ycb_assets(model_id: str) -> Path:
         snapshot_download(
             repo_id=_HF_REPO_ID,
             repo_type="dataset",
+            revision=_HF_REVISION,
             allow_patterns=[f"meshes/{model_id}/*"],
             local_dir=str(_CACHE_DIR),
         )
@@ -178,6 +183,7 @@ def ensure_ycb_assets(model_id: str) -> Path:
         texture_path=texture_path,
         fetch=_fetch,
         ensure_texture=_ensure_texture,
+        asset_source={"repo_id": _HF_REPO_ID, "revision": _HF_REVISION},
     )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import types
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -67,6 +68,7 @@ class _AbsoluteJointEnv(gym.Env):
         self.step_truncated = False
         self.step_info: dict[str, Any] = {}
         self.reset_calls = 0
+        self.reset_call_seeds: list[int | None] = []
         self.reset_calls_options: list[dict[str, Any] | None] = []
         self.closed = False
         self._ctrl_low = np.array([-2.0, -2.0, -2.0, -2.0, -2.0, -0.2], dtype=np.float64)
@@ -86,6 +88,7 @@ class _AbsoluteJointEnv(gym.Env):
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
         self.reset_calls += 1
+        self.reset_call_seeds.append(seed)
         self.reset_calls_options.append(options)
         if options and "init_qpos" in options:
             self.qpos = np.asarray(options["init_qpos"], dtype=np.float64)
@@ -289,6 +292,52 @@ def test_connect_without_initial_leader_action_does_one_reset(
         robot.disconnect()
 
 
+def test_connect_resets_environment_with_configured_seed(tmp_path: Path, fake_env_id: str) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}, seed=123))
+    try:
+        robot.connect()
+
+        assert robot._env.unwrapped.reset_call_seeds == [123]
+    finally:
+        robot.disconnect()
+
+
+def test_initial_state_provenance_serializes_reset_state(tmp_path: Path, fake_env_id: str) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        env.data = types.SimpleNamespace(
+            time=0.1,
+            qpos=np.array([1.0, 2.0]),
+            qvel=np.array([0.0, 0.5]),
+            ctrl=np.array([1.0]),
+            mocap_pos=np.array([[0.1, 0.2, 0.3]]),
+            mocap_quat=np.array([[1.0, 0.0, 0.0, 0.0]]),
+        )
+        env.model = types.SimpleNamespace(
+            body_pos=np.array([[0.0, 0.0, 0.0]]),
+            site_pos=np.array([[0.2, 0.1, 0.0]]),
+            cam_pos=np.array([[0.01, 0.02, 0.03]]),
+            cam_quat=np.array([[1.0, 0.0, 0.0, 0.0]]),
+            cam_fovy=np.array([58.0]),
+            geom_rgba=np.array([[1.0, 0.0, 0.0, 1.0]]),
+        )
+
+        provenance = robot.initial_state_provenance()
+
+        assert provenance["qpos"] == [1.0, 2.0]
+        assert provenance["mocap_pos"] == [[0.1, 0.2, 0.3]]
+        assert provenance["cam_fovy"] == [58.0]
+        assert provenance["geom_rgba"] == [[1.0, 0.0, 0.0, 1.0]]
+    finally:
+        robot.disconnect()
+
+
 def test_connect_uses_initial_leader_action_for_second_reset(
     tmp_path: Path,
     fake_env_id: str,
@@ -304,6 +353,7 @@ def test_connect_uses_initial_leader_action_for_second_reset(
         env = robot._env.unwrapped
 
         assert env.reset_calls == 2
+        assert env.reset_call_seeds == [None, None]
         assert env.reset_calls_options[0] is None
         assert env.reset_calls_options[1] is not None
         assert "init_qpos" in env.reset_calls_options[1]

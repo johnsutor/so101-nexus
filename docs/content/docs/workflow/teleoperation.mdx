@@ -12,7 +12,8 @@ to the Hugging Face Hub. That dataset is the artifact the
 
 ```bash
 uvx --from "so101-nexus[teleop]" so101-nexus teleop \
-    --leader-port /dev/ttyACM0
+    --leader-port /dev/ttyACM0 \
+    --seed 0
 ```
 
 A Gradio UI opens in your browser. Most settings live in the UI; the CLI only takes
@@ -52,6 +53,7 @@ you can fix the port in another terminal and click `Retry Initialization`.
 | `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
 | `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
 | `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+| `--seed` | `int` | `0` | Base seed for simulation episodes |
 | `--env-config-profile` | `str \| None` | `None` | JSON or TOML profile with environment config overrides |
 | `--env-config-factory` | `str \| None` | `None` | Python `module:function` that returns a config or `gym.make` kwargs |
 | `--env-module` | repeatable `str` | `[]` | Import a module that registers custom Gymnasium environments |
@@ -99,6 +101,14 @@ Each file stores the episode's [resolved evaluator contract](/docs/environments#
 The recorder refuses to overwrite an existing contract.
 It does not add these diagnostics to policy features or relabel legacy episodes.
 See the [placement contract](/docs/environments#success-conditions) for benchmark migration rules.
+
+The recorder saves `meta/reproducibility/episode_NNNNNN.json` for each approved episode.
+The effective episode seed is the base seed plus the approved episode index.
+A discarded episode keeps its seed when you record it again.
+Each file also stores the task description and the initial simulator state.
+The state includes robot and object positions, velocities, controls, mocap poses, camera transforms, and sampled colors.
+These snapshot fields preserve native simulator units for replay: hinge angles use radians,
+translations use meters, and camera FOV uses degrees. User-facing joint actions still use degrees.
 
 On first recording the app creates a simulator-only calibration file at
 `$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json`, or under the LeRobot default

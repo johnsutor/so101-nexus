@@ -193,7 +193,14 @@ def _write_cached_parts(
         "hull_gap_gate_m": ycb_assets._HULL_GAP_GATE_M,
         "hull_gap_max_gate_m": ycb_assets._HULL_GAP_MAX_GATE_M,
         "decomposed": decomposed,
-        "parts": [{"file": name, "mass_fraction": 1.0 / len(files)} for name in files],
+        "parts": [
+            {
+                "file": name,
+                "mass_fraction": 1.0 / len(files),
+                "sha256": mesh_assets._sha256(parts_dir / name),
+            }
+            for name in files
+        ],
     }
     (parts_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return parts_dir
@@ -311,7 +318,7 @@ def test_ensure_ycb_assets_download_and_decomposition(
 
     mesh_dir = ycb_assets.ensure_ycb_assets(model_id)
     assert mesh_dir == tmp_path / model_id
-    assert "snapshot_kwargs" in called
+    assert called["snapshot_kwargs"]["revision"] == ycb_assets._HF_REVISION
     assert called["convert_args"] == (
         tmp_path / "meshes" / model_id / "google_16k" / "textured.glb",
         tmp_path / model_id / "visual.obj",
@@ -319,11 +326,16 @@ def test_ensure_ycb_assets_download_and_decomposition(
     parts_dir = tmp_path / model_id / "collision_v3"
     assert mesh.exports[-1] == (str(parts_dir / "collision_000.obj"), "obj")
     manifest = json.loads((parts_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["asset_source"] == {
+        "repo_id": ycb_assets._HF_REPO_ID,
+        "revision": ycb_assets._HF_REVISION,
+    }
     assert manifest["source"] == "visual.obj"
     assert manifest["source_sha256"] == ycb_assets._sha256(mesh_dir / "visual.obj")
     assert manifest["parts"] == [
         {
             "file": "collision_000.obj",
+            "sha256": mesh_assets._sha256(parts_dir / "collision_000.obj"),
             "mass_fraction": 1.0,
             "volume_m3": 1.0,
             "n_vertices": 4,
@@ -377,6 +389,16 @@ def test_collision_parts_require_prepared_assets(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
     with pytest.raises(FileNotFoundError, match="ensure_ycb_assets"):
         ycb_assets.get_ycb_collision_parts("032_knife")
+
+
+def test_collision_parts_reject_modified_part(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setattr(ycb_assets, "_CACHE_DIR", tmp_path)
+    model_id = "032_knife"
+    parts_dir = _write_cached_parts(tmp_path / model_id)
+    (parts_dir / "collision_000.obj").write_text("modified", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="do not match"):
+        ycb_assets.get_ycb_collision_parts(model_id)
 
 
 def test_collision_parts_reject_a_truncated_manifest(
@@ -703,6 +725,11 @@ def test_write_collision_parts_records_provenance_and_mass(
     assert manifest["source_sha256"] == ycb_assets._sha256(source)
     assert manifest["settings"] == ycb_assets._COACD_SETTINGS
     assert [part["n_vertices"] for part in manifest["parts"]] == [4, 4]
+    for part in manifest["parts"]:
+        assert part["sha256"] == mesh_assets._sha256(out_dir / part["file"])
+    assert mesh_assets._collision_parts_are_current(out_dir)
+    (out_dir / manifest["parts"][0]["file"]).write_text("modified", encoding="utf-8")
+    assert not mesh_assets._collision_parts_are_current(out_dir)
     assert events[0] == ("enter_limits", 1, "openmp")
     assert events[1] == ("run_coacd", ycb_assets._COACD_SETTINGS)
     assert events[2] == ("exit_limits",)

@@ -432,11 +432,13 @@ def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
         fps=15,
         calibration_dir=tmp_path,
         profile_path="profile.toml",
+        seed=42,
     )
 
     assert isinstance(config, SimSOFollowerConfig)
     assert config.env_id == "MuJoCoTouch-v1"
     assert config.env_kwargs == {"custom": "kept"}
+    assert config.seed == 42
     assert config.use_degrees is True
     assert config.id == "teleop_sim"
     assert config.calibration_dir == tmp_path
