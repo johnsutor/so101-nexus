@@ -37,8 +37,8 @@ other without measuring the gap first;
 ``so101_nexus.testing.assert_render_parity`` exists to measure it.
 
 Camera observations are supported through ``WristCamera`` and ``OverheadCamera``
-components; Gymnasium ``render_mode`` is accepted only for compatibility and
-ignored with a warning.
+components. Visualization supports ``rgb_array`` and ``depth_array`` as batched
+device tensors; an interactive ``human`` viewer is not supported.
 """
 
 from __future__ import annotations
@@ -55,7 +55,11 @@ from gymnasium import spaces
 from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
-from so101_nexus.camera_utils import build_overhead_camera_mjcf
+from so101_nexus.camera_utils import (
+    build_overhead_camera_mjcf,
+    compute_angled_camera_params,
+    compute_overhead_camera_params,
+)
 from so101_nexus.config import (
     EE_CONTROL_MODES,
     JOINT_CONTROL_MODES,
@@ -246,7 +250,10 @@ def _grasp_from_contacts(
 class SO101NexusWarpVectorEnv(VectorEnv):
     """Shared GPU-batched Warp base class for SO101-Nexus tasks."""
 
-    metadata = {"render_modes": [], "autoreset_mode": AutoresetMode.SAME_STEP}
+    metadata = {
+        "render_modes": ["rgb_array", "depth_array"],
+        "autoreset_mode": AutoresetMode.SAME_STEP,
+    }
     _N_SUBSTEPS = 4
     _VALID_CONTROL_MODES = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
 
@@ -269,20 +276,14 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 f"control_mode must be one of {sorted(self._VALID_CONTROL_MODES)}, "
                 f"got {control_mode!r}"
             )
-        if render_mode is not None:
-            warnings.warn(
-                "render_mode is ignored by the Warp backend because Warp vector envs "
-                "do not implement render(); configure WristCamera or OverheadCamera "
-                "observations for image tensors instead.",
-                UserWarning,
-                stacklevel=2,
-            )
+        if render_mode not in (None, "rgb_array", "depth_array"):
+            raise ValueError(f"Unsupported Warp render_mode: {render_mode!r}")
         if config.observations is not None:
             self._validate_obs_components(config.observations)
 
         self.config = config
         self.control_mode = control_mode
-        self.render_mode = None
+        self.render_mode = render_mode
         self.max_episode_steps = max_episode_steps
         self.robot_init_qpos_noise = config.robot_init_qpos_noise
         self.device = torch.device(device)
@@ -420,7 +421,12 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._ik_graph: torch.cuda.CUDAGraph | None = None
         if control_mode in EE_CONTROL_MODES:
             self._setup_ee_control()
+        self._visual_cam_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "visual_cam")
+        self._visual_render_ctx = None
         self._setup_cameras()
+        if self.render_mode is not None and self._wrist_cam is None:
+            with wp.ScopedDevice(self._wp_device):
+                self._reallocate_per_world_cameras(mjm)
         self._step_graph = None
         self._capture_step_graph()
         self._capture_ik_graph()
@@ -561,6 +567,20 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.single_observation_space = spaces.Dict(obs_spaces)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
 
+    def _read_camera_image(
+        self, context: Any, index: int, width: int, height: int, modality: str
+    ) -> torch.Tensor:
+        shape = (self.num_envs, height, width)
+        if modality == "rgb":
+            buf = torch.empty((*shape, 3), dtype=torch.uint8, device=self.device)
+            unpack_rgb_uint8(context, index, wp.from_torch(buf))
+        else:
+            buf = torch.empty(shape, dtype=torch.float32, device=self.device)
+            read_depth_meters(
+                context, index, self.mjm.vis.map.zfar * self.mjm.stat.extent, wp.from_torch(buf)
+            )
+        return buf
+
     def _render_camera_images(self) -> dict[str, torch.Tensor]:
         """Allocate independent images through Torch's cache and render into their storage."""
         images: dict[str, torch.Tensor] = {}
@@ -570,23 +590,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             mjw.render(self.model, self.data, self._render_ctx)
             for comp, cid in self._cam_specs:
                 for modality in comp.modalities:
-                    shape = (self.num_envs, comp.height, comp.width)
-                    if modality == "rgb":
-                        buf = torch.empty((*shape, 3), dtype=torch.uint8, device=self.device)
-                        unpack_rgb_uint8(
-                            self._render_ctx, self._render_index[cid], wp.from_torch(buf)
-                        )
-                        key = comp.name
-                    else:
-                        buf = torch.empty(shape, dtype=torch.float32, device=self.device)
-                        read_depth_meters(
-                            self._render_ctx,
-                            self._render_index[cid],
-                            self.mjm.vis.map.zfar * self.mjm.stat.extent,
-                            wp.from_torch(buf),
-                        )
-                        key = f"{comp.name}_depth"
-                    images[key] = buf
+                    key = comp.name if modality == "rgb" else f"{comp.name}_depth"
+                    images[key] = self._read_camera_image(
+                        self._render_ctx, self._render_index[cid], comp.width, comp.height, modality
+                    )
         return images
 
     def _update_render_markers(self) -> None:
@@ -631,8 +638,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         )
 
     @staticmethod
-    def _overhead_camera_xml(config: EnvironmentConfig) -> str:
-        """Return the overhead ``<camera>`` MJCF for the scene, or '' if not requested.
+    def _world_camera_xml(config: EnvironmentConfig, render_mode: str | None = None) -> str:
+        """Return requested world-fixed observation and visualization cameras.
 
         Subclasses call this before ``super().__init__`` to inject a world-fixed
         overhead camera into the scene worldbody when an ``OverheadCamera``
@@ -645,15 +652,98 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             (c for c in (config.observations or []) if isinstance(c, OverheadCamera)),
             None,
         )
-        if cam is None:
-            return ""
-        return build_overhead_camera_mjcf(
-            spawn_center=config.spawn_center,
-            spawn_max_radius=config.spawn_max_radius,
-            fov_deg=cam.fov_deg,
-            width=cam.width,
-            height=cam.height,
+        xml = ""
+        if cam is not None:
+            xml = build_overhead_camera_mjcf(
+                spawn_center=config.spawn_center,
+                spawn_max_radius=config.spawn_max_radius,
+                fov_deg=cam.fov_deg,
+                width=cam.width,
+                height=cam.height,
+            )
+        if render_mode is not None:
+            xml += '<camera name="visual_cam" pos="0 0 1" fovy="45"/>'
+        return xml
+
+    def _reset_visual_camera(self, idx: torch.Tensor) -> None:
+        if self.render_mode is None:
+            return
+        render = self.config.render
+        if render.camera == "side":
+            params = compute_angled_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                aspect=render.width / render.height,
+                azimuth=render.side_azimuth_deg,
+                elevation=render.side_elevation_deg,
+            )
+        else:
+            params = compute_overhead_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                aspect=render.width / render.height,
+            )
+        values = []
+        for key, bounds in (
+            ("azimuth", render.side_azimuth_range_deg),
+            ("elevation", render.side_elevation_range_deg),
+            ("distance", render.side_distance_range),
+        ):
+            value = torch.full((idx.numel(),), float(params[key]), device=self.device)
+            if render.camera == "side" and bounds is not None:
+                low, high = bounds
+                if low == high:
+                    value.fill_(low)
+                else:
+                    value = torch.rand(idx.numel(), generator=self._generator, device=self.device)
+                    value = value * (high - low) + low
+            values.append(value)
+        azimuth_rad, elevation_rad = (torch.deg2rad(x) for x in values[:2])
+        distance = values[2]
+        ca, sa = torch.cos(azimuth_rad), torch.sin(azimuth_rad)
+        ce, se = torch.cos(elevation_rad), torch.sin(elevation_rad)
+        forward = torch.stack((ca * ce, sa * ce, se), dim=-1)
+        right = torch.stack((sa, -ca, torch.zeros_like(ca)), dim=-1)
+        up = torch.stack((-ca * se, -sa * se, ce), dim=-1)
+        target = torch.as_tensor(params["lookat"], dtype=torch.float32, device=self.device)
+        self._cam_pos[idx, self._visual_cam_id] = target - distance[:, None] * forward
+        self._cam_quat[idx, self._visual_cam_id] = _mat_to_quat(
+            torch.stack((right, up, -forward), dim=-1)
         )
+
+    # Like observations, rendering keeps the batch on device instead of returning NumPy frames.
+    def render(self) -> torch.Tensor | None:  # ty: ignore[invalid-method-override]
+        """Render all worlds as RGB uint8 or metric depth float32 device tensors.
+
+        Output has shape ``(num_envs, height, width, 3)`` for RGB and
+        ``(num_envs, height, width)`` for depth. Rendering is visualization-only
+        and allocates independent output storage on each call.
+        """
+        if self.render_mode is None:
+            return None
+        render = self.config.render
+        modality = "rgb" if self.render_mode == "rgb_array" else "depth"
+        if self._visual_render_ctx is None:
+            with wp.ScopedDevice(self._wp_device):
+                self._visual_render_ctx = mjw.create_render_context(
+                    self.mjm,
+                    nworld=self.num_envs,
+                    cam_res=[(render.width, render.height)],
+                    cam_active=[i == self._visual_cam_id for i in range(self.mjm.ncam)],
+                    render_rgb=modality == "rgb",
+                    render_depth=modality == "depth",
+                    render_seg=False,
+                    use_precomputed_rays=True,
+                    use_shadows=True,
+                    background_color=(0.0, 0.0, 0.0, 1.0),
+                )
+        with wp.ScopedDevice(self._wp_device):
+            self._update_render_markers()
+            mjw.refit_bvh(self.model, self.data, self._visual_render_ctx)
+            mjw.render(self.model, self.data, self._visual_render_ctx)
+            return self._read_camera_image(
+                self._visual_render_ctx, 0, render.width, render.height, modality
+            )
 
     def _capture_step_graph(self) -> None:
         """Capture the per-step substep loop into a CUDA graph for replay.
@@ -859,6 +949,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._task_reset(mask)
         if self._wrist_cam is not None:
             self._randomize_wrist_camera(idx)
+        self._reset_visual_camera(idx)
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None

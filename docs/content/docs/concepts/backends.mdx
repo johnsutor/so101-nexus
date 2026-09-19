@@ -20,9 +20,9 @@ Warp envs route the same composable state observation components as MuJoCo (see 
 MuJoCo envs support Gymnasium `render_mode="human"`, `render_mode="rgb_array"`, and `render_mode="depth_array"`.
 The depth render mode uses the same [metric depth contract](/docs/concepts/observations#depth-observations) as camera observations.
 The rendered view is selected by [RenderConfig](/docs/api/configs#renderconfig).
-Warp envs produce images through camera observations and do not implement `render()`.
-Passing `render_mode` to `gym.make_vec()` produces a warning and has no effect.
-For Warp RGB or depth, configure `WristCamera` or `OverheadCamera` in `observations`.
+Warp envs support `render_mode="rgb_array"` and `render_mode="depth_array"` through `gym.make_vec()`. Call `env.render()` to get a torch tensor on the simulation device: RGB has shape `(num_envs, height, width, 3)` and dtype `uint8`; metric depth has shape `(num_envs, height, width)` and dtype `float32`. Each call returns independent storage. Warp does not support `human` rendering and rejects unsupported modes.
+
+Visualization renders only when requested, separately from policy camera observations. The render context is allocated on the first call. With `render_mode=None`, Warp adds no visualization camera or render context. Use [RenderConfig](/docs/api/configs#renderconfig) to select a view and optional placement ranges.
 
 ## Object Pools and the Batched Model
 

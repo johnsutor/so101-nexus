@@ -36,7 +36,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
     The per-world target is the post-settle TCP plus the configured direction
     vector scaled by ``target_distance`` (settle-then-place contract), stored as
     a tensor rather than a placed site. Camera observations render a visual target
-    marker, but Gymnasium ``render_mode`` visualization is not implemented.
+    marker, including in Gymnasium ``render_mode`` visualization.
     Default obs (22,): joint_positions(6) + joint_velocities(6) +
     end_effector_pose(7) + target_offset(3), matching ``MuJoCoMove-v1``.
     """
@@ -69,7 +69,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
             ground_rgba,
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
-            overhead_camera_xml=SO101NexusWarpVectorEnv._overhead_camera_xml(config),
+            overhead_camera_xml=SO101NexusWarpVectorEnv._world_camera_xml(config, render_mode),
             extra_bodies=marker_xml,
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
@@ -96,7 +96,7 @@ class WarpMoveVectorEnv(SO101NexusWarpVectorEnv):
         )
 
         self.task_descriptions = [config.task_description] * num_envs
-        if self._has_cameras:
+        if self._has_cameras or self.render_mode is not None:
             self._marker_gid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, "move_target")
             self._geom_xpos = wp.to_torch(self.data.geom_xpos)  # (N, ngeom, 3)
 

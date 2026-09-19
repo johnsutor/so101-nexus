@@ -7,7 +7,7 @@ All configuration classes live in `so101_nexus` and are plain Python classes wit
 
 ## RenderConfig
 
-Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. The camera selection applies to the MuJoCo backend only, since the Warp backend does not implement `render()`.
+Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. Both backends support these views. See [Render modes](/docs/concepts/backends#render-modes) for backend output formats.
 
 ```python
 from so101_nexus import RenderConfig
@@ -36,10 +36,9 @@ render = RenderConfig(
 | `side_elevation_range_deg` | `tuple[float, float] \| None` | `None` | Uniform elevation bounds in degrees within `[-90, 0)`, overriding `side_elevation_deg` |
 | `side_distance_range` | `tuple[float, float] \| None` | `None` | Uniform positive straight-line distance bounds in meters from the workspace look-at target; `None` retains automatic workspace framing |
 
-Ranges apply to every MuJoCo task's side view, including RGB, depth, and the human viewer. Each reset samples the configured ranges using the environment's seeded RNG. The sampled pose stays fixed during the episode; the human viewer still allows manual orbiting. An open viewer adopts the newly sampled pose on reset.
+Ranges apply to every task's side view on both backends, including RGB and depth, and the MuJoCo human viewer. Each reset samples the configured ranges using the environment's seeded RNG. Warp samples independently per world and only resamples worlds that reset, including same-step autoresets. The sampled pose stays fixed during the episode; the human viewer still allows manual orbiting. An open viewer adopts the newly sampled pose on reset.
 
-Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, existing behavior is unchanged. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations or add `render()` support to Warp.
-
+Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, existing behavior is unchanged. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations.
 
 ---
 

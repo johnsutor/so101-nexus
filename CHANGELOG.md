@@ -11,6 +11,11 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Warp environments support batched `rgb_array` and `depth_array` visualization
+  on the simulation device, including independently seeded side-camera placement
+  per world and resampling on partial autoresets. Visualization renders only on
+  explicit `render()` calls and does not change policy observations.
+
 - `RenderConfig` supports optional side-camera azimuth, elevation, and distance
   ranges, sampled reproducibly on reset across all MuJoCo tasks for RGB, depth,
   and human rendering. Existing fixed defaults remain unchanged.
