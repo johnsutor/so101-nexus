@@ -1234,3 +1234,21 @@ class TestPickAndPlaceObjectPool:
             PickAndPlaceConfig.describe("red", "blue")
             == "Pick up the red cube and place it on the blue circle."
         )
+
+
+@pytest.mark.parametrize(
+    "field, bounds",
+    [
+        ("side_azimuth_range_deg", (2.0, 1.0)),
+        ("side_azimuth_range_deg", (0.0, float("inf"))),
+        ("side_azimuth_range_deg", (float("nan"), 1.0)),
+        ("side_azimuth_range_deg", (1.0,)),
+        ("side_elevation_range_deg", (-91.0, -30.0)),
+        ("side_elevation_range_deg", (-30.0, 0.0)),
+        ("side_distance_range", (0.0, 1.0)),
+        ("side_distance_range", (-1.0, 1.0)),
+    ],
+)
+def test_invalid_side_camera_ranges(field, bounds):
+    with pytest.raises(ValueError, match=field):
+        RenderConfig(**{field: bounds})

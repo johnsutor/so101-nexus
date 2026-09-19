@@ -70,7 +70,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
             ground_rgba,
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
-            overhead_camera_xml=SO101NexusWarpVectorEnv._overhead_camera_xml(config),
+            overhead_camera_xml=SO101NexusWarpVectorEnv._world_camera_xml(config, render_mode),
             extra_assets=marker_assets,
             extra_bodies=marker_xml,
         )
@@ -101,7 +101,7 @@ class WarpLookAtVectorEnv(SO101NexusWarpVectorEnv):
         cx, cy = config.spawn_center
         self._spawn_center = torch.as_tensor([cx, cy], device=self.device)
         self.task_descriptions = [config.task_description] * num_envs
-        if self._has_cameras:
+        if self._has_cameras or self.render_mode is not None:
             self._marker_gid = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_GEOM, "look_target")
             self._geom_xpos = wp.to_torch(self.data.geom_xpos)  # (N, ngeom, 3)
 

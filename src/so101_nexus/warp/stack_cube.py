@@ -159,7 +159,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             option_xml=WARP_SCENE_OPTION_XML,
             robot_xml_path=str(_SO101_XML),
             model_name="stack_cube_scene",
-            overhead_camera_xml=self._overhead_camera_xml(config),
+            overhead_camera_xml=self._world_camera_xml(config, render_mode),
         )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
             f.write(xml_string)

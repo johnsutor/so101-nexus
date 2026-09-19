@@ -144,13 +144,24 @@ class RenderConfig:
         Free-camera view used by ``rgb_array`` and ``depth_array``, and as the initial
         viewpoint of the ``render_mode="human"`` viewer. ``"overhead"`` looks
         straight down at the workspace; ``"side"`` is an angled tabletop
-        bystander view. MuJoCo backend only; the Warp backend implements no
-        ``render()``.
+        bystander view. Both backends support RGB and depth visualization;
+        the interactive human viewer is MuJoCo-only.
     side_azimuth_deg : float
         Azimuth of the side view in degrees.
     side_elevation_deg : float
         Elevation of the side view in degrees, in ``[-90, 0)`` so the camera
         looks down at the table.
+    side_azimuth_range_deg : tuple[float, float], optional
+        Uniform reset-time azimuth bounds, overriding ``side_azimuth_deg``.
+    side_elevation_range_deg : tuple[float, float], optional
+        Uniform reset-time elevation bounds in ``[-90, 0)``, overriding
+        ``side_elevation_deg``.
+    side_distance_range : tuple[float, float], optional
+        Uniform reset-time straight-line distance bounds in meters from the
+        workspace look-at target. Both endpoints must be positive. When omitted,
+        distance is computed from the workspace bounds. All ranges require finite,
+        ordered endpoints; equal endpoints select a fixed value. Ranges apply only
+        to the side view and the sampled pose stays fixed until the next reset.
     """
 
     def __init__(
@@ -160,12 +171,33 @@ class RenderConfig:
         camera: Literal["overhead", "side"] = "overhead",
         side_azimuth_deg: float = 160.0,
         side_elevation_deg: float = -30.0,
+        *,
+        side_azimuth_range_deg: tuple[float, float] | None = None,
+        side_elevation_range_deg: tuple[float, float] | None = None,
+        side_distance_range: tuple[float, float] | None = None,
     ) -> None:
         self.width = width
         self.height = height
         self.camera = camera
         self.side_azimuth_deg = side_azimuth_deg
         self.side_elevation_deg = side_elevation_deg
+        self.side_azimuth_range_deg = side_azimuth_range_deg
+        self.side_elevation_range_deg = side_elevation_range_deg
+        self.side_distance_range = side_distance_range
+        for name in ("side_azimuth_range_deg", "side_elevation_range_deg", "side_distance_range"):
+            bounds = getattr(self, name)
+            if bounds is None:
+                continue
+            if (
+                len(bounds) != 2
+                or not all(math.isfinite(x) for x in bounds)
+                or bounds[0] > bounds[1]
+            ):
+                raise ValueError(f"{name} must contain two finite, ordered endpoints")
+            if name == "side_elevation_range_deg" and not -90 <= bounds[0] <= bounds[1] < 0:
+                raise ValueError(f"{name} must lie in [-90, 0)")
+            if name == "side_distance_range" and bounds[0] <= 0:
+                raise ValueError(f"{name} must be positive")
         if self.width <= 0 or self.height <= 0:
             raise ValueError(f"render dimensions must be > 0, got {self.width}x{self.height}")
         if camera not in ("overhead", "side"):

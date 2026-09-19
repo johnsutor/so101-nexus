@@ -24,19 +24,9 @@ def test_make_vec_constructs_native_batched_env():
     envs.close()
 
 
-def test_make_vec_warns_and_ignores_render_mode():
-    import gymnasium as gym
-    import torch
-
-    import so101_nexus.warp  # noqa: F401
-
-    with pytest.warns(UserWarning, match="render_mode is ignored by the Warp backend"):
-        envs = gym.make_vec("WarpTouch-v1", num_envs=2, device="cpu", render_mode="rgb_array")
-    obs, _ = envs.reset(seed=0)
-    assert isinstance(obs, torch.Tensor)
-    assert obs.shape == (2, 31)
-    assert envs.unwrapped.render_mode is None
-    envs.close()
+def test_make_vec_rejects_unsupported_render_mode(env_factory):
+    with pytest.raises(ValueError, match="render_mode"):
+        env_factory(backend="warp", render_mode="human")
 
 
 def test_make_vec_forwards_max_episode_steps():

@@ -324,6 +324,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._prev_action: np.ndarray | None = None
         self._setup_camera_renderers()
         self._renderer = None
+        self._side_camera_overrides: dict[str, float] = {}
         self._render_cam: mujoco.MjvCamera | None = None
         self._viewer = None
 
@@ -917,6 +918,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         mujoco.mj_forward(self.model, self.data)
         self._settle_after_reset()
         self._refresh_reset_reference_state()
+        self._reset_render_camera()
 
         return self._observe()
 
@@ -1026,17 +1028,42 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         """Advance one control interval without reset-time task updates."""
         mujoco.mj_step(self.model, self.data, nstep=self._N_SUBSTEPS)
 
+    def _reset_render_camera(self) -> None:
+        had_overrides = bool(self._side_camera_overrides)
+        self._side_camera_overrides.clear()
+        render = self.config.render
+        if render.camera == "side":
+            for key, bounds in (
+                ("azimuth", render.side_azimuth_range_deg),
+                ("elevation", render.side_elevation_range_deg),
+                ("distance", render.side_distance_range),
+            ):
+                if bounds is not None:
+                    low, high = bounds
+                    self._side_camera_overrides[key] = (
+                        low if low == high else float(self.np_random.uniform(low, high))
+                    )
+        if had_overrides or self._side_camera_overrides:
+            params = self._render_camera_params()
+            if self._render_cam is not None:
+                _configure_free_camera(self._render_cam, params)
+            if self._viewer is not None:
+                with self._viewer.lock():
+                    _configure_free_camera(self._viewer.cam, params)
+
     def _render_camera_params(self) -> dict[str, Any]:
         """Free-camera params for the configured render view (overhead or side)."""
         render = self.config.render
         if render.camera == "side":
-            return compute_angled_camera_params(
+            params = compute_angled_camera_params(
                 spawn_center=self.config.spawn_center,
                 spawn_max_radius=self.config.spawn_max_radius,
                 elevation=render.side_elevation_deg,
                 azimuth=render.side_azimuth_deg,
                 aspect=render.width / render.height,
             )
+            params.update(self._side_camera_overrides)
+            return params
         return compute_overhead_camera_params(
             spawn_center=self.config.spawn_center,
             spawn_max_radius=self.config.spawn_max_radius,
