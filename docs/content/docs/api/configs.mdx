@@ -5,6 +5,10 @@ description: Reference for all configuration classes.
 
 All configuration classes live in `so101_nexus` and are plain Python classes with default constructor arguments. They control rendering, robot parameters, reward shaping, observation composition, and environment behavior.
 
+`SimSOFollowerConfig.seed` controls the seed for the simulator reset during connection.
+The default is `None`, which lets Gymnasium select the random state.
+Teleoperation sets this field from its effective episode seed.
+
 ## RenderConfig
 
 Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. Both backends support these views. See [Render modes](/docs/concepts/backends#render-modes) for backend output formats.

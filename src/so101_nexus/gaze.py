@@ -86,6 +86,27 @@ def gaze_angle_rad(cosine):
     return np.arccos(cosine)
 
 
+def gaze_angle_between_rad(gaze_axis, direction):
+    """Return the stable angle between 3D unit vectors in radians.
+
+    ``atan2(norm(cross), dot)`` remains accurate near zero, where ``arccos(dot)``
+    amplifies float32 rounding in otherwise aligned vectors.
+    """
+    if hasattr(gaze_axis, "clamp"):  # torch.Tensor
+        axis = gaze_axis + direction * 0
+        target = direction + gaze_axis * 0
+        dot = (axis * target).sum(-1)
+        cross_norm = axis.cross(target, dim=-1).norm(dim=-1)
+        valid = axis.norm(dim=-1) * target.norm(dim=-1) >= _EPS
+        angle = cross_norm.atan2(dot)
+        return angle.where(valid, angle.new_full((), np.pi / 2.0))
+    axis, target = np.broadcast_arrays(gaze_axis, direction)
+    dot = (axis * target).sum(-1)
+    cross_norm = np.linalg.norm(np.cross(axis, target), axis=-1)
+    valid = np.linalg.norm(axis, axis=-1) * np.linalg.norm(target, axis=-1) >= _EPS
+    return np.where(valid, np.arctan2(cross_norm, dot), np.pi / 2.0)
+
+
 def object_in_view(angle_rad, half_fov_rad):
     """Whether the object lies inside the camera's cone of half ``half_fov_rad``.
 

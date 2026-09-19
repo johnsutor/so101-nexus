@@ -232,19 +232,18 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         if n == 0:
             return
         sel, target = self._select_active_slots(idx)  # (n, 1), (n,)
-        gen, dev = self._generator, self.device
+        dev = self.device
         if self._n_distractors:
             # Distinct distractor slots per world, as in WarpStackCubeVectorEnv.
-            d_rank = torch.rand(n, self._d_pool, generator=gen, device=dev).argsort(dim=1)
+            d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
             sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
         self._hide_all_slots(idx)
 
         cfg = self.config
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
         disc_xy = sample_polar(
-            gen,
-            dev,
-            n,
+            self._rng,
+            idx,
             cfg.spawn_min_radius,
             cfg.spawn_max_radius,
             angle,
@@ -252,8 +251,8 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         )
         radii = self._slot_bradius[sel]  # (n, n_placed)
         obj_xy = sample_separated_polar(
-            gen,
-            dev,
+            self._rng,
+            idx,
             radii,
             cfg.min_object_separation,
             cfg.spawn_min_radius,
@@ -277,18 +276,19 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
             if n_placed > 1:
                 pair_dist = torch.linalg.norm(obj_xy[:, :, None, :] - obj_xy[:, None, :, :], dim=3)
                 bad |= ((pair_dist < pair_sep) & off_diag).any(dim=2)
-            k = int(bad.sum())
-            if k == 0:
+            if not bool(bad.any()):
                 break
-            obj_xy[bad] = sample_polar(
-                gen,
-                dev,
-                k,
-                cfg.spawn_min_radius,
-                cfg.spawn_max_radius,
-                angle,
-                cfg.spawn_center,
-            )
+            for column in range(n_placed):
+                column_bad = bad[:, column]
+                if bool(column_bad.any()):
+                    obj_xy[column_bad, column] = sample_polar(
+                        self._rng,
+                        idx[column_bad],
+                        cfg.spawn_min_radius,
+                        cfg.spawn_max_radius,
+                        angle,
+                        cfg.spawn_center,
+                    )
 
         self._mocap_pos[idx, self._target_mocap_id, 0] = disc_xy[:, 0]
         self._mocap_pos[idx, self._target_mocap_id, 1] = disc_xy[:, 1]
@@ -614,7 +614,12 @@ class WarpPickAndPlaceV2VectorEnv(WarpPickAndPlaceVectorEnv):
         super()._task_reset(mask)
         self._placement_dwell[mask] = 0.0
 
-    def reset(self, *, seed: int | None = None, options: dict | None = None):
+    def reset(
+        self,
+        *,
+        seed: int | list[int] | tuple[int, ...] | None = None,
+        options: dict | None = None,
+    ):
         """Reset all worlds and return their initial placement diagnostics."""
         obs, info = super().reset(seed=seed, options=options)
         placement = self._placement_info()

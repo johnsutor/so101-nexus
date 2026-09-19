@@ -81,6 +81,7 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import importlib
+import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -92,6 +93,7 @@ from torch import nn
 
 from so101_nexus import observations_from_feature_names, privileged_state_feature_names
 from so101_nexus._reproducibility import seed_everything
+from so101_nexus._run_metadata import training_metadata
 from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
 
 
@@ -102,6 +104,7 @@ class Args:
     exp_name: str = "bc_ppo"
     seed: int = 1
     torch_deterministic: bool = True
+    torch_deterministic_warn_only: bool = False
     cuda: bool = True
 
     env_id: str = "WarpPickLift-v1"
@@ -169,6 +172,8 @@ class Args:
     demo_repo: str = "johnsutor/MuJoCoPickLift-v1"
     """HuggingFace dataset repo id with the seed rollouts (task-matched, e.g.
     ``johnsutor/MuJoCoPickAndPlace-v1`` for ``WarpPickAndPlace-v1``)"""
+    demo_revision: str | None = None
+    """dataset commit, tag, or branch; resolved to an immutable commit before loading"""
     bc_pretrain_updates: int = 2_000
     """supervised gradient steps regressing the actor mean onto demo actions, before PPO starts"""
     bc_pretrain_lr: float = 1e-3
@@ -384,6 +389,7 @@ def _make_envs(
     episode_length=512,
     terminate_on_success=False,
     observations=None,
+    config=None,
 ):
     """Build the batched Warp training env.
 
@@ -392,7 +398,8 @@ def _make_envs(
     consumes exactly the components its demonstrations recorded.
     """
     env_cls = _resolve_env_cls(env_id)
-    config = None if observations is None else env_cls.default_config_cls(observations=observations)
+    if config is None and observations is not None:
+        config = env_cls.default_config_cls(observations=observations)
     if not terminate_on_success:
         env_cls = _fixed_horizon(env_cls)
     return env_cls(
@@ -417,6 +424,7 @@ def evaluate_mujoco(
     seed,
     capture_video,
     observations=None,
+    config=None,
 ):
     """Deterministic eval in the matching ``MuJoCo*`` backend (a transfer figure).
 
@@ -437,7 +445,13 @@ def evaluate_mujoco(
         control_mode=control_mode,
         render_mode="rgb_array" if capture_video else None,
         max_episode_steps=episode_length,
-        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
+        **(
+            {"config": config}
+            if config is not None
+            else (
+                {} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}
+            )
+        ),
     )
     mean = obs_norm.rms.mean.to(device).float()
     var = obs_norm.rms.var.to(device).float()
@@ -494,9 +508,9 @@ def rollout_video_from_checkpoint(
     checkpoint: str,
     env_id: str,
     *,
-    control_mode: str = "pd_joint_delta_pos",
-    episode_length: int = 512,
-    hidden_dim: int = 256,
+    control_mode: str | None = None,
+    episode_length: int | None = None,
+    hidden_dim: int | None = None,
     seed: int = 12345,
     out_path: str = "runs/colab_rollout.mp4",
     fps: int = 30,
@@ -517,10 +531,16 @@ def rollout_video_from_checkpoint(
     import so101_nexus.mujoco  # noqa: F401 registers MuJoCo* envs
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    seed_everything(seed, deterministic=True)
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
+    metadata = ckpt.get("metadata", {})
+    control_mode = control_mode or metadata.get("control_mode", "pd_joint_delta_pos")
+    episode_length = episode_length or metadata.get("episode_length", 512)
+    hidden_dim = hidden_dim or metadata.get("hidden_dim", 256)
 
     names = ckpt.get("env_state_names")
     observations = None if not names else observations_from_feature_names(names)
+    saved_config = ckpt.get("env_config")
 
     # Probe a throwaway MuJoCo env for obs/act dimensions (flat privileged state,
     # matching the Warp training obs). The checkpoint stores the policy, obs-norm
@@ -530,7 +550,13 @@ def rollout_video_from_checkpoint(
         mujoco_id,
         control_mode=control_mode,
         max_episode_steps=episode_length,
-        **({} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}),
+        **(
+            {"config": saved_config}
+            if saved_config is not None
+            else (
+                {} if observations is None else {"config": _mujoco_config(mujoco_id, observations)}
+            )
+        ),
     )
     obs_shape = probe.observation_space.shape
     act_shape = probe.action_space.shape
@@ -544,7 +570,7 @@ def rollout_video_from_checkpoint(
     agent.load_state_dict(ckpt["model"])
     agent.eval()
 
-    obs_norm = ObsNormalizer(obs_dim, device, enabled=True)
+    obs_norm = ObsNormalizer(obs_dim, device, enabled=ckpt.get("norm_obs", True))
     obs_norm.rms.mean = ckpt["obs_mean"].to(device).double()
     obs_norm.rms.var = ckpt["obs_var"].to(device).double()
 
@@ -559,12 +585,15 @@ def rollout_video_from_checkpoint(
         seed=seed,
         capture_video=capture_video,
         observations=observations,
+        config=saved_config,
     )
     video_path = write_video(frames, out_path, fps=fps) if capture_video else None
     return metrics, video_path
 
 
-def _save(agent, obs_norm, path, step, success, env_state_names=None):
+def _save(
+    agent, obs_norm, path, step, success, env_state_names=None, *, metadata=None, env_config=None
+):
     """Checkpoint the policy plus the observation layout it was trained on.
 
     ``env_state_names`` (from ``privileged_state_feature_names``) makes the
@@ -580,6 +609,11 @@ def _save(agent, obs_norm, path, step, success, env_state_names=None):
             "step": step,
             "success": success,
             "env_state_names": env_state_names,
+            "checkpoint_type": "inference",
+            "checkpoint_version": 1,
+            "norm_obs": obs_norm.enabled,
+            "metadata": metadata or {},
+            "env_config": env_config,
         },
         path,
     )
@@ -588,7 +622,33 @@ def _save(agent, obs_norm, path, step, success, env_state_names=None):
 # ======================================================================================
 # Demo loading: HF teleop dataset -> flat (obs, delta_action) transitions
 # ======================================================================================
-def demo_observations(demo_repo: str):
+def resolve_demo_revision(demo_repo: str, revision: str | None = None) -> str:
+    """Resolve a dataset revision to the immutable commit used for this run."""
+    from huggingface_hub import HfApi
+
+    if revision is not None and re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        return revision.lower()
+    sha = HfApi().dataset_info(demo_repo, revision=revision).sha
+    if sha is None or re.fullmatch(r"[0-9a-fA-F]{40}", sha) is None:
+        raise ValueError(f"could not resolve {demo_repo}@{revision or 'main'} to a commit SHA")
+    return sha.lower()
+
+
+def demo_parquet_files(demo_repo: str, revision: str) -> list[str]:
+    """Return the dataset's parquet files in a stable order."""
+    from huggingface_hub import HfApi
+
+    files = sorted(
+        name
+        for name in HfApi().list_repo_files(demo_repo, repo_type="dataset", revision=revision)
+        if name.startswith("data/") and name.endswith(".parquet")
+    )
+    if not files:
+        raise ValueError(f"dataset {demo_repo}@{revision} has no parquet data files")
+    return files
+
+
+def demo_observations(demo_repo: str, *, revision: str | None = None):
     """Return the observation layout a demo dataset declares for its state channel.
 
     A behaviour-cloned policy has to consume exactly the components the
@@ -601,8 +661,11 @@ def demo_observations(demo_repo: str):
 
     from huggingface_hub import hf_hub_download
 
+    revision = resolve_demo_revision(demo_repo, revision)
     info = json.loads(
-        Path(hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset")).read_text()
+        Path(
+            hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset", revision=revision)
+        ).read_text()
     )
     return observations_from_feature_names(
         info["features"]["observation.environment_state"]["names"]
@@ -610,7 +673,13 @@ def demo_observations(demo_repo: str):
 
 
 def load_demo_transitions(
-    demo_repo: str, device: torch.device, *, control_dt: float, observations=None
+    demo_repo: str,
+    device: torch.device,
+    *,
+    control_dt: float,
+    observations=None,
+    revision: str | None = None,
+    parquet_files: list[str] | None = None,
 ):
     """Download the HF teleop dataset and build flat (obs, action) BC transitions.
 
@@ -643,16 +712,31 @@ def load_demo_transitions(
 
     env_state_key = "observation.environment_state"
 
-    layout = list(observations if observations is not None else demo_observations(demo_repo))
+    revision = resolve_demo_revision(demo_repo, revision)
+    layout = list(
+        observations
+        if observations is not None
+        else demo_observations(demo_repo, revision=revision)
+    )
     if not layout:
         raise ValueError("target observation layout is empty; pass `observations`")
 
     print(f"[demos] downloading {demo_repo} ...", flush=True)
-    pq = hf_hub_download(demo_repo, "data/chunk-000/file-000.parquet", repo_type="dataset")
+    parquet_files = parquet_files or demo_parquet_files(demo_repo, revision)
+    parquet_paths = [
+        hf_hub_download(demo_repo, name, repo_type="dataset", revision=revision)
+        for name in parquet_files
+    ]
     info = json.loads(
-        Path(hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset")).read_text()
+        Path(
+            hf_hub_download(demo_repo, "meta/info.json", repo_type="dataset", revision=revision)
+        ).read_text()
     )
-    df = pd.read_parquet(pq).sort_values("index").reset_index(drop=True)
+    df = (
+        pd.concat((pd.read_parquet(path) for path in parquet_paths), ignore_index=True)
+        .sort_values("index", kind="stable")
+        .reset_index(drop=True)
+    )
 
     joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)  # [N,6]
     ep_index = df["episode_index"].to_numpy()
@@ -717,6 +801,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     stagger_resets=True,
     use_demos=True,
     demo_repo="johnsutor/MuJoCoPickLift-v1",
+    demo_revision=None,
     bc_pretrain_updates=2_000,
     bc_pretrain_lr=1e-3,
     bc_batch_size=256,
@@ -728,6 +813,7 @@ def train(  # noqa: PLR0915, PLR0912, C901
     device="cuda",
     seed=1,
     torch_deterministic=True,
+    torch_deterministic_warn_only=False,
     save_dir=None,
     writer=None,
     log_freq=1,
@@ -738,6 +824,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
     Batch-size arguments are validated before any environment is constructed, so
     invalid configurations fail fast without paying the Warp model-build cost.
     """
+    run_config = locals().copy()
+    run_config.pop("writer")
     batch_size = num_envs * num_steps
     if num_minibatches < 1 or num_minibatches > batch_size:
         raise ValueError(f"num_minibatches must be in [1, {batch_size}], got {num_minibatches}")
@@ -761,7 +849,11 @@ def train(  # noqa: PLR0915, PLR0912, C901
         1, (anneal_timesteps if anneal_timesteps > 0 else total_timesteps) // batch_size
     )
 
-    seed_everything(seed, deterministic=torch_deterministic)
+    seed_everything(
+        seed,
+        deterministic=torch_deterministic,
+        deterministic_warn_only=torch_deterministic_warn_only,
+    )
     dev = torch.device(device)
     np_rng = np.random.default_rng(seed)
     policy_rng = torch.Generator(device=dev).manual_seed(seed + 1)
@@ -770,7 +862,15 @@ def train(  # noqa: PLR0915, PLR0912, C901
 
     # BC regresses the policy on recorded states, so the env must expose exactly the
     # layout the demos declare; without demos the env's own default is used.
-    train_observations = demo_observations(demo_repo) if use_demos else None
+    resolved_demo_revision = resolve_demo_revision(demo_repo, demo_revision) if use_demos else None
+    demo_files = (
+        demo_parquet_files(demo_repo, resolved_demo_revision)
+        if resolved_demo_revision is not None
+        else None
+    )
+    train_observations = (
+        demo_observations(demo_repo, revision=resolved_demo_revision) if use_demos else None
+    )
     if train_observations is not None:
         default_names = privileged_state_feature_names(
             _resolve_env_cls(env_id).default_config_cls().observations
@@ -796,6 +896,19 @@ def train(  # noqa: PLR0915, PLR0912, C901
         observations=train_observations,
     )
     names = privileged_state_feature_names(envs.unwrapped.config.observations)
+    run_metadata = training_metadata(
+        device=dev,
+        env_config=envs.unwrapped.config,
+        env_id=env_id,
+        control_mode=control_mode,
+        episode_length=episode_length,
+        hidden_dim=hidden_dim,
+        seed=seed,
+        demo_repo=demo_repo if use_demos else None,
+        demo_revision=resolved_demo_revision,
+        demo_files=demo_files,
+        run_config=run_config,
+    )
     obs_dim = int(np.prod(envs.single_observation_space.shape))
     act_dim = int(np.prod(envs.single_action_space.shape))
 
@@ -811,6 +924,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
             dev,
             observations=envs.unwrapped.config.observations,
             control_dt=envs.unwrapped.control_dt,
+            revision=resolved_demo_revision,
+            parquet_files=demo_files,
         )
         obs_norm(demo_obs, update=True)  # fit running stats on demo obs before BC regression
         if bc_pretrain_updates > 0:
@@ -1033,7 +1148,16 @@ def train(  # noqa: PLR0915, PLR0912, C901
         if succ_rate > best_success and len(succ_hist) >= 100:
             best_success = succ_rate
             if save_dir:
-                _save(agent, obs_norm, f"{save_dir}/best_agent.pt", global_step, succ_rate, names)
+                _save(
+                    agent,
+                    obs_norm,
+                    f"{save_dir}/best_agent.pt",
+                    global_step,
+                    succ_rate,
+                    names,
+                    metadata=run_metadata,
+                    env_config=envs.unwrapped.config,
+                )
 
         if (writer is not None or log) and (update % log_freq == 0 or update == num_updates):
             metrics = {
@@ -1090,7 +1214,16 @@ def train(  # noqa: PLR0915, PLR0912, C901
                 write_video(frames, f"{save_dir}/videos/eval_{global_step}.mp4", fps=30)
 
     if save_dir:
-        _save(agent, obs_norm, f"{save_dir}/agent.pt", global_step, succ_rate, names)
+        _save(
+            agent,
+            obs_norm,
+            f"{save_dir}/agent.pt",
+            global_step,
+            succ_rate,
+            names,
+            metadata=run_metadata,
+            env_config=envs.unwrapped.config,
+        )
 
     envs.close()
     return {
@@ -1161,6 +1294,7 @@ def main():
         stagger_resets=args.stagger_resets,
         use_demos=args.use_demos,
         demo_repo=args.demo_repo,
+        demo_revision=args.demo_revision,
         bc_pretrain_updates=args.bc_pretrain_updates,
         bc_pretrain_lr=args.bc_pretrain_lr,
         bc_batch_size=args.bc_batch_size,
@@ -1172,6 +1306,7 @@ def main():
         device=str(device),
         seed=args.seed,
         torch_deterministic=args.torch_deterministic,
+        torch_deterministic_warn_only=args.torch_deterministic_warn_only,
         save_dir=save_dir,
         writer=writer,
         log_freq=args.log_freq,

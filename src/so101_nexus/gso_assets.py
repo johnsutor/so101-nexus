@@ -16,22 +16,26 @@ files are used directly as ``visual.obj`` / ``texture.png``.
 from __future__ import annotations
 
 import logging
-import os
 import shutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from so101_nexus.constants import GSO_OBJECTS
 from so101_nexus.mesh_assets import (
     _COLLISION_SUBDIR,
     MeshCollisionPart,
+    asset_cache_config,
     ensure_scanned_mesh_assets,
     read_collision_parts,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 logger = logging.getLogger(__name__)
 
-_HF_REPO_ID = os.environ.get("SO101_GSO_HF_REPO", "johnsutor/gso-so101-nexus")
-_CACHE_DIR = Path.home() / ".cache" / "so101_nexus" / "gso"
+_HF_REPO_ID, _HF_REVISION, _CACHE_DIR = asset_cache_config(
+    "gso", "johnsutor/gso-so101-nexus", "22f52934bb41e29839e10bba1a6a41b38f287b81"
+)
 
 # Backward-compatible-style public alias, mirroring ``YCBCollisionPart``; the
 # dataclass itself lives in ``mesh_assets`` so YCB and GSO share one type.
@@ -88,6 +92,7 @@ def ensure_gso_assets(model_id: str) -> Path:
         snapshot_download(
             repo_id=_HF_REPO_ID,
             repo_type="dataset",
+            revision=_HF_REVISION,
             allow_patterns=[f"meshes/{model_id}/*"],
             local_dir=str(_CACHE_DIR),
         )
@@ -119,6 +124,7 @@ def ensure_gso_assets(model_id: str) -> Path:
         texture_path=texture_path,
         fetch=_fetch,
         ensure_texture=_ensure_texture,
+        asset_source={"repo_id": _HF_REPO_ID, "revision": _HF_REVISION},
     )
 
 

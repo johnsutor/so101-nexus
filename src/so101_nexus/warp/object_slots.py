@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from so101_nexus.object_slots import ObjectSlot
+    from so101_nexus.warp._random import WorldEpisodeRNG
 
 HIDE_CLEARANCE = 0.1
 """Clearance (m) between the off-world parking band and the reachable spawn annulus."""
@@ -57,27 +58,27 @@ def hidden_slot_band_xy(
 
 
 def sample_polar(
-    generator: torch.Generator,
-    device: torch.device,
-    n: int,
+    rng: WorldEpisodeRNG,
+    worlds: torch.Tensor,
     min_r: float,
     max_r: float,
     angle_half_rad: float,
     center: tuple[float, float],
 ) -> torch.Tensor:
     """Sample ``(n, 2)`` XY positions uniformly in a polar arc about ``center``."""
-    r = torch.rand(n, generator=generator, device=device) * (max_r - min_r) + min_r
-    theta = (torch.rand(n, generator=generator, device=device) * 2.0 - 1.0) * angle_half_rad
+    draws = rng.rand("task", worlds, 2)
+    r = draws[:, 0] * (max_r - min_r) + min_r
+    theta = (draws[:, 1] * 2.0 - 1.0) * angle_half_rad
     cx, cy = center
-    xy = torch.empty((n, 2), device=device)
+    xy = torch.empty((worlds.numel(), 2), device=rng.device)
     xy[:, 0] = cx + r * torch.cos(theta)
     xy[:, 1] = cy + r * torch.sin(theta)
     return xy
 
 
 def sample_separated_polar(
-    generator: torch.Generator,
-    device: torch.device,
+    rng: WorldEpisodeRNG,
+    worlds: torch.Tensor,
     radii: torch.Tensor,
     min_clearance: float,
     min_r: float,
@@ -105,11 +106,9 @@ def sample_separated_polar(
         ``(n_worlds, n_active, 2)`` sampled XY positions.
     """
     n_worlds, n_active = radii.shape
-    positions = torch.empty((n_worlds, n_active, 2), device=device)
+    positions = torch.empty((n_worlds, n_active, 2), device=rng.device)
     for k in range(n_active):
-        positions[:, k] = sample_polar(
-            generator, device, n_worlds, min_r, max_r, angle_half_rad, center
-        )
+        positions[:, k] = sample_polar(rng, worlds, min_r, max_r, angle_half_rad, center)
         if k == 0:
             continue
         for _ in range(max_attempts):
@@ -121,16 +120,14 @@ def sample_separated_polar(
             n_bad = int(bad.sum())
             if n_bad == 0:
                 break
-            positions[bad, k] = sample_polar(
-                generator, device, n_bad, min_r, max_r, angle_half_rad, center
-            )
+            positions[bad, k] = sample_polar(rng, worlds[bad], min_r, max_r, angle_half_rad, center)
     return positions
 
 
-def random_yaw_quat_batch(generator: torch.Generator, device: torch.device, n: int) -> torch.Tensor:
+def random_yaw_quat_batch(rng: WorldEpisodeRNG, worlds: torch.Tensor) -> torch.Tensor:
     """Return ``(n, 4)`` ``wxyz`` quaternions with uniformly random yaw about Z."""
-    yaw = torch.rand(n, generator=generator, device=device) * 2.0 * torch.pi
-    quat = torch.zeros((n, 4), device=device)
+    yaw = rng.rand("task", worlds) * 2.0 * torch.pi
+    quat = torch.zeros((worlds.numel(), 4), device=rng.device)
     quat[:, 0] = torch.cos(yaw / 2.0)
     quat[:, 3] = torch.sin(yaw / 2.0)
     return quat

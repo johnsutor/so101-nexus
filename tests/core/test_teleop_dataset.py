@@ -557,6 +557,85 @@ def _blank_recording_obj(cls):
     return obj
 
 
+def test_save_recorded_episode_writes_reproducibility_metadata(tmp_path) -> None:
+    import json
+    import types
+
+    from so101_nexus.teleop.dataset import save_recorded_episode
+
+    dataset = types.SimpleNamespace(root=tmp_path, num_episodes=3, save_episode=lambda: None)
+    metadata = {
+        "env_id": "MuJoCoTouch-v1",
+        "seed": 42,
+        "task_description": "Touch",
+        "initial_sim_state": {"qpos": [0.1, 0.2]},
+    }
+
+    save_recorded_episode(dataset, reproducibility=metadata)
+
+    path = tmp_path / "meta" / "reproducibility" / "episode_000003.json"
+    assert json.loads(path.read_text()) == metadata
+
+
+def test_save_recorded_episode_requires_root_for_metadata() -> None:
+    import types
+
+    from so101_nexus.teleop.dataset import save_recorded_episode
+
+    dataset = types.SimpleNamespace(num_episodes=0, save_episode=lambda: None)
+
+    with pytest.raises(AttributeError, match="root"):
+        save_recorded_episode(dataset, reproducibility={"seed": 1})
+
+
+def test_save_recorded_episode_serializes_all_metadata_before_writing(tmp_path) -> None:
+    import types
+
+    from so101_nexus.teleop.dataset import save_recorded_episode
+
+    dataset = types.SimpleNamespace(root=tmp_path, num_episodes=0, save_episode=lambda: None)
+
+    with pytest.raises(ValueError, match="Out of range float values"):
+        save_recorded_episode(
+            dataset,
+            {"threshold": 0.1},
+            reproducibility={"invalid": float("nan")},
+        )
+
+    assert not (tmp_path / "meta").exists()
+
+
+def test_save_recorded_episode_rolls_back_first_file_when_second_write_fails(tmp_path) -> None:
+    import types
+
+    from so101_nexus.teleop.dataset import save_recorded_episode
+
+    dataset = types.SimpleNamespace(root=tmp_path, num_episodes=2, save_episode=lambda: None)
+    second = tmp_path / "meta" / "reproducibility" / "episode_000002.json"
+    second.parent.mkdir(parents=True)
+    second.write_text("existing")
+
+    with pytest.raises(FileExistsError):
+        save_recorded_episode(dataset, {"threshold": 0.1}, reproducibility={"seed": 4})
+
+    first = tmp_path / "meta" / "placement_contracts" / "episode_000002.json"
+    assert not first.exists()
+    assert second.read_text() == "existing"
+
+
+def test_save_recorded_episode_without_metadata_does_not_require_root() -> None:
+    import types
+
+    from so101_nexus.teleop.dataset import save_recorded_episode
+
+    calls: list[None] = []
+    dataset = types.SimpleNamespace(save_episode=lambda: calls.append(None))
+
+    save_recorded_episode(dataset)
+
+    assert calls == [None]
+
+
 def test_reward_squeeze_finds_dataset_buffer_lerobot_050(monkeypatch) -> None:
     """0.5.0 keeps the in-progress buffer on the dataset itself."""
     pytest.importorskip("lerobot")

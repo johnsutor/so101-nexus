@@ -152,17 +152,27 @@ def test_max_episode_steps_is_reported_per_world(hub_env):
     assert env.call("_max_episode_steps") == (5, 5, 5)
 
 
-def test_a_per_world_seed_list_collapses_to_one_batch_seed(hub_env):
+def test_per_world_seed_list_is_honored(hub_env):
     _, env = hub_env(n_envs=2, env_id="WarpTouch-v1", episode_length=2)
 
     listed, _ = env.reset(seed=[3, 4])
-    scalar, _ = env.reset(seed=3)
-    other, _ = env.reset(seed=4)
+    same_first, _ = env.reset(seed=[3, 9])
+    same_second, _ = env.reset(seed=[8, 4])
 
-    # Same episode, not a bitwise replay: the CPU solver's settle is not exactly
-    # reproducible across resets of a live env. Seed 4 is the negative control.
-    np.testing.assert_allclose(listed["environment_state"], scalar["environment_state"], atol=1e-8)
-    assert not np.allclose(listed["environment_state"], other["environment_state"], atol=1e-8)
+    np.testing.assert_allclose(
+        listed["environment_state"][0], same_first["environment_state"][0], atol=1e-8
+    )
+    np.testing.assert_allclose(
+        listed["environment_state"][1], same_second["environment_state"][1], atol=1e-8
+    )
+
+
+@pytest.mark.parametrize("seed", [[], [1], [1, 2, 3], [1, "bad"], [-1, 2]])
+def test_per_world_seed_list_is_validated(hub_env, seed):
+    _, env = hub_env(n_envs=2, env_id="WarpTouch-v1", episode_length=2)
+
+    with pytest.raises(ValueError, match=r"seed sequence length|seeds must"):
+        env.reset(seed=seed)
 
 
 def test_pixels_obs_type_emits_numpy_camera_batches(hub_env):

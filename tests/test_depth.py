@@ -106,6 +106,33 @@ def test_depth_array_render(env_factory, camera):
     assert np.ptp(depth) > 0
 
 
+def test_mujoco_rgb_and_depth_replay_after_dirty_reset(env_factory):
+    cameras = [
+        WristCamera(width=24, height=16, modalities=("rgb", "depth")),
+        OverheadCamera(width=20, height=12, modalities=("rgb", "depth")),
+    ]
+    env = env_factory(config=TouchConfig(observations=[JointPositions(), *cameras]))
+
+    expected, _ = env.reset(seed=29)
+    action = np.full(env.action_space.shape, 0.25, dtype=np.float32)
+    expected_step = env.step(action)[0]
+
+    env.reset(seed=97)
+    for _ in range(5):
+        env.step(-action)
+
+    actual, _ = env.reset(seed=29)
+    actual_step = env.step(action)[0]
+    for key in (
+        "wrist_camera",
+        "wrist_camera_depth",
+        "overhead_camera",
+        "overhead_camera_depth",
+    ):
+        np.testing.assert_array_equal(actual[key], expected[key])
+        np.testing.assert_array_equal(actual_step[key], expected_step[key])
+
+
 @pytest.mark.parametrize("view", ["floor", "sky", "beyond_far"])
 def test_depth_matches_known_plane_distance(env_factory, backend, view):
     env = env_factory(

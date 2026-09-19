@@ -403,14 +403,8 @@ class WarpEnvHubAdapter(gym.vector.VectorWrapper):
         seed: int | list[int] | tuple[int, ...] | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Reset every world. A per-world seed sequence collapses to its first entry.
-
-        The Warp backend draws every world's episode from one seeded generator,
-        so it takes a single seed rather than one per world.
-        """
-        if isinstance(seed, list | tuple):
-            seed = int(seed[0]) if seed else None
-        observation, info = self.env.reset(seed=seed, options=options)
+        """Reset every world with scalar-derived or explicit per-world seeds."""
+        observation, info = cast("Any", self.env).reset(seed=seed, options=options)
         return self._observation(observation), _numpy_info(info)
 
     def step(

@@ -17,6 +17,35 @@ def test_bc_ppo_warp_defaults_use_demos_with_persistent_bc_loss():
     assert args.control_mode == "pd_joint_delta_pos"  # unchanged from ppo_warp.py
 
 
+def test_demo_parquet_manifest_is_stably_sorted_and_revision_pinned(monkeypatch):
+    import importlib
+
+    import huggingface_hub
+
+    mod = importlib.import_module("examples.bc_ppo_warp")
+    captured = {}
+
+    class Api:
+        def list_repo_files(self, repo, *, repo_type, revision):
+            captured.update(repo=repo, repo_type=repo_type, revision=revision)
+            return [
+                "meta/info.json",
+                "data/chunk-001/file-000.parquet",
+                "data/chunk-000/file-001.parquet",
+                "data/chunk-000/file-000.parquet",
+            ]
+
+    monkeypatch.setattr(huggingface_hub, "HfApi", Api)
+
+    assert mod.resolve_demo_revision("owner/data", "A" * 40) == "a" * 40
+    assert mod.demo_parquet_files("owner/data", "abc123") == [
+        "data/chunk-000/file-000.parquet",
+        "data/chunk-000/file-001.parquet",
+        "data/chunk-001/file-000.parquet",
+    ]
+    assert captured == {"repo": "owner/data", "repo_type": "dataset", "revision": "abc123"}
+
+
 def test_bc_ppo_warp_shares_ppo_warp_decisive_defaults():
     """The PPO scaffolding (fixed-horizon, entropy schedule, optimizer budget) must
     stay identical to ppo_warp.py's proven recipe -- BC-seeding is additive."""
@@ -255,7 +284,7 @@ def test_bc_ppo_warp_short_run_finite_without_demos_matches_ppo_warp_shape():
     assert stats["iterations"] == 2
 
 
-def test_bc_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
+def test_bc_ppo_warp_same_seed_cpu_short_runs_are_reproducible(tmp_path):
     """Same-seed CPU runs (including demo download/BC-pretrain) must return
     identical deterministic scalar stats."""
     import importlib
@@ -278,8 +307,8 @@ def test_bc_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
         "log": False,
     }
 
-    first = mod.train(**kwargs)
-    second = mod.train(**kwargs)
+    first = mod.train(**kwargs, save_dir=str(tmp_path / "first"))
+    second = mod.train(**kwargs, save_dir=str(tmp_path / "second"))
 
     keys = (
         "iterations",
@@ -296,6 +325,19 @@ def test_bc_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
         assert math.isnan(second["mean_return"])
     else:
         assert second["mean_return"] == first["mean_return"]
+    import torch
+
+    first_checkpoint = torch.load(tmp_path / "first/agent.pt", weights_only=False)
+    second_checkpoint = torch.load(tmp_path / "second/agent.pt", weights_only=False)
+    assert first_checkpoint["model"].keys() == second_checkpoint["model"].keys()
+    for name, tensor in first_checkpoint["model"].items():
+        torch.testing.assert_close(tensor, second_checkpoint["model"][name], rtol=0, atol=0)
+    torch.testing.assert_close(
+        first_checkpoint["obs_mean"], second_checkpoint["obs_mean"], rtol=0, atol=0
+    )
+    torch.testing.assert_close(
+        first_checkpoint["obs_var"], second_checkpoint["obs_var"], rtol=0, atol=0
+    )
 
 
 @pytest.mark.parametrize(

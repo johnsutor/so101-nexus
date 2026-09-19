@@ -108,10 +108,12 @@ def test_ppo_warp_short_run_finite():
     assert stats["iterations"] == 2
 
 
-def test_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
-    """Same-seed CPU runs must return identical deterministic scalar stats."""
+def test_ppo_warp_same_seed_cpu_short_runs_are_reproducible(tmp_path):
+    """Same-seed CPU runs must return identical stats and inference tensors."""
     import importlib
     import math
+
+    import torch
 
     mod = importlib.import_module("examples.ppo_warp")
     kwargs = {
@@ -126,8 +128,8 @@ def test_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
         "log": False,
     }
 
-    first = mod.train(**kwargs)
-    second = mod.train(**kwargs)
+    first = mod.train(**kwargs, save_dir=str(tmp_path / "first"))
+    second = mod.train(**kwargs, save_dir=str(tmp_path / "second"))
 
     for key in (
         "iterations",
@@ -142,6 +144,110 @@ def test_ppo_warp_same_seed_cpu_short_runs_are_reproducible():
         assert math.isnan(second["mean_return"])
     else:
         assert second["mean_return"] == first["mean_return"]
+    first_checkpoint = torch.load(tmp_path / "first/agent.pt", weights_only=False)
+    second_checkpoint = torch.load(tmp_path / "second/agent.pt", weights_only=False)
+    assert first_checkpoint["model"].keys() == second_checkpoint["model"].keys()
+    for name, tensor in first_checkpoint["model"].items():
+        torch.testing.assert_close(tensor, second_checkpoint["model"][name], rtol=0, atol=0)
+    torch.testing.assert_close(
+        first_checkpoint["obs_mean"], second_checkpoint["obs_mean"], rtol=0, atol=0
+    )
+    torch.testing.assert_close(
+        first_checkpoint["obs_var"], second_checkpoint["obs_var"], rtol=0, atol=0
+    )
+
+
+def test_ppo_warp_same_seed_is_reproducible_across_processes(tmp_path):
+    import subprocess
+    import sys
+
+    import torch
+
+    script = """
+import sys
+from examples.ppo_warp import train
+train(num_envs=4, num_steps=4, total_timesteps=16, num_minibatches=2,
+      update_epochs=1, device='cpu', seed=321, capture_video=False,
+      eval_freq=0, log=False, save_dir=sys.argv[1])
+"""
+    paths = [tmp_path / "process_a", tmp_path / "process_b"]
+    for path in paths:
+        subprocess.run([sys.executable, "-c", script, str(path)], check=True)
+
+    first = torch.load(paths[0] / "agent.pt", weights_only=False)
+    second = torch.load(paths[1] / "agent.pt", weights_only=False)
+    for name, tensor in first["model"].items():
+        torch.testing.assert_close(tensor, second["model"][name], rtol=0, atol=0)
+    torch.testing.assert_close(first["obs_mean"], second["obs_mean"], rtol=0, atol=0)
+    torch.testing.assert_close(first["obs_var"], second["obs_var"], rtol=0, atol=0)
+
+
+def test_inference_checkpoint_records_normalization_and_metadata(tmp_path):
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module("examples.ppo_warp")
+    agent = mod.Agent(3, 2, 8)
+    obs_norm = mod.ObsNormalizer(3, torch.device("cpu"), enabled=False)
+    path = tmp_path / "agent.pt"
+
+    config = mod._resolve_env_cls("WarpPickLift-v1").default_config_cls(spawn_max_radius=0.22)
+    mod._save(
+        agent,
+        obs_norm,
+        str(path),
+        10,
+        0.5,
+        metadata={"seed": 7},
+        env_config=config,
+    )
+    checkpoint = torch.load(path, weights_only=False)
+
+    assert checkpoint["checkpoint_type"] == "inference"
+    assert checkpoint["checkpoint_version"] == 1
+    assert checkpoint["norm_obs"] is False
+    assert checkpoint["metadata"] == {"seed": 7}
+    assert checkpoint["env_config"].spawn_max_radius == 0.22
+
+
+def test_training_metadata_records_resolved_config_and_runtime_versions():
+    import torch
+
+    from so101_nexus import JointPositions, PickConfig
+    from so101_nexus._run_metadata import training_metadata
+
+    config = PickConfig(
+        spawn_max_radius=0.22,
+        observations=[JointPositions()],
+        reset_settle_frames=0,
+    )
+    metadata = training_metadata(
+        device=torch.device("cpu"),
+        env_config=config,
+        seed=7,
+        run_config={"learning_rate": 3e-4, "num_envs": 8, "norm_obs": False},
+    )
+
+    assert metadata["seed"] == 7
+    assert metadata["env_config"]["spawn_max_radius"] == 0.22
+    assert metadata["env_config"]["reset_settle_frames"] == 0
+    assert metadata["env_config"]["observations"] == [{"__type__": "JointPositions"}]
+    assert set(vars(config)) <= set(metadata["env_config"])
+    assert metadata["run_config"] == {
+        "learning_rate": 3e-4,
+        "num_envs": 8,
+        "norm_obs": False,
+    }
+    assert set(metadata["versions"]) == {
+        "python",
+        "numpy",
+        "torch",
+        "mujoco",
+        "mujoco-warp",
+        "warp-lang",
+        "so101-nexus",
+    }
 
 
 @pytest.mark.parametrize(

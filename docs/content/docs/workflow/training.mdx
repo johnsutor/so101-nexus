@@ -117,6 +117,7 @@ uv run --extra warp --extra train python examples/bc_ppo_warp.py \
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--demo-repo` | `johnsutor/MuJoCoPickLift-v1` | Dataset the actor is cloned from |
+| `--demo-revision` | latest commit at startup | Dataset revision, resolved once to an immutable commit for the run |
 | `--use-demos` / `--no-use-demos` | `--use-demos` | Seed the actor from demos before PPO. `--no-use-demos` gives pure PPO |
 | `--bc-pretrain-updates` | `2000` | Supervised steps regressing the actor mean onto demo actions |
 | `--bc-pretrain-lr` | `1e-3` | Learning rate for the pretrain phase |
@@ -161,6 +162,37 @@ deterministic.
 | `--hidden-dim` | `256` |
 | `--control-mode` | `pd_joint_delta_pos` |
 | `--episode-length` | `512` |
+
+## Reproducibility
+
+Use the same seed, configuration, dataset revision, software versions, and hardware to repeat a run.
+The repository lockfile fixes Python dependency versions. Training snapshots record runtime
+provenance so you can compare installations.
+
+For demonstration training, select the commit recorded by the original run:
+
+```bash
+uv run --extra warp --extra train python examples/bc_ppo_warp.py \
+    --seed 1 \
+    --demo-revision "<dataset-commit-sha>"
+```
+
+The loader resolves one commit before reading metadata or data. It loads every parquet data
+shard in a stable order. For asset revision controls, see
+[Scene Objects and Assets](/docs/api/objects#ycb-assets).
+
+Torch deterministic execution is strict by default. Known nondeterministic Torch operations
+raise an error. `--torch-deterministic-warn-only` permits those operations with a warning.
+This flag does not control Warp kernels. GPU contact physics can still produce different
+trajectories with identical seeds. CPU replay tests check exact equality on the same installation.
+
+New snapshots preserve the observation layout, normalization choice, policy architecture,
+and environment configuration. Evaluation uses the saved configuration when available.
+Legacy snapshots use the previous defaults for metadata that they do not contain.
+
+Snapshots are inference artifacts. They do not contain the full simulator, optimizer, and
+random-stream state needed for exact mid-training continuation. Restart training from the
+original seed and inputs to repeat a run from its beginning.
 
 ## Caveats
 

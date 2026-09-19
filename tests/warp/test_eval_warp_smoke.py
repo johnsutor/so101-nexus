@@ -46,7 +46,7 @@ def test_make_envs_pins_the_requested_observation_layout():
     assert narrowed_dim < default_dim
 
 
-def _write_checkpoint(path, obs_dim, act_dim, hidden_dim, env_state_names):
+def _write_checkpoint(path, obs_dim, act_dim, hidden_dim, env_state_names, metadata=None):
     mod = importlib.import_module("examples.ppo_warp")
     agent = mod.Agent(obs_dim, act_dim, hidden_dim)
     torch.save(
@@ -57,6 +57,7 @@ def _write_checkpoint(path, obs_dim, act_dim, hidden_dim, env_state_names):
             "step": 0,
             "success": 0.0,
             "env_state_names": env_state_names,
+            "metadata": metadata or {},
         },
         path,
     )
@@ -98,6 +99,32 @@ def test_eval_warp_rebuilds_the_env_from_the_checkpoint_layout(tmp_path, monkeyp
             "--hidden-dim",
             str(hidden_dim),
         ],
+    )
+
+    importlib.import_module("examples.eval_warp").main()
+
+
+def test_eval_warp_uses_checkpoint_configuration_by_default(tmp_path, monkeypatch):
+    env_id = "WarpPickLift-v1"
+    observations = _default_observations(env_id)
+    names = privileged_state_feature_names(observations)
+    checkpoint = tmp_path / "agent.pt"
+    _write_checkpoint(
+        checkpoint,
+        len(names),
+        6,
+        8,
+        names,
+        metadata={
+            "env_id": env_id,
+            "control_mode": "pd_joint_delta_pos",
+            "episode_length": 2,
+            "hidden_dim": 8,
+        },
+    )
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(
+        "sys.argv", ["eval_warp.py", "--checkpoint", str(checkpoint), "--num-envs", "2"]
     )
 
     importlib.import_module("examples.eval_warp").main()

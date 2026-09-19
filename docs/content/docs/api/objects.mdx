@@ -211,7 +211,7 @@ repr(obj)  # "custom widget"
 YCB mesh assets are downloaded from the Hugging Face Hub on first use and cached at:
 
 ```
-~/.cache/so101_nexus/ycb/{model_id}/
+~/.cache/so101_nexus/ycb/{repo_key}/{revision}/{model_id}/
 ```
 
 Each model directory holds `visual.obj`, the convex collision parts under
@@ -246,9 +246,9 @@ vertices, which matches the [MuJoCo mesh hull limit](https://mujoco.readthedocs.
 The audited models use 3 to 19 parts. Their collision surfaces have 2.07 mm to
 3.02 mm of p95 error against the visual scans.
 
-The manifest records the source hash, the CoACD version, the complete
-configuration, the quality gates, and the part sizes. The cache rebuilds after
-the source or a generation input changes. An installation without the `decomp`
+The manifest records the repository commit, source hash, collision-part hashes, CoACD version,
+configuration, quality gates, and part sizes. The cache rebuilds after the source,
+a collision part, or a generation input changes. An installation without the `decomp`
 extra can use an existing decomposition. Otherwise, it falls back to one convex
 hull. See [Installation](/docs/getting-started/installation) for the extras
 matrix.
@@ -292,10 +292,14 @@ Each helper validates `model_id` against the supported set and raises on an unkn
 
 ### Custom source repository
 
-Assets are fetched from the `ai-habitat/ycb` Hugging Face dataset by default. Override the source with `SO101_YCB_HF_REPO`, which is useful for private mirrors or custom object sets that follow the same directory layout:
+The default source is a pinned commit of `ai-habitat/ycb`.
+Each repository and commit has a separate cache. Legacy caches remain untouched.
+For a custom mirror, set both variables before importing the library.
+Replace the revision placeholder with the mirror's full 40-character commit SHA:
 
 ```bash
 export SO101_YCB_HF_REPO="your-org/your-ycb-repo"
+export SO101_YCB_HF_REVISION="<40-character-commit-sha>"
 ```
 
 ### Download troubleshooting
@@ -303,7 +307,7 @@ export SO101_YCB_HF_REPO="your-org/your-ycb-repo"
 **Interrupted download.** A partial cache directory is not repaired automatically. Delete it and retry:
 
 ```bash
-rm -rf ~/.cache/so101_nexus/ycb/011_banana
+rm -rf ~/.cache/so101_nexus/ycb/<repo_key>/<revision>/011_banana
 ```
 
 **Firewall or proxy.** Downloads go through the Hugging Face Hub client. Behind a proxy, set the standard `HTTPS_PROXY`, `HF_ENDPOINT`, or `HF_HUB_DISABLE_TELEMETRY` variables.
@@ -313,7 +317,7 @@ rm -rf ~/.cache/so101_nexus/ycb/011_banana
 GSO mesh assets are downloaded from a Hugging Face mirror on first use and cached at:
 
 ```
-~/.cache/so101_nexus/gso/{model_id}/
+~/.cache/so101_nexus/gso/{repo_key}/{revision}/{model_id}/
 ```
 
 The cache layout, manifest format, CoACD decomposition, and texture
@@ -368,10 +372,14 @@ Each helper validates `model_id` against the supported set and raises on an unkn
 
 ### Custom source repository
 
-Assets are fetched from a Hugging Face dataset mirror by default. Override the source with `SO101_GSO_HF_REPO`, which is useful for private mirrors or custom object sets that follow the same directory layout:
+The default source is a pinned commit of `johnsutor/gso-so101-nexus`.
+Each repository and commit has a separate cache. Legacy caches remain untouched.
+For a custom mirror, set both variables before importing the library.
+Replace the revision placeholder with the mirror's full 40-character commit SHA:
 
 ```bash
 export SO101_GSO_HF_REPO="your-org/your-gso-repo"
+export SO101_GSO_HF_REVISION="<40-character-commit-sha>"
 ```
 
 ### Download troubleshooting
@@ -379,7 +387,7 @@ export SO101_GSO_HF_REPO="your-org/your-gso-repo"
 **Interrupted download.** A partial cache directory is not repaired automatically. Delete it and retry:
 
 ```bash
-rm -rf ~/.cache/so101_nexus/gso/Pony_C_Clamp_1440
+rm -rf ~/.cache/so101_nexus/gso/<repo_key>/<revision>/Pony_C_Clamp_1440
 ```
 
 **Firewall or proxy.** Downloads go through the Hugging Face Hub client. Behind a proxy, set the standard `HTTPS_PROXY`, `HF_ENDPOINT`, or `HF_HUB_DISABLE_TELEMETRY` variables.

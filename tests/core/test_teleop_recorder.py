@@ -58,7 +58,8 @@ class _FakeRecordingFollower:
     terminated_after_step = 10**9
     instances: list[_FakeRecordingFollower] = []
 
-    def __init__(self, _config) -> None:
+    def __init__(self, config) -> None:
+        self.config = config
         self.step_calls = 0
         self.initial_leader_action: dict[str, float] | None = None
         self._last_step_info = None
@@ -95,6 +96,9 @@ class _FakeRecordingFollower:
     def last_step_info(self):
         return self._last_step_info
 
+    def initial_state_provenance(self) -> dict[str, object]:
+        return {"qpos": [1.0, 2.0]}
+
 
 def _run_fake_recording(
     monkeypatch,
@@ -104,6 +108,8 @@ def _run_fake_recording(
     fps: int = 30,
     success_hold_seconds: float = 0.5,
     leader=None,
+    state: RecordingState | None = None,
+    seed: int = 0,
 ) -> tuple[RecordingState, _FakeRecordingFollower]:
     import so101_nexus.lerobot_adapter.sim_follower as sim_follower_module
     import so101_nexus.teleop.recorder as recorder_module
@@ -113,10 +119,14 @@ def _run_fake_recording(
     _FakeRecordingFollower.terminated_after_step = terminated_after_step
     monkeypatch.setattr(sim_follower_module, "SimSOFollower", _FakeRecordingFollower)
     monkeypatch.setattr(session_module, "prepare_follower_calibration", lambda **_kwargs: None)
-    monkeypatch.setattr(session_module, "build_sim_follower_config", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        session_module,
+        "build_sim_follower_config",
+        types.SimpleNamespace,
+    )
     monkeypatch.setattr(recorder_module.time, "sleep", lambda _seconds: None)
 
-    state = RecordingState(num_episodes=1)
+    state = state or RecordingState(num_episodes=1)
     recording_thread(
         state=state,
         env_id="FakeEnv-v0",
@@ -131,6 +141,7 @@ def _run_fake_recording(
         follower_calibration_dir="unused",
         follower_robot_id="teleop_sim_test",
         success_hold_seconds=success_hold_seconds,
+        seed=seed,
     )
     return state, _FakeRecordingFollower.instances[-1]
 
@@ -230,6 +241,15 @@ def test_recording_thread_seeds_follower_with_leader_pose(monkeypatch) -> None:
     assert follower.initial_leader_action is not None
     assert all(key.endswith(".pos") for key in follower.initial_leader_action)
     assert follower.initial_leader_action["wrist_roll.pos"] == -90.0
+
+
+def test_recording_thread_uses_and_records_episode_seed(monkeypatch) -> None:
+    state = RecordingState(num_episodes=3, episodes_completed=2)
+    _, follower = _run_fake_recording(monkeypatch, max_steps=1, state=state, seed=100)
+
+    assert follower.config.seed == 102
+    assert state.episode_seed == 102
+    assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
 
 
 def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -> None:

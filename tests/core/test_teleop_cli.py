@@ -26,6 +26,12 @@ def test_parse_teleop_args_wrist_roll_offset_parses() -> None:
     assert args.wrist_roll_offset_deg == -45.0
 
 
+def test_parse_teleop_args_seed_parses() -> None:
+    args = parse_teleop_args(["teleop", "--seed", "42"])
+
+    assert args.seed == 42
+
+
 def test_parse_teleop_args_accepts_env_customization_flags() -> None:
     args = parse_teleop_args(
         [

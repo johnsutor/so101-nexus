@@ -11,6 +11,7 @@ import so101_nexus.mujoco  # registers the MuJoCo env ids
 
 env = gym.make("MuJoCoPickLift-v1", render_mode="human")
 obs, info = env.reset(seed=0)
+env.action_space.seed(0)
 
 for _ in range(1000):
     action = env.action_space.sample()
@@ -20,6 +21,9 @@ for _ in range(1000):
 
 env.close()
 ```
+
+`reset(seed=0)` controls the environment state. `action_space.seed(0)` controls
+the random actions from `action_space.sample()`. Use both calls to reproduce this rollout.
 
 Importing `so101_nexus.mujoco` is what registers the ids with Gymnasium, so it must run before `gym.make()`. Use `render_mode="human"` for a live viewer window, or `render_mode="rgb_array"` to capture frames programmatically.
 

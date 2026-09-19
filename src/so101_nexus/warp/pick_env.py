@@ -290,13 +290,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         the instruction. A pin outside the draw displaces column 0 instead, which
         does move objects.
         """
-        n = int(idx.numel())
         if self._n_active == 1:
-            sel = torch.randint(
-                0, self._n_pool, (n, 1), generator=self._generator, device=self.device
-            )
+            sel = (self._rng.rand("task", idx, 1) * self._n_pool).to(torch.long)
         else:
-            perm = torch.rand(n, self._n_pool, generator=self._generator, device=self.device)
+            perm = self._rng.rand("task", idx, self._n_pool)
             sel = perm.argsort(dim=1)[:, : self._n_active]
         override = self._target_index_override
         if override is None:
@@ -326,11 +323,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
     ) -> None:
         """Place each rank's selected slot at ``positions[:, k]`` with random yaw."""
         rows = idx[:, None]
-        n = int(idx.numel())
         for k in range(sel.shape[1]):
             sel_k = sel[:, k]  # (n,) pool idx per reset world
             base = self._slot_qadr[sel_k]
-            yaw = random_yaw_quat_batch(self._generator, self.device, n)
+            yaw = random_yaw_quat_batch(self._rng, idx)
             quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
             self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
                 [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
@@ -361,8 +357,8 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._hide_all_slots(idx)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
-            self._generator,
-            self.device,
+            self._rng,
+            idx,
             radii,
             self.config.min_object_separation,
             self.config.spawn_min_radius,

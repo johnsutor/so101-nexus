@@ -52,6 +52,15 @@ EE_ACTION_KEYS = (*EE_POSE_KEYS, EE_GRIPPER_KEY)
 DEFAULT_CONTROL_MODE = "pd_joint_pos"
 
 
+def _array_to_list(value: Any) -> Any:
+    """Convert NumPy, torch, or Warp array-like state to JSON-compatible lists."""
+    if hasattr(value, "detach"):
+        value = value.detach().cpu()
+    elif hasattr(value, "numpy") and callable(value.numpy):
+        value = value.numpy()
+    return np.asarray(value).tolist()
+
+
 def _read_gripper_limits_rad(env: object, *, ee_control: bool) -> GripperLimitsRad:
     """Read simulator gripper limits for the active action layout."""
     if not ee_control:
@@ -190,7 +199,7 @@ class SimSOFollower(Robot):
 
         try:
             self._env = gym.make(self.config.env_id, **make_kwargs)
-            self._env.reset()
+            self._env.reset(seed=self.config.seed)
             self._gripper_limits_rad = _read_gripper_limits_rad(
                 self._env, ee_control=self._is_ee_control
             )
@@ -203,7 +212,7 @@ class SimSOFollower(Robot):
                     calibration=self.calibration,
                     gripper_limits_rad=self._gripper_limits_rad,
                 )
-                self._env.reset(options={"init_qpos": init_qpos})
+                self._env.reset(seed=self.config.seed, options={"init_qpos": init_qpos})
                 self._pending_leader_init_action = None
             self._last_step_info = None
 
@@ -273,6 +282,32 @@ class SimSOFollower(Robot):
     def last_step_info(self) -> StepInfo | None:
         """Return metadata captured by the most recent ``send_action`` call."""
         return self._last_step_info
+
+    def initial_state_provenance(self) -> dict[str, Any]:
+        """Return native simulator coordinates that identify the connected reset.
+
+        Hinge coordinates use radians, translations use meters, and camera FOV
+        uses degrees. These snapshot fields preserve the backend's replay format.
+        """
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
+        unwrapped = self._env.unwrapped
+        data = getattr(unwrapped, "data", None)
+        model = getattr(unwrapped, "model", None)
+        if model is None:
+            model = getattr(unwrapped, "mjm", None)
+        fields: dict[str, Any] = {}
+        for owner, names in (
+            (data, ("time", "qpos", "qvel", "ctrl", "mocap_pos", "mocap_quat")),
+            (model, ("body_pos", "site_pos", "cam_pos", "cam_quat", "cam_fovy", "geom_rgba")),
+        ):
+            if owner is None:
+                continue
+            for name in names:
+                value = getattr(owner, name, None)
+                if value is not None:
+                    fields[name] = _array_to_list(value)
+        return fields
 
     @check_if_not_connected
     def send_action(self, action: RobotAction) -> RobotAction:

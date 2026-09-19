@@ -181,7 +181,10 @@ def test_backends_share_a_background_colour():
     factory = _parity_config_factory()
     envs = gymnasium.make_vec("WarpPickAndPlace-v1", num_envs=1, config=factory(), device="cpu")
     try:
-        obs, _ = envs.reset(seed=0)
+        obs, _ = envs.reset(
+            seed=0,
+            options={"init_qpos": [0.0, -1.57, 1.57, 0.5, 0.0, -0.17]},
+        )
         # Top-right corner of the wrist view looks past the table edge at nothing.
         corner = obs["wrist_camera"][0, :4, -4:].cpu().numpy()
     finally:

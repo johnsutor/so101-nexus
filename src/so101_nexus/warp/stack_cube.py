@@ -349,11 +349,10 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         if n == 0:
             return
         cfg = self.config
-        gen, dev = self._generator, self.device
         # One slot per configured colour entry; sample one slot per role per
         # world, matching the MuJoCo backend's per-episode colour resampling.
-        a_sel = torch.randint(0, self._a_pool, (n,), generator=gen, device=dev)
-        b_sel_local = torch.randint(0, self._b_pool, (n,), generator=gen, device=dev)
+        a_sel = (self._rng.rand("task", idx) * self._a_pool).to(torch.long)
+        b_sel_local = (self._rng.rand("task", idx) * self._b_pool).to(torch.long)
         b_sel = self._a_pool + b_sel_local
 
         # Park every slot off-world with zeroed velocity (Warp contact bits are
@@ -371,12 +370,12 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         # Columns: 0 = cube A, 1 = cube B, 2.. = distractors.
         sel = torch.stack([a_sel, b_sel], dim=1)
         if self._n_distractors:
-            d_rank = torch.rand(n, self._d_pool, generator=gen, device=dev).argsort(dim=1)
+            d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
             sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
-            gen,
-            dev,
+            self._rng,
+            idx,
             radii,
             cfg.min_cube_separation,
             cfg.spawn_min_radius,
@@ -389,7 +388,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         for k in range(sel.shape[1]):
             sel_k = sel[:, k]
             base = self._slot_qadr[sel_k]  # (n,) qpos address per reset world
-            yaw = random_yaw_quat_batch(gen, dev, n)
+            yaw = random_yaw_quat_batch(self._rng, idx)
             quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
             self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
                 [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1

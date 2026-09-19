@@ -69,7 +69,12 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
-from so101_nexus.gaze import direction_to_object, gaze_angle_rad, gaze_cosine, object_in_view
+from so101_nexus.gaze import (
+    direction_to_object,
+    gaze_angle_between_rad,
+    gaze_cosine,
+    object_in_view,
+)
 from so101_nexus.grasp import opposing_normals_ok
 from so101_nexus.kinematics import (
     EE_ACTION_DIM,
@@ -91,6 +96,7 @@ from so101_nexus.observations import (
     OverheadCamera,
     WristCamera,
 )
+from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
 
 if TYPE_CHECKING:
@@ -305,6 +311,15 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self.qpos = wp.to_torch(self.data.qpos)  # (N, nq)
         self.qvel = wp.to_torch(self.data.qvel)  # (N, nv)
         self.ctrl = wp.to_torch(self.data.ctrl)  # (N, nu)
+        # Integration inputs and solver history are per-world state too. Keeping
+        # them across reset makes the next solve depend on the prior episode.
+        self._time = wp.to_torch(self.data.time)
+        self._qacc = wp.to_torch(self.data.qacc)
+        self._qacc_warmstart = wp.to_torch(self.data.qacc_warmstart)
+        self._qfrc_applied = wp.to_torch(self.data.qfrc_applied)
+        self._xfrc_applied = wp.to_torch(self.data.xfrc_applied)
+        self._act = wp.to_torch(self.data.act) if self.data.act.shape[1] else None
+        self._act_dot = wp.to_torch(self.data.act_dot) if self.data.act_dot.shape[1] else None
         self.site_xpos = wp.to_torch(self.data.site_xpos)  # (N, nsite, 3)
         self.site_xmat = wp.to_torch(self.data.site_xmat)  # (N, nsite, 3, 3)
         self._qfrc_actuator = wp.to_torch(self.data.qfrc_actuator)  # (N, nv)
@@ -383,9 +398,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         # property reduces it. Default empty until a subclass sets descriptions.
         self.task_descriptions: list[str] = [""] * num_envs
 
-        self._generator = torch.Generator(device=self.device)
-        if seed is not None:
-            self._generator.manual_seed(seed)
+        self._rng = WorldEpisodeRNG(num_envs, self.device, seed)
+        self._has_reset = False
         self._elapsed = torch.zeros(num_envs, dtype=torch.long, device=self.device)
         self._prev_action: torch.Tensor | None = None
         self._has_prev_action = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
@@ -618,24 +632,21 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             return
         wc = self._wrist_cam
         cid = self._wrist_cam_id
-        g = self._generator
         pitch_lo, pitch_hi = wc.pitch_rad_range
-        pitch = torch.rand(n, generator=g, device=self.device) * (pitch_hi - pitch_lo) + pitch_lo
+        pitch = self._rng.rand("wrist", idx) * (pitch_hi - pitch_lo) + pitch_lo
         half = pitch * 0.5
         quat = torch.zeros((n, 4), device=self.device)
         quat[:, 0] = torch.cos(half)  # w
         quat[:, 1] = torch.sin(half)  # x (rotation about camera X = pitch)
         self._cam_quat[idx, cid] = quat
-        u = torch.rand((n, 3), generator=g, device=self.device) * 2.0 - 1.0
+        u = self._rng.rand("wrist", idx, 3) * 2.0 - 1.0
         pos = torch.empty((n, 3), device=self.device)
         pos[:, 0] = u[:, 0] * wc.pos_x_noise
         pos[:, 1] = wc.pos_y_center + u[:, 1] * wc.pos_y_noise
         pos[:, 2] = wc.pos_z_center + u[:, 2] * wc.pos_z_noise
         self._cam_pos[idx, cid] = pos
         fov_lo, fov_hi = wc.fov_deg_range
-        self._cam_fovy[idx, cid] = (
-            torch.rand(n, generator=g, device=self.device) * (fov_hi - fov_lo) + fov_lo
-        )
+        self._cam_fovy[idx, cid] = self._rng.rand("wrist", idx) * (fov_hi - fov_lo) + fov_lo
 
     @staticmethod
     def _world_camera_xml(config: EnvironmentConfig, render_mode: str | None = None) -> str:
@@ -695,7 +706,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 if low == high:
                     value.fill_(low)
                 else:
-                    value = torch.rand(idx.numel(), generator=self._generator, device=self.device)
+                    value = self._rng.rand("visual", idx)
                     value = value * (high - low) + low
             values.append(value)
         azimuth_rad, elevation_rad = (torch.deg2rad(x) for x in values[:2])
@@ -939,7 +950,19 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         n = int(idx.numel())
         if n == 0:
             return
-        target = self._sample_reset_qpos(n, init_qpos)
+        for state in (
+            self._time,
+            self._qacc,
+            self._qacc_warmstart,
+            self._qfrc_applied,
+            self._xfrc_applied,
+        ):
+            state[mask] = 0
+        if self._act is not None:
+            self._act[mask] = 0
+            assert self._act_dot is not None
+            self._act_dot[mask] = 0
+        target = self._sample_reset_qpos(idx, init_qpos)
         rows = idx[:, None]
         self.qpos[rows, self._qpos_adr] = target
         self.qvel[rows, self._dof_adr] = 0.0
@@ -952,7 +975,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         self._reset_visual_camera(idx)
 
     def reset(
-        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+        self,
+        *,
+        seed: int | list[int] | tuple[int, ...] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor | dict[str, torch.Tensor], dict]:
         """Reset all worlds and return the initial batched observation and info.
 
@@ -963,12 +989,14 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         without the key to return to seeded random targets.
         """
         if seed is not None:
-            self._generator.manual_seed(seed)
+            self._rng.seed(seed)
         self._target_index_override = self._parse_target_index(options)
         init_qpos = self._parse_init_qpos(options)
         self._prev_action = None
         self._has_prev_action.fill_(False)
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        self._rng.begin(mask.nonzero(as_tuple=True)[0], advance=seed is None and self._has_reset)
+        self._has_reset = True
         with wp.ScopedDevice(self._wp_device):
             self._write_reset_state(mask, init_qpos=init_qpos)
             mjw.forward(self.model, self.data)
@@ -1163,6 +1191,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             if bool(done.any()):
                 self._contact_cache.clear()
                 with wp.ScopedDevice(self._wp_device):
+                    self._rng.begin(done.nonzero(as_tuple=True)[0], advance=True)
                     self._write_reset_state(done)
                     mjw.forward(self.model, self.data)
                     # Settle-independent reset reference (matches reset()): done worlds
@@ -1234,7 +1263,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
     def _gaze_angle_rad(self) -> torch.Tensor:
         """Return ``(N,)`` angle between the optical axis and the target object."""
-        return gaze_angle_rad(self._gaze_cosine())
+        return gaze_angle_between_rad(self._gaze_axis(), self._gaze_direction())
 
     def _half_fov_rad(self) -> torch.Tensor | float:
         """Half the wrist-camera vertical FOV: the in-frame boundary.
@@ -1369,7 +1398,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             )
         return arr
 
-    def _sample_reset_qpos(self, n: int, init_qpos: torch.Tensor | None) -> torch.Tensor:
+    def _sample_reset_qpos(
+        self, worlds: torch.Tensor, init_qpos: torch.Tensor | None
+    ) -> torch.Tensor:
         """Return ``(n, 6)`` reset joint targets per the reset contract.
 
         Priority: explicit ``init_qpos`` (clamped, no noise); else
@@ -1377,6 +1408,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         else the rest pose plus per-world uniform ``robot_init_qpos_noise``.
         """
         n_joints = len(SO101_JOINT_NAMES)
+        n = int(worlds.numel())
         if init_qpos is not None:
             target = init_qpos.expand(n, n_joints) if init_qpos.ndim == 1 else init_qpos
             return torch.clamp(target, self._target_low, self._target_high)
@@ -1385,11 +1417,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             low_np, high_np = pose.bounds_rad()
             low = torch.as_tensor(low_np, dtype=torch.float32, device=self.device)
             high = torch.as_tensor(high_np, dtype=torch.float32, device=self.device)
-            u = torch.rand((n, n_joints), generator=self._generator, device=self.device)
+            u = self._rng.rand("robot", worlds, n_joints)
             return torch.clamp(low + u * (high - low), self._target_low, self._target_high)
-        noise = (
-            torch.rand((n, n_joints), generator=self._generator, device=self.device) * 2.0 - 1.0
-        ) * self.robot_init_qpos_noise
+        noise = (self._rng.rand("robot", worlds, n_joints) * 2.0 - 1.0) * self.robot_init_qpos_noise
         return torch.clamp(self._rest_qpos + noise, self._target_low, self._target_high)
 
     def _refresh_reset_reference_state(self, mask: torch.Tensor) -> None:

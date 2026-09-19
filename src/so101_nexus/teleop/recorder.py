@@ -99,6 +99,8 @@ class RecordingState:
     episode_overhead_images: list[np.ndarray] = field(default_factory=list)
     task_description: str = ""
     placement_contract: dict[str, Any] | None = None
+    episode_seed: int | None = None
+    initial_sim_state: dict[str, Any] = field(default_factory=dict)
     episode_duration: float = 0.0
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
@@ -121,6 +123,8 @@ class RecordingState:
         self.episode_overhead_images.clear()
         self.task_description = ""
         self.placement_contract = None
+        self.episode_seed = None
+        self.initial_sim_state.clear()
         self.episode_duration = 0.0
         self.live_frame = None
         self.live_overhead_frame = None
@@ -128,6 +132,11 @@ class RecordingState:
         self.terminated_at_frame = None
         self.recording_finished = False
         self.error = None
+
+    def set_initial_provenance(self, seed: int, sim_state: dict[str, Any]) -> None:
+        """Store the seed and post-reset simulator state for the current episode."""
+        self.episode_seed = seed
+        self.initial_sim_state = sim_state
 
 
 def compute_delta_actions(actions: list[np.ndarray]) -> list[np.ndarray]:
@@ -254,6 +263,7 @@ def recording_thread(
     env_config_profile: str | None = None,
     env_config_factory: ConfigFactory | None = None,
     success_hold_seconds: float = 0.5,
+    seed: int = 0,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
     from so101_nexus.lerobot_adapter.sim_follower import SimSOFollower
@@ -285,12 +295,14 @@ def recording_thread(
             overrides=customization_overrides,
             profile_path=env_config_profile,
             factory=env_config_factory,
+            seed=(episode_seed := seed + state.episodes_completed),
         )
         follower = SimSOFollower(follower_config)
         _seed_follower_from_leader(follower, leader, wrist_roll_offset_deg)
         follower.connect()
 
         state.clear_episode()
+        state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
         env = follower._env
         if env is None:
             raise RuntimeError("follower environment is not connected after connect()")

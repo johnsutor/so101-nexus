@@ -59,6 +59,15 @@ def test_every_docs_page_is_reachable_from_nav() -> None:
     assert orphans == [], f"docs pages missing from nav: {orphans}"
 
 
+def test_asset_docs_require_revision_pins_and_isolated_caches() -> None:
+    """Custom asset sources must document their immutable revision and cache scope."""
+    text = _read(DOCS / "api" / "objects.mdx")
+    for dataset in ("ycb", "gso"):
+        assert f"SO101_{dataset.upper()}_HF_REVISION" in text
+        assert f"so101_nexus/{dataset}/{{repo_key}}/{{revision}}/{{model_id}}/" in text
+        assert f"so101_nexus/{dataset}/{{model_id}}/" not in text
+
+
 def test_docs_do_not_import_public_objects_from_backend_submodules() -> None:
     """Public configs and object classes live in ``so101_nexus``."""
     forbidden = (

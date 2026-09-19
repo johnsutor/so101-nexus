@@ -72,7 +72,14 @@ def _write_cached_parts(mesh_dir: Path, files: tuple[str, ...] = ("collision_000
         "hull_gap_gate_m": mesh_assets._HULL_GAP_GATE_M,
         "hull_gap_max_gate_m": mesh_assets._HULL_GAP_MAX_GATE_M,
         "decomposed": False,
-        "parts": [{"file": name, "mass_fraction": 1.0 / len(files)} for name in files],
+        "parts": [
+            {
+                "file": name,
+                "mass_fraction": 1.0 / len(files),
+                "sha256": mesh_assets._sha256(parts_dir / name),
+            }
+            for name in files
+        ],
     }
     (parts_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return parts_dir
@@ -222,6 +229,7 @@ def test_ensure_gso_assets_download_copies_obj_directly(
 
     def _snapshot_download(**kwargs):
         assert kwargs["allow_patterns"] == [f"meshes/{model_id}/*"]
+        assert kwargs["revision"] == gso_assets._HF_REVISION
         obj_dir = tmp_path / "meshes" / model_id
         obj_dir.mkdir(parents=True, exist_ok=True)
         (obj_dir / "model.obj").write_text("real-world-scale obj", encoding="utf-8")
@@ -262,13 +270,26 @@ def test_collision_parts_require_prepared_assets(monkeypatch: pytest.MonkeyPatch
         gso_assets.get_gso_collision_parts("CoQ10")
 
 
+def test_collision_parts_reject_missing_part(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setattr(gso_assets, "_CACHE_DIR", tmp_path)
+    model_id = "CoQ10"
+    parts_dir = _write_cached_parts(tmp_path / model_id)
+    (parts_dir / "collision_000.obj").unlink()
+
+    with pytest.raises(FileNotFoundError, match="do not match"):
+        gso_assets.get_gso_collision_parts(model_id)
+
+
 def test_source_repo_env_override(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SO101_GSO_HF_REPO", "your-org/your-gso-repo")
+    monkeypatch.setenv("SO101_GSO_HF_REVISION", "b" * 40)
     import importlib
 
     reloaded = importlib.reload(gso_assets)
     try:
         assert reloaded._HF_REPO_ID == "your-org/your-gso-repo"
+        assert reloaded._HF_REVISION == "b" * 40
     finally:
         monkeypatch.delenv("SO101_GSO_HF_REPO", raising=False)
+        monkeypatch.delenv("SO101_GSO_HF_REVISION", raising=False)
         importlib.reload(gso_assets)
