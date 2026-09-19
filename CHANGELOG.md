@@ -9,6 +9,12 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `RenderConfig` supports optional side-camera azimuth, elevation, and distance
+  ranges, sampled reproducibly on reset across all MuJoCo tasks for RGB, depth,
+  and human rendering. Existing fixed defaults remain unchanged.
+
 ## [0.6.0] - 2026-09-12
 
 ### Added

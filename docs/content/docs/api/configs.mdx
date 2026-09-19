@@ -15,7 +15,12 @@ from so101_nexus import RenderConfig
 render = RenderConfig(width=640, height=480)
 
 # Angled side view for render_mode="rgb_array" videos and the human viewer
-render = RenderConfig(camera="side")
+render = RenderConfig(
+    camera="side",
+    side_azimuth_range_deg=(120.0, 200.0),
+    side_elevation_range_deg=(-50.0, -20.0),
+    side_distance_range=(0.8, 1.2),
+)
 ```
 
 ### Constructor Parameters
@@ -27,6 +32,14 @@ render = RenderConfig(camera="side")
 | `camera` | `"overhead" \| "side"` | `"overhead"` | View for `rgb_array`, `depth_array`, and the initial `human` viewpoint. `"overhead"` looks straight down. `"side"` selects an angled view. |
 | `side_azimuth_deg` | `float` | `160.0` | Azimuth of the side view in degrees |
 | `side_elevation_deg` | `float` | `-30.0` | Elevation of the side view in degrees, in `[-90, 0)` |
+| `side_azimuth_range_deg` | `tuple[float, float] \| None` | `None` | Uniform azimuth bounds in degrees, overriding `side_azimuth_deg` |
+| `side_elevation_range_deg` | `tuple[float, float] \| None` | `None` | Uniform elevation bounds in degrees within `[-90, 0)`, overriding `side_elevation_deg` |
+| `side_distance_range` | `tuple[float, float] \| None` | `None` | Uniform positive straight-line distance bounds in meters from the workspace look-at target; `None` retains automatic workspace framing |
+
+Ranges apply to every MuJoCo task's side view, including RGB, depth, and the human viewer. Each reset samples the configured ranges using the environment's seeded RNG. The sampled pose stays fixed during the episode; the human viewer still allows manual orbiting. An open viewer adopts the newly sampled pose on reset.
+
+Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, existing behavior is unchanged. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations or add `render()` support to Warp.
+
 
 ---
 
