@@ -3670,7 +3670,7 @@ wheels = [
 
 [[package]]
 name = "so101-nexus"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "gymnasium" },
