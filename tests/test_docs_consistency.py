@@ -394,6 +394,31 @@ def test_installation_lists_every_package_extra() -> None:
     )
 
 
+def test_physics_reference_covers_fields_and_runs_profile() -> None:
+    """The physics reference must cover the public fields and provide a valid profile."""
+    text = _read(DOCS / "api" / "configs.mdx")
+    match = re.search(r"## PhysicsConfig\n(.*?)(?=\n## )", text, re.DOTALL)
+    assert match, "PhysicsConfig needs a canonical reference"
+
+    from dataclasses import fields
+
+    from so101_nexus import PhysicsConfig
+
+    section = match.group(1)
+    documented = set(re.findall(r"^\| `([^`]+)` \|", section, re.MULTILINE))
+    assert documented == {field.name for field in fields(PhysicsConfig)}
+    examples = re.findall(r"```python\n(.*?)```", section, re.DOTALL)
+    assert examples
+    namespace = {}
+    for example in examples:
+        exec(example, namespace)
+    physics = namespace["config"].physics
+    assert isinstance(physics, PhysicsConfig)
+    assert physics.substeps == 8
+    assert physics.noslip_iterations == 0
+    assert physics.gripper_solimp == (0.99, 0.999, 0.001, 0.5, 2.0)
+
+
 def test_policy_adapter_example_configures_default_cameras() -> None:
     """The recorder example must provide each camera that it reads by default."""
     policies = _read(DOCS / "api" / "policies.mdx")

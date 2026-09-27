@@ -2,11 +2,11 @@
 
 The scene wrapper emits a robot ``<include>`` followed by an ``<option>`` that
 overrides the vendored menagerie model's option (MuJoCo: the last top-level
-option wins). Two presets exist because MuJoCo Warp does not support the
-``implicitfast`` integrator or the ``noslip`` solver: the Warp preset switches
-to the ``implicit`` integrator and drops noslip, so contact and friction
-dynamics will not be bit-identical to the CPU backend. For the contact-free
-primitive scenes the only effect is the integrator on free arm motion.
+option wins). The historical CPU preset uses ``implicitfast`` and NoSlip;
+the Warp preset uses ``implicit`` without NoSlip. MuJoCo Warp supports both
+integrators but not NoSlip. An explicit ``PhysicsConfig`` overrides these
+presets before simulation or device conversion. Matching configuration does
+not guarantee identical contacts or trajectories across backends.
 """
 
 from __future__ import annotations

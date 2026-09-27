@@ -1,0 +1,17 @@
+MuJoCo Warp 3.13.0 box collision patch
+
+Original MuJoCo box collision algorithm:
+Copyright 2016 Svetoslav Kolev
+Source: google-deepmind/mujoco, tag 3.13.0, src/engine/engine_collision_box.c
+
+Modified MuJoCo Warp files:
+Copyright 2025 The Newton Developers
+Source: google-deepmind/mujoco_warp, release 3.13.0
+
+Both upstream projects are licensed under the Apache License, Version 2.0.
+See LICENSE in this directory.
+
+This patch ports CPU SAT, clipping, duplicate removal, and edge witnesses to
+Warp with double-precision intermediates, and changes box-pair dispatch.
+It preserves the tested patch from the SO101 physics report dated 2026-09-27.
+The portable tests exercise the installed engine without runtime monkeypatches.

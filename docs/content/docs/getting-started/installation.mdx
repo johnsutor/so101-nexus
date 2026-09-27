@@ -72,6 +72,45 @@ uv sync --extra train --extra rocm --no-default-groups
   `rocm` affects MuJoCo-backend training only, meaning behavior cloning and PPO on CPU-simulated environments. It does not enable the Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.
 </Callout>
 
+## Warp box collision patch
+
+The optional patch in `patches/mujoco-warp-3.13.0/` replaces box-pair collision detection with the CPU SAT, clipping, and edge algorithm.
+It preserves other collision dispatch and uses double-precision intermediates with float32 inputs and outputs.
+The normal `warp` extra does not include this patch. The [grasp retention profile](/docs/api/configs#grasp-retention-profile) requires a separate physics configuration.
+
+From a SO101-Nexus source checkout, build the patched dependency and install it in a separate environment:
+
+```bash
+nexus_root="$PWD"
+engine_build=$(mktemp -d)
+cd "$engine_build"
+curl -fL -o mujoco_warp-3.13.0.tar.gz \
+  https://files.pythonhosted.org/packages/3f/1a/acc6851ba3b6d2e51d4af0ddb5d1924618c8293512a39abe8521a6f56a5d/mujoco_warp-3.13.0.tar.gz
+echo '5d0a25560fed1b6735138159bac6d138cf123d2007e81e1f86304cf15182506c  mujoco_warp-3.13.0.tar.gz' | sha256sum --check
+tar -xzf mujoco_warp-3.13.0.tar.gz
+cd mujoco_warp-3.13.0
+git apply --check "$nexus_root/patches/mujoco-warp-3.13.0/box_box_cpu_sat_port_double.patch"
+git apply "$nexus_root/patches/mujoco-warp-3.13.0/box_box_cpu_sat_port_double.patch"
+uv build --wheel --out-dir "$engine_build/wheels"
+uv venv --python 3.12 "$engine_build/venv"
+uv pip install --python "$engine_build/venv/bin/python" \
+  -e "${nexus_root}[warp]" pytest \
+  "mujoco==3.13.0" "warp-lang==1.15.0" "torch==2.9.1" \
+  "$engine_build/wheels/mujoco_warp-3.13.0-py3-none-any.whl"
+"$engine_build/venv/bin/python" -m pytest -q \
+  "$nexus_root/patches/mujoco-warp-3.13.0/tests/test_patched_box_collision.py"
+BOX_TEST_DEVICE=cuda:0 "$engine_build/venv/bin/python" -m pytest -q \
+  "$nexus_root/patches/mujoco-warp-3.13.0/tests/test_patched_box_collision.py"
+```
+
+The standalone tests compare contact geometry and normal force against CPU MuJoCo for thin fingers, aligned faces, and edge contact.
+CUDA tests also exercise captured graphs. The stock dependency fails the thin-finger and edge cases.
+
+Use this environment's Python executable for runs with the patched engine.
+A normal project `uv sync` or `uv run` can restore the stock dependency from the lockfile.
+Restart the process after installation to rebuild models and CUDA graphs.
+The patch targets only `mujoco-warp==3.13.0`. Identical collision algorithms do not imply identical trajectories or measured hardware behavior.
+
 ## Next steps
 
 <Cards>

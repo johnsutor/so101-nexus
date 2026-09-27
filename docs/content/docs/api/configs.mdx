@@ -9,6 +9,73 @@ All configuration classes live in `so101_nexus` and are plain Python classes wit
 The default is `None`, which lets Gymnasium select the random state.
 Teleoperation sets this field from its effective episode seed.
 
+## PhysicsConfig
+
+Pass `physics=PhysicsConfig(...)` to any task configuration to select physics timing, solver behavior, and optional jaw contact impedance.
+Omit `physics` to retain each backend's historical defaults.
+
+```python
+from so101_nexus import PhysicsConfig, PickConfig
+
+config = PickConfig(physics=PhysicsConfig(timestep_s=0.0025))
+```
+
+This configuration uses eight physics substeps per 20 ms command, including reset settling and Warp CUDA graphs.
+The default control frequency remains 50 Hz when only the physics timestep changes.
+An explicit `control_period_s` changes the command frequency and the duration of episodes with a fixed step count.
+
+| Parameter | Default | Contract |
+|-----------|---------|----------|
+| `timestep_s` | `0.005` | Positive finite physics timestep in seconds. Must divide `control_period_s` into an integer number of substeps. |
+| `control_period_s` | `0.02` | Positive finite command interval in seconds |
+| `integrator` | `"implicit"` | `"implicit"` or `"implicitfast"` |
+| `solver` | `"Newton"` | Newton solver |
+| `cone` | `"elliptic"` | Elliptic friction cone |
+| `impratio` | `10.0` | Positive finite friction-to-normal constraint impedance ratio |
+| `iterations` | `10` | Positive integer solver iteration limit |
+| `ls_iterations` | `20` | Positive integer line-search iteration limit |
+| `tolerance` | `1e-6` | Positive finite solver tolerance. Warp requires at least the float32 representation of `1e-6`. |
+| `noslip_iterations` | `0` | Nonnegative integer. Warp requires zero. |
+| `gripper_solimp` | `None` | Optional tuple `(dmin, dmax, width, midpoint, power)` for jaw contact impedance |
+
+`PhysicsConfig` is immutable. A different configuration requires a new environment.
+Warp rejects unsupported NoSlip and solver tolerance values before device conversion.
+See [Physics divergence](/docs/concepts/backends#physics-divergence) for backend limits.
+
+`gripper_solimp` affects only active `condim=6` collision geoms directly attached to `gripper` and `moving_jaw_so101_v1`.
+It preserves material friction, `solref`, geometry, collision masks, mass, actuator limits, and task thresholds.
+The tuple requires `1e-4 <= dmin <= dmax <= 0.9999`, positive width, midpoint strictly between zero and one, and power at least one.
+Width uses meters. An omitted tuple preserves the native contact impedance.
+
+### Grasp retention profile
+
+The following explicit profile adjusts numerical accuracy and jaw compliance together:
+
+```python
+config = PickConfig(
+    physics=PhysicsConfig(
+        timestep_s=0.0025,
+        control_period_s=0.02,
+        integrator="implicit",
+        solver="Newton",
+        cone="elliptic",
+        impratio=1000,
+        iterations=100,
+        ls_iterations=100,
+        tolerance=9.999999974752427e-7,
+        noslip_iterations=0,
+        gripper_solimp=(0.99, 0.999, 0.001, 0.5, 2.0),
+    )
+)
+```
+
+The tolerance matches the float32 representation of `1e-6` on both backends.
+The report's `run_hold_final_profile_v2.py` validated this profile on a saved grasp with 20 mm and 19.05 mm cubes.
+Those tests assumed 10 g cubes and used the separate [Warp collision patch](/docs/getting-started/installation#warp-box-collision-patch).
+The configuration alone does not change Warp's box collision algorithm.
+This profile is a simulation assumption, not a measured stock-pad material model or evidence of general task success.
+Contact impedance affects tangential regularization as well as penetration. Validate the profile on the intended task.
+
 ## RenderConfig
 
 Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. Both backends support these views. See [Render modes](/docs/concepts/backends#render-modes) for backend output formats.
