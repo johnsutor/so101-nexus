@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-27
+
 ### Added
 
 - Optional `PhysicsConfig` shares physics timing and solver configuration across
@@ -19,8 +21,17 @@ for the public-API and deprecation policy.
   preserving geometry, material friction, actuator limits, and other contacts.
 - An optional engine patch and standalone regression tests for MuJoCo Warp 3.13.0
   box collisions, with installation instructions for the patched dependency.
+  Standard package installations do not apply this patch.
+
+### Changed
+
+- The README and example index link directly to canonical setup, task, and
+  training guides. Quickstart and stability pages use the environment catalog
+  instead of partial task lists.
 
 ### Fixed
+
+- Source archives exclude generated documentation build files and caches.
 
 - MuJoCo render frame rates now follow each environment's command period,
   including the native 50 Hz rate for Move, LookAt, and Touch.
@@ -690,7 +701,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/johnsutor/so101-nexus/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/johnsutor/so101-nexus/compare/0.5.4...0.6.0
 [0.5.4]: https://github.com/johnsutor/so101-nexus/compare/0.5.3...0.5.4

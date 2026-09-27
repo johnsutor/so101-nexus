@@ -96,9 +96,11 @@ def test_docs_static_search_uses_orama_export() -> None:
 
 
 def test_examples_readme_references_existing_example_scripts() -> None:
-    """Every ``python examples/...`` command in the README must resolve."""
+    """Script links and commands in the examples index must resolve."""
     text = _read(ROOT / "examples" / "README.md")
     referenced = re.findall(r"python (examples/[\w./-]+\.py)", text)
+    referenced += [f"examples/{path}" for path in re.findall(r"\]\(([\w./-]+\.py)\)", text)]
+    assert referenced, "examples/README.md must reference runnable scripts"
     missing = [path for path in referenced if not (ROOT / path).exists()]
     assert missing == [], f"examples/README.md references missing scripts: {missing}"
 
@@ -230,19 +232,19 @@ def test_environment_table_state_dimensions_match_public_configs() -> None:
     assert documented == registered
 
 
-def test_examples_readme_entropy_matches_ppo_warp_defaults() -> None:
-    """examples/README.md entropy flags must match ``ppo_warp.py`` Args defaults."""
+def test_training_reference_entropy_matches_ppo_warp_defaults() -> None:
+    """workflow/training.mdx entropy flags must match ``ppo_warp.py`` Args defaults."""
     ppo = _read(ROOT / "examples" / "ppo_warp.py")
     ent_coef = re.search(r"ent_coef:\s*float\s*=\s*([\d.]+)", ppo)
     ent_coef_final = re.search(r"ent_coef_final:\s*float\s*=\s*([\d.]+)", ppo)
     assert ent_coef, "could not parse ppo_warp.py entropy default ent_coef"
     assert ent_coef_final, "could not parse ppo_warp.py entropy default ent_coef_final"
 
-    readme = _read(ROOT / "examples" / "README.md")
-    table_ent = re.search(r"`--ent-coef`\s*\|\s*`([\d.]+)`", readme)
-    table_final = re.search(r"`--ent-coef-final`\s*\|\s*`([\d.]+)`", readme)
-    assert table_ent, "could not parse examples/README.md --ent-coef table row"
-    assert table_final, "could not parse examples/README.md --ent-coef-final table row"
+    training = _read(DOCS / "workflow" / "training.mdx")
+    table_ent = re.search(r"`--ent-coef`\s*\|\s*`([\d.]+)`", training)
+    table_final = re.search(r"`--ent-coef-final`\s*\|\s*`([\d.]+)`", training)
+    assert table_ent, "could not parse workflow/training.mdx --ent-coef table row"
+    assert table_final, "could not parse workflow/training.mdx --ent-coef-final table row"
     assert table_ent.group(1) == ent_coef.group(1), (
         f"--ent-coef {table_ent.group(1)} != ppo_warp.py default {ent_coef.group(1)}"
     )
@@ -250,10 +252,10 @@ def test_examples_readme_entropy_matches_ppo_warp_defaults() -> None:
         f"--ent-coef-final {table_final.group(1)} != ppo_warp.py default {ent_coef_final.group(1)}"
     )
     # The "Starting commands" bash block repeats the same flags; guard it too.
-    bash_ent = re.findall(r"--ent-coef ([\d.]+)", readme)
-    bash_final = re.findall(r"--ent-coef-final ([\d.]+)", readme)
-    assert bash_ent, "could not parse examples/README.md --ent-coef command flag"
-    assert bash_final, "could not parse examples/README.md --ent-coef-final command flag"
+    bash_ent = re.findall(r"--ent-coef ([\d.]+)", training)
+    bash_final = re.findall(r"--ent-coef-final ([\d.]+)", training)
+    assert bash_ent, "could not parse workflow/training.mdx --ent-coef command flag"
+    assert bash_final, "could not parse workflow/training.mdx --ent-coef-final command flag"
     assert all(b == ent_coef.group(1) for b in bash_ent), (
         f"--ent-coef command {bash_ent} != ppo_warp.py default {ent_coef.group(1)}"
     )
@@ -451,3 +453,21 @@ def test_lerobot_wrapper_docs_require_a_camera_component() -> None:
         text = _read(page)
         assert "at least one camera component" in text
         assert "or another non-default observation" not in text
+
+
+def test_entry_pages_link_to_canonical_references() -> None:
+    """Entry pages route readers to catalogs instead of maintaining partial copies."""
+    env_id = r"`(?:MuJoCo|Warp)[A-Za-z]*-v\d+`"
+    for relative in ("api/stability.mdx", "getting-started/quickstart.mdx"):
+        text = _read(DOCS / relative)
+        assert "](/docs/environments)" in text
+        for line in text.splitlines():
+            ids = re.findall(env_id, line)
+            assert len(ids) < 2, f"{relative} duplicates the environment catalog: {line}"
+            assert not (line.startswith("|") and ids), relative
+        assert not re.search(r"(?:six|6) per backend", text)
+
+    examples = _read(ROOT / "examples" / "README.md")
+    assert "https://so101-nexus.com/docs/workflow/training" in examples
+    assert "https://so101-nexus.com/docs/workflow/teleoperation" in examples
+    assert not re.search(r"^#+ (?:Baseline hyperparameters|Results)", examples, re.MULTILINE)

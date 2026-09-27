@@ -29,18 +29,8 @@ Importing `so101_nexus.mujoco` is what registers the ids with Gymnasium, so it m
 
 ## Try another task
 
-Every task uses the same Gymnasium API, so swapping the id is the only change.
-
-| Environment ID | Task |
-| --- | --- |
-| [`MuJoCoPickLift-v1`](/docs/environments) | Pick up an object and lift it |
-| [`MuJoCoPickAndPlace-v1`](/docs/environments) | Carry an object onto a goal and release it |
-| [`MuJoCoStackCube-v1`](/docs/environments) | Stack cube A on top of cube B |
-| [`MuJoCoTouch-v1`](/docs/environments) | Touch an object on the table |
-| [`MuJoCoLookAt-v1`](/docs/environments) | Aim the wrist camera at a target |
-| [`MuJoCoMove-v1`](/docs/environments) | Move the TCP in a cardinal direction |
-
-[Environments](/docs/environments) documents each task's episode length, observation layout, reward, and success condition.
+Replace the environment ID in `gym.make()` to choose another task.
+[Environments](/docs/environments) lists all IDs, episode lengths, observations, rewards, and success conditions.
 
 ## Use a different object
 
@@ -76,7 +66,7 @@ envs.close()
   The Warp backend is experimental. It needs an NVIDIA GPU with CUDA >= 12.8, and its physics differs from MuJoCo, so a policy may need re-tuning across backends. See [Backends](/docs/concepts/backends) and [Stability and versioning](/docs/api/stability).
 </Callout>
 
-`all_registered_env_ids()` reports the ids for whichever backends you imported, six per backend:
+`all_registered_env_ids()` reports the IDs for the backends you imported:
 
 ```python
 from so101_nexus.env_ids import all_registered_env_ids
