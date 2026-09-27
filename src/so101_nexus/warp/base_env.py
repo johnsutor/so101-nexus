@@ -11,20 +11,19 @@ path); and (2) autoreset is same-step (Brax/EnvPool style: the done step returns
 post-reset obs), not Gymnasium 1.0's default ``AutoresetMode.NEXT_STEP``. The
 ``autoreset_mode`` metadata declares the latter so ``make_vec`` does not warn.
 
-Backend divergence from the MuJoCo backend, in both cases measurable and not
-configurable away. Task semantics, observation schema, and camera intrinsics ARE
-in parity; these two are not.
+Backend differences require separate physics and rendering validation. Shared
+task semantics, observation schemas, and camera intrinsics do not establish
+identical trajectories or pixels.
 
-**Physics** (see ``so101_nexus.scene``): mujoco_warp supports neither
-``implicitfast`` nor ``noslip``, so the Warp scene uses the ``implicit``
-integrator with no noslip. This is not a constant offset that a consumer can
-calibrate out: it is contact-model-sensitive, so it shows up on tasks whose
-success condition depends on sustained resting contact (pick-and-place, stack)
-and not on tasks that do not (pick-lift). Measured downstream, the same
-pick-and-place checkpoint loses 6-14 success points transferring Warp -> MuJoCo,
-with the LARGER drop for smoother, gentler-contact policies. Validate any
-"train in Warp, evaluate in MuJoCo" workflow on the MuJoCo backend before
-trusting Warp-side success numbers.
+**Physics** (see ``so101_nexus.scene``): supported mujoco_warp versions accept
+both ``implicit`` and ``implicitfast``, but do not implement NoSlip. The native
+Warp preset retains ``implicit`` with NoSlip disabled; the CPU preset uses
+``implicitfast`` with three NoSlip iterations. Warp conversion also raises the
+default solver tolerance from 1e-8 to 1e-6. These differences can affect grasp
+retention as well as placement. Matching supported solver options is necessary
+for a controlled backend comparison, but does not guarantee matching collision
+contacts, floating-point arithmetic, or trajectories. Validate transferred
+policies on the target backend.
 
 **Rendering**: camera observations are NOT pixel-interchangeable with the MuJoCo
 backend, even at bit-identical simulator state and camera pose. Both backends
@@ -96,6 +95,7 @@ from so101_nexus.observations import (
     OverheadCamera,
     WristCamera,
 )
+from so101_nexus.physics import apply_physics_config
 from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
 
@@ -297,6 +297,8 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             "cpu" if self.device.type == "cpu" else f"cuda:{self.device.index or 0}"
         )
 
+        if config.physics is not None:
+            self._N_SUBSTEPS = apply_physics_config(mjm, config.physics, backend="warp")
         self.mjm = mjm
         mjd = mujoco.MjData(mjm)
         mujoco.mj_forward(mjm, mjd)

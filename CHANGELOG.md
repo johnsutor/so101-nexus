@@ -9,6 +9,24 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Optional `PhysicsConfig` shares physics timing and solver configuration across
+  MuJoCo and Warp. Physics substeps preserve the command period during regular
+  steps, reset settling, and CUDA graph replay. Omitted configuration preserves
+  historical backend defaults.
+- Optional `PhysicsConfig.gripper_solimp` overrides jaw contact impedance while
+  preserving geometry, material friction, actuator limits, and other contacts.
+- An optional engine patch and standalone regression tests for MuJoCo Warp 3.13.0
+  box collisions, with installation instructions for the patched dependency.
+
+### Fixed
+
+- MuJoCo render frame rates now follow each environment's command period,
+  including the native 50 Hz rate for Move, LookAt, and Touch.
+- Backend documentation now reflects Warp support for `implicitfast` and its
+  NoSlip and solver tolerance restrictions.
+
 ## [0.7.0] - 2026-09-19
 
 ### Added

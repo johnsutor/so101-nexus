@@ -54,6 +54,7 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
+from so101_nexus.physics import apply_physics_config
 from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
 
 if TYPE_CHECKING:
@@ -164,7 +165,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     must **never** call ``_is_grasping()``.
     """
 
-    metadata = {"render_modes": ["rgb_array", "depth_array", "human"], "render_fps": 50}
+    metadata = {"render_modes": ["rgb_array", "depth_array", "human"], "render_fps": 50.0}
     model: mujoco.MjModel
     data: mujoco.MjData
     config: EnvironmentConfig
@@ -181,8 +182,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     _renderer: mujoco.Renderer | None
     _viewer: Any | None
     _VALID_CONTROL_MODES: frozenset[str] = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
-    # Menagerie physics uses timestep=0.005; keep control_dt = timestep *
-    # _N_SUBSTEPS = 0.02 s (unchanged from the old 0.002 * 10).
+    # Native 50 Hz control clock; explicit physics config overrides this per instance.
     _N_SUBSTEPS = 4
     # Memo for the @_observation_scoped readers, non-None only inside _observe.
     # A plain class-level None is safe here (unlike a mutable default): _observe
@@ -213,6 +213,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._init_qpos_clamp_warned = False
 
     def _finish_model_setup(self) -> None:
+        if self.config.physics is not None:
+            self._N_SUBSTEPS = apply_physics_config(
+                self.model, self.config.physics, backend="mujoco"
+            )
+        self.metadata = {**self.metadata, "render_fps": 1 / self.control_dt}
         self._joint_ids = np.array(
             [
                 mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, n)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -817,6 +818,88 @@ def _warn_inert_velocity_scale(reward: RewardConfig, task_name: str) -> None:
         )
 
 
+@dataclass(frozen=True)
+class PhysicsConfig:
+    """Explicit numerical options shared by CPU and Warp.
+
+    Omit ``EnvironmentConfig.physics`` to preserve the native backend presets.
+    Physics steps must divide the control period exactly. ``gripper_solimp`` is
+    an optional contact-compliance override, separate from numerical options.
+    Geometry, material friction, mass, actuators, and task thresholds stay unchanged.
+    """
+
+    timestep_s: float = 0.005
+    control_period_s: float = 0.02
+    integrator: Literal["implicit", "implicitfast"] = "implicit"
+    solver: Literal["Newton"] = "Newton"
+    cone: Literal["elliptic"] = "elliptic"
+    impratio: float = 10.0
+    iterations: int = 10
+    ls_iterations: int = 20
+    tolerance: float = 1e-6
+    noslip_iterations: int = 0
+    gripper_solimp: tuple[float, float, float, float, float] | None = None
+
+    def __post_init__(self) -> None:
+        """Reject unsupported options and inconsistent simulation clocks."""
+        for name in ("timestep_s", "control_period_s", "impratio", "tolerance"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be finite and positive, got {value!r}")
+        for name in ("iterations", "ls_iterations", "noslip_iterations"):
+            value = getattr(self, name)
+            minimum = 0 if name == "noslip_iterations" else 1
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
+        for name, choices in (
+            ("integrator", ("implicit", "implicitfast")),
+            ("solver", ("Newton",)),
+            ("cone", ("elliptic",)),
+        ):
+            if getattr(self, name) not in choices:
+                raise ValueError(f"{name} must be one of {choices}")
+        self._validate_gripper_solimp()
+        ratio = self.control_period_s / self.timestep_s
+        if (
+            not math.isfinite(ratio)
+            or ratio < 1
+            or not math.isclose(ratio, round(ratio), rel_tol=0, abs_tol=1e-10)
+        ):
+            raise ValueError(
+                "timestep_s must divide control_period_s into an integer number of steps"
+            )
+
+    def _validate_gripper_solimp(self) -> None:
+        if self.gripper_solimp is None:
+            return
+        values = self.gripper_solimp
+        if (
+            not isinstance(values, tuple)
+            or len(values) != 5
+            or any(
+                isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                for v in values
+            )
+        ):
+            raise ValueError("gripper_solimp must be a tuple of five finite numbers")
+        dmin, dmax, width, midpoint, power = values
+        if not (1e-4 <= dmin <= dmax <= 0.9999 and width > 0 and 0 < midpoint < 1 and power >= 1):
+            raise ValueError(
+                "gripper_solimp requires 1e-4 <= dmin <= dmax <= 0.9999, width > 0, "
+                "0 < midpoint < 1, and power >= 1"
+            )
+
+    @property
+    def substeps(self) -> int:
+        """Number of physics steps per command, including reset settling."""
+        return round(self.control_period_s / self.timestep_s)
+
+
 class EnvironmentConfig:
     """Base config shared by all environments.
 
@@ -825,6 +908,8 @@ class EnvironmentConfig:
 
     Parameters
     ----------
+    physics : PhysicsConfig, optional
+        Explicit numerical options; None preserves each backend's native preset.
     render : RenderConfig, optional
         Render camera resolution settings (visualization only).
     reward : RewardConfig, optional
@@ -873,7 +958,7 @@ class EnvironmentConfig:
         its task, i.e. all privileged state components the backend can compute.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0912
         self,
         render: RenderConfig | None = None,
         reward: RewardConfig | None = None,
@@ -891,7 +976,11 @@ class EnvironmentConfig:
         robot_init_qpos_noise: float = 0.02,
         terminate_on_success: bool = True,
         observations: list[Observation] | None = None,
+        physics: PhysicsConfig | None = None,
     ) -> None:
+        if physics is not None and not isinstance(physics, PhysicsConfig):
+            raise TypeError("physics must be a PhysicsConfig or None")
+        self.physics = physics
         self.render = render if render is not None else RenderConfig()
         self.reward = reward if reward is not None else RewardConfig()
         self.robot = robot if robot is not None else RobotConfig()
