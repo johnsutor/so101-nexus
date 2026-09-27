@@ -36,27 +36,6 @@ uv run --extra warp python examples/eval_warp.py \
 `examples/ppo_warp.py` can also render periodic transfer videos in the matching `MuJoCo*`
 environment with `--capture-video`.
 
-## Results
-
-Measured on one RTX 5090. Success is the recent completed-episode success rate reported by the
-Warp training rollout at the listed step budget. The two scripts are reported separately
-because they are different recipes: a task with no vanilla baseline is not a broken task, and
-a task solved only under demo seeding is still solved.
-
-| Task | Steps | Vanilla PPO (`ppo_warp.py`) | Demo-seeded (`bc_ppo_warp.py`) |
-| --- | ---: | --- | --- |
-| `WarpTouch-v1` | 5M | `1.000`, 88 s | not measured |
-| `WarpLookAt-v1` | 5M | `1.000`, 62 s | not measured |
-| `WarpMove-v1` | 5M | `1.000`, 60 s | not measured |
-| `WarpPickLift-v1` | 30M | 4 of 5 seeds solved. Final success `0.965` min, `0.973` mean, `0.985` max, 24.5 min per run | Rescues the failing seed to `best_success=0.993`, `final_success=0.983` |
-| `WarpPickAndPlace-v1` | 160M | no baseline | Solved. 3 seeds, `best_success` `0.927` / `0.912` / `0.743` (mean `0.861`, std `0.083`) |
-| `WarpStackCube-v1` | | no baseline | no baseline |
-
-Under vanilla PPO, `WarpPickLift-v1` seed 5 stalls at a grasp-and-hold-at-the-table local
-optimum with `best_success=0.037`; demo seeding alone fixes it at the same 30M budget, which is
-the whole argument for the clone stage. The `WarpPickAndPlace-v1` seed-1 checkpoint also
-transfers across backends: a 100-episode evaluation in MuJoCo reports `success_rate=0.870`.
-
 ## Recommended commands
 
 `WarpTouch-v1`, `WarpLookAt-v1`, and `WarpMove-v1` need nothing beyond a step budget:
@@ -162,6 +141,27 @@ deterministic.
 | `--hidden-dim` | `256` |
 | `--control-mode` | `pd_joint_delta_pos` |
 | `--episode-length` | `512` |
+
+## Results
+
+Measured on one RTX 5090. Success is the recent completed-episode success rate reported by the
+Warp training rollout at the listed step budget. The two scripts are reported separately
+because they are different recipes: a task with no vanilla baseline is not a broken task, and
+a task solved only under demo seeding is still solved.
+
+| Task | Steps | Vanilla PPO (`ppo_warp.py`) | Demo-seeded (`bc_ppo_warp.py`) |
+| --- | ---: | --- | --- |
+| `WarpTouch-v1` | 5M | `1.000`, 88 s | not measured |
+| `WarpLookAt-v1` | 5M | `1.000`, 62 s | not measured |
+| `WarpMove-v1` | 5M | `1.000`, 60 s | not measured |
+| `WarpPickLift-v1` | 30M | 4 of 5 seeds solved. Final success `0.965` min, `0.973` mean, `0.985` max, 24.5 min per run | Rescues the failing seed to `best_success=0.993`, `final_success=0.983` |
+| `WarpPickAndPlace-v1` | 160M | no baseline | Solved. 3 seeds, `best_success` `0.927` / `0.912` / `0.743` (mean `0.861`, std `0.083`) |
+| `WarpStackCube-v1` | | no baseline | no baseline |
+
+Under vanilla PPO, `WarpPickLift-v1` seed 5 stalls at a grasp-and-hold-at-the-table local
+optimum with `best_success=0.037`; demo seeding alone fixes it at the same 30M budget, which is
+the whole argument for the clone stage. The `WarpPickAndPlace-v1` seed-1 checkpoint also
+transfers across backends: a 100-episode evaluation in MuJoCo reports `success_rate=0.870`.
 
 ## Reproducibility
 

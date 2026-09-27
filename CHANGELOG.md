@@ -19,6 +19,13 @@ for the public-API and deprecation policy.
   preserving geometry, material friction, actuator limits, and other contacts.
 - An optional engine patch and standalone regression tests for MuJoCo Warp 3.13.0
   box collisions, with installation instructions for the patched dependency.
+  Standard package installations do not apply this patch.
+
+### Changed
+
+- The README and example index link directly to canonical setup, task, and
+  training guides. Quickstart and stability pages use the environment catalog
+  instead of partial task lists.
 
 ### Fixed
 

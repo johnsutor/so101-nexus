@@ -10,9 +10,8 @@ SO101-Nexus follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). 
 The public, supported surface is:
 
 - Every name exported from the top-level package, `so101_nexus.__all__` (configs, rewards, observation components, scene objects, asset helpers, and the LeRobot adapter helpers).
-- The documented Gymnasium environment IDs and construction keyword arguments:
-  - `import so101_nexus.mujoco` registers `MuJoCoTouch-v1`, `MuJoCoLookAt-v1`, `MuJoCoMove-v1`, `MuJoCoPickLift-v1`, `MuJoCoPickAndPlace-v1`, and `MuJoCoStackCube-v1`.
-  - `import so101_nexus.warp` registers `WarpTouch-v1`, `WarpLookAt-v1`, `WarpMove-v1`, `WarpPickLift-v1`, `WarpPickAndPlace-v1`, and `WarpStackCube-v1`.
+- The documented [Gymnasium environment IDs](/docs/environments) and construction keyword arguments.
+  Import `so101_nexus.mujoco` or `so101_nexus.warp` to register the corresponding backend.
 - `so101_nexus.__version__`.
 
 The following are internal and may change at any time without a major version bump:
@@ -25,11 +24,12 @@ Import public objects from `so101_nexus`, not from backend submodules.
 
 ## Versioning policy
 
-- **Patch** (`0.5.x`): bug fixes and additive, backward-compatible changes only.
+- **Patch** (the third version number): bug fixes and additive, backward-compatible changes only.
 - **Minor** (`0.x.0`): new features. While the project is pre-1.0, a minor release may include a documented breaking change to the public API.
 - **Major** (`x.0.0`, from 1.0.0 onward): reserved for breaking changes to the public API.
 
-Until 1.0.0 the public API is still stabilizing, so pin a version range (for example `so101-nexus~=0.5`) if you need reproducible behavior. Every change is recorded in the [changelog](https://github.com/johnsutor/so101-nexus/blob/main/CHANGELOG.md).
+Before 1.0.0, minor releases can change the public API. For reproducible installations, pin an exact package version and lock its dependencies.
+The [changelog](https://github.com/johnsutor/so101-nexus/blob/main/CHANGELOG.md) records release changes.
 
 ## Deprecation process
 
@@ -43,11 +43,13 @@ A name whose only safe behavior would be a breaking change, for example a path t
 
 ## Supported platforms
 
-- **Python**: 3.12 and 3.13, verified in continuous integration.
-- **Operating systems**: Linux and macOS are exercised in continuous integration for the MuJoCo backend.
-- **Backends**: the MuJoCo backend is stable. The MuJoCo Warp backend (`so101-nexus[warp]`) is experimental; its API and physics may change between minor releases, and it requires an NVIDIA GPU with CUDA >= 12.8 for GPU execution. Warp has no ROCm/AMD support.
-- **Accelerators**: `so101-nexus[rocm]` builds MuJoCo-backend training against AMD's ROCm 7.2 PyTorch index on Linux x86_64, with the resolution constraints covered in [Installation](/docs/getting-started/installation).
+The MuJoCo backend is stable. The MuJoCo Warp backend is experimental, and its API and physics can change between minor releases.
+[Installation](/docs/getting-started/installation) lists supported Python versions, operating systems, and GPU requirements.
 
 ## Determinism
 
-Reset and rollout behavior is deterministic for a given seed on a fixed dependency set. Golden-value regression tests pin the reward and state-observation trajectories of every MuJoCo environment, so a dependency upgrade that changes physics or reward output is caught before release rather than silently altering trained-policy behavior.
+MuJoCo reset and rollout behavior is deterministic for a given seed on a fixed dependency set.
+Golden-value regression tests check reward and state-observation trajectories for every MuJoCo environment.
+
+Warp GPU contact physics can produce different trajectories with identical seeds.
+See [Training reproducibility](/docs/workflow/training#reproducibility) for dataset revisions, deterministic Torch execution, and checkpoint limits.
