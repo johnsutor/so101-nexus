@@ -17,6 +17,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Inactive Warp object-pool slots are hidden from RGB, depth, and shadow rendering
+  per world, including camera observations and visualization. Active distractors
+  remain visible, and physical object positions and contacts are unchanged.
 - Robot color configuration now updates the arm's plastic materials. MuJoCo
   samples colors on seeded resets; Warp uses the first color because materials
   are shared across worlds. Motors retain their original materials.

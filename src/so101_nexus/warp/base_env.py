@@ -42,6 +42,7 @@ device tensors; an interactive ``human`` viewer is not supported.
 
 from __future__ import annotations
 
+import copy
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -102,7 +103,9 @@ from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
+
+    from so101_nexus.object_slots import ObjectSlot
 
 # Normalized-delta physical scale (radians), shared with the MuJoCo backend's
 # _DELTA_ACTION_SCALE: +/-0.05 for the five arm joints, +/-0.2 for the gripper.
@@ -445,6 +448,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             self._setup_ee_control()
         self._visual_cam_id = mujoco.mj_name2id(mjm, mujoco.mjtObj.mjOBJ_CAMERA, "visual_cam")
         self._visual_render_ctx = None
+        self._hidden_render_geoms: torch.Tensor | None = None
+        self._slot_render_geom_masks: torch.Tensor | None = None
+        self._render_data_view: mjw.Data | None = None
         self._setup_cameras()
         if self.render_mode is not None and self._wrist_cam is None:
             with wp.ScopedDevice(self._wp_device):
@@ -608,8 +614,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         images: dict[str, torch.Tensor] = {}
         with wp.ScopedDevice(self._wp_device):
             self._update_render_markers()
-            mjw.refit_bvh(self.model, self.data, self._render_ctx)
-            mjw.render(self.model, self.data, self._render_ctx)
+            data = self._data_for_render()
+            mjw.refit_bvh(self.model, data, self._render_ctx)
+            mjw.render(self.model, data, self._render_ctx)
             for comp, cid in self._cam_specs:
                 for modality in comp.modalities:
                     key = comp.name if modality == "rgb" else f"{comp.name}_depth"
@@ -617,6 +624,43 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                         self._render_ctx, self._render_index[cid], comp.width, comp.height, modality
                     )
         return images
+
+    def _setup_slot_visibility(self, slots: Sequence[ObjectSlot]) -> None:
+        """Include visual and collision geoms in each slot's per-world visibility."""
+        if self.render_mode is None and not self._has_cameras:
+            return
+        roots = torch.as_tensor(self.mjm.body_rootid[self.mjm.geom_bodyid], device=self.device)
+        slot_roots = torch.as_tensor(
+            [self.mjm.body_rootid[self.mjm.geom_bodyid[slot.geom_id]] for slot in slots],
+            device=self.device,
+        )
+        self._slot_render_geom_masks = slot_roots[:, None] == roots[None, :]
+        self._hidden_render_geoms = torch.zeros(
+            (self.num_envs, self.mjm.ngeom), dtype=torch.bool, device=self.device
+        )
+
+    def _set_slot_visibility(self, idx: torch.Tensor, selected: torch.Tensor) -> None:
+        """Refresh only reset worlds, retaining all selected distractors."""
+        masks = self._slot_render_geom_masks
+        hidden = self._hidden_render_geoms
+        if masks is None:
+            return
+        assert hidden is not None
+        hidden[idx] = masks.any(dim=0) & ~masks[selected].any(dim=1)
+
+    def _data_for_render(self) -> mjw.Data:
+        """Keep inactive render poses independent from physical geometry poses."""
+        if self._hidden_render_geoms is None:
+            return self.data
+        if self._render_data_view is None:
+            self._render_data_view = copy.copy(self.data)
+            self._render_data_view.geom_xpos = wp.clone(self.data.geom_xpos)
+        positions = wp.to_torch(self._render_data_view.geom_xpos)
+        positions.copy_(wp.to_torch(self.data.geom_xpos))
+        # Warp ignores geometry alpha. Relocate only render poses below the floor
+        # so inactive objects cannot appear in RGB, depth, or cast shadows.
+        positions[..., 2].masked_fill_(self._hidden_render_geoms, -100.0)
+        return self._render_data_view
 
     def _update_render_markers(self) -> None:
         """Refresh per-world visual-only marker geom poses before rendering (default no-op).
@@ -758,8 +802,9 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 )
         with wp.ScopedDevice(self._wp_device):
             self._update_render_markers()
-            mjw.refit_bvh(self.model, self.data, self._visual_render_ctx)
-            mjw.render(self.model, self.data, self._visual_render_ctx)
+            data = self._data_for_render()
+            mjw.refit_bvh(self.model, data, self._visual_render_ctx)
+            mjw.render(self.model, data, self._visual_render_ctx)
             return self._read_camera_image(
                 self._visual_render_ctx, 0, render.width, render.height, modality
             )

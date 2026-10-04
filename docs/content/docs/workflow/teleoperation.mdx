@@ -231,7 +231,10 @@ uv run so101-nexus teleop \
 
 A custom environment should accept SO-100/SO-101 six-joint actions in the standard joint order,
 expose current qpos through `_get_current_qpos()`, and return camera observations compatible
-with the selected recording fields. If the unwrapped environment exposes `task_description`,
+with the recording cameras. Teleop captures all three views even when a dataset field is
+deselected. Custom environments must support `render_mode="rgb_array"` and return an RGB
+side view from `render()` at the overhead image resolution. A config without `RenderConfig`
+must set that resolution itself. If the unwrapped environment exposes `task_description`,
 teleop records it as the required LeRobot `task` field.
 
 ## Published demonstration datasets
