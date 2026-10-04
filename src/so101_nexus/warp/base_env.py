@@ -68,6 +68,7 @@ from so101_nexus.config import (
     SO101_TCP_SITE_NAME,
     ControlMode,
     EnvironmentConfig,
+    LookAtConfig,
 )
 from so101_nexus.constants import COLOR_MAP
 from so101_nexus.gaze import (
@@ -739,6 +740,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
                 aspect=render.width / render.height,
                 azimuth=render.side_azimuth_deg,
                 elevation=render.side_elevation_deg,
+                spawn_angle_half_range_deg=self.config.spawn_angle_half_range_deg,
+                spawn_half_size=(
+                    self.config.spawn_half_size if isinstance(self.config, LookAtConfig) else None
+                ),
             )
         else:
             params = compute_overhead_camera_params(
@@ -763,6 +768,18 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             values.append(value)
         azimuth_rad, elevation_rad = (torch.deg2rad(x) for x in values[:2])
         distance = values[2]
+        if render.camera == "side" and render.side_distance_range is None:
+            distance = compute_angled_camera_params(
+                spawn_center=self.config.spawn_center,
+                spawn_max_radius=self.config.spawn_max_radius,
+                spawn_angle_half_range_deg=self.config.spawn_angle_half_range_deg,
+                spawn_half_size=(
+                    self.config.spawn_half_size if isinstance(self.config, LookAtConfig) else None
+                ),
+                aspect=render.width / render.height,
+                azimuth=values[0],
+                elevation=values[1],
+            )["distance"]
         ca, sa = torch.cos(azimuth_rad), torch.sin(azimuth_rad)
         ce, se = torch.cos(elevation_rad), torch.sin(elevation_rad)
         forward = torch.stack((ca * ce, sa * ce, se), dim=-1)

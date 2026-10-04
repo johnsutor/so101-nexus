@@ -6,6 +6,7 @@ so the camera always bounds the full scene.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import numpy as np
@@ -137,49 +138,77 @@ def compute_overhead_eye_target(
 def compute_angled_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
-    margin: float = 0.10,
-    elevation: float = -30.0,
-    azimuth: float = 160.0,
+    margin: float = 0.05,
+    elevation: Any = -30.0,
+    azimuth: Any = 160.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
     aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
+    *,
+    spawn_angle_half_range_deg: float = 90.0,
+    spawn_half_size: float | None = None,
 ) -> dict[str, Any]:
-    """Compute angled (privileged) camera parameters that view the full scene.
+    """Fit a side view to the spawn arc and the robot's working volume.
+
+    Perspective depth, view angles, and image aspect determine the distance.
+    The target is above the table to avoid wasting pixels on empty foreground.
+    Angles can be scalar degrees, NumPy arrays, or torch tensors; distances
+    retain the same array backend for batched reset-time camera sampling.
 
     Parameters
     ----------
-    spawn_center:
-        XY center of the spawn region.
-    spawn_max_radius:
-        Maximum radial distance objects can spawn from the origin.
+    spawn_center, spawn_max_radius, spawn_angle_half_range_deg:
+        Center, maximum radius, and half angular range of the spawn arc.
+    spawn_half_size:
+        Square spawn half-size, replacing the arc when provided.
     margin:
-        Extra padding in metres beyond the spawn boundary.
-    elevation:
-        Camera elevation angle in degrees (negative = looking down).
-    azimuth:
-        Camera azimuth angle in degrees.
-    fov_deg:
-        Vertical field of view in degrees.
-    aspect:
-        Image width / height ratio.
+        Padding in meters around the workspace and robot.
+    elevation, azimuth:
+        Camera orientation in degrees, negative elevation looks down.
+    fov_deg, aspect:
+        Vertical field of view in degrees and image width / height ratio.
 
     Returns
     -------
-    dict with keys: lookat (3,), distance, elevation, azimuth.
+    dict
+        Camera lookat, distance, elevation, and azimuth.
     """
-    # Use the same scene bounds but pull the camera back a bit for the angle.
-    params = compute_overhead_camera_params(
-        spawn_center=spawn_center,
-        spawn_max_radius=spawn_max_radius,
-        margin=margin,
-        fov_deg=fov_deg,
-        aspect=aspect,
-    )
-    return {
-        "lookat": params["lookat"],
-        "distance": params["distance"] * 1.2,
-        "elevation": elevation,
-        "azimuth": azimuth,
-    }
+    half_range_rad = np.radians(spawn_angle_half_range_deg)
+    cx, cy = spawn_center
+    x_min = min(0.0, cx + spawn_max_radius * min(0.0, np.cos(half_range_rad)))
+    x_max = max(0.0, cx + spawn_max_radius)
+    if spawn_half_size is not None:
+        x_min, x_max = min(0.0, cx - spawn_half_size), max(0.0, cx + spawn_half_size)
+    lookat = np.array([(x_min + x_max) / 2, cy / 2, 0.12])
+    tensor_angle = next((angle for angle in (azimuth, elevation) if hasattr(angle, "clamp")), None)
+    xp = np if tensor_angle is None else sys.modules["torch"]
+    if tensor_angle is not None:
+        azimuth = xp.as_tensor(azimuth, dtype=tensor_angle.dtype, device=tensor_angle.device)
+        elevation = xp.as_tensor(elevation, dtype=tensor_angle.dtype, device=tensor_angle.device)
+    azimuth_rad = azimuth * (np.pi / 180)
+    elevation_rad = elevation * (np.pi / 180)
+    ca, sa = xp.cos(azimuth_rad), xp.sin(azimuth_rad)
+    ce, se = xp.cos(elevation_rad), xp.sin(elevation_rad)
+    forward = (ca * ce, sa * ce, se)
+    right = (sa, -ca, ca * 0)
+    up = (-ca * se, -sa * se, ce)
+    tan_vfov = np.tan(np.radians(fov_deg / 2))
+    distance = ca * 0
+    for axis, tangent in ((right, tan_vfov * aspect), (up, tan_vfov)):
+        for sign in (-1, 1):
+            vx, vy, vz = (sign * a / tangent - f for a, f in zip(axis, forward, strict=True))
+            angle = xp.clip(xp.arctan2(vy, vx), -half_range_rad, half_range_rad)
+            arc_extent = xp.clip(vx * xp.cos(angle) + vy * xp.sin(angle), 0, None)
+            workspace = cx * vx + cy * vy + spawn_max_radius * arc_extent
+            if spawn_half_size is not None:
+                workspace = cx * vx + cy * vy + spawn_half_size * (abs(vx) + abs(vy))
+            workspace += margin * (vx * vx + vy * vy + vz * vz) ** 0.5
+            # A sloped envelope covers the upright arm and its forward reach.
+            robot = margin * (abs(vx) + abs(vy)) + 0.4 * xp.clip(vz, 0, None)
+            reach = 0.25 * vx + 0.25 * vz + margin * (abs(vx) + abs(vy) + abs(vz))
+            bound = xp.maximum(xp.maximum(workspace, robot), reach)
+            bound -= sum(v * target for v, target in zip((vx, vy, vz), lookat, strict=True))
+            distance = xp.maximum(distance, bound)
+    return {"lookat": lookat, "distance": distance, "elevation": elevation, "azimuth": azimuth}
 
 
 def build_overhead_camera_mjcf(

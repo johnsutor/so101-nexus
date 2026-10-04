@@ -5,7 +5,7 @@ import pytest
 import torch
 
 import so101_nexus.warp  # noqa: F401
-from so101_nexus import RenderConfig
+from so101_nexus import LookAtConfig, RenderConfig
 
 pytestmark = pytest.mark.warp
 
@@ -41,7 +41,11 @@ def test_render_all_tasks(env_factory, env_id, mode):
 
     target = torch.as_tensor(
         compute_angled_camera_params(
-            spawn_center=env.config.spawn_center, spawn_max_radius=env.config.spawn_max_radius
+            spawn_center=env.config.spawn_center,
+            spawn_max_radius=env.config.spawn_max_radius,
+            spawn_half_size=(
+                env.config.spawn_half_size if isinstance(env.config, LookAtConfig) else None
+            ),
         )["lookat"],
         dtype=pose.dtype,
         device=env.device,
@@ -156,3 +160,64 @@ def test_visualization_coexists_with_observations_and_autoreset(env_factory, dev
     torch.testing.assert_close(env._cam_pos[1, env._visual_cam_id], pose[1])
     env.render()
     torch.testing.assert_close(old, snapshot)
+
+
+@pytest.mark.parametrize("half_range", [30.0, 180.0])
+def test_random_angles_refit_distance_to_spawn_arc(env_factory, half_range):
+    from so101_nexus.camera_utils import compute_angled_camera_params
+
+    env = env_factory(backend="warp", render_mode="rgb_array")
+    env.config.spawn_angle_half_range_deg = half_range
+    env.config.render = RenderConfig(
+        camera="side",
+        side_azimuth_range_deg=(120.0, 200.0),
+        side_elevation_range_deg=(-45.0, -20.0),
+    )
+    env.reset(seed=42)
+    target = torch.as_tensor(
+        compute_angled_camera_params(
+            spawn_center=env.config.spawn_center,
+            spawn_max_radius=env.config.spawn_max_radius,
+            spawn_angle_half_range_deg=half_range,
+        )["lookat"],
+        dtype=torch.float32,
+        device=env.device,
+    )
+    direction = target - env._cam_pos[:, env._visual_cam_id]
+    distance = torch.linalg.vector_norm(direction, dim=-1)
+    azimuth = torch.rad2deg(torch.atan2(direction[:, 1], direction[:, 0])) % 360
+    elevation = torch.rad2deg(torch.asin(direction[:, 2] / distance))
+    expected = compute_angled_camera_params(
+        spawn_center=env.config.spawn_center,
+        spawn_max_radius=env.config.spawn_max_radius,
+        spawn_angle_half_range_deg=half_range,
+        azimuth=azimuth,
+        elevation=elevation,
+    )
+    torch.testing.assert_close(distance, expected["distance"])
+
+
+def test_look_at_side_camera_fits_square_spawn(env_factory):
+    from so101_nexus.camera_utils import compute_angled_camera_params
+
+    config = LookAtConfig(
+        spawn_half_size=0.4,
+        spawn_max_radius=0.4,
+        render=RenderConfig(
+            camera="side",
+            side_azimuth_range_deg=(200.0, 200.0),
+            side_elevation_range_deg=(-20.0, -20.0),
+        ),
+    )
+    env = env_factory(backend="warp", task="LookAt", config=config, render_mode="rgb_array")
+    env.reset(seed=0)
+    expected = compute_angled_camera_params(
+        spawn_center=config.spawn_center,
+        spawn_max_radius=config.spawn_max_radius,
+        spawn_half_size=config.spawn_half_size,
+        azimuth=200,
+        elevation=-20,
+    )
+    target = torch.as_tensor(expected["lookat"], dtype=torch.float32, device=env.device)
+    distance = torch.linalg.vector_norm(target - env._cam_pos[:, env._visual_cam_id], dim=-1)
+    torch.testing.assert_close(distance, torch.full_like(distance, float(expected["distance"])))

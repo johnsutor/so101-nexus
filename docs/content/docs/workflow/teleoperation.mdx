@@ -75,6 +75,8 @@ sliders set the image resolutions. The side view uses the overhead resolution an
 simulator's render camera. Its azimuth is randomized between 120 and 200 degrees, and its
 elevation between -45 and -20 degrees, on each seeded reset. A config factory can override
 these ranges through `RenderConfig`, including equal bounds for a fixed view.
+The default side distance adapts to the sampled angles and spawn region.
+See [automatic side framing](/docs/api/configs#renderconfig) for distance overrides.
 
 Under **Advanced Settings, Dataset fields**, a checkbox group selects which fields are
 persisted; deselecting an optional field drops it from the declared feature schema and from
