@@ -1070,7 +1070,8 @@ def _cb_approve_episode(session: dict):
         ds = session["dataset"]
         repo_id = getattr(ds, "repo_id", "unknown")
         info = (
-            f"**Dataset:** `{repo_id}`\n\n"
+            f"**Local recording:** `{repo_id}`\n\n"
+            f"**Local directory:** `{ds.root}`\n\n"
             f"**Episodes:** {s.episodes_completed} | "
             f"**Env:** `{session['env_id']}` | "
             f"**FPS:** {session['fps']}"
@@ -1160,7 +1161,7 @@ def _write_env_config_meta(session: dict) -> None:
     (meta_dir / "so101_nexus_env.json").write_text(json.dumps(profile, indent=2))
 
 
-def _cb_push_to_hub(session: dict):
+def _cb_push_to_hub(session: dict, hub_repo_id: str | None = None):
     """Push the completed dataset to HuggingFace Hub.
 
     Finalize first so LeRobot v3.0 per-episode metadata is flushed to disk
@@ -1170,28 +1171,33 @@ def _cb_push_to_hub(session: dict):
 
     from so101_nexus.teleop.session import RepoIdStatus, validate_hub_repo_id
 
-    repo_id = str(getattr(session["dataset"], "repo_id", "")).strip()
+    dataset = session["dataset"]
+    repo_id = (str(getattr(dataset, "repo_id", "")) if hub_repo_id is None else hub_repo_id).strip()
     if repo_id.startswith("local/"):
         raise gr.Error(
             "Cannot push a local-only dataset repo ID. "
-            "Start a new recording with a `username/dataset` Repo ID to push to the Hub."
+            "Set Hub Repo ID to your `username/dataset` and try Push to Hub again."
         )
     status = validate_hub_repo_id(repo_id)
     if status is not RepoIdStatus.OK:
         raise gr.Error(
-            f"Cannot push: repo ID must be `username/dataset`. Current value: {repo_id!r}."
+            f"Cannot push: Hub Repo ID must be `username/dataset`. Current value: {repo_id!r}."
         )
 
     try:
-        session["dataset"].finalize()
+        dataset.finalize()
         _write_env_config_meta(session)
-        session["dataset"].push_to_hub()
+        dataset.repo_id = repo_id
+        if getattr(dataset, "meta", None) is not None:
+            dataset.meta.repo_id = repo_id
+        dataset.push_to_hub()
     except Exception as exc:
         msg = str(exc).strip() or type(exc).__name__
         raise gr.Error(
             f"Failed to push to Hub: {msg}\n\n"
             "Make sure you are logged in (`huggingface-cli login`) and have "
-            "write access to the target repository."
+            "write access to the target repository. Correct Hub Repo ID and try again; "
+            "your recording remains in its original local directory."
         ) from exc
     return _format_hub_links(repo_id)
 
@@ -1521,11 +1527,17 @@ def _build_complete_step(gr):
     """Build the Complete step contents."""
     gr.Markdown("### All episodes recorded!")
     done_info = gr.Markdown("")
+    hub_repo_id_input = gr.Textbox(
+        label="Hub Repo ID",
+        placeholder="username/dataset-name",
+        info="Edit the upload destination before pushing or retrying. "
+        "Your local recording stays in its original directory.",
+    )
     done_status = gr.Markdown("")
     with gr.Row():
         push_btn = gr.Button("Push to Hub", variant="primary")
         finalize_btn = gr.Button("Finalize & Close")
-    return done_info, done_status, push_btn, finalize_btn
+    return done_info, done_status, hub_repo_id_input, push_btn, finalize_btn
 
 
 def _wire_events(
@@ -1558,6 +1570,7 @@ def _wire_events(
     discard_btn,
     done_info,
     done_status,
+    hub_repo_id_input,
     push_btn,
     finalize_btn,
     session_header,
@@ -1653,6 +1666,9 @@ def _wire_events(
             approve_btn,
             discard_btn,
         ],
+    ).then(
+        fn=lambda: session["dataset"].repo_id,
+        outputs=[hub_repo_id_input],
     )
     discard_btn.click(
         fn=discard_episode,
@@ -1667,6 +1683,7 @@ def _wire_events(
     )
     push_btn.click(fn=_cb_prepare_push_to_hub, outputs=[done_status]).then(
         fn=push_to_hub,
+        inputs=[hub_repo_id_input],
         outputs=[done_status],
     )
     finalize_btn.click(fn=_cb_prepare_finalize_and_close, outputs=[done_status]).then(
@@ -1825,6 +1842,7 @@ def main(
                 (
                     done_info,
                     done_status,
+                    hub_repo_id_input,
                     push_btn,
                     finalize_btn,
                 ) = _build_complete_step(gr)
@@ -1909,6 +1927,7 @@ def main(
             discard_btn=discard_btn,
             done_info=done_info,
             done_status=done_status,
+            hub_repo_id_input=hub_repo_id_input,
             push_btn=push_btn,
             finalize_btn=finalize_btn,
             session_header=session_header,

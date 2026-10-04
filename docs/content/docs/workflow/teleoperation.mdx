@@ -44,7 +44,15 @@ you can fix the port in another terminal and click `Retry Initialization`.
    feed renders in the UI.
 4. **Review.** After each episode, the UI shows a video replay and a joint-state plot.
 5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
-6. **Push.** When all episodes are done, push to the Hugging Face Hub from the UI.
+6. **Push.** When all episodes are done, check **Hub Repo ID** and push to the Hugging Face Hub.
+
+The Complete step shows the original local recording directory and an editable **Hub Repo ID**.
+You can change the upload destination to `your-username/dataset-name`, including after an upload failure.
+The local recording stays in its original directory.
+
+If you forgot your username or used the wrong namespace, correct **Hub Repo ID** on the Complete step.
+Then click **Push to Hub** again.
+You do not need to record the episodes again.
 
 ## CLI arguments
 

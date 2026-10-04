@@ -9,6 +9,12 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Teleoperation allows changes to the Hub dataset namespace and name on the
+  Complete step, including after a failed upload. Recorded files stay in their
+  original local directory.
+
 ## [0.8.1] - 2026-10-04
 
 ### Added

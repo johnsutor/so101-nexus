@@ -71,3 +71,42 @@ def test_record_step_has_combined_camera_preview() -> None:
     assert isinstance(preview_feed, gr.Image)
     assert preview_feed.label == "Live Preview (wrist | overhead)"
     assert isinstance(task_status, gr.Markdown)
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_complete_step_has_editable_hub_destination() -> None:
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_complete_step
+
+    with gr.Blocks():
+        _, _, hub_repo_id_input, push_btn, _ = _build_complete_step(gr)
+
+    assert isinstance(hub_repo_id_input, gr.Textbox)
+    assert hub_repo_id_input.label == "Hub Repo ID"
+    assert hub_repo_id_input.interactive is not False
+    assert "original directory" in hub_repo_id_input.info
+    assert push_btn.value == "Push to Hub"
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_app_upload_uses_complete_step_destination(monkeypatch) -> None:
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _cb_push_to_hub, main
+    from so101_nexus.teleop.cli import TeleopArgs
+
+    apps = []
+    monkeypatch.setattr(gr.Blocks, "launch", lambda app, **kwargs: apps.append(app))
+    main(TeleopArgs(leader_port="/dev/null"), backend="mujoco")
+
+    app = apps[0]
+    destination = next(
+        component
+        for component in app.blocks.values()
+        if isinstance(component, gr.Textbox) and component.label == "Hub Repo ID"
+    )
+    upload = next(fn for fn in app.fns.values() if getattr(fn.fn, "func", None) is _cb_push_to_hub)
+    assert upload.inputs == [destination]
+    populate = next(fn for fn in app.fns.values() if fn.outputs == [destination])
+    assert populate.trigger_after is not None
