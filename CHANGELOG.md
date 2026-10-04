@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-04
+
 ### Added
 
 - Teleoperation captures a side camera and selects it for the dataset by default.
@@ -724,7 +726,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...HEAD
+[0.8.1]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/johnsutor/so101-nexus/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/johnsutor/so101-nexus/compare/0.5.4...0.6.0
