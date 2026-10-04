@@ -17,6 +17,7 @@ from so101_nexus.teleop.recorder import (
     TeeStream,
     _append_step_buffers,
     _publish_camera_frames,
+    _should_stop_after_termination,
     compute_delta_actions,
     recording_thread,
 )
@@ -232,6 +233,31 @@ def test_recording_thread_stops_immediately_with_zero_hold(monkeypatch) -> None:
     assert state.error is None
     assert state.terminated_at_frame == 3
     assert len(state.episode_actions) == 3
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_recording_stop_handles_truncation(truncated: bool) -> None:
+    state = RecordingState()
+    step_info = types.SimpleNamespace(terminated=False, truncated=truncated)
+
+    assert (
+        _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.5)
+        is truncated
+    )
+    assert state.terminated_at_frame is None
+
+
+def test_recording_success_hold_finishes_after_transient_success() -> None:
+    state = RecordingState(episode_actions=[np.zeros(6)])
+    step_info = types.SimpleNamespace(terminated=True, truncated=False)
+    assert not _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
+    assert state.terminated_at_frame == 1
+
+    step_info.terminated = False
+    state.episode_actions.append(np.zeros(6))
+    assert not _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
+    state.episode_actions.append(np.zeros(6))
+    assert _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
 
 
 def test_recording_thread_seeds_follower_with_leader_pose(monkeypatch) -> None:

@@ -326,6 +326,7 @@ def test_initial_state_provenance_serializes_reset_state(tmp_path: Path, fake_en
             cam_quat=np.array([[1.0, 0.0, 0.0, 0.0]]),
             cam_fovy=np.array([58.0]),
             geom_rgba=np.array([[1.0, 0.0, 0.0, 1.0]]),
+            mat_rgba=np.array([[0.0, 0.0, 0.0, 1.0]]),
         )
 
         provenance = robot.initial_state_provenance()
@@ -334,6 +335,7 @@ def test_initial_state_provenance_serializes_reset_state(tmp_path: Path, fake_en
         assert provenance["mocap_pos"] == [[0.1, 0.2, 0.3]]
         assert provenance["cam_fovy"] == [58.0]
         assert provenance["geom_rgba"] == [[1.0, 0.0, 0.0, 1.0]]
+        assert provenance["mat_rgba"] == [[0.0, 0.0, 0.0, 1.0]]
     finally:
         robot.disconnect()
 
@@ -375,6 +377,55 @@ def test_get_observation_reads_normalized_qpos_and_camera(tmp_path: Path, fake_e
         assert obs["shoulder_pan.pos"] == pytest.approx(89.9, abs=0.2)
         assert obs["gripper.pos"] == pytest.approx(14.3, abs=0.2)
         assert obs["wrist"].shape == (6, 8, 3)
+    finally:
+        robot.disconnect()
+
+
+@pytest.mark.parametrize("include_render", [False, True])
+def test_get_observation_renders_camera_sources_once(
+    tmp_path: Path, fake_env_id: str, monkeypatch: pytest.MonkeyPatch, include_render: bool
+) -> None:
+    from so101_nexus.lerobot_adapter import SimCameraConfig, SimSOFollower
+
+    cameras = {
+        name: SimCameraConfig(source="wrist_camera", width=8, height=6, fps=30)
+        for name in ("wrist", "overhead")
+    }
+    render_calls = []
+
+    def render(self):
+        render_calls.append(None)
+        return np.full((6, 8, 3), 32, dtype=np.uint8)
+
+    if include_render:
+        cameras["side"] = SimCameraConfig(source="render", width=8, height=6, fps=30)
+        monkeypatch.setattr(_AbsoluteJointEnv, "render", render)
+    robot = SimSOFollower(
+        _make_config(
+            tmp_path,
+            fake_env_id,
+            cameras=cameras,
+        )
+    )
+    try:
+        robot.connect()
+        calls = []
+        render_calls.clear()
+        original_get_obs = robot._env.unwrapped._get_obs
+
+        def get_obs():
+            calls.append(None)
+            return original_get_obs()
+
+        monkeypatch.setattr(robot._env.unwrapped, "_get_obs", get_obs)
+
+        obs = robot.get_observation()
+
+        assert len(calls) == 1
+        np.testing.assert_array_equal(obs["wrist"], obs["overhead"])
+        assert len(render_calls) == int(include_render)
+        if include_render:
+            assert int(obs["side"].mean()) == 32
     finally:
         robot.disconnect()
 

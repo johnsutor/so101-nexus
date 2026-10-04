@@ -267,13 +267,12 @@ def test_run_init_worker_creates_canonical_lerobot_features(monkeypatch) -> None
     class _Dataset:
         pass
 
-    def _fake_create_dataset(repo_id, fps, robot_type, features, leader):
+    def _fake_create_dataset(repo_id, fps, robot_type, features):
         seen.update(
             repo_id=repo_id,
             fps=fps,
             robot_type=robot_type,
             features=features,
-            leader=leader,
         )
         return _Dataset()
 
@@ -405,7 +404,7 @@ def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
     monkeypatch.setattr(
         teleop_app,
         "_customization_ui_state_for_env",
-        lambda _env_id: teleop_app.CustomizationUIState(),
+        lambda _env_id, **_: teleop_app.CustomizationUIState(),
     )
 
     _build_setup_screen(fake_gr, ["MuJoCoTouch-v1"], "leader", -90.0, "/dev/null")
@@ -426,7 +425,7 @@ def test_update_customization_for_env_updates_success_hold_seconds(
     monkeypatch.setattr(
         teleop_app,
         "_customization_ui_state_for_env",
-        lambda _env_id: teleop_app.CustomizationUIState(success_hold_seconds=1.2),
+        lambda _env_id, **_: teleop_app.CustomizationUIState(success_hold_seconds=1.2),
     )
 
     outputs = teleop_app._cb_update_customization_for_env("MuJoCoTouch-v1")
@@ -850,13 +849,8 @@ def test_connect_leader_returns_connected_leader_on_success(monkeypatch) -> None
     assert isinstance(leader, _OkLeader)
 
 
-def test_create_dataset_disconnects_leader_on_failure(monkeypatch) -> None:
-    """If LeRobotDataset.create raises, the leader is disconnected and a RuntimeError is raised."""
-    disconnect_calls = {"n": 0}
-
-    class _StubLeader:
-        def disconnect(self) -> None:
-            disconnect_calls["n"] += 1
+def test_create_dataset_wraps_creation_failure(monkeypatch) -> None:
+    """Expose dataset creation failures with recording context."""
 
     class _RaisingDataset:
         @classmethod
@@ -873,11 +867,8 @@ def test_create_dataset_disconnects_leader_on_failure(monkeypatch) -> None:
     ]:
         monkeypatch.setitem(sys.modules, name, mod)
 
-    leader = _StubLeader()
-    with pytest.raises(RuntimeError, match="Failed to create dataset"):
-        _create_dataset("local/test", 30, "so101", {}, leader)
-
-    assert disconnect_calls["n"] == 1
+    with pytest.raises(RuntimeError, match="Failed to create dataset: schema mismatch"):
+        _create_dataset("local/test", 30, "so101", {})
 
 
 def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
@@ -900,11 +891,7 @@ def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
     ]:
         monkeypatch.setitem(sys.modules, name, mod)
 
-    class _StubLeader:
-        def disconnect(self) -> None:
-            pass
-
-    ds = _create_dataset("local/test", 30, "so101", {"action": {}}, _StubLeader())
+    ds = _create_dataset("local/test", 30, "so101", {"action": {}})
 
     assert isinstance(ds, _OkDataset)
     assert seen["repo_id"] == "local/test"

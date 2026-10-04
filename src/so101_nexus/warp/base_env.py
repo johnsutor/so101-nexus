@@ -68,6 +68,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.constants import COLOR_MAP
 from so101_nexus.gaze import (
     direction_to_object,
     gaze_angle_between_rad,
@@ -96,6 +97,7 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.physics import apply_physics_config
+from so101_nexus.scene import robot_material_ids
 from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
 
@@ -299,6 +301,10 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
         if config.physics is not None:
             self._N_SUBSTEPS = apply_physics_config(mjm, config.physics, backend="warp")
+        # Warp materials are model-global, so color pools use their first entry.
+        colors = config.robot_colors
+        color = colors if isinstance(colors, str) else colors[0]
+        mjm.mat_rgba[robot_material_ids(mjm)] = COLOR_MAP[color]
         self.mjm = mjm
         mjd = mujoco.MjData(mjm)
         mujoco.mj_forward(mjm, mjd)

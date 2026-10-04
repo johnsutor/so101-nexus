@@ -11,6 +11,21 @@ not guarantee identical contacts or trajectories across backends.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import mujoco
+
+
+def robot_material_ids(model: mujoco.MjModel) -> list[int]:
+    """Return SO101 plastic material IDs, excluding motors and scene objects."""
+    return [
+        i
+        for i in range(model.nmat)
+        if "_so101_" in model.material(i).name and model.material(i).name.endswith("_material")
+    ]
+
+
 MUJOCO_SCENE_OPTION_XML = (
     '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
     'integrator="implicitfast" impratio="10" iterations="10" '

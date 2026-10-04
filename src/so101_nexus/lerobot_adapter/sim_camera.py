@@ -80,15 +80,17 @@ class SimCamera(Camera):
             return frame
         get_obs = getattr(env, "_get_obs", None)
         if callable(get_obs):
-            obs = get_obs()
-            frame = self._extract_from_obs(obs)
-            if frame is None:
-                raise KeyError(f"Camera source {self.config.source!r} not found in simulator obs")
-            return frame
+            return self._frame_from_observation(get_obs())
         render = getattr(env, "render", None)
         if callable(render):
             return render()
         raise TypeError("Simulator env must expose _get_obs() or render().")
+
+    def _frame_from_observation(self, obs: object) -> np.ndarray:
+        frame = self._extract_from_obs(obs)
+        if frame is None:
+            raise KeyError(f"Camera source {self.config.source!r} not found in simulator obs")
+        return self._validate_shape(self._to_uint8_hwc(frame))
 
     def _extract_from_obs(self, obs: object) -> Any | None:
         if not isinstance(obs, dict):
