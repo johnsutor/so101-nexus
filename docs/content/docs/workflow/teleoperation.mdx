@@ -61,10 +61,12 @@ you can fix the port in another terminal and click `Retry Initialization`.
 
 ## Cameras and recorded fields
 
-Both the wrist and overhead cameras are captured on every step, so you can decide after the
-fact which views end up in your dataset. Both are wired into the environment's observation
-config automatically even when the task's default config declares only one, and separate width
-and height sliders set each camera's resolution.
+Wrist, overhead, and side cameras are captured on every step and selected for the dataset by
+default. Wrist and overhead observations are wired automatically, and their width and height
+sliders set the image resolutions. The side view uses the overhead resolution and the
+simulator's render camera. Its azimuth is randomized between 120 and 200 degrees, and its
+elevation between -45 and -20 degrees, on each seeded reset. A config factory can override
+these ranges through `RenderConfig`, including equal bounds for a fixed view.
 
 Under **Advanced Settings, Dataset fields**, a checkbox group selects which fields are
 persisted; deselecting an optional field drops it from the declared feature schema and from
@@ -81,7 +83,8 @@ Datasets use the LeRobot v3 SO follower schema. Always present:
 - `success` and `done`: episode success and termination flags
 - `task`: language description, from LeRobot v3 metadata
 
-Optional, on by default: `observation.images.wrist`, `observation.images.overhead`, and
+Optional, on by default: `observation.images.wrist`, `observation.images.overhead`,
+`observation.images.side`, and
 `observation.environment_state` (privileged low-dim state: TCP and object pose, grasp,
 offsets).
 
@@ -228,7 +231,10 @@ uv run so101-nexus teleop \
 
 A custom environment should accept SO-100/SO-101 six-joint actions in the standard joint order,
 expose current qpos through `_get_current_qpos()`, and return camera observations compatible
-with the selected recording fields. If the unwrapped environment exposes `task_description`,
+with the recording cameras. Teleop captures all three views even when a dataset field is
+deselected. Custom environments must support `render_mode="rgb_array"` and return an RGB
+side view from `render()` at the overhead image resolution. A config without `RenderConfig`
+must set that resolution itself. If the unwrapped environment exposes `task_description`,
 teleop records it as the required LeRobot `task` field.
 
 ## Published demonstration datasets

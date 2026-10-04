@@ -97,6 +97,7 @@ class RecordingState:
     episode_dones: list[float] = field(default_factory=list)
     episode_wrist_images: list[np.ndarray] = field(default_factory=list)
     episode_overhead_images: list[np.ndarray] = field(default_factory=list)
+    episode_side_images: list[np.ndarray] = field(default_factory=list)
     task_description: str = ""
     placement_contract: dict[str, Any] | None = None
     episode_seed: int | None = None
@@ -121,6 +122,7 @@ class RecordingState:
         self.episode_dones.clear()
         self.episode_wrist_images.clear()
         self.episode_overhead_images.clear()
+        self.episode_side_images.clear()
         self.task_description = ""
         self.placement_contract = None
         self.episode_seed = None
@@ -207,6 +209,9 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
     if overhead_image is not None:
         state.episode_overhead_images.append(overhead_image)
         state.live_overhead_frame = overhead_image
+    side_image = obs.get("side") if isinstance(obs, Mapping) else None
+    if side_image is not None:
+        state.episode_side_images.append(side_image)
     state.live_preview = _make_preview_frame(wrist_image, overhead_image)
 
 
@@ -236,9 +241,13 @@ def _should_stop_after_termination(
     success_hold_seconds: float,
 ) -> bool:
     """Update termination state and return whether the hold window elapsed."""
-    if step_info is None or not step_info.terminated:
+    if step_info is None:
         return False
+    if step_info.truncated:
+        return True
     if state.terminated_at_frame is None:
+        if not step_info.terminated:
+            return False
         state.terminated_at_frame = len(state.episode_actions)
 
     hold_frames = max(0, round(success_hold_seconds * fps))

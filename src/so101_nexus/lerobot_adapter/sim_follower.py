@@ -267,9 +267,20 @@ class SimSOFollower(Robot):
         if privileged_state is not None:
             obs_dict["environment_state"] = privileged_state
 
+        get_obs = getattr(self._env.unwrapped, "_get_obs", None)
+        camera_obs = (
+            get_obs()
+            if callable(get_obs)
+            and any(camera.config.source != "render" for camera in self.cameras.values())
+            else None
+        )
         for camera_name, camera in self.cameras.items():
             start = time.perf_counter()
-            obs_dict[camera_name] = camera.read_latest()
+            obs_dict[camera_name] = (
+                camera._frame_from_observation(camera_obs)
+                if camera_obs is not None and camera.config.source != "render"
+                else camera.read_latest()
+            )
             logger.debug(
                 "%s read %s: %.1fms",
                 self,
@@ -299,7 +310,18 @@ class SimSOFollower(Robot):
         fields: dict[str, Any] = {}
         for owner, names in (
             (data, ("time", "qpos", "qvel", "ctrl", "mocap_pos", "mocap_quat")),
-            (model, ("body_pos", "site_pos", "cam_pos", "cam_quat", "cam_fovy", "geom_rgba")),
+            (
+                model,
+                (
+                    "body_pos",
+                    "site_pos",
+                    "cam_pos",
+                    "cam_quat",
+                    "cam_fovy",
+                    "geom_rgba",
+                    "mat_rgba",
+                ),
+            ),
         ):
             if owner is None:
                 continue

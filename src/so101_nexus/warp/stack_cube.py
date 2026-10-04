@@ -185,7 +185,6 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._mjm = mjm
         self.cube_half_size = config.cube_half_size
 
-        n_slots = len(slots)
         self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
         self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
         # Host-side copies of the same addresses, so parking the slots at reset
@@ -196,6 +195,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._qpos_offsets = torch.arange(7, device=self.device)
         self._dof_offsets = torch.arange(6, device=self.device)
         self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
+        self._setup_slot_visibility(slots)
         self._slot_spawn_z = torch.tensor(
             [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
         )
@@ -204,7 +204,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         )
         self._hide_xy = hidden_slot_band_xy(
             self.device,
-            n_slots,
+            len(slots),
             float(self._slot_bradius.max()),
             config.spawn_max_radius,
             config.spawn_center,
@@ -372,6 +372,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         if self._n_distractors:
             d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
             sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
+        self._set_slot_visibility(idx, sel)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
             self._rng,

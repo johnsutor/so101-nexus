@@ -4,7 +4,7 @@
 list and ensures both a :class:`WristCamera` and an :class:`OverheadCamera`
 are present, sized to the requested resolutions. Existing camera instances
 have their domain-randomisation parameters preserved; missing cameras get
-appended with default parameters.
+appended with default parameters. The render view supplies the side camera.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from pathlib import Path
+from so101_nexus.config import RenderConfig
 from so101_nexus.observations import OverheadCamera, WristCamera
 from so101_nexus.teleop.config_customization import (
     ConfigFactory,
@@ -203,7 +204,9 @@ def _recording_env_kwargs(
     rather than an end-effector or delta action.
     """
     env_ctor, kwargs = _resolve_env_ctor(env_id)
-    base_config = _resolve_env_config(env_ctor) if isinstance(env_ctor, type) else None
+    base_config = kwargs.get("config")
+    if base_config is None and isinstance(env_ctor, type):
+        base_config = _resolve_env_config(env_ctor)
     _apply_recording_config_kwargs(
         kwargs,
         base_config=base_config,
@@ -299,6 +302,12 @@ def build_sim_follower_config(
             height=wrist_h,
             fps=fps,
         ),
+        "side": SimCameraConfig(
+            source="render",
+            width=overhead_w,
+            height=overhead_h,
+            fps=fps,
+        ),
         "overhead": SimCameraConfig(
             source="overhead_camera",
             width=overhead_w,
@@ -329,7 +338,9 @@ def _apply_recording_config_kwargs(
     factory: ConfigFactory | None = None,
 ) -> None:
     """Write recording config and factory kwargs into ``kwargs`` in one place."""
-    config = base_config if base_config is not None else kwargs.get("config")
+    config = kwargs.get("config")
+    if config is None:
+        config = base_config
     if config is None:
         factory_update = apply_config_factory(factory, env_id, None)
         kwargs.update(factory_update.kwargs)
@@ -422,6 +433,17 @@ def _customize_recording_config(
     updated_obs = _wire_camera_observations(observations, wrist_wh, overhead_wh)
     config_attrs = vars(config).copy()
     config_attrs["observations"] = updated_obs
+    render = getattr(config, "render", None)
+    if isinstance(render, RenderConfig):
+        render_attrs = vars(render).copy()
+        render_attrs.update(width=overhead_wh[0], height=overhead_wh[1], camera="side")
+        for name, bounds in (
+            ("side_azimuth_range_deg", (120.0, 200.0)),
+            ("side_elevation_range_deg", (-45.0, -20.0)),
+        ):
+            if render_attrs[name] is None:
+                render_attrs[name] = bounds
+        config_attrs["render"] = RenderConfig(**render_attrs)
     return ConfigFactoryUpdate(config.__class__(**config_attrs), factory_update.kwargs)
 
 

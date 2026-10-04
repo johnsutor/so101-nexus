@@ -443,7 +443,9 @@ def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
     assert config.id == "teleop_sim"
     assert config.calibration_dir == tmp_path
     assert seen["profile_path"] == "profile.toml"
-    assert set(config.cameras) == {"wrist", "overhead"}
+    assert set(config.cameras) == {"wrist", "overhead", "side"}
+    side = config.cameras["side"]
+    assert (side.width, side.height, side.fps, side.source) == (640, 360, 15, "render")
     wrist = config.cameras["wrist"]
     overhead = config.cameras["overhead"]
     assert isinstance(wrist, SimCameraConfig)

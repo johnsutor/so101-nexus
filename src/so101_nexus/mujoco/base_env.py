@@ -22,6 +22,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
 )
+from so101_nexus.constants import sample_color
 from so101_nexus.gaze import (
     direction_to_object,
     gaze_angle_between_rad,
@@ -56,6 +57,7 @@ from so101_nexus.observations import (
 )
 from so101_nexus.physics import apply_physics_config
 from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
+from so101_nexus.scene import robot_material_ids
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -213,6 +215,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._init_qpos_clamp_warned = False
 
     def _finish_model_setup(self) -> None:
+        self._robot_material_ids = robot_material_ids(self.model)
         if self.config.physics is not None:
             self._N_SUBSTEPS = apply_physics_config(
                 self.model, self.config.physics, backend="mujoco"
@@ -906,6 +909,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self._reset_options = {} if options is None else dict(options)
         self._target_index_consumed = False
         mujoco.mj_resetData(self.model, self.data)
+        self.model.mat_rgba[self._robot_material_ids] = sample_color(
+            self.config.robot_colors, self.np_random
+        )
 
         init_qpos: np.ndarray | None = None
         if options is not None:

@@ -942,7 +942,9 @@ class EnvironmentConfig:
         ``so101_nexus.privileged_state_feature_names(config.observations)``;
         positional indexing into it breaks whenever ``observations`` changes.
     robot_colors : ColorConfig
-        Robot arm color(s).
+        Plastic robot arm color(s). MuJoCo samples a color on each seeded reset.
+        Warp materials are shared across worlds, so it uses the first color
+        for every world when given a list.
     robot_init_qpos_noise : float
         Initial joint position noise.
     terminate_on_success : bool

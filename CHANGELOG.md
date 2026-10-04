@@ -9,6 +9,29 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Teleoperation captures a side camera and selects it for the dataset by default.
+  It shares the overhead resolution and supports seeded reset-time viewpoint
+  randomization through `RenderConfig`.
+
+### Fixed
+
+- Inactive Warp object-pool slots are hidden from RGB, depth, and shadow rendering
+  per world, including camera observations and visualization. Active distractors
+  remain visible, and physical object positions and contacts are unchanged.
+- Robot color configuration now updates the arm's plastic materials. MuJoCo
+  samples colors on seeded resets; Warp uses the first color because materials
+  are shared across worlds. Motors retain their original materials.
+- Teleoperation stops on time-limit truncation and completes the success hold
+  timer even if the success condition becomes false afterward.
+- Teleoperation preserves explicitly registered environment configs and initializes
+  customization controls from profile values instead of overwriting them with defaults.
+- Failed teleoperation initialization disconnects the leader so retries do not
+  leave the serial device locked.
+- Simulator follower cameras share observation frames instead of repeatedly
+  rendering all observation cameras. Episode provenance includes material colors.
+
 ## [0.8.0] - 2026-09-27
 
 ### Added

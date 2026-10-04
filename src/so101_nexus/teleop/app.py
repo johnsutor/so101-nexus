@@ -21,17 +21,20 @@ from so101_nexus.env_ids import Backend, env_ids_for_backend
 from so101_nexus.objects import CubeObject, GSOObject, SceneObject, YCBObject
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
+    apply_config_overrides,
     color_tuple_from_names,
     default_color_choices,
     default_cube_color_choices,
     default_object_choices,
     has_pick_object_pool,
     load_config_factory,
+    load_profile_overrides,
     overrides_to_mapping,
 )
 from so101_nexus.teleop.dataset import (
     ENV_STATE_KEY,
     OVERHEAD_KEY,
+    SIDE_KEY,
     WRIST_KEY,
     FieldSelection,
     build_features,
@@ -65,7 +68,7 @@ if TYPE_CHECKING:
 
     from so101_nexus.teleop.cli import TeleopArgs
 
-_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, ENV_STATE_KEY]
+_OPTIONAL_FIELD_CHOICES = [WRIST_KEY, OVERHEAD_KEY, SIDE_KEY, ENV_STATE_KEY]
 _FOLLOWER_ROBOT_ID = "teleop_sim"
 _TASK_PENDING_TEXT = "### Current task\n\n_Task will appear after reset._"
 logger = logging.getLogger(__name__)
@@ -135,6 +138,7 @@ def _build_field_selection(field_selection_value: list[str]) -> FieldSelection:
     return FieldSelection(
         wrist_image=WRIST_KEY in field_selection_value,
         overhead_image=OVERHEAD_KEY in field_selection_value,
+        side_image=SIDE_KEY in field_selection_value,
         environment_state=ENV_STATE_KEY in field_selection_value,
         task="task" in field_selection_value,
     )
@@ -248,15 +252,21 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
     )
 
 
-def _customization_ui_state_for_env(env_id: str | None) -> CustomizationUIState:
+def _customization_ui_state_for_env(
+    env_id: str | None, *, profile_path: str | None = None
+) -> CustomizationUIState:
     """Resolve an env's base config and return UI customization defaults."""
     if not env_id:
         return CustomizationUIState()
     try:
         env_ctor, kwargs = _resolve_env_ctor(env_id)
-        base_config = _resolve_env_config(env_ctor) if isinstance(env_ctor, type) else None
-        if base_config is None:
-            base_config = kwargs.get("config")
+        base_config = kwargs.get("config")
+        if base_config is None and isinstance(env_ctor, type):
+            base_config = _resolve_env_config(env_ctor)
+        if base_config is not None and profile_path is not None:
+            base_config = apply_config_overrides(
+                base_config, load_profile_overrides(profile_path, env_id, base_config)
+            )
     except Exception as exc:
         logger.warning(
             "Failed to resolve customization defaults for env %s: %s",
@@ -343,8 +353,8 @@ def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
     return leader
 
 
-def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict, leader):
-    """Create and return a LeRobotDataset, disconnecting *leader* on failure."""
+def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
+    """Create and return a LeRobotDataset."""
     from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
 
     reward_dataset_cls = _make_reward_scalar_dataset_cls()
@@ -356,7 +366,6 @@ def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict, lea
             features=features,
         )
     except Exception as exc:
-        leader.disconnect()
         raise RuntimeError(f"Failed to create dataset: {exc}") from exc
 
 
@@ -409,6 +418,7 @@ def _run_init_worker(
 ) -> None:
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
+    leader = None
     try:
         _append_init_log(init_state, f"Connecting leader arm on {leader_port} (id={leader_id})...")
         import_backend_for_env_id(env_id)
@@ -418,6 +428,7 @@ def _run_init_worker(
         follower_features: dict[str, type[float] | tuple[int, int, int]] = dict(action_features)
         follower_features["wrist"] = (wrist_wh[1], wrist_wh[0], 3)
         follower_features["overhead"] = (overhead_wh[1], overhead_wh[0], 3)
+        follower_features["side"] = (overhead_wh[1], overhead_wh[0], 3)
         env_state_names = _resolve_env_state_names(
             env_id,
             wrist_wh,
@@ -436,7 +447,7 @@ def _run_init_worker(
             action_features,
             env_state_names=env_state_names,
         )
-        dataset = _create_dataset(repo_id, fps, robot_type, features, leader)
+        dataset = _create_dataset(repo_id, fps, robot_type, features)
         session.update(
             leader=leader,
             dataset=dataset,
@@ -458,6 +469,9 @@ def _run_init_worker(
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
     except Exception as exc:
+        if leader is not None:
+            with contextlib.suppress(Exception):
+                leader.disconnect()
         init_state["error"] = str(exc)
         init_state["done"] = True
 
@@ -687,11 +701,11 @@ def _cb_start_init(
     return _start_init_attempt(session, init_state, leader_port, config)
 
 
-def _cb_update_customization_for_env(env_id: str):
+def _cb_update_customization_for_env(env_id: str, *, profile_path: str | None = None):
     """Return Gradio updates for customization controls when the env changes."""
     import gradio as gr
 
-    state = _customization_ui_state_for_env(env_id)
+    state = _customization_ui_state_for_env(env_id, profile_path=profile_path)
     return (
         gr.update(
             value=state.customize_value,
@@ -1019,6 +1033,7 @@ def _cb_approve_episode(session: dict):
                 env_state=env_state,
                 wrist_image=wrist_img,
                 overhead_image=overhead_img,
+                side_image=s.episode_side_images[i] if i < len(s.episode_side_images) else None,
             )
             dataset.add_frame(frame)
 
@@ -1243,6 +1258,8 @@ def _build_setup_screen(
     default_leader_id: str,
     wrist_roll_offset: float,
     leader_port: str,
+    *,
+    profile_path: str | None = None,
 ):
     """Build the Configure step contents and return all input components."""
     gr.Markdown("### Leader Arm")
@@ -1251,7 +1268,7 @@ def _build_setup_screen(
     gr.Markdown("### Environment & Robot")
     default_robot_type = "so101"
     default_env = _default_env_id(all_env_ids, default_robot_type)
-    customization_state = _customization_ui_state_for_env(default_env)
+    customization_state = _customization_ui_state_for_env(default_env, profile_path=profile_path)
     env_id_input = gr.Dropdown(
         choices=all_env_ids,
         value=default_env,
@@ -1305,10 +1322,14 @@ def _build_setup_screen(
             )
         with gr.Row():
             overhead_camera_width_input = gr.Slider(
-                minimum=64, maximum=1024, value=640, step=32, label="Overhead Camera Width"
+                minimum=64, maximum=1024, value=640, step=32, label="Overhead and Side Camera Width"
             )
             overhead_camera_height_input = gr.Slider(
-                minimum=64, maximum=1024, value=480, step=32, label="Overhead Camera Height"
+                minimum=64,
+                maximum=1024,
+                value=480,
+                step=32,
+                label="Overhead and Side Camera Height",
             )
         max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
         success_hold_seconds_input = gr.Slider(
@@ -1567,7 +1588,9 @@ def _wire_events(
     recheck_port = functools.partial(_cb_recheck_port, leader_port)
 
     env_id_input.change(
-        fn=_cb_update_customization_for_env,
+        fn=functools.partial(
+            _cb_update_customization_for_env, profile_path=session.get("env_config_profile")
+        ),
         inputs=[env_id_input],
         outputs=customization_outputs,
     )
@@ -1766,7 +1789,12 @@ def main(
                     cube_b_colors_input,
                     stack_customization_group,
                 ) = _build_setup_screen(
-                    gr, all_env_ids, leader_id_default, wrist_roll_offset, leader_port
+                    gr,
+                    all_env_ids,
+                    leader_id_default,
+                    wrist_roll_offset,
+                    leader_port,
+                    profile_path=env_config_profile,
                 )
 
             with gr.Step("Initialize", id=1):

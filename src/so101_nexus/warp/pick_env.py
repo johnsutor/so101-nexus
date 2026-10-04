@@ -215,6 +215,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # reset path does not rebuild them per active slot.
         self._qpos_offsets = torch.arange(7, device=self.device)
         self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
+        self._setup_slot_visibility(slots)
         self._slot_spawn_z = torch.tensor(
             [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
         )
@@ -322,6 +323,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self, idx: torch.Tensor, sel: torch.Tensor, positions: torch.Tensor
     ) -> None:
         """Place each rank's selected slot at ``positions[:, k]`` with random yaw."""
+        self._set_slot_visibility(idx, sel)
         rows = idx[:, None]
         for k in range(sel.shape[1]):
             sel_k = sel[:, k]  # (n,) pool idx per reset world

@@ -308,7 +308,7 @@ config = EnvironmentConfig(obs_mode="state")
 | `spawn_max_radius` | `float` | `0.30` | Maximum spawn distance from the robot base |
 | `spawn_angle_half_range_deg` | `float` | `90.0` | Half-range of spawn angle in degrees |
 | `obs_mode` | `ObsMode` | `"state"` | Observation mode. `"state"` returns all selected components. `"visual"` returns cameras and joint positions. `info["privileged_state"]` has the full selected state. |
-| `robot_colors` | `ColorConfig` | `"yellow"` | Robot body color(s) |
+| `robot_colors` | `ColorConfig` | `"yellow"` | Plastic arm colors. MuJoCo samples on each seeded reset; Warp uses the first color because materials are shared across worlds. |
 | `robot_init_qpos_noise` | `float` | `0.02` | Noise added to initial joint positions |
 | `terminate_on_success` | `bool` | `True` | End the episode when the success predicate becomes true. When `False`, only the step cap truncates the episode. |
 | `observations` | `list[Observation] \| None` | `None` | Observation components to include. Task-specific configs provide defaults when `None`. |
