@@ -152,63 +152,52 @@ def test_force_observations_match_the_simulator_state():
         envs.close()
 
 
-def test_gripper_contact_force_is_nonzero_while_the_jaw_squeezes():
-    """Cross-checked against mujoco_warp's own world-frame contact force.
-
-    Comparing the observation against ``_gripper_contact_force()`` would compare
-    the reader with itself and pass for a transposed frame or a flipped sign;
-    ``mjw.contact_force(..., to_world_frame=True)`` is an independent reference.
-    """
+def test_gripper_contact_force_matches_loaded_contacts(env_factory):
+    """Compare force observations with Warp's independent world-frame reference."""
     import mujoco_warp as mjw
     import torch
     import warp as wp
 
+    from so101_nexus import CubeObject, PickConfig
     from so101_nexus.observations import GripperContactForce, JointPositions
     from so101_nexus.testing import component_slice
 
-    envs = _pool_env(num_envs=2, observations=[JointPositions(), GripperContactForce()])
-    try:
-        envs.reset(seed=0)
-        force_slice = component_slice(envs, GripperContactForce)
-        close = torch.zeros(envs.action_space.shape)
-        close[:, -1] = envs._target_low[-1]
-        obs = None
-        # Hold the target between the fingers while the jaw closes on it.
-        for _ in range(25):
-            cols = envs._target_qadr[:, None] + torch.arange(3, device=envs.device)
-            envs.qpos[envs._world_rows[:, None], cols] = envs._tcp_pos()
-            obs, *_ = envs.step(close)
-        assert obs is not None
-        observed = obs[:, force_slice]
-        assert observed.abs().max() > 0.0
+    half_size = 0.05
+    env = env_factory(
+        "warp",
+        task="PickLift",
+        config=PickConfig(
+            objects=[CubeObject(half_size=half_size)],
+            observations=[JointPositions(), GripperContactForce()],
+        ),
+    ).unwrapped
+    obs, _ = env.reset(seed=0)
+    force_slice = component_slice(env, GripperContactForce)
+    torch.testing.assert_close(obs[:, force_slice], torch.zeros((env.num_envs, 3)))
 
-        # Independent reference: world-frame contact forces summed with the same
-        # exactly-one-finger sign rule.
-        envs._ensure_contact_force_buffers()
-        with wp.ScopedDevice(envs._wp_device):
-            mjw.contact_force(envs.model, envs.data, envs._contact_ids, True, envs._force_buf)
-        world_force = wp.to_torch(envs._force_buf)[:, :3]
-        nacon = int(envs._nacon_view[0])
-        geom = envs._contact_geom_view[:nacon].long()
-        worldid = envs._contact_world_view[:nacon].long()
-        finger = envs._gripper_mask | envs._jaw_mask
-        sign = finger[geom[:, 1]].float() - finger[geom[:, 0]].float()
-        expected = torch.zeros_like(observed)
-        expected.scatter_add_(
-            0,
-            worldid.unsqueeze(1).expand(-1, 3),
-            world_force[:nacon] * sign.unsqueeze(1),
-        )
-        torch.testing.assert_close(observed, expected, atol=1e-4, rtol=1e-4)
-    finally:
-        envs.close()
+    _press_fingers_into_target(env, half_size)
+    observed = env._compute_obs()[:, force_slice]
+    assert (observed.abs().amax(dim=1) > 0.0).all()
+
+    with wp.ScopedDevice(env._wp_device):
+        mjw.contact_force(env.model, env.data, env._contact_ids, True, env._force_buf)
+    world_force = wp.to_torch(env._force_buf)[:, :3]
+    nacon = int(env._nacon_view[0])
+    geom = env._contact_geom_view[:nacon].long()
+    worldid = env._contact_world_view[:nacon].long()
+    finger = env._gripper_mask | env._jaw_mask
+    sign = finger[geom[:, 1]].float() - finger[geom[:, 0]].float()
+    expected = torch.zeros_like(observed)
+    expected.scatter_add_(
+        0,
+        worldid.unsqueeze(1).expand(-1, 3),
+        world_force[:nacon] * sign.unsqueeze(1),
+    )
+    torch.testing.assert_close(observed, expected, atol=1e-4, rtol=1e-4)
 
 
 def test_grasp_opposing_normal_threshold_changes_the_warp_verdict(env_factory):
     """Both thresholds evaluate the same force-bearing, same-face contacts."""
-    import mujoco_warp as mjw
-    import torch
-    import warp as wp
 
     from so101_nexus import CubeObject, PickConfig
 
@@ -217,6 +206,19 @@ def test_grasp_opposing_normal_threshold_changes_the_warp_verdict(env_factory):
         "warp", task="PickLift", config=PickConfig(objects=[CubeObject(half_size=half_size)])
     ).unwrapped
     env.reset(seed=0)
+    _press_fingers_into_target(env, half_size)
+
+    assert env._is_grasping().tolist() == [0.0, 0.0]
+    env.config.robot.grasp_opposing_normal_threshold = -1.0
+    assert env._is_grasping().tolist() == [1.0, 1.0]
+
+
+def _press_fingers_into_target(env, half_size):
+    """Load stationary finger contacts without letting the target escape."""
+    import mujoco_warp as mjw
+    import torch
+    import warp as wp
+
     close = env._joint_qpos().clone()
     close[:, -1] = env._target_low[-1]
     for _ in range(25):
@@ -234,7 +236,3 @@ def test_grasp_opposing_normal_threshold_changes_the_warp_verdict(env_factory):
     with wp.ScopedDevice(env._wp_device):
         mjw.forward(env.model, env.data)
     env._contact_cache = None
-
-    assert env._is_grasping().tolist() == [0.0, 0.0]
-    env.config.robot.grasp_opposing_normal_threshold = -1.0
-    assert env._is_grasping().tolist() == [1.0, 1.0]
