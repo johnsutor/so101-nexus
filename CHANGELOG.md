@@ -9,6 +9,18 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Teleoperation allows changes to the Hub dataset namespace and name on the
+  Complete step, including after a failed upload. Recorded files stay in their
+  original local directory.
+
+### Fixed
+
+- Side cameras on both backends fit the spawn region and arm working volume at the
+  sampled angles, reducing empty foreground in teleoperation recordings.
+  Explicit side-distance overrides remain supported.
+
 ## [0.8.1] - 2026-10-04
 
 ### Added

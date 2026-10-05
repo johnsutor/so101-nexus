@@ -21,6 +21,7 @@ from so101_nexus.config import (
     SO101_TCP_SITE_NAME,
     ControlMode,
     EnvironmentConfig,
+    LookAtConfig,
 )
 from so101_nexus.constants import sample_color
 from so101_nexus.gaze import (
@@ -1074,8 +1075,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             params = compute_angled_camera_params(
                 spawn_center=self.config.spawn_center,
                 spawn_max_radius=self.config.spawn_max_radius,
-                elevation=render.side_elevation_deg,
-                azimuth=render.side_azimuth_deg,
+                elevation=self._side_camera_overrides.get("elevation", render.side_elevation_deg),
+                azimuth=self._side_camera_overrides.get("azimuth", render.side_azimuth_deg),
+                spawn_angle_half_range_deg=self.config.spawn_angle_half_range_deg,
+                spawn_half_size=(
+                    self.config.spawn_half_size if isinstance(self.config, LookAtConfig) else None
+                ),
                 aspect=render.width / render.height,
             )
             params.update(self._side_camera_overrides)

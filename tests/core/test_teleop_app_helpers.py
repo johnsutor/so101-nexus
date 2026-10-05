@@ -1456,3 +1456,77 @@ def test_poll_recording_failed_empty_episode_warns_without_plot_error(
     assert warnings == ["Recording failed: RuntimeError: boom"]
     assert state.error is None
     assert outputs[7]["value"] is None
+
+
+@pytest.mark.parametrize("original_repo_id", ["local/recording", "just-a-name", "wrong/dataset"])
+def test_push_corrected_repo_id_preserves_local_recording(
+    fake_gradio, tmp_path, original_repo_id
+) -> None:
+    root = tmp_path / "recording"
+    root.mkdir()
+    recording = root / "episode.parquet"
+    recording.write_bytes(b"saved frames")
+    calls = []
+
+    class Dataset:
+        def __init__(self):
+            self.repo_id = original_repo_id
+            self.root = root
+            self.meta = types.SimpleNamespace(repo_id=original_repo_id, root=root)
+
+        def finalize(self):
+            calls.append(("finalize", self.repo_id))
+
+        def push_to_hub(self):
+            calls.append(("push", self.repo_id))
+
+    dataset = Dataset()
+    result = teleop_app._cb_push_to_hub({"dataset": dataset}, " alice/corrected ")
+
+    assert calls == [("finalize", original_repo_id), ("push", "alice/corrected")]
+    assert dataset.repo_id == dataset.meta.repo_id == "alice/corrected"
+    assert dataset.root == dataset.meta.root == root
+    assert recording.read_bytes() == b"saved frames"
+    assert "https://huggingface.co/datasets/alice/corrected" in result
+
+
+@pytest.mark.parametrize("repo_id", ["", "missing-namespace", "alice/has space", "local/name"])
+def test_push_invalid_correction_preserves_dataset(fake_gradio, tmp_path, repo_id) -> None:
+    dataset = types.SimpleNamespace(
+        repo_id="alice/original",
+        root=tmp_path,
+        meta=types.SimpleNamespace(repo_id="alice/original", root=tmp_path),
+    )
+    with pytest.raises(RuntimeError, match="Hub Repo ID"):
+        teleop_app._cb_push_to_hub({"dataset": dataset}, repo_id)
+
+    assert dataset.repo_id == dataset.meta.repo_id == "alice/original"
+    assert dataset.root == dataset.meta.root == tmp_path
+
+
+def test_push_failed_upload_can_retry_with_corrected_namespace(fake_gradio, tmp_path) -> None:
+    uploads = []
+
+    class Dataset:
+        repo_id = "wrong/dataset"
+        root = tmp_path
+        meta = types.SimpleNamespace(repo_id=repo_id, root=root)
+
+        def finalize(self):
+            pass
+
+        def push_to_hub(self):
+            uploads.append(self.repo_id)
+            if self.repo_id == "wrong/dataset":
+                raise PermissionError("No write access")
+
+    dataset = Dataset()
+    session = {"dataset": dataset}
+    with pytest.raises(RuntimeError, match="Hub Repo ID"):
+        teleop_app._cb_push_to_hub(session, "wrong/dataset")
+    result = teleop_app._cb_push_to_hub(session, "alice/dataset")
+
+    assert uploads == ["wrong/dataset", "alice/dataset"]
+    assert dataset.meta.repo_id == "alice/dataset"
+    assert dataset.root == dataset.meta.root == tmp_path
+    assert "https://huggingface.co/datasets/alice/dataset" in result

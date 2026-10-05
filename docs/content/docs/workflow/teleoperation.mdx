@@ -44,7 +44,15 @@ you can fix the port in another terminal and click `Retry Initialization`.
    feed renders in the UI.
 4. **Review.** After each episode, the UI shows a video replay and a joint-state plot.
 5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
-6. **Push.** When all episodes are done, push to the Hugging Face Hub from the UI.
+6. **Push.** When all episodes are done, check **Hub Repo ID** and push to the Hugging Face Hub.
+
+The Complete step shows the original local recording directory and an editable **Hub Repo ID**.
+You can change the upload destination to `your-username/dataset-name`, including after an upload failure.
+The local recording stays in its original directory.
+
+If you forgot your username or used the wrong namespace, correct **Hub Repo ID** on the Complete step.
+Then click **Push to Hub** again.
+You do not need to record the episodes again.
 
 ## CLI arguments
 
@@ -67,6 +75,8 @@ sliders set the image resolutions. The side view uses the overhead resolution an
 simulator's render camera. Its azimuth is randomized between 120 and 200 degrees, and its
 elevation between -45 and -20 degrees, on each seeded reset. A config factory can override
 these ranges through `RenderConfig`, including equal bounds for a fixed view.
+The default side distance adapts to the sampled angles and spawn region.
+See [automatic side framing](/docs/api/configs#renderconfig) for distance overrides.
 
 Under **Advanced Settings, Dataset fields**, a checkbox group selects which fields are
 persisted; deselecting an optional field drops it from the declared feature schema and from

@@ -172,6 +172,7 @@ def test_individual_side_range_updates_open_viewer(env_factory, field, key, valu
     expected = compute_angled_camera_params(
         spawn_center=base.config.spawn_center,
         spawn_max_radius=base.config.spawn_max_radius,
+        **({key: value} if key in ("azimuth", "elevation") else {}),
     )
     expected[key] = value
     viewer = Mock(cam=mujoco.MjvCamera(), lock=nullcontext)
@@ -197,3 +198,43 @@ def test_disabling_ranges_restores_camera(env_factory, camera):
     params = base._render_camera_params()
     assert base._render_cam.distance == pytest.approx(params["distance"])
     assert base._render_cam.elevation == pytest.approx(params["elevation"])
+
+
+@pytest.mark.parametrize("half_range", [30.0, 180.0])
+def test_random_angles_refit_distance_to_spawn_arc(env_factory, half_range):
+    env = env_factory()
+    base = env.unwrapped
+    base.config.spawn_angle_half_range_deg = half_range
+    base.config.render = RenderConfig(
+        camera="side",
+        side_azimuth_range_deg=(120.0, 200.0),
+        side_elevation_range_deg=(-45.0, -20.0),
+    )
+    env.reset(seed=42)
+    params = base._render_camera_params()
+    expected = compute_angled_camera_params(
+        spawn_center=base.config.spawn_center,
+        spawn_max_radius=base.config.spawn_max_radius,
+        spawn_angle_half_range_deg=half_range,
+        azimuth=params["azimuth"],
+        elevation=params["elevation"],
+    )
+    assert params["distance"] == pytest.approx(expected["distance"])
+
+
+def test_look_at_side_camera_fits_square_spawn(env_factory):
+    from so101_nexus import LookAtConfig
+
+    config = LookAtConfig(
+        spawn_half_size=0.4, spawn_max_radius=0.4, render=RenderConfig(camera="side")
+    )
+    env = env_factory(task="LookAt", config=config)
+    env.reset(seed=0)
+    expected = compute_angled_camera_params(
+        spawn_center=config.spawn_center,
+        spawn_max_radius=config.spawn_max_radius,
+        spawn_half_size=config.spawn_half_size,
+    )
+    params = env.unwrapped._render_camera_params()
+    assert params["distance"] == pytest.approx(expected["distance"])
+    np.testing.assert_allclose(params["lookat"], expected["lookat"])

@@ -3,12 +3,96 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 os.environ.setdefault("MUJOCO_GL", "egl")
+
+
+def test_completed_dataset_retries_native_upload_with_corrected_repo_id(monkeypatch, tmp_path):
+    from lerobot.datasets import lerobot_dataset
+
+    from so101_nexus.teleop.app import _cb_push_to_hub
+    from so101_nexus.teleop.dataset import (
+        FieldSelection,
+        _make_reward_scalar_dataset_cls,
+        build_features,
+        build_frame,
+    )
+
+    class HubError(Exception):
+        pass
+
+    monkeypatch.setitem(sys.modules, "gradio", SimpleNamespace(Error=HubError))
+    selection = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    motor_features = {"joint.pos": float}
+    root = tmp_path / "original-recording"
+    dataset = _make_reward_scalar_dataset_cls().create(
+        repo_id="local/recording",
+        fps=30,
+        root=root,
+        features=build_features(selection, motor_features, motor_features),
+        use_videos=False,
+    )
+    dataset.add_frame(
+        build_frame(
+            selection,
+            state=np.array([12.0], dtype=np.float32),
+            action=np.array([15.0], dtype=np.float32),
+            task="lift the cube",
+            wrist_image=None,
+            overhead_image=None,
+        )
+    )
+    dataset.save_episode()
+    destinations = []
+    uploads = []
+
+    def create_repo(*, repo_id, **kwargs):
+        destinations.append(repo_id)
+        if repo_id == "wrong-user/recording":
+            raise PermissionError("No write access")
+
+    monkeypatch.setattr(
+        lerobot_dataset,
+        "HfApi",
+        lambda: SimpleNamespace(
+            create_repo=create_repo,
+            upload_folder=lambda **kwargs: uploads.append(kwargs),
+            delete_tag=lambda *args, **kwargs: None,
+            create_tag=lambda *args, **kwargs: None,
+        ),
+    )
+    monkeypatch.setattr(
+        lerobot_dataset,
+        "create_lerobot_dataset_card",
+        lambda **kwargs: SimpleNamespace(push_to_hub=lambda **kwargs: None),
+    )
+    session = {"dataset": dataset, "config": {"repo_id": dataset.repo_id}}
+    with pytest.raises(HubError, match="No write access"):
+        _cb_push_to_hub(session, "wrong-user/recording")
+    recorded_files = {path.relative_to(root): path.read_bytes() for path in root.rglob("*.parquet")}
+    assert recorded_files
+    result = _cb_push_to_hub(session, "correct-user/renamed-recording")
+    assert destinations == ["wrong-user/recording", "correct-user/renamed-recording"]
+    assert (
+        uploads[0]["repo_id"]
+        == dataset.repo_id
+        == dataset.meta.repo_id
+        == "correct-user/renamed-recording"
+    )
+    assert uploads[0]["folder_path"] == dataset.root == dataset.meta.root == root
+    assert "https://huggingface.co/datasets/correct-user/renamed-recording" in result
+    assert recorded_files == {
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*.parquet")
+    }
+    reloaded = lerobot_dataset.LeRobotDataset(dataset.repo_id, root=root)
+    assert reloaded.num_episodes == 1
+    np.testing.assert_array_equal(reloaded[0]["action"].numpy(), [15.0])
 
 
 class _FakeLeader:
