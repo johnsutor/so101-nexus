@@ -1,13 +1,35 @@
 """Batched visualization camera placement and rendering contracts."""
 
 import gymnasium as gym
+import numpy as np
 import pytest
 import torch
 
 import so101_nexus.warp  # noqa: F401
 from so101_nexus import LookAtConfig, RenderConfig
+from so101_nexus.camera_utils import compute_angled_camera_params
 
 pytestmark = pytest.mark.warp
+
+
+def _side_camera_pose(env):
+    forward = -env._cam_xmat[:, env._visual_cam_id, :, 2]
+    azimuth = torch.rad2deg(torch.atan2(forward[:, 1], forward[:, 0])) % 360
+    elevation = torch.rad2deg(torch.asin(forward[:, 2].clamp(-1, 1)))
+    params = compute_angled_camera_params(
+        spawn_center=env.config.spawn_center,
+        spawn_max_radius=env.config.spawn_max_radius,
+        spawn_angle_half_range_deg=env.config.spawn_angle_half_range_deg,
+        spawn_half_size=(
+            env.config.spawn_half_size if isinstance(env.config, LookAtConfig) else None
+        ),
+        aspect=env.config.render.width / env.config.render.height,
+        azimuth=azimuth,
+        elevation=elevation,
+    )
+    target = torch.as_tensor(params["lookat"], dtype=forward.dtype, device=env.device)
+    distance = torch.linalg.vector_norm(target - env._cam_pos[:, env._visual_cam_id], dim=-1)
+    return params, distance, azimuth, elevation, forward
 
 
 @pytest.mark.parametrize("env_id", sorted(k for k in gym.registry if k.startswith("Warp")))
@@ -37,23 +59,7 @@ def test_render_all_tasks(env_factory, env_id, mode):
     assert image.device == env.device
     assert torch.isfinite(image).all()
     assert image.sum() > 0
-    from so101_nexus.camera_utils import compute_angled_camera_params
-
-    target = torch.as_tensor(
-        compute_angled_camera_params(
-            spawn_center=env.config.spawn_center,
-            spawn_max_radius=env.config.spawn_max_radius,
-            spawn_half_size=(
-                env.config.spawn_half_size if isinstance(env.config, LookAtConfig) else None
-            ),
-        )["lookat"],
-        dtype=pose.dtype,
-        device=env.device,
-    )
-    direction = target - pose
-    distance = torch.linalg.vector_norm(direction, dim=-1)
-    azimuth = torch.rad2deg(torch.atan2(direction[:, 1], direction[:, 0])) % 360
-    elevation = torch.rad2deg(torch.asin(direction[:, 2] / distance))
+    _, distance, azimuth, elevation, _ = _side_camera_pose(env)
     for value, low, high in ((distance, 0.8, 1.2), (azimuth, 100, 200), (elevation, -60, -20)):
         assert ((value >= low) & (value <= high)).all()
     snapshot = image.clone()
@@ -80,7 +86,6 @@ def test_render_disabled_is_noop(env_factory):
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_fixed_pose_matches_mujoco(env_factory, camera, device, mode):
     import mujoco
-    import numpy as np
 
     from so101_nexus import TouchConfig
 
@@ -163,43 +168,45 @@ def test_visualization_coexists_with_observations_and_autoreset(env_factory, dev
 
 
 @pytest.mark.parametrize("half_range", [30.0, 180.0])
-def test_random_angles_refit_distance_to_spawn_arc(env_factory, half_range):
-    from so101_nexus.camera_utils import compute_angled_camera_params
-
+@pytest.mark.parametrize("distance_range", [None, (0.9, 0.9), (0.8, 1.2)])
+def test_random_angles_refit_target_and_distance_to_spawn_arc(
+    env_factory, half_range, distance_range
+):
     env = env_factory(backend="warp", render_mode="rgb_array")
     env.config.spawn_angle_half_range_deg = half_range
     env.config.render = RenderConfig(
         camera="side",
         side_azimuth_range_deg=(120.0, 200.0),
         side_elevation_range_deg=(-45.0, -20.0),
+        side_distance_range=distance_range,
     )
     env.reset(seed=42)
-    target = torch.as_tensor(
-        compute_angled_camera_params(
+    params, distance, azimuth, elevation, forward = _side_camera_pose(env)
+    assert isinstance(params["lookat"], torch.Tensor)
+    assert params["lookat"].shape == (env.num_envs, 3)
+    assert not torch.equal(params["lookat"][0], params["lookat"][1])
+    if distance_range is None:
+        torch.testing.assert_close(distance, params["distance"])
+    else:
+        low, high = distance_range
+        assert ((distance >= low - 1e-6) & (distance <= high + 1e-6)).all()
+    for index in range(env.num_envs):
+        expected = compute_angled_camera_params(
             spawn_center=env.config.spawn_center,
             spawn_max_radius=env.config.spawn_max_radius,
             spawn_angle_half_range_deg=half_range,
-        )["lookat"],
-        dtype=torch.float32,
-        device=env.device,
-    )
-    direction = target - env._cam_pos[:, env._visual_cam_id]
-    distance = torch.linalg.vector_norm(direction, dim=-1)
-    azimuth = torch.rad2deg(torch.atan2(direction[:, 1], direction[:, 0])) % 360
-    elevation = torch.rad2deg(torch.asin(direction[:, 2] / distance))
-    expected = compute_angled_camera_params(
-        spawn_center=env.config.spawn_center,
-        spawn_max_radius=env.config.spawn_max_radius,
-        spawn_angle_half_range_deg=half_range,
-        azimuth=azimuth,
-        elevation=elevation,
-    )
-    torch.testing.assert_close(distance, expected["distance"])
+            aspect=env.config.render.width / env.config.render.height,
+            azimuth=float(azimuth[index]),
+            elevation=float(elevation[index]),
+        )
+        expected_distance = (
+            expected["distance"] if distance_range is None else float(distance[index])
+        )
+        eye = expected["lookat"] - expected_distance * forward[index].cpu().numpy()
+        np.testing.assert_allclose(env._cam_pos[index, env._visual_cam_id].cpu(), eye, atol=1e-6)
 
 
 def test_look_at_side_camera_fits_square_spawn(env_factory):
-    from so101_nexus.camera_utils import compute_angled_camera_params
-
     config = LookAtConfig(
         spawn_half_size=0.4,
         spawn_max_radius=0.4,

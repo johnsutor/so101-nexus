@@ -8,7 +8,9 @@ that don't require gymnasium or any optional dependency.
 
 import datetime
 import re
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -28,9 +30,84 @@ from so101_nexus.teleop.session import (
     _wire_camera_observations,
     local_dataset_exists,
     local_dataset_path,
+    make_review_video,
     remote_dataset_exists,
     validate_hub_repo_id,
 )
+
+
+@pytest.fixture
+def review_writer(monkeypatch):
+    captured = {"frames": []}
+
+    def capture_writer(path, **kwargs):
+        captured.update(path=path, **kwargs)
+        return nullcontext(SimpleNamespace(append_data=captured["frames"].append))
+
+    monkeypatch.setattr("imageio.v2.get_writer", capture_writer)
+    return captured
+
+
+@pytest.mark.parametrize("missing_wrist", [False, True])
+def test_review_video_keeps_available_cameras_and_unequal_lengths(review_writer, missing_wrist):
+    wrist = np.full((8, 10, 3), 40, dtype=np.uint8)
+    overhead = np.full((6, 12, 3), 80, dtype=np.uint8)
+    side = np.full((10, 8, 3), 120, dtype=np.uint8)
+    streams = {
+        "Wrist": [] if missing_wrist else [wrist],
+        "Overhead": [overhead, overhead],
+        "Side": [side, side, side],
+    }
+    path = make_review_video(streams, 30)
+    assert path == review_writer["path"]
+    assert review_writer["fps"] == 30
+    frames = review_writer["frames"]
+    assert len(frames) == 3
+    assert len({frame.shape for frame in frames}) == 1
+    # Native camera pixels occupy fixed tiles beneath 24-pixel labels.
+    np.testing.assert_array_equal(
+        frames[0][24:30, 16:28] if not missing_wrist else frames[0][24:30, :12], overhead
+    )
+    if not missing_wrist:
+        np.testing.assert_array_equal(frames[0][24:32, :10], wrist)
+        assert not frames[1][24:34, :12].any()
+        np.testing.assert_array_equal(frames[2][62:72, :8], side)
+    else:
+        np.testing.assert_array_equal(frames[2][24:34, 16:24], side)
+    assert not (frames[2][24:34, 16:28] if not missing_wrist else frames[2][24:34, :12]).any()
+    Path(path).unlink()
+
+
+def test_review_video_streams_composition_into_writer(monkeypatch, review_writer):
+    image = np.zeros((8, 10, 3), dtype=np.uint8)
+
+    def camera_grid(streams):
+        for index in range(3):
+            assert len(review_writer["frames"]) == index
+            yield image
+
+    monkeypatch.setattr("so101_nexus.teleop.session._review_camera_grid", camera_grid)
+    path = make_review_video({"Side": [image]}, 30)
+    assert len(review_writer["frames"]) == 3
+    assert review_writer["macro_block_size"] == 1
+    Path(path).unlink()
+
+
+@pytest.mark.parametrize("images", [[], {"Wrist": [], "Overhead": [], "Side": []}])
+def test_review_video_without_camera_frames_is_empty(images):
+    assert make_review_video(images, 30) is None
+
+
+def test_review_video_preserves_single_camera_compatibility(monkeypatch):
+    images = [np.full((8, 10, 3), 40, dtype=np.uint8)]
+    captured = []
+    monkeypatch.setattr(
+        "so101_nexus.visualization.save_video", lambda frames, path, fps: captured.append(frames)
+    )
+    path = make_review_video(images, 30)
+    assert path is not None
+    assert captured[0] is images
+    Path(path).unlink()
 
 
 def test_default_repo_id_format(monkeypatch) -> None:

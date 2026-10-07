@@ -953,7 +953,14 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     import gradio as gr
 
     jn = session["joint_names"]
-    video_path = make_review_video(s.episode_wrist_images, fps)
+    video_path = make_review_video(
+        {
+            "Wrist": s.episode_wrist_images,
+            "Overhead": s.episode_overhead_images,
+            "Side": s.episode_side_images,
+        },
+        fps,
+    )
     fig = (
         make_state_plot(s.episode_states, jn, fps, s.episode_rewards) if s.episode_states else None
     )
@@ -1512,7 +1519,7 @@ def _build_review_step(gr):
     gr.Markdown("### Review Episode")
     with gr.Row():
         with gr.Column(scale=2):
-            review_video = gr.Video(label="Episode Video")
+            review_video = gr.Video(label="Episode Replay (available cameras)")
         with gr.Column(scale=1):
             state_plot = gr.Plot(label="Joint States and Step Reward")
             episode_metadata = gr.Markdown()

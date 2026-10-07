@@ -238,3 +238,81 @@ def test_look_at_side_camera_fits_square_spawn(env_factory):
     params = env.unwrapped._render_camera_params()
     assert params["distance"] == pytest.approx(expected["distance"])
     np.testing.assert_allclose(params["lookat"], expected["lookat"])
+
+
+@pytest.mark.parametrize(
+    "task", ["Touch", "PickLift", "PickReturn", "PickAndPlace", "StackCube", "LookAt"]
+)
+@pytest.mark.parametrize("seed", [1, 7])
+def test_default_side_camera_keeps_near_arm_target_visible(env_factory, task, seed):
+    env = env_factory(task=task, render_mode="rgb_array")
+    base = env.unwrapped
+    base.config.render = RenderConfig(width=320, height=240, camera="side")
+    env.reset(seed=seed)
+    _render_or_skip(env)
+    target_ids = np.flatnonzero(base._obj_geom_mask)
+    if task == "LookAt":
+        target_ids = [mujoco.mj_name2id(base.model, mujoco.mjtObj.mjOBJ_GEOM, "look_target_geom")]
+    renderer = base._renderer
+    renderer.enable_segmentation_rendering()
+    try:
+        segmentation = renderer.render()
+    finally:
+        renderer.disable_segmentation_rendering()
+    assert np.isin(segmentation[..., 0], target_ids).sum() >= 40
+
+
+@pytest.mark.parametrize("seed", [4, 9, 10])
+def test_small_workspace_side_camera_does_not_crop_extended_arm(env_factory, seed):
+    from so101_nexus import LookAtConfig, RobotConfig
+
+    config = LookAtConfig(
+        robot=RobotConfig(init_pose="extended"),
+        render=RenderConfig(width=320, height=240, camera="side"),
+    )
+    env = env_factory(task="LookAt", config=config, render_mode="rgb_array")
+    base = env.unwrapped
+    env.reset(seed=seed)
+    _render_or_skip(env)
+    robot_ids = np.flatnonzero(base.model.geom_bodyid > 0)
+    base._renderer.enable_segmentation_rendering()
+    try:
+        frame = base._renderer.render()
+    finally:
+        base._renderer.disable_segmentation_rendering()
+    reference_renderer = mujoco.Renderer(base.model, width=480, height=360)
+    old_fov = base.model.vis.global_.fovy
+    try:
+        base.model.vis.global_.fovy = np.degrees(
+            2 * np.arctan(np.tan(np.radians(old_fov / 2)) * 1.5)
+        )
+        reference_renderer.update_scene(base.data, camera=base._render_cam)
+        reference_renderer.enable_segmentation_rendering()
+        reference = reference_renderer.render()
+    finally:
+        base.model.vis.global_.fovy = old_fov
+        reference_renderer.close()
+    assert (
+        np.isin(frame[..., 0], robot_ids).sum() >= np.isin(reference[..., 0], robot_ids).sum() - 2
+    )
+
+
+@pytest.mark.parametrize("task", ["Touch", "PickLift", "PickReturn"])
+def test_widescreen_side_camera_preserves_target_visibility(env_factory, task):
+    env = env_factory(task=task, render_mode="rgb_array")
+    base = env.unwrapped
+    base.config.render = RenderConfig(
+        width=320,
+        height=180,
+        camera="side",
+        side_azimuth_range_deg=(105.0, 115.0),
+        side_elevation_range_deg=(-27.0, -23.0),
+    )
+    env.reset(seed=49)
+    _render_or_skip(env)
+    base._renderer.enable_segmentation_rendering()
+    try:
+        frame = base._renderer.render()
+    finally:
+        base._renderer.disable_segmentation_rendering()
+    assert np.isin(frame[..., 0], np.flatnonzero(base._obj_geom_mask)).any()

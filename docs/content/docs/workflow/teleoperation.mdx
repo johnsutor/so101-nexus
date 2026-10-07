@@ -42,7 +42,8 @@ you can fix the port in another terminal and click `Retry Initialization`.
 2. **Initialize.** The app connects to the leader arm and creates the dataset.
 3. **Record.** A countdown plays, then the simulation mirrors the leader arm. The live wrist
    feed renders in the UI.
-4. **Review.** After each episode, the UI shows a video replay and a joint-state plot.
+4. **Review.** After each episode, the UI shows a synchronized replay of the available
+   wrist, overhead, and side views, with camera labels and a joint-state plot.
 5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
 6. **Push.** When all episodes are done, check **Hub Repo ID** and push to the Hugging Face Hub.
 
@@ -72,8 +73,8 @@ You do not need to record the episodes again.
 Wrist, overhead, and side cameras are captured on every step and selected for the dataset by
 default. Wrist and overhead observations are wired automatically, and their width and height
 sliders set the image resolutions. The side view uses the overhead resolution and the
-simulator's render camera. Its azimuth is randomized between 120 and 200 degrees, and its
-elevation between -45 and -20 degrees, on each seeded reset. A config factory can override
+simulator's render camera. Its azimuth is randomized between 105 and 115 degrees, and its
+elevation between -27 and -23 degrees, on each seeded reset. A config factory can override
 these ranges through `RenderConfig`, including equal bounds for a fixed view.
 The default side distance adapts to the sampled angles and spawn region.
 See [automatic side framing](/docs/api/configs#renderconfig) for distance overrides.

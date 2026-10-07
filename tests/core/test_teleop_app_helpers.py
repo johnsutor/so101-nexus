@@ -1063,6 +1063,29 @@ def test_poll_recording_passes_step_rewards_to_review_plot(fake_gradio, monkeypa
     assert captured["joint_names"] == ("joint_a", "joint_b")
 
 
+def test_poll_recording_reviews_all_buffered_cameras(fake_gradio, monkeypatch):
+    captured = {}
+
+    def capture_video(images, fps):
+        captured.update(images=images, fps=fps)
+        return "all-cameras.mp4"
+
+    monkeypatch.setattr(teleop_app, "make_review_video", capture_video)
+    state = RecordingState(recording_finished=True)
+    for images in (
+        state.episode_wrist_images,
+        state.episode_overhead_images,
+        state.episode_side_images,
+    ):
+        images.append(np.zeros((8, 10, 3), dtype=np.uint8))
+    outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ()})
+    assert outputs[7]["value"] == "all-cameras.mp4"
+    assert list(captured["images"]) == ["Wrist", "Overhead", "Side"]
+    assert captured["images"]["Wrist"] is state.episode_wrist_images
+    assert captured["images"]["Overhead"] is state.episode_overhead_images
+    assert captured["images"]["Side"] is state.episode_side_images
+
+
 def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=1, terminated_at_frame=3)
     state.episode_actions.extend([np.zeros(6, dtype=np.float32) for _ in range(4)])

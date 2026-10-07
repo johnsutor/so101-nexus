@@ -139,8 +139,8 @@ def compute_angled_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
     margin: float = 0.05,
-    elevation: Any = -30.0,
-    azimuth: Any = 160.0,
+    elevation: Any = -25.0,
+    azimuth: Any = 110.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
     aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
     *,
@@ -150,8 +150,9 @@ def compute_angled_camera_params(
     """Fit a side view to the spawn arc and the robot's working volume.
 
     Perspective depth, view angles, and image aspect determine the distance.
-    The target is above the table to avoid wasting pixels on empty foreground.
-    Angles can be scalar degrees, NumPy arrays, or torch tensors; distances
+    Image-plane centering fits the workspace and robot envelope at minimum
+    distance while shifting the original target as little as possible. Angles
+    can be scalar degrees, NumPy arrays, or torch tensors; targets and distances
     retain the same array backend for batched reset-time camera sampling.
 
     Parameters
@@ -170,7 +171,8 @@ def compute_angled_camera_params(
     Returns
     -------
     dict
-        Camera lookat, distance, elevation, and azimuth.
+        Camera lookat, distance, elevation, and azimuth. Batched angles return
+        targets shaped ``(..., 3)`` and distances shaped ``(...)``.
     """
     half_range_rad = np.radians(spawn_angle_half_range_deg)
     cx, cy = spawn_center
@@ -193,7 +195,10 @@ def compute_angled_camera_params(
     up = (-ca * se, -sa * se, ce)
     tan_vfov = np.tan(np.radians(fov_deg / 2))
     distance = ca * 0
-    for axis, tangent in ((right, tan_vfov * aspect), (up, tan_vfov)):
+    frames = []
+    shifts = (ca * 0, ca * 0, ca * 0)
+    for axis, tangent in ((right, tan_vfov * aspect), (up, tan_vfov), (forward, np.inf)):
+        bounds = []
         for sign in (-1, 1):
             vx, vy, vz = (sign * a / tangent - f for a, f in zip(axis, forward, strict=True))
             angle = xp.clip(xp.arctan2(vy, vx), -half_range_rad, half_range_rad)
@@ -204,10 +209,24 @@ def compute_angled_camera_params(
             workspace += margin * (vx * vx + vy * vy + vz * vz) ** 0.5
             # A sloped envelope covers the upright arm and its forward reach.
             robot = margin * (abs(vx) + abs(vy)) + 0.4 * xp.clip(vz, 0, None)
-            reach = 0.25 * vx + 0.25 * vz + margin * (abs(vx) + abs(vy) + abs(vz))
+            # Shoulder pan rotates the extended reach beyond the forward workspace.
+            reach_angle = xp.clip(xp.arctan2(vy, vx), -np.radians(110), np.radians(110))
+            reach_xy = xp.clip(vx * xp.cos(reach_angle) + vy * xp.sin(reach_angle), 0, None)
+            reach = 0.30 * reach_xy + 0.25 * vz + margin * (abs(vx) + abs(vy) + abs(vz))
             bound = xp.maximum(xp.maximum(workspace, robot), reach)
             bound -= sum(v * target for v, target in zip((vx, vy, vz), lookat, strict=True))
-            distance = xp.maximum(distance, bound)
+            bounds.append(bound)
+        # Balance opposite frustum planes without changing the target depth.
+        distance = xp.maximum(distance, (bounds[0] + bounds[1]) / 2)
+        if np.isfinite(tangent):
+            frames.append((axis, tangent, bounds))
+    for axis, tangent, bounds in frames:
+        # Preserve the original aim wherever frame slack permits to limit parallax.
+        offset = xp.clip(ca * 0, (bounds[1] - distance) * tangent, (distance - bounds[0]) * tangent)
+        shifts = tuple(s + offset * a for s, a in zip(shifts, axis, strict=True))
+    lookat = xp.stack(tuple(t + s for t, s in zip(lookat, shifts, strict=True)), -1)
+    # Keep points on the optical axis in front of the camera when margin is zero.
+    distance = distance + 1e-6
     return {"lookat": lookat, "distance": distance, "elevation": elevation, "azimuth": azimuth}
 
 
