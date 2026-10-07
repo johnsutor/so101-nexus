@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-04
+
 ### Added
 
 - Teleoperation episode review includes synchronized, labeled wrist, overhead,
@@ -753,7 +755,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.2...HEAD
+[0.8.2]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/johnsutor/so101-nexus/compare/0.6.0...0.7.0
