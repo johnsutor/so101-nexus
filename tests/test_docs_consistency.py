@@ -232,6 +232,18 @@ def test_environment_table_state_dimensions_match_public_configs() -> None:
     assert documented == registered
 
 
+def test_render_camera_documented_angle_defaults_match_config() -> None:
+    """The canonical camera reference follows the runtime angle defaults."""
+    from so101_nexus import RenderConfig
+
+    config = RenderConfig()
+    text = _read(DOCS / "api" / "configs.mdx")
+    for field in ("side_azimuth_deg", "side_elevation_deg"):
+        row = re.search(rf"\| `{field}` \| `float` \| `([^`]+)`", text)
+        assert row, f"Missing RenderConfig default for {field}"
+        assert float(row.group(1)) == getattr(config, field)
+
+
 def test_training_reference_entropy_matches_ppo_warp_defaults() -> None:
     """workflow/training.mdx entropy flags must match ``ppo_warp.py`` Args defaults."""
     ppo = _read(ROOT / "examples" / "ppo_warp.py")

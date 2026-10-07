@@ -139,8 +139,8 @@ def compute_angled_camera_params(
     spawn_center: tuple[float, float] = (0.15, 0.0),
     spawn_max_radius: float = 0.40,
     margin: float = 0.05,
-    elevation: Any = -30.0,
-    azimuth: Any = 160.0,
+    elevation: Any = -25.0,
+    azimuth: Any = 110.0,
     fov_deg: float = _DEFAULT_VFOV_DEG,
     aspect: float = DEFAULT_RENDER_WIDTH / DEFAULT_RENDER_HEIGHT,
     *,
@@ -208,6 +208,8 @@ def compute_angled_camera_params(
             bound = xp.maximum(xp.maximum(workspace, robot), reach)
             bound -= sum(v * target for v, target in zip((vx, vy, vz), lookat, strict=True))
             distance = xp.maximum(distance, bound)
+    # Keep points on the optical axis in front of the camera when margin is zero.
+    distance = distance + 1e-6
     return {"lookat": lookat, "distance": distance, "elevation": elevation, "azimuth": azimuth}
 
 

@@ -55,6 +55,18 @@ def test_side_camera_saved_only_when_selected(monkeypatch, tmp_path, selected):
     assert state.episode_side_images == []
 
 
+def test_recording_config_uses_clear_side_camera_ranges():
+    from so101_nexus import TouchConfig
+    from so101_nexus.teleop.session import _build_recording_config
+
+    original = TouchConfig()
+    config = _build_recording_config(original, (32, 24), (64, 48))
+    assert config.render.side_azimuth_range_deg == (105.0, 115.0)
+    assert config.render.side_elevation_range_deg == (-27.0, -23.0)
+    assert original.render.side_azimuth_range_deg is None
+    assert original.render.side_elevation_range_deg is None
+
+
 def test_recording_config_preserves_side_camera_randomization():
     from so101_nexus import RenderConfig, TouchConfig
     from so101_nexus.teleop.session import _build_recording_config

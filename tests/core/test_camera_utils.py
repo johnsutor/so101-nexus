@@ -158,6 +158,25 @@ class TestComputeAngledCameraParams:
         assert params["distance"] < overhead["distance"] * 1.2
         assert params["lookat"][2] > 0
 
+    @pytest.mark.parametrize("tensor", [False, True])
+    def test_zero_margin_wide_fov_keeps_robot_in_front_of_camera(self, tensor):
+        elevation = -90.0
+        if tensor:
+            torch = pytest.importorskip("torch")
+            elevation = torch.tensor([-90.0, -90.0], dtype=torch.float64)
+        params = compute_angled_camera_params(
+            spawn_center=(0.0, 0.0),
+            spawn_max_radius=0.5,
+            margin=0.0,
+            fov_deg=119.0,
+            aspect=1.0,
+            azimuth=0.0,
+            elevation=elevation,
+            spawn_angle_half_range_deg=180.0,
+        )
+        depth = params["distance"] - (0.4 - params["lookat"][2])
+        assert (depth > 0).all()
+
     def test_narrower_spawn_arc_has_tighter_frame(self):
         narrow = compute_angled_camera_params(spawn_angle_half_range_deg=30)
         wide = compute_angled_camera_params(spawn_angle_half_range_deg=180)

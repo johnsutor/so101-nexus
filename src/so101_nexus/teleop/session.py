@@ -12,13 +12,16 @@ from __future__ import annotations
 import datetime
 import importlib
 import tempfile
+from collections.abc import Iterator, Mapping
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from imageio.core.format import Format
 from so101_nexus.config import RenderConfig
 from so101_nexus.observations import OverheadCamera, WristCamera
 from so101_nexus.teleop.config_customization import (
@@ -438,8 +441,8 @@ def _customize_recording_config(
         render_attrs = vars(render).copy()
         render_attrs.update(width=overhead_wh[0], height=overhead_wh[1], camera="side")
         for name, bounds in (
-            ("side_azimuth_range_deg", (120.0, 200.0)),
-            ("side_elevation_range_deg", (-45.0, -20.0)),
+            ("side_azimuth_range_deg", (105.0, 115.0)),
+            ("side_elevation_range_deg", (-27.0, -23.0)),
         ):
             if render_attrs[name] is None:
                 render_attrs[name] = bounds
@@ -447,15 +450,58 @@ def _customize_recording_config(
     return ConfigFactoryUpdate(config.__class__(**config_attrs), factory_update.kwargs)
 
 
-def make_review_video(images: list[np.ndarray], fps: int) -> str | None:
-    """Write *images* to a temporary MP4 file and return its path."""
-    if not images:
+def _review_camera_grid(streams: Mapping[str, list[np.ndarray]]) -> Iterator[np.ndarray]:
+    """Compose labeled camera tiles without resizing or truncating streams."""
+    from so101_nexus.visualization import add_label
+
+    cameras = [(label, frames) for label, frames in streams.items() if frames]
+    if not cameras:
+        return
+    height = max(frame.shape[0] for _, frames in cameras for frame in frames)
+    width = max(frame.shape[1] for _, frames in cameras for frame in frames)
+    header, gutter = 24, 4
+    columns = min(2, len(cameras))
+    rows = (len(cameras) + columns - 1) // columns
+    grid_h = rows * (height + header + gutter) - gutter
+    grid_w = columns * (width + gutter) - gutter
+    # H.264 needs even dimensions; pad rather than rescale camera pixels.
+    shape = (grid_h + grid_h % 2, grid_w + grid_w % 2, 3)
+    for index in range(max(len(frames) for _, frames in cameras)):
+        image = np.zeros(shape, dtype=np.uint8)
+        for tile, (label, frames) in enumerate(cameras):
+            row, column = divmod(tile, columns)
+            y, x = row * (height + header + gutter), column * (width + gutter)
+            available = index < len(frames)
+            image[y : y + header, x : x + width] = add_label(
+                image[y : y + header, x : x + width],
+                label if available else f"{label} (unavailable)",
+            )
+            if available:
+                frame = frames[index]
+                h, w = frame.shape[:2]
+                image[y + header : y + header + h, x : x + w] = frame
+        yield image
+
+
+def make_review_video(
+    images: list[np.ndarray] | Mapping[str, list[np.ndarray]], fps: int
+) -> str | None:
+    """Write frames or a labeled camera grid to a temporary MP4 file."""
+    if not images or (isinstance(images, Mapping) and not any(images.values())):
         return None
-    from so101_nexus.visualization import save_video
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video:
         path = temp_video.name
-    save_video(images, path, fps=fps)
+    if isinstance(images, Mapping):
+        import imageio.v2 as iio
+
+        with iio.get_writer(path, fps=fps, macro_block_size=1) as writer:
+            for frame in _review_camera_grid(images):
+                cast("Format.Writer", writer).append_data(frame)
+    else:
+        from so101_nexus.visualization import save_video
+
+        save_video(images, path, fps=fps)
     return path
 
 

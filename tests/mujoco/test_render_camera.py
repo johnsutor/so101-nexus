@@ -238,3 +238,25 @@ def test_look_at_side_camera_fits_square_spawn(env_factory):
     params = env.unwrapped._render_camera_params()
     assert params["distance"] == pytest.approx(expected["distance"])
     np.testing.assert_allclose(params["lookat"], expected["lookat"])
+
+
+@pytest.mark.parametrize(
+    "task", ["Touch", "PickLift", "PickReturn", "PickAndPlace", "StackCube", "LookAt"]
+)
+@pytest.mark.parametrize("seed", [1, 7])
+def test_default_side_camera_keeps_near_arm_target_visible(env_factory, task, seed):
+    env = env_factory(task=task, render_mode="rgb_array")
+    base = env.unwrapped
+    base.config.render = RenderConfig(width=320, height=240, camera="side")
+    env.reset(seed=seed)
+    _render_or_skip(env)
+    target_ids = np.flatnonzero(base._obj_geom_mask)
+    if task == "LookAt":
+        target_ids = [mujoco.mj_name2id(base.model, mujoco.mjtObj.mjOBJ_GEOM, "look_target_geom")]
+    renderer = base._renderer
+    renderer.enable_segmentation_rendering()
+    try:
+        segmentation = renderer.render()
+    finally:
+        renderer.disable_segmentation_rendering()
+    assert np.isin(segmentation[..., 0], target_ids).sum() >= 40

@@ -99,8 +99,8 @@ class TestConfigConsistency:
     def test_render_camera_defaults_to_overhead(self):
         cfg = RenderConfig()
         assert cfg.camera == "overhead"
-        assert cfg.side_azimuth_deg == 160.0
-        assert cfg.side_elevation_deg == -30.0
+        assert cfg.side_azimuth_deg == 110.0
+        assert cfg.side_elevation_deg == -25.0
 
     def test_render_side_camera_fields(self):
         cfg = RenderConfig(camera="side", side_azimuth_deg=90.0, side_elevation_deg=-20.0)

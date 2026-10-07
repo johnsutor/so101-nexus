@@ -101,8 +101,8 @@ render = RenderConfig(
 | `width` | `int` | `640` | Render image width in pixels |
 | `height` | `int` | `480` | Render image height in pixels |
 | `camera` | `"overhead" \| "side"` | `"overhead"` | View for `rgb_array`, `depth_array`, and the initial `human` viewpoint. `"overhead"` looks straight down. `"side"` selects an angled view. |
-| `side_azimuth_deg` | `float` | `160.0` | Azimuth of the side view in degrees |
-| `side_elevation_deg` | `float` | `-30.0` | Elevation of the side view in degrees, in `[-90, 0)` |
+| `side_azimuth_deg` | `float` | `110.0` | Azimuth of the side view in degrees |
+| `side_elevation_deg` | `float` | `-25.0` | Elevation of the side view in degrees, in `[-90, 0)` |
 | `side_azimuth_range_deg` | `tuple[float, float] \| None` | `None` | Uniform azimuth bounds in degrees, overriding `side_azimuth_deg` |
 | `side_elevation_range_deg` | `tuple[float, float] \| None` | `None` | Uniform elevation bounds in degrees within `[-90, 0)`, overriding `side_elevation_deg` |
 | `side_distance_range` | `tuple[float, float] \| None` | `None` | Uniform positive straight-line distance bounds in meters from the workspace look-at target; `None` retains automatic workspace framing |
@@ -112,10 +112,13 @@ Ranges apply to every task's side view on both backends, including RGB and depth
 Automatic side framing fits the spawn region and arm working volume at the selected angles and image aspect ratio.
 The region follows the configured arc, or the square `spawn_half_size` region for LookAt.
 The camera aims above the table to reduce empty foreground.
+The default angles favor objects in front of the arm. For custom spawn regions
+that extend behind the robot, the arm can obscure objects even when they fit in
+the frame. Adjust the angles for that layout or use the overhead view.
 With randomized angles, each reset computes the distance for the sampled view.
 An explicit `side_distance_range` overrides the automatic distance.
 
-Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, existing behavior is unchanged. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations.
+Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, the camera uses fixed angles and automatic distance. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations.
 
 ---
 

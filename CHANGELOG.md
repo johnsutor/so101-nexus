@@ -11,12 +11,22 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Teleoperation episode review includes synchronized, labeled wrist, overhead,
+  and side camera views when available.
 - Teleoperation allows changes to the Hub dataset namespace and name on the
   Complete step, including after a failed upload. Recorded files stay in their
   original local directory.
 
+### Changed
+
+- Default side views use a 110-degree azimuth and -25-degree elevation to improve
+  target visibility. Teleoperation samples narrower viewpoint ranges around this
+  view while retaining automatic workspace distance and explicit overrides.
+
 ### Fixed
 
+- Automatic side-camera framing keeps the arm in front of the camera even with
+  zero padding and a wide field of view.
 - Side cameras on both backends fit the spawn region and arm working volume at the
   sampled angles, reducing empty foreground in teleoperation recordings.
   Explicit side-distance overrides remain supported.
