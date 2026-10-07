@@ -158,6 +158,24 @@ class TestComputeAngledCameraParams:
         assert params["distance"] < overhead["distance"] * 1.2
         assert params["lookat"][2] > 0
 
+    def test_wide_frame_does_not_move_camera_along_unconstrained_axis(self):
+        params = compute_angled_camera_params(spawn_max_radius=0.3, aspect=4.0)
+        az = np.radians(params["azimuth"])
+        right = np.array([np.sin(az), -np.cos(az), 0])
+        np.testing.assert_allclose((params["lookat"] - [0.225, 0, 0.12]) @ right, 0, atol=1e-12)
+
+    def test_small_workspace_still_fits_laterally_extended_gripper(self):
+        params = compute_angled_camera_params(spawn_max_radius=0.3, spawn_half_size=0.05)
+        az, el = np.radians([params["azimuth"], params["elevation"]])
+        forward = np.array([np.cos(az) * np.cos(el), np.sin(az) * np.cos(el), np.sin(el)])
+        up = np.array([-np.cos(az) * np.sin(el), -np.sin(az) * np.sin(el), np.cos(el)])
+        right = np.array([np.sin(az), -np.cos(az), 0])
+        points = np.array([[0, -0.30, 0.25], [0, 0.30, 0.25]])
+        offsets = points - params["lookat"]
+        depth = params["distance"] + offsets @ forward
+        assert (abs(offsets @ up) <= depth * np.tan(np.radians(22.5))).all()
+        assert (abs(offsets @ right) <= depth * np.tan(np.radians(22.5)) * 4 / 3).all()
+
     @pytest.mark.parametrize("tensor", [False, True])
     def test_zero_margin_wide_fov_keeps_robot_in_front_of_camera(self, tensor):
         elevation = -90.0
@@ -174,7 +192,7 @@ class TestComputeAngledCameraParams:
             elevation=elevation,
             spawn_angle_half_range_deg=180.0,
         )
-        depth = params["distance"] - (0.4 - params["lookat"][2])
+        depth = params["distance"] - (0.4 - params["lookat"][..., 2])
         assert (depth > 0).all()
 
     def test_narrower_spawn_arc_has_tighter_frame(self):
@@ -182,11 +200,12 @@ class TestComputeAngledCameraParams:
         wide = compute_angled_camera_params(spawn_angle_half_range_deg=180)
         assert narrow["distance"] < wide["distance"]
 
+    @pytest.mark.parametrize("shape", [(1,), (3,), (2, 2)])
     @pytest.mark.parametrize("scalar_angle", [None, "azimuth", "elevation"])
-    def test_batched_tensor_angles_match_scalar_parameters(self, scalar_angle):
+    def test_batched_tensor_angles_match_scalar_parameters(self, scalar_angle, shape):
         torch = pytest.importorskip("torch")
-        azimuth = torch.tensor([90.0, 160.0, 200.0], dtype=torch.float64)
-        elevation = torch.tensor([-20.0, -30.0, -45.0], dtype=torch.float64)
+        azimuth = torch.linspace(90, 200, math.prod(shape), dtype=torch.float64).reshape(shape)
+        elevation = torch.linspace(-20, -45, math.prod(shape), dtype=torch.float64).reshape(shape)
         if scalar_angle == "azimuth":
             azimuth[:] = 160
         elif scalar_angle == "elevation":
@@ -197,9 +216,100 @@ class TestComputeAngledCameraParams:
         )
         expected = [
             compute_angled_camera_params(azimuth=float(az), elevation=float(el))["distance"]
-            for az, el in zip(azimuth, elevation, strict=True)
+            for az, el in zip(azimuth.flatten(), elevation.flatten(), strict=True)
         ]
-        torch.testing.assert_close(params["distance"], torch.tensor(expected, dtype=torch.float64))
+        torch.testing.assert_close(
+            params["distance"], torch.tensor(expected, dtype=torch.float64).reshape(shape)
+        )
+        expected_targets = np.stack(
+            [
+                compute_angled_camera_params(azimuth=float(az), elevation=float(el))["lookat"]
+                for az, el in zip(azimuth.flatten(), elevation.flatten(), strict=True)
+            ]
+        )
+        assert params["lookat"].device == azimuth.device
+        assert params["lookat"].dtype == azimuth.dtype
+        torch.testing.assert_close(
+            params["lookat"],
+            torch.tensor(expected_targets, dtype=torch.float64).reshape((*shape, 3)),
+        )
+
+    @pytest.mark.parametrize("shape", [(1,), (3,), (2, 2)])
+    @pytest.mark.parametrize("scalar_angle", [None, "azimuth", "elevation"])
+    def test_batched_numpy_targets_match_scalar_fits(self, shape, scalar_angle):
+        azimuth = np.linspace(100, 160, math.prod(shape)).reshape(shape)
+        elevation = np.linspace(-20, -50, math.prod(shape)).reshape(shape)
+        if scalar_angle == "azimuth":
+            azimuth[:] = 110
+        elif scalar_angle == "elevation":
+            elevation[:] = -25
+        params = compute_angled_camera_params(
+            azimuth=110.0 if scalar_angle == "azimuth" else azimuth,
+            elevation=-25.0 if scalar_angle == "elevation" else elevation,
+        )
+        fits = [
+            compute_angled_camera_params(azimuth=float(az), elevation=float(el))
+            for az, el in zip(azimuth.flat, elevation.flat, strict=True)
+        ]
+        np.testing.assert_allclose(
+            params["distance"], np.array([p["distance"] for p in fits]).reshape(shape)
+        )
+        np.testing.assert_allclose(
+            params["lookat"], np.stack([p["lookat"] for p in fits]).reshape((*shape, 3))
+        )
+
+    @pytest.mark.parametrize("radius,aspect", [(0.3, 4 / 3), (0.4, 4 / 3), (0.3, 0.75)])
+    def test_centered_fit_is_minimal_for_sampled_workspace_and_robot(self, radius, aspect):
+        params = compute_angled_camera_params(spawn_max_radius=radius, aspect=aspect, margin=0.0)
+        az, el = np.radians([params["azimuth"], params["elevation"]])
+        forward = np.array([np.cos(az) * np.cos(el), np.sin(az) * np.cos(el), np.sin(el)])
+        right = np.array([np.sin(az), -np.cos(az), 0])
+        up = np.array([-np.cos(az) * np.sin(el), -np.sin(az) * np.sin(el), np.cos(el)])
+        angles = np.linspace(-np.pi / 2, np.pi / 2, 10001)
+        points = np.column_stack(
+            (0.15 + radius * np.cos(angles), radius * np.sin(angles), np.zeros_like(angles))
+        )
+        reach_angles = np.linspace(-np.radians(110), np.radians(110), 10001)
+        reach = np.column_stack(
+            (
+                0.30 * np.cos(reach_angles),
+                0.30 * np.sin(reach_angles),
+                np.full_like(reach_angles, 0.25),
+            )
+        )
+        points = np.concatenate((points, reach, [[0.15, 0, 0], [0, 0, 0], [0, 0, 0.4]]))
+        tangent = np.tan(np.radians(22.5))
+        planes = np.array(
+            [
+                sign * axis / t - forward
+                for axis, t in ((right, tangent * aspect), (up, tangent))
+                for sign in (-1, 1)
+            ]
+            + [-forward]
+        )
+        bounds = (points - params["lookat"]) @ planes.T
+        maxima = bounds.max(axis=0)
+        minimal_distance = max((maxima[0] + maxima[1]) / 2, (maxima[2] + maxima[3]) / 2, maxima[4])
+        assert params["distance"] == pytest.approx(minimal_distance + 1e-6, abs=1e-7)
+        assert params["distance"] == pytest.approx(maxima.max() + 1e-6, abs=1e-7)
+        reference = np.array([(0.15 + radius) / 2, 0, 0.12])
+        fixed_distance = ((points - reference) @ planes.T).max()
+        assert params["distance"] < fixed_distance * 0.99
+        fixed_bounds = ((points - reference) @ planes.T).max(axis=0)
+        distance = params["distance"] - 1e-6
+        for index, (axis, t) in enumerate(((right, tangent * aspect), (up, tangent))):
+            nearest_shift = np.clip(
+                0,
+                (fixed_bounds[2 * index + 1] - distance) * t,
+                (distance - fixed_bounds[2 * index]) * t,
+            )
+            assert (params["lookat"] - reference) @ axis == pytest.approx(nearest_shift, abs=1e-7)
+        np.testing.assert_allclose((params["lookat"] - reference) @ forward, 0, atol=1e-12)
+        for dx in (-0.03, 0, 0.03):
+            for dy in (-0.03, 0, 0.03):
+                shifted = params["lookat"] + dx * right + dy * up
+                required_distance = ((points - shifted) @ planes.T).max()
+                assert required_distance >= params["distance"] - 1e-6 - 1e-7
 
     @given(
         cx=finite_center,

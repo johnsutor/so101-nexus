@@ -111,11 +111,13 @@ Ranges apply to every task's side view on both backends, including RGB and depth
 
 Automatic side framing fits the spawn region and arm working volume at the selected angles and image aspect ratio.
 The region follows the configured arc, or the square `spawn_half_size` region for LookAt.
-The camera aims above the table to reduce empty foreground.
+The camera fits the projected workspace and arm bounds within the image,
+choosing the shortest distance that leaves padding around them. It shifts the
+aim point only as much as needed to fit those bounds.
 The default angles favor objects in front of the arm. For custom spawn regions
 that extend behind the robot, the arm can obscure objects even when they fit in
 the frame. Adjust the angles for that layout or use the overhead view.
-With randomized angles, each reset computes the distance for the sampled view.
+With randomized angles, each reset computes both the aim point and distance for the sampled view.
 An explicit `side_distance_range` overrides the automatic distance.
 
 Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, the camera uses fixed angles and automatic distance. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations.
