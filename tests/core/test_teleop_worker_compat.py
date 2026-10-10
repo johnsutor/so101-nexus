@@ -1,0 +1,82 @@
+"""Native simulator checks for persistent teleop recording workers."""
+
+import threading
+
+import numpy as np
+import pytest
+
+from so101_nexus.config import SO101_JOINT_NAMES
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("env_id", ["MuJoCoTouch-v1", "MuJoCoPickAndPlace-v2"])
+def test_worker_reuses_native_simulator_and_preserves_seeded_resets(monkeypatch, tmp_path, env_id):
+    import gymnasium as gym
+
+    from so101_nexus.teleop.recorder import RecordingState, RecordingWorker, recording_thread
+
+    environments = []
+    owner_threads = []
+    make = gym.make
+
+    def track_make(*args, **kwargs):
+        environment = make(*args, **kwargs)
+        environments.append(environment)
+        owner_threads.append(threading.get_ident())
+        return environment
+
+    monkeypatch.setattr(gym, "make", track_make)
+    state = RecordingState(num_episodes=2)
+    kwargs = {
+        "state": state,
+        "env_id": env_id,
+        "leader": _Leader(),
+        "joint_names": SO101_JOINT_NAMES,
+        "fps": 30,
+        "max_steps": 3,
+        "countdown": 0,
+        "wrist_roll_offset_deg": -90.0,
+        "wrist_wh": (160, 120),
+        "overhead_wh": (160, 120),
+        "follower_calibration_dir": tmp_path / "cal",
+        "follower_robot_id": "worker_compat",
+        "seed": 80,
+    }
+    worker = RecordingWorker()
+    try:
+        worker.submit(**kwargs)
+        assert worker.wait(30)
+        assert state.error is None, state.error
+        initial = state.initial_sim_state.copy()
+        cameras = [image.copy() for image in state.episode_wrist_images]
+        states = np.stack(state.episode_states)
+        env_states = np.stack(state.episode_env_states)
+        worker.submit(**kwargs)
+        assert worker.wait(30)
+        assert state.error is None, state.error
+        assert state.episode_seed == 80
+        assert state.initial_sim_state == initial
+        np.testing.assert_array_equal(state.episode_states, states)
+        np.testing.assert_array_equal(state.episode_env_states, env_states)
+        np.testing.assert_array_equal(state.episode_wrist_images, cameras)
+        state.episodes_completed = 1
+        worker.submit(**kwargs)
+        assert worker.wait(30)
+        assert state.error is None, state.error
+        assert state.episode_seed == 81
+        assert len(environments) == 1
+        next_initial = state.initial_sim_state.copy()
+        assert owner_threads[0] != threading.get_ident()
+    finally:
+        worker.close()
+
+    fresh = RecordingState(num_episodes=1)
+    recording_thread(**{**kwargs, "state": fresh, "seed": 81})
+    assert fresh.error is None, fresh.error
+    assert fresh.initial_sim_state == next_initial
+    assert len(environments) == 2
+
+
+class _Leader:
+    def get_action(self):
+        return {f"{name}.pos": 50.0 if name == "gripper" else 0.0 for name in SO101_JOINT_NAMES}

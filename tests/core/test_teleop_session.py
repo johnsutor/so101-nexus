@@ -90,12 +90,32 @@ def test_review_video_streams_composition_into_writer(monkeypatch, review_writer
     path = make_review_video({"Side": [image]}, 30)
     assert len(review_writer["frames"]) == 3
     assert review_writer["macro_block_size"] == 1
+    assert review_writer["codec"] == "libx264"
+    assert review_writer["ffmpeg_params"] == ["-preset", "ultrafast"]
     Path(path).unlink()
 
 
 @pytest.mark.parametrize("images", [[], {"Wrist": [], "Overhead": [], "Side": []}])
 def test_review_video_without_camera_frames_is_empty(images):
     assert make_review_video(images, 30) is None
+
+
+def test_review_camera_grid_renders_labels_once(monkeypatch):
+    from so101_nexus.teleop.session import _review_camera_grid
+
+    labels = []
+
+    def add_label(image, text):
+        labels.append(text)
+        return image
+
+    monkeypatch.setattr("so101_nexus.visualization.add_label", add_label)
+    image = np.zeros((8, 10, 3), dtype=np.uint8)
+    frames = list(_review_camera_grid({"Wrist": [image], "Side": [image] * 4}))
+    assert len(frames) == 4
+    assert labels.count("Wrist") == labels.count("Side") == 1
+    assert labels.count("Wrist (unavailable)") == 1
+    assert len(labels) <= 4
 
 
 def test_review_video_preserves_single_camera_compatibility(monkeypatch):

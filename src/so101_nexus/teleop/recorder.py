@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+import queue
 import threading
 import time
 from collections.abc import Mapping
@@ -19,11 +20,13 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 import numpy as np
 
 if TYPE_CHECKING:
+    from so101_nexus.lerobot_adapter.sim_follower import SimSOFollower
     from so101_nexus.teleop.config_customization import ConfigFactory, TeleopConfigOverrides
     from so101_nexus.teleop.leader import LeaderProtocol
 
 
 PREVIEW_MAX_DIM = 320
+PREVIEW_INTERVAL_SECONDS = 0.1
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +109,7 @@ class RecordingState:
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
     live_preview: np.ndarray | None = None
+    _next_preview_at: float | None = field(default=None, init=False, repr=False)
     terminated_at_frame: int | None = None
 
     episodes_completed: int = 0
@@ -131,6 +135,7 @@ class RecordingState:
         self.live_frame = None
         self.live_overhead_frame = None
         self.live_preview = None
+        self._next_preview_at = None
         self.terminated_at_frame = None
         self.recording_finished = False
         self.error = None
@@ -212,7 +217,14 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
     side_image = obs.get("side") if isinstance(obs, Mapping) else None
     if side_image is not None:
         state.episode_side_images.append(side_image)
-    state.live_preview = _make_preview_frame(wrist_image, overhead_image, side_image)
+    if wrist_image is None and overhead_image is None and side_image is None:
+        state.live_preview = None
+        state._next_preview_at = None
+        return
+    now = time.monotonic()
+    if state._next_preview_at is None or now >= state._next_preview_at:
+        state.live_preview = _make_preview_frame(wrist_image, overhead_image, side_image)
+        state._next_preview_at = now + PREVIEW_INTERVAL_SECONDS
 
 
 def _seed_follower_from_leader(
@@ -255,6 +267,119 @@ def _should_stop_after_termination(
     return frames_since_success >= hold_frames
 
 
+class _FollowerSession:
+    def __init__(self) -> None:
+        self.follower: SimSOFollower | None = None
+        self.config_key: tuple[object, ...] | None = None
+
+    def acquire(
+        self,
+        leader: LeaderProtocol,
+        wrist_roll_offset_deg: float,
+        episode_seed: int,
+        **config_kwargs: Any,
+    ) -> SimSOFollower:
+        from so101_nexus.lerobot_adapter.sim_follower import SimSOFollower
+        from so101_nexus.teleop.session import (
+            build_sim_follower_config,
+            prepare_follower_calibration,
+        )
+
+        config_key = tuple(config_kwargs.items())
+        # Factories and profiles can change between episodes, so resolve them afresh.
+        if (
+            self.config_key != config_key
+            or config_kwargs["profile_path"] is not None
+            or config_kwargs["factory"] is not None
+        ):
+            self.close()
+        if self.follower is None:
+            prepare_follower_calibration(
+                calibration_dir=config_kwargs["calibration_dir"],
+                robot_id=config_kwargs["robot_id"],
+            )
+            config = build_sim_follower_config(**config_kwargs, seed=episode_seed)
+            self.follower = SimSOFollower(config)
+            _seed_follower_from_leader(self.follower, leader, wrist_roll_offset_deg)
+            self.follower.connect()
+            self.config_key = config_key
+        else:
+            _seed_follower_from_leader(self.follower, leader, wrist_roll_offset_deg)
+            self.follower.reset(seed=episode_seed)
+        return self.follower
+
+    def close(self) -> None:
+        if self.follower is not None:
+            with contextlib.suppress(Exception):
+                self.follower.disconnect()
+            self.follower = None
+        self.config_key = None
+
+
+class RecordingWorker:
+    """Keep simulator rendering and episode resets on one session-owned thread."""
+
+    def __init__(self) -> None:
+        self._requests: queue.Queue[dict[str, Any] | None] = queue.Queue()
+        self._lock = threading.Lock()
+        self._closed = False
+        self._state: RecordingState | None = None
+        self._done = threading.Event()
+        self._done.set()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def submit(self, **kwargs: Any) -> None:
+        """Request an episode, rejecting overlapping recordings or a closed worker."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("recording worker is closed")
+            if not self._done.is_set():
+                raise RuntimeError("an episode is already recording")
+            self._state = kwargs["state"]
+            self._state.should_stop = False
+            self._state.recording_finished = False
+            self._done.clear()
+            self._requests.put(kwargs)
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait until the current episode has completed."""
+        return self._done.wait(timeout)
+
+    def close(self) -> None:
+        """Cancel recording and disconnect the simulator on its owning thread."""
+        with self._lock:
+            if not self._closed:
+                self._closed = True
+                if self._state is not None:
+                    self._state.should_stop = True
+                self._requests.put(None)
+        self._thread.join()
+
+    def _run(self) -> None:
+        follower_session = _FollowerSession()
+        try:
+            while (kwargs := self._requests.get()) is not None:
+                try:
+                    recording_thread(**kwargs, _follower_session=follower_session)
+                finally:
+                    self._done.set()
+        finally:
+            follower_session.close()
+
+
+def _run_countdown(state: RecordingState, countdown: int) -> bool:
+    for value in range(countdown, 0, -1):
+        state.countdown_value = value
+        # Short waits keep session shutdown responsive during a countdown.
+        for _ in range(10):
+            if state.should_stop:
+                return False
+            time.sleep(0.1)
+    state.countdown_value = 0
+    return not state.should_stop
+
+
 def recording_thread(
     state: RecordingState,
     env_id: str,
@@ -273,28 +398,21 @@ def recording_thread(
     env_config_factory: ConfigFactory | None = None,
     success_hold_seconds: float = 0.5,
     seed: int = 0,
+    _follower_session: _FollowerSession | None = None,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
-    from so101_nexus.lerobot_adapter.sim_follower import SimSOFollower
     from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
-    from so101_nexus.teleop.session import (
-        build_sim_follower_config,
-        prepare_follower_calibration,
-    )
 
-    for i in range(countdown, 0, -1):
-        state.countdown_value = i
-        time.sleep(1.0)
-    state.countdown_value = 0
-
-    follower = None
-    state.error = None
+    follower_session = _follower_session or _FollowerSession()
+    state.clear_episode()
     try:
-        prepare_follower_calibration(
-            calibration_dir=follower_calibration_dir,
-            robot_id=follower_robot_id,
-        )
-        follower_config = build_sim_follower_config(
+        if not _run_countdown(state, countdown):
+            return
+        episode_seed = seed + state.episodes_completed
+        follower = follower_session.acquire(
+            leader,
+            wrist_roll_offset_deg,
+            episode_seed,
             env_id=env_id,
             robot_id=follower_robot_id,
             wrist_wh=wrist_wh,
@@ -304,13 +422,8 @@ def recording_thread(
             overrides=customization_overrides,
             profile_path=env_config_profile,
             factory=env_config_factory,
-            seed=(episode_seed := seed + state.episodes_completed),
         )
-        follower = SimSOFollower(follower_config)
-        _seed_follower_from_leader(follower, leader, wrist_roll_offset_deg)
-        follower.connect()
 
-        state.clear_episode()
         state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
         env = follower._env
         if env is None:
@@ -352,10 +465,11 @@ def recording_thread(
         state.episode_duration = time.monotonic() - start_time
     except Exception as exc:
         state.error = f"{type(exc).__name__}: {exc}"
+        follower_session.close()
     finally:
-        if follower is not None:
-            with contextlib.suppress(Exception):
-                follower.disconnect()
+        if _follower_session is None:
+            follower_session.close()
+        state.countdown_value = 0
         state.is_recording = False
         state.should_stop = False
         state.recording_finished = True

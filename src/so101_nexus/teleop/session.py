@@ -466,16 +466,20 @@ def _review_camera_grid(streams: Mapping[str, list[np.ndarray]]) -> Iterator[np.
     grid_w = columns * (width + gutter) - gutter
     # H.264 needs even dimensions; pad rather than rescale camera pixels.
     shape = (grid_h + grid_h % 2, grid_w + grid_w % 2, 3)
+    labels = {
+        text: add_label(np.zeros((header, width, 3), dtype=np.uint8), text)
+        for label, frames in cameras
+        for text in (label, f"{label} (unavailable)")
+    }
     for index in range(max(len(frames) for _, frames in cameras)):
         image = np.zeros(shape, dtype=np.uint8)
         for tile, (label, frames) in enumerate(cameras):
             row, column = divmod(tile, columns)
             y, x = row * (height + header + gutter), column * (width + gutter)
             available = index < len(frames)
-            image[y : y + header, x : x + width] = add_label(
-                image[y : y + header, x : x + width],
-                label if available else f"{label} (unavailable)",
-            )
+            image[y : y + header, x : x + width] = labels[
+                label if available else f"{label} (unavailable)"
+            ]
             if available:
                 frame = frames[index]
                 h, w = frame.shape[:2]
@@ -495,7 +499,13 @@ def make_review_video(
     if isinstance(images, Mapping):
         import imageio.v2 as iio
 
-        with iio.get_writer(path, fps=fps, macro_block_size=1) as writer:
+        with iio.get_writer(
+            path,
+            fps=fps,
+            macro_block_size=1,
+            codec="libx264",
+            ffmpeg_params=["-preset", "ultrafast"],
+        ) as writer:
             for frame in _review_camera_grid(images):
                 cast("Format.Writer", writer).append_data(frame)
     else:

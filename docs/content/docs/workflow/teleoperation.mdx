@@ -47,6 +47,10 @@ you can fix the port in another terminal and click `Retry Initialization`.
 5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
 6. **Push.** When all episodes are done, check **Hub Repo ID** and push to the Hugging Face Hub.
 
+The simulator stays loaded between episodes and resets with the current leader pose
+and episode seed. Sessions with a config profile or factory rebuild the simulator
+each episode so configuration changes still take effect.
+
 The Complete step shows the original local recording directory and an editable **Hub Repo ID**.
 You can change the upload destination to `your-username/dataset-name`, including after an upload failure.
 The local recording stays in its original directory.
@@ -71,7 +75,8 @@ You do not need to record the episodes again.
 ## Cameras and recorded fields
 
 Wrist, overhead, and side cameras are captured on every step and selected for the dataset by
-default. Wrist and overhead observations are wired automatically, and their width and height
+default. Live previews update at up to 10 Hz; recorded frames use the configured FPS.
+Wrist and overhead observations are wired automatically, and their width and height
 sliders set the image resolutions. The side view uses the overhead resolution and the
 simulator's render camera. Its azimuth is randomized between 105 and 115 degrees, and its
 elevation between -27 and -23 degrees, on each seeded reset. A config factory can override
