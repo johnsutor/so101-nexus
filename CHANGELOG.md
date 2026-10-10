@@ -11,6 +11,10 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Optional mjbatch CPU backend with eight lazy Gymnasium vector registrations,
+  shared MuJoCo task semantics, configurable worker counts, and LeRobot EnvHub support.
+  PickAndPlace v2 retains scalar substep physics for continuous support evaluation.
+
 - Teleoperation episode review includes synchronized, labeled wrist, overhead,
   and side camera views when available.
 - Teleoperation allows changes to the Hub dataset namespace and name on the

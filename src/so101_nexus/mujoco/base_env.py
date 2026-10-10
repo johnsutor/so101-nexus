@@ -172,6 +172,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
     model: mujoco.MjModel
     data: mujoco.MjData
     config: EnvironmentConfig
+    task_description: str
     _obj_geom_ids: np.ndarray
     _obj_geom_mask: np.ndarray
     # Options dict of the current episode's reset(), for _task_reset to read.
@@ -1020,15 +1021,15 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         self, action: np.ndarray
     ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
         """Apply action, advance physics, and return (obs, reward, terminated, truncated, info)."""
-        # Penalty norms use the public action as received here, before clipping,
-        # following the cross-backend convention so the penalty is comparable
-        # across backends. Clipping in _action_to_ctrl only affects the control
-        # sent to physics.
-        public_action = np.asarray(action, dtype=np.float64)
         self.data.ctrl[self._actuator_ids] = self._action_to_ctrl(action)
-
         self._advance_physics()
+        return self._finish_step(action)
 
+    def _finish_step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray | dict[str, np.ndarray], float, bool, bool, dict]:
+        """Evaluate the completed control interval using the original public action."""
+        public_action = np.asarray(action, dtype=np.float64)
         obs, info = self._observe()
         info["energy_norm"] = float(np.linalg.norm(public_action))
         if self._prev_action is None:

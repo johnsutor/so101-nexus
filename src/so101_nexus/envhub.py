@@ -131,6 +131,20 @@ def make_env(
         config = _task_config(env_id, options)
     if backend == "warp":
         env = _make_warp_env(env_id, n_envs, config, options)
+    elif backend == "mjbatch":
+        make_kwargs: dict[str, Any] = {
+            "config": config,
+            "control_mode": options["control_mode"],
+            "max_episode_steps": options["episode_length"],
+            "render_mode": options["render_mode"],
+        }
+        env = gym.make_vec(
+            env_id,
+            num_envs=n_envs,
+            autoreset_mode=AutoresetMode.SAME_STEP,
+            _task_wrapper=EnvHubAdapter,
+            **{key: value for key, value in make_kwargs.items() if value is not None},
+        )
     else:
         env = _make_mujoco_env(env_id, n_envs, use_async_envs, config, options)
     return {env_id: {0: env}}
@@ -184,7 +198,7 @@ def _task_config(env_id: str, options: dict[str, Any]) -> EnvironmentConfig | No
 def _default_config_cls(env_id: str) -> type[EnvironmentConfig]:
     """Return the config class of the env class registered under ``env_id``."""
     spec = gym.spec(env_id)
-    target = str(spec.entry_point or spec.vector_entry_point)
+    target = str(spec.kwargs.get("task_entry_point") or spec.entry_point or spec.vector_entry_point)
     module_path, _, attribute = target.partition(":")
     return getattr(importlib.import_module(module_path), attribute).default_config_cls
 

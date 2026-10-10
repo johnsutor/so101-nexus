@@ -16,6 +16,7 @@ import mujoco
 import numpy as np
 import pytest
 
+import so101_nexus.mjbatch
 import so101_nexus.mujoco  # registers MuJoCo*-v1
 import so101_nexus.warp  # noqa: F401  (registers Warp*-v1)
 from so101_nexus import (

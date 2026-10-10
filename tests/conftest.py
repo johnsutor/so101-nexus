@@ -17,7 +17,11 @@ def env_factory():
 
         def make(backend="mujoco", task="Touch", version=1, **kwargs):
             pytest.importorskip(f"so101_nexus.{backend}")
-            if backend == "warp":
+            if backend == "mjbatch":
+                pytest.importorskip("mjbatch")
+                num_envs = kwargs.pop("num_envs", 2)
+                env = gym.make_vec(f"MJBatch{task}-v{version}", num_envs=num_envs, **kwargs)
+            elif backend == "warp":
                 pytest.importorskip("mujoco_warp")
                 pytest.importorskip("torch")
                 device = kwargs.pop("device", "cpu")

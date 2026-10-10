@@ -7,6 +7,7 @@ tags:
   - envhub
   - gymnasium
   - mujoco
+  - mjbatch
   - so-101
   - so-100
   - simulation
@@ -14,9 +15,9 @@ tags:
 
 # SO101-Nexus environments
 
-Twelve SO-101 manipulation environments, loadable through
+SO-101 manipulation environments, loadable through
 [LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub). Tasks run on a
-CPU MuJoCo backend or a GPU-batched MuJoCo Warp backend, from
+CPU MuJoCo, CPU-batched mjbatch, or GPU-batched MuJoCo Warp backend, from
 [so101-nexus](https://github.com/johnsutor/so101-nexus).
 
 ```python
@@ -45,6 +46,10 @@ The environment code is the installed library, not this repository: these files
 are thin shims over `so101_nexus.envhub`, so the physics, rewards, and
 observation layouts are versioned and tested with the package.
 
+For optional backend installation, see the library's [Installation guide](https://so101-nexus.com/docs/getting-started/installation).
+The `MJBatch*.py` entry points require a library release containing the mjbatch backend.
+For its physics and rendering limits, see [Backends](https://so101-nexus.com/docs/concepts/backends#cpu-batching-with-mjbatch).
+
 ## Environments
 
 | File                          | Task                                | Steps | State dim | Backend |
@@ -58,13 +63,21 @@ observation layouts are versioned and tested with the package.
 | `envs/MuJoCoPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | MuJoCo |
 | `envs/MuJoCoStackCube-v1.py`  | Stack one cube on another           | 1024  | 43        | MuJoCo  |
 | `envs/WarpTouch-v1.py`        | Touch the target object             | 512   | 31        | Warp    |
+| `envs/MJBatchTouch-v1.py`        | Touch the target object             | 512   | 31        | MJBatch    |
 | `envs/WarpLookAt-v1.py`       | Point the wrist camera at an object | 256   | 23        | Warp    |
+| `envs/MJBatchLookAt-v1.py`       | Point the wrist camera at an object | 256   | 23        | MJBatch    |
 | `envs/WarpMove-v1.py`         | Move the end-effector a set offset  | 256   | 22        | Warp    |
+| `envs/MJBatchMove-v1.py`         | Move the end-effector a set offset  | 256   | 22        | MJBatch    |
 | `envs/WarpPickLift-v1.py`     | Grasp and lift an object            | 1024  | 31        | Warp    |
+| `envs/MJBatchPickLift-v1.py`     | Grasp and lift an object            | 1024  | 31        | MJBatch    |
 | `envs/WarpPickReturn-v1.py`   | Pick and return the arm to rest     | 1024  | 42        | Warp    |
+| `envs/MJBatchPickReturn-v1.py`   | Pick and return the arm to rest     | 1024  | 42        | MJBatch    |
 | `envs/WarpPickAndPlace-v1.py` | Place an object on a goal disc      | 1024  | 43        | Warp    |
+| `envs/MJBatchPickAndPlace-v1.py` | Place an object on a goal disc      | 1024  | 43        | MJBatch    |
 | `envs/WarpPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | Warp |
+| `envs/MJBatchPickAndPlace-v2.py` | Center and release an object on the disc | 1024 | 43 | MJBatch |
 | `envs/WarpStackCube-v1.py`    | Stack one cube on another           | 1024  | 43        | Warp    |
+| `envs/MJBatchStackCube-v1.py`    | Stack one cube on another           | 1024  | 43        | MJBatch    |
 
 The v2 entry points require a library build that includes `PickAndPlaceV2Config`.
 The PickReturn entry points require a library build that includes `PickReturnConfig`.
