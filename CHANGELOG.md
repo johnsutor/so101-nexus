@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-10
+
 ### Added
 
 - `SimSOFollower.reset()` resets a connected simulator with a new episode seed
@@ -772,7 +774,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...HEAD
+[0.9.1]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...0.8.0
