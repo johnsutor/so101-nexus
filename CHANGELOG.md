@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-10
+
 ### Added
 
 - Optional mjbatch CPU backend with eight lazy Gymnasium vector registrations,
@@ -757,7 +759,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/johnsutor/so101-nexus/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/johnsutor/so101-nexus/compare/0.6.0...0.7.0
