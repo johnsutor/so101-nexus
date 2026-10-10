@@ -898,6 +898,8 @@ def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
     assert seen["fps"] == 30
     assert seen["robot_type"] == "so101"
     assert seen["features"] == {"action": {}}
+    assert seen["image_writer_threads"] == 4
+    assert seen["vcodec"] == "h264"
 
 
 def test_write_env_config_meta_writes_reloadable_profile(tmp_path) -> None:

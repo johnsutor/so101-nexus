@@ -194,6 +194,8 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         robot_type="sim_so_follower",
         root=dataset_root,
         use_videos=True,
+        image_writer_threads=4,
+        vcodec="h264",
     )
 
     for i in range(len(state.episode_actions)):
@@ -235,6 +237,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     assert reloaded.fps == 30
     assert len(reloaded) == 5
     assert list(reloaded.meta.tasks.index) == ["reach the target"]
+    _assert_camera_videos(reloaded, (WRIST_KEY, OVERHEAD_KEY), len(state.episode_actions))
 
     sample = reloaded[0]
     assert sample["action"].shape == (len(SO101_JOINT_NAMES),)
@@ -267,6 +270,18 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         state.episode_reward_components[0]["reaching"],
         atol=1e-5,
     )
+
+
+def _assert_camera_videos(dataset, keys, num_frames):
+    import av
+
+    video_paths = list(dataset.root.rglob("*.mp4"))
+    assert len(video_paths) == len(keys)
+    for path in video_paths:
+        with av.open(str(path)) as video:
+            assert sum(1 for _ in video.decode(video=0)) == num_frames
+    for key in keys:
+        assert {"min", "max", "mean", "std"}.issubset(dataset.meta.stats[key])
 
 
 @pytest.mark.slow

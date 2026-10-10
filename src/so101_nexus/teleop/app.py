@@ -364,6 +364,8 @@ def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
             fps=fps,
             robot_type=robot_type,
             features=features,
+            image_writer_threads=4,
+            vcodec="h264",
         )
     except Exception as exc:
         raise RuntimeError(f"Failed to create dataset: {exc}") from exc

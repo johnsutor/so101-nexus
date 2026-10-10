@@ -11,6 +11,8 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Teleoperation episode processing uses parallel image writing and H.264 dataset
+  videos, with cached labels and faster encoding for temporary review videos.
 - Teleoperation live previews include the side camera alongside wrist and overhead views.
 
 ## [0.9.0] - 2026-10-10
