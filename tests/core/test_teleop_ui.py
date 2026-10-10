@@ -52,7 +52,7 @@ def test_app_builds_with_walkthrough() -> None:
 
 @pytest.mark.usefixtures("_require_gradio")
 def test_record_step_has_combined_camera_preview() -> None:
-    """Verify the Record step contains the combined wrist/overhead preview image."""
+    """Verify the Record step contains the combined three-camera preview image."""
     import gradio as gr
 
     from so101_nexus.teleop.app import _build_record_step
@@ -69,7 +69,7 @@ def test_record_step_has_combined_camera_preview() -> None:
         ) = _build_record_step(gr)
 
     assert isinstance(preview_feed, gr.Image)
-    assert preview_feed.label == "Live Preview (wrist | overhead)"
+    assert preview_feed.label == "Live Preview (wrist | overhead | side)"
     assert isinstance(task_status, gr.Markdown)
 
 

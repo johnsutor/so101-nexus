@@ -205,6 +205,45 @@ def test_publish_camera_frames_extracts_follower_camera_keys() -> None:
     assert state.episode_wrist_images == [wrist]
     assert state.episode_overhead_images == [overhead]
     assert state.live_preview is not None
+    assert state.live_preview.shape == (8, 26, 3)
+
+
+@pytest.mark.parametrize("side_only", [False, True])
+def test_publish_camera_frames_includes_side_in_live_preview(side_only: bool) -> None:
+    state = RecordingState()
+    side = np.full((6, 12, 3), 32, dtype=np.uint8)
+    obs = {"side": side}
+    if not side_only:
+        obs.update(
+            wrist=np.full((8, 10, 3), 128, dtype=np.uint8),
+            overhead=np.full((6, 12, 3), 64, dtype=np.uint8),
+        )
+
+    _publish_camera_frames(state, obs)
+
+    assert state.episode_side_images == [side]
+    preview = state.live_preview
+    assert preview is not None
+    if side_only:
+        np.testing.assert_array_equal(preview, side)
+    else:
+        assert preview.shape == (8, 42, 3)
+        np.testing.assert_array_equal(preview[:, :10], obs["wrist"])
+        np.testing.assert_array_equal(preview[:6, 14:26], obs["overhead"])
+        np.testing.assert_array_equal(preview[:6, 30:], side)
+        assert not preview[6:, 30:].any()
+        assert not preview[:, 10:14].any()
+        assert not preview[:, 26:30].any()
+
+
+def test_publish_camera_frames_downscales_side_preview_only() -> None:
+    state = RecordingState()
+    side = np.full((480, 640, 3), 32, dtype=np.uint8)
+
+    _publish_camera_frames(state, {"side": side})
+
+    assert state.episode_side_images[0] is side
+    np.testing.assert_array_equal(state.live_preview, np.full((240, 320, 3), 32, dtype=np.uint8))
 
 
 def test_recording_thread_stops_after_terminated_plus_hold(monkeypatch) -> None:

@@ -9,6 +9,10 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Fixed
+
+- Teleoperation live previews include the side camera alongside wrist and overhead views.
+
 ## [0.9.0] - 2026-10-10
 
 ### Added
