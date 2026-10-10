@@ -1502,7 +1502,7 @@ def _build_record_step(gr):
     start_btn = gr.Button("Start Recording", variant="primary")
     countdown_area = gr.Markdown("", visible=False)
     preview_feed = gr.Image(
-        label="Live Preview (wrist | overhead)",
+        label="Live Preview (wrist | overhead | side)",
         height=320,
         visible=False,
         show_label=True,

@@ -152,9 +152,10 @@ def compute_delta_actions(actions: list[np.ndarray]) -> list[np.ndarray]:
 def _make_preview_frame(
     wrist: np.ndarray | None,
     overhead: np.ndarray | None,
+    side: np.ndarray | None = None,
     max_dim: int = PREVIEW_MAX_DIM,
 ) -> np.ndarray | None:
-    """Combine wrist and overhead frames into one downscaled side-by-side preview."""
+    """Combine available camera frames into one downscaled side-by-side preview."""
     import cv2
 
     def _fit(img: np.ndarray) -> np.ndarray:
@@ -169,10 +170,9 @@ def _make_preview_frame(
         )
 
     tiles: list[np.ndarray] = []
-    if wrist is not None:
-        tiles.append(_fit(wrist))
-    if overhead is not None:
-        tiles.append(_fit(overhead))
+    for image in (wrist, overhead, side):
+        if image is not None:
+            tiles.append(_fit(image))
     if not tiles:
         return None
 
@@ -212,7 +212,7 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
     side_image = obs.get("side") if isinstance(obs, Mapping) else None
     if side_image is not None:
         state.episode_side_images.append(side_image)
-    state.live_preview = _make_preview_frame(wrist_image, overhead_image)
+    state.live_preview = _make_preview_frame(wrist_image, overhead_image, side_image)
 
 
 def _seed_follower_from_leader(
