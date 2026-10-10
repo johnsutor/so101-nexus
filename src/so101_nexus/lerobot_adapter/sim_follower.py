@@ -137,6 +137,7 @@ class SimSOFollower(Robot):
         self._gripper_limits_rad: GripperLimitsRad | None = None
         self._last_step_info: StepInfo | None = None
         self._pending_leader_init_action: dict[str, Any] | None = None
+        self._camera_frames: dict[str, np.ndarray] = {}
 
     @property
     def _motors_ft(self) -> dict[str, type]:
@@ -204,21 +205,12 @@ class SimSOFollower(Robot):
                 self._env, ee_control=self._is_ee_control
             )
             if self._pending_leader_init_action is not None:
-                # The first reset exposes gripper limits; the second reset
-                # lets the env settle with the arm held at the leader pose.
-                init_qpos = leader_action_to_sim_qpos(
-                    self._pending_leader_init_action,
-                    motors=self.motors,
-                    calibration=self.calibration,
-                    gripper_limits_rad=self._gripper_limits_rad,
-                )
-                self._env.reset(seed=self.config.seed, options={"init_qpos": init_qpos})
-                self._pending_leader_init_action = None
+                self._reset_env(seed=self.config.seed)
             self._last_step_info = None
 
             for camera in self.cameras.values():
                 camera.bind_env(self._env)
-                camera.connect()
+                camera.connect(warmup=False)
 
             self.configure()
             logger.info("%s connected.", self)
@@ -244,8 +236,51 @@ class SimSOFollower(Robot):
         self._pending_leader_init_action = None if action is None else dict(action)
 
     @check_if_not_connected
+    def reset(self, seed: int | None = None) -> None:
+        """Reset the connected simulator, applying any pending leader pose.
+
+        Parameters
+        ----------
+        seed : int or None
+            Episode seed, or None to continue the simulator's seeded RNG stream.
+        """
+        self._reset_env(seed=seed)
+
+    def _reset_env(self, *, seed: int | None) -> None:
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
+        options = None
+        if self._pending_leader_init_action is not None:
+            options = {
+                "init_qpos": leader_action_to_sim_qpos(
+                    self._pending_leader_init_action,
+                    motors=self.motors,
+                    calibration=self.calibration,
+                    gripper_limits_rad=self._require_gripper_limits(),
+                )
+            }
+        self._camera_frames.clear()
+        self._last_step_info = None
+        self._env.reset(seed=seed, options=options)
+        self._pending_leader_init_action = None
+
+    def _cache_camera_frames(self, obs: object) -> None:
+        self._camera_frames = {
+            name: camera._frame_from_observation(obs).copy()
+            for name, camera in self.cameras.items()
+            if camera.config.source != "render" and camera._extract_from_obs(obs) is not None
+        }
+
+    @check_if_not_connected
     def get_observation(self) -> RobotObservation:
-        """Read simulator qpos and camera frames in LeRobot observation format."""
+        """Read simulator qpos and camera frames in LeRobot observation format.
+
+        The first read after step consumes its camera snapshot. Other reads
+        render fresh frames, including after reset when renderer state can still
+        settle. State channels always read the current physics state. Advance the
+        privately owned simulator through this adapter so its camera snapshots
+        stay aligned with the recording state.
+        """
         if self._env is None:
             raise RuntimeError("SimSOFollower is not connected to an environment")
         gripper_limits_rad = self._require_gripper_limits()
@@ -267,19 +302,27 @@ class SimSOFollower(Robot):
         if privileged_state is not None:
             obs_dict["environment_state"] = privileged_state
 
+        camera_frames, self._camera_frames = self._camera_frames, {}
         get_obs = getattr(self._env.unwrapped, "_get_obs", None)
         camera_obs = (
             get_obs()
             if callable(get_obs)
-            and any(camera.config.source != "render" for camera in self.cameras.values())
+            and any(
+                camera.config.source != "render" and name not in camera_frames
+                for name, camera in self.cameras.items()
+            )
             else None
         )
         for camera_name, camera in self.cameras.items():
             start = time.perf_counter()
             obs_dict[camera_name] = (
-                camera._frame_from_observation(camera_obs)
-                if camera_obs is not None and camera.config.source != "render"
-                else camera.read_latest()
+                camera_frames[camera_name]
+                if camera_name in camera_frames
+                else (
+                    camera._frame_from_observation(camera_obs)
+                    if camera_obs is not None and camera.config.source != "render"
+                    else camera.read_latest()
+                ).copy()
             )
             logger.debug(
                 "%s read %s: %.1fms",
@@ -382,7 +425,9 @@ class SimSOFollower(Robot):
         return {f"{motor}.pos": value for motor, value in sent_values.items()}
 
     def _step_env(self, env: gym.Env, action: np.ndarray) -> None:
-        _obs, reward, terminated, truncated, info = env.step(action)
+        self._camera_frames.clear()
+        obs, reward, terminated, truncated, info = env.step(action)
+        self._cache_camera_frames(obs)
         self._last_step_info = StepInfo(
             terminated=_coerce_termination_flag(terminated),
             truncated=_coerce_termination_flag(truncated),
@@ -466,6 +511,7 @@ class SimSOFollower(Robot):
         self._gripper_limits_rad = None
         self._last_step_info = None
         self._pending_leader_init_action = None
+        self._camera_frames.clear()
         if env is not None:
             env.close()
         logger.info("%s disconnected.", self)

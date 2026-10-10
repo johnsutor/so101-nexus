@@ -9,8 +9,15 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- `SimSOFollower.reset()` resets a connected simulator with a new episode seed
+  and a pending leader pose.
+
 ### Fixed
 
+- Teleoperation reuses simulator observations and keeps the simulator loaded between
+  episodes, while limiting live preview composition to the UI refresh rate.
 - Teleoperation episode processing uses parallel image writing and H.264 dataset
   videos, with cached labels and faster encoding for temporary review videos.
 - Teleoperation live previews include the side camera alongside wrist and overhead views.

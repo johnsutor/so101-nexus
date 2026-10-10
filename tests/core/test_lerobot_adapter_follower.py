@@ -426,6 +426,11 @@ def test_get_observation_renders_camera_sources_once(
         assert len(render_calls) == int(include_render)
         if include_render:
             assert int(obs["side"].mean()) == 32
+        robot.send_action({f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES})
+        obs_after = robot.get_observation()
+        assert len(calls) == 2
+        np.testing.assert_array_equal(obs_after["wrist"], obs_after["overhead"])
+        assert len(render_calls) == 2 * int(include_render)
     finally:
         robot.disconnect()
 
@@ -507,3 +512,128 @@ def test_disconnect_closes_env_and_cameras(tmp_path: Path, fake_env_id: str) -> 
 
     assert env.closed
     assert not robot.is_connected
+
+
+def test_observation_reuses_step_frames_without_aliasing(
+    tmp_path: Path, fake_env_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        frame = np.zeros((6, 8, 3), dtype=np.uint8)
+        calls = []
+
+        def get_obs():
+            calls.append(None)
+            frame.fill(env.step_calls)
+            return {"state": env.qpos.copy(), "wrist_camera": frame}
+
+        monkeypatch.setattr(env, "_get_obs", get_obs)
+        before = robot.get_observation()
+        calls.clear()
+        action = {f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES}
+        action["shoulder_pan.pos"] = 90.0
+        robot.send_action(action)
+        after = robot.get_observation()
+        assert len(calls) == 1
+        assert before["shoulder_pan.pos"] != after["shoulder_pan.pos"]
+        assert int(after["wrist"].mean()) == 1
+        robot.send_action(action)
+        assert int(after["wrist"].mean()) == 1
+        robot.get_observation()
+        robot.get_observation()
+        assert len(calls) == 3
+    finally:
+        robot.disconnect()
+
+
+def test_observation_falls_back_when_step_omits_camera(
+    tmp_path: Path, fake_env_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        robot.send_action({f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES})
+        original_step = env.step
+
+        def step(action):
+            _, reward, terminated, truncated, info = original_step(action)
+            return {"state": env.qpos.copy()}, reward, terminated, truncated, info
+
+        monkeypatch.setattr(env, "step", step)
+        robot.send_action({f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES})
+        assert robot.get_observation()["wrist"].shape == (6, 8, 3)
+    finally:
+        robot.disconnect()
+
+
+@pytest.mark.parametrize("seed", [None, 456])
+def test_reset_reuses_env_and_applies_pending_pose(
+    tmp_path: Path, fake_env_id: str, seed: int | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, seed=123))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        action = {f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES}
+        robot.send_action(action)
+        action["shoulder_pan.pos"] = 90.0
+        robot.set_initial_leader_action(action)
+        robot.reset(seed=seed)
+        assert robot._env.unwrapped is env
+        assert env.reset_calls == 2
+        assert env.reset_call_seeds == [123, seed]
+        assert robot.last_step_info() is None
+        assert robot._pending_leader_init_action is None
+        assert env.reset_calls_options[-1] is not None
+        calls = []
+        original_get_obs = env._get_obs
+
+        def get_obs():
+            calls.append(None)
+            obs = original_get_obs()
+            obs["wrist_camera"].fill(99)
+            return obs
+
+        monkeypatch.setattr(env, "_get_obs", get_obs)
+        obs = robot.get_observation()
+        assert len(calls) == 1
+        assert int(obs["wrist"].mean()) == 99
+        assert obs["shoulder_pan.pos"] == pytest.approx(90.0, abs=0.2)
+        assert obs["wrist"].shape == (6, 8, 3)
+        monkeypatch.undo()
+        robot.reset(seed=seed)
+        assert env.reset_calls_options[-1] is None
+    finally:
+        robot.disconnect()
+
+
+def test_cached_cameras_do_not_cache_privileged_state(
+    tmp_path: Path, fake_env_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        env.config = types.SimpleNamespace(observations=[types.SimpleNamespace(size=1)])
+        privileged = np.array([1.0], dtype=np.float32)
+        monkeypatch.setattr(env, "_compute_obs_components", privileged.copy, raising=False)
+        robot.send_action({f"{name}.pos": 0.0 for name in SO101_JOINT_NAMES})
+        privileged[0] = 2.0
+        obs = robot.get_observation()
+        np.testing.assert_array_equal(obs["environment_state"], [2.0])
+        privileged[0] = 3.0
+        np.testing.assert_array_equal(obs["environment_state"], [2.0])
+        np.testing.assert_array_equal(robot.get_observation()["environment_state"], [3.0])
+    finally:
+        robot.disconnect()

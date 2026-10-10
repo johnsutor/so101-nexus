@@ -50,9 +50,10 @@ from so101_nexus.teleop.leader import (
     import_backend_for_env_id,
 )
 from so101_nexus.teleop.recorder import (
+    PREVIEW_INTERVAL_SECONDS,
     RecordingState,
+    RecordingWorker,
     compute_delta_actions,
-    recording_thread,
 )
 from so101_nexus.teleop.session import (
     _default_repo_id,
@@ -582,6 +583,7 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
     """Reset init state and launch a fresh initialization attempt."""
     import gradio as gr
 
+    _close_recording_worker(session)
     init_state.update(
         warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
         running=True,
@@ -842,31 +844,28 @@ def _cb_start_recording(session: dict):
     import gradio as gr
 
     s = session["state"]
-    s.should_stop = False
-    s.recording_finished = False
-    threading.Thread(
-        target=recording_thread,
-        kwargs={
-            "state": s,
-            "env_id": session["env_id"],
-            "leader": session["leader"],
-            "joint_names": session["joint_names"],
-            "fps": session["fps"],
-            "max_steps": session["max_steps"],
-            "countdown": session["countdown"],
-            "wrist_roll_offset_deg": session["wrist_roll_offset_deg"],
-            "wrist_wh": session["wrist_wh"],
-            "overhead_wh": session["overhead_wh"],
-            "follower_calibration_dir": _default_follower_calibration_dir(),
-            "follower_robot_id": _FOLLOWER_ROBOT_ID,
-            "customization_overrides": session.get("env_overrides"),
-            "env_config_profile": session.get("env_config_profile"),
-            "env_config_factory": session.get("env_config_factory"),
-            "success_hold_seconds": session.get("success_hold_seconds", 0.5),
-            "seed": session.get("seed", 0),
-        },
-        daemon=True,
-    ).start()
+    worker = session.get("recording_worker")
+    if worker is None:
+        worker = session["recording_worker"] = RecordingWorker()
+    worker.submit(
+        state=s,
+        env_id=session["env_id"],
+        leader=session["leader"],
+        joint_names=session["joint_names"],
+        fps=session["fps"],
+        max_steps=session["max_steps"],
+        countdown=session["countdown"],
+        wrist_roll_offset_deg=session["wrist_roll_offset_deg"],
+        wrist_wh=session["wrist_wh"],
+        overhead_wh=session["overhead_wh"],
+        follower_calibration_dir=_default_follower_calibration_dir(),
+        follower_robot_id=_FOLLOWER_ROBOT_ID,
+        customization_overrides=session.get("env_overrides"),
+        env_config_profile=session.get("env_config_profile"),
+        env_config_factory=session.get("env_config_factory"),
+        success_hold_seconds=session.get("success_hold_seconds", 0.5),
+        seed=session.get("seed", 0),
+    )
     return (
         gr.update(value="Starting..."),
         gr.update(visible=False),
@@ -1218,10 +1217,18 @@ def _cb_prepare_push_to_hub():
     return gr.update(value="Pushing dataset to HuggingFace Hub...", visible=True)
 
 
+def _close_recording_worker(session: dict) -> None:
+    """Release simulator resources on their recording thread."""
+    worker = session.pop("recording_worker", None)
+    if worker is not None:
+        worker.close()
+
+
 def _cb_finalize_and_close(session: dict):
     """Finalize the dataset and disconnect all hardware."""
     import gradio as gr
 
+    _close_recording_worker(session)
     try:
         session["dataset"].finalize()
         _write_env_config_meta(session)
@@ -1512,7 +1519,7 @@ def _build_record_step(gr):
     )
     stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
     task_status = gr.Markdown(_TASK_PENDING_TEXT)
-    rec_timer = gr.Timer(value=0.1)
+    rec_timer = gr.Timer(value=PREVIEW_INTERVAL_SECONDS)
     return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
 
 
@@ -1947,4 +1954,10 @@ def main(
             leader_id_default=leader_id_default,
         )
 
-    app.launch(inbrowser=True)
+    try:
+        app.launch(inbrowser=True)
+    finally:
+        _close_recording_worker(session)
+        if (leader := session.get("leader")) is not None:
+            with contextlib.suppress(Exception):
+                leader.disconnect()

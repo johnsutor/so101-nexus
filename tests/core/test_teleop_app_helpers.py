@@ -320,14 +320,14 @@ def test_run_init_worker_creates_canonical_lerobot_features(monkeypatch) -> None
 def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fake_gradio) -> None:
     captured: dict[str, object] = {}
 
-    class _Thread:
-        def __init__(self, *, target, args=(), kwargs=None, daemon=False):
-            captured.update(target=target, args=args, kwargs=kwargs or {}, daemon=daemon)
+    class _Worker:
+        def __init__(self):
+            captured["created"] = captured.get("created", 0) + 1
 
-        def start(self) -> None:
-            captured["started"] = True
+        def submit(self, **kwargs):
+            captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(teleop_app.threading, "Thread", _Thread)
+    monkeypatch.setattr(teleop_app, "RecordingWorker", _Worker)
     monkeypatch.setattr(teleop_app, "_default_follower_calibration_dir", lambda: tmp_path)
 
     state = RecordingState(num_episodes=1)
@@ -347,8 +347,8 @@ def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fa
 
     teleop_app._cb_start_recording(session)
 
-    assert captured["started"] is True
-    assert captured["args"] == ()
+    teleop_app._cb_start_recording(session)
+    assert captured["created"] == 1
     kwargs = captured["kwargs"]
     assert kwargs["follower_calibration_dir"] == tmp_path
     assert kwargs["follower_robot_id"] == "teleop_sim"
@@ -1555,3 +1555,34 @@ def test_push_failed_upload_can_retry_with_corrected_namespace(fake_gradio, tmp_
     assert dataset.meta.repo_id == "alice/dataset"
     assert dataset.root == dataset.meta.root == tmp_path
     assert "https://huggingface.co/datasets/alice/dataset" in result
+
+
+@pytest.mark.parametrize("finalize_fails", [False, True])
+def test_finalize_closes_recording_worker_even_when_dataset_finalize_fails(
+    fake_gradio, finalize_fails
+):
+    events = []
+
+    class Worker:
+        def close(self):
+            events.append("close")
+
+    class Dataset:
+        def finalize(self):
+            events.append("finalize")
+            if finalize_fails:
+                raise RuntimeError("cannot save")
+
+    session = {
+        "recording_worker": Worker(),
+        "dataset": Dataset(),
+        "leader": types.SimpleNamespace(disconnect=lambda: events.append("disconnect")),
+    }
+    if finalize_fails:
+        with pytest.raises(Exception, match="cannot save"):
+            teleop_app._cb_finalize_and_close(session)
+        assert events == ["close", "finalize"]
+    else:
+        teleop_app._cb_finalize_and_close(session)
+        assert events == ["close", "finalize", "disconnect"]
+    assert "recording_worker" not in session

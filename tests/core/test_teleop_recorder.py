@@ -246,6 +246,62 @@ def test_publish_camera_frames_downscales_side_preview_only() -> None:
     np.testing.assert_array_equal(state.live_preview, np.full((240, 320, 3), 32, dtype=np.uint8))
 
 
+def test_publish_camera_frames_throttles_preview_without_dropping_images(monkeypatch) -> None:
+    times = iter((0.0, 0.033, 0.067, 0.1, 0.133, 0.167, 0.2))
+    monkeypatch.setattr("so101_nexus.teleop.recorder.time.monotonic", lambda: next(times))
+    state = RecordingState()
+    preview = None
+    for index in range(7):
+        cameras = {
+            name: np.full((480, 640, 3), index, dtype=np.uint8)
+            for name in ("wrist", "overhead", "side")
+        }
+        _publish_camera_frames(state, cameras)
+
+        if index % 3 == 0:
+            assert state.live_preview is not preview
+            preview = state.live_preview
+        else:
+            assert state.live_preview is preview
+        assert state.episode_wrist_images[-1] is cameras["wrist"]
+        assert state.episode_overhead_images[-1] is cameras["overhead"]
+        assert state.episode_side_images[-1] is cameras["side"]
+        assert state.live_frame is cameras["wrist"]
+        assert state.live_overhead_frame is cameras["overhead"]
+
+    assert len(state.episode_wrist_images) == 7
+    assert len(state.episode_overhead_images) == 7
+    assert len(state.episode_side_images) == 7
+
+
+def test_publish_camera_frames_refreshes_immediately_after_episode_reset(monkeypatch) -> None:
+    times = iter((10.0, 10.01))
+    monkeypatch.setattr("so101_nexus.teleop.recorder.time.monotonic", lambda: next(times))
+    state = RecordingState()
+    _publish_camera_frames(state, {"side": np.zeros((4, 4, 3), dtype=np.uint8)})
+    state.clear_episode()
+    frame = np.ones((4, 4, 3), dtype=np.uint8)
+    _publish_camera_frames(state, {"side": frame})
+
+    np.testing.assert_array_equal(state.live_preview, frame)
+    assert state.episode_side_images == [frame]
+
+
+@pytest.mark.parametrize("obs", [{}, {"motor.pos": 1.0}, None])
+def test_publish_camera_frames_skips_composition_without_cameras(monkeypatch, obs) -> None:
+    def fail_composition(*args):
+        pytest.fail("Camera-free observations must not compose a preview")
+
+    monkeypatch.setattr("so101_nexus.teleop.recorder._make_preview_frame", fail_composition)
+    state = RecordingState()
+    _publish_camera_frames(state, obs)
+
+    assert state.live_preview is None
+    assert state.episode_wrist_images == []
+    assert state.episode_overhead_images == []
+    assert state.episode_side_images == []
+
+
 def test_recording_thread_stops_after_terminated_plus_hold(monkeypatch) -> None:
     state, _follower = _run_fake_recording(
         monkeypatch,
