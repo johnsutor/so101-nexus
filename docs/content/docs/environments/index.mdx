@@ -4,8 +4,8 @@ description: SO-101 tasks, with their IDs, state dimensions, success predicates,
 ---
 
 SO101-Nexus ships Gymnasium-compatible manipulation tasks for the SO-101 arm.
-Import `so101_nexus.mujoco` for the single-environment IDs or `so101_nexus.warp` for the GPU-batched counterparts.
-Both backends expose the same task contracts, including versioned pick-and-place tasks.
+Import `so101_nexus.mujoco` for the single-environment IDs, `so101_nexus.warp` for the GPU-batched counterparts, or `so101_nexus.mjbatch` for CPU batches.
+All three backends expose the same task contracts, including versioned pick-and-place tasks.
 
 For a runnable loop, see the [quickstart](/docs/getting-started/quickstart). For the
 observation components themselves, see [Observations](/docs/concepts/observations); for
@@ -13,16 +13,16 @@ action spaces, see [Control modes](/docs/concepts/control-modes).
 
 ## Tasks
 
-| Task | MuJoCo ID | Warp ID | Config class | Max steps | State dim |
-| --- | --- | --- | --- | --- | --- |
-| Pick and lift an object | `MuJoCoPickLift-v1` | `WarpPickLift-v1` | `PickConfig` | 1024 | 31 |
-| Pick and return the arm to rest | `MuJoCoPickReturn-v1` | `WarpPickReturn-v1` | `PickReturnConfig` | 1024 | 42 |
-| Center an object on a target disc | `MuJoCoPickAndPlace-v2` | `WarpPickAndPlace-v2` | `PickAndPlaceV2Config` | 1024 | 43 |
-| Legacy origin-distance placement | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
-| Stack cube A on cube B | `MuJoCoStackCube-v1` | `WarpStackCube-v1` | `StackCubeConfig` | 1024 | 43 |
-| Touch an object on the table | `MuJoCoTouch-v1` | `WarpTouch-v1` | `TouchConfig` | 512 | 31 |
-| Gaze at an object | `MuJoCoLookAt-v1` | `WarpLookAt-v1` | `LookAtConfig` | 256 | 23 |
-| Move the TCP a fixed distance | `MuJoCoMove-v1` | `WarpMove-v1` | `MoveConfig` | 256 | 22 |
+| Task | MuJoCo ID | Warp ID | mjbatch ID | Config class | Max steps | State dim |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pick and lift an object | `MuJoCoPickLift-v1` | `WarpPickLift-v1` | `MJBatchPickLift-v1` | `PickConfig` | 1024 | 31 |
+| Pick and return the arm to rest | `MuJoCoPickReturn-v1` | `WarpPickReturn-v1` | `MJBatchPickReturn-v1` | `PickReturnConfig` | 1024 | 42 |
+| Center an object on a target disc | `MuJoCoPickAndPlace-v2` | `WarpPickAndPlace-v2` | `MJBatchPickAndPlace-v2` | `PickAndPlaceV2Config` | 1024 | 43 |
+| Legacy origin-distance placement | `MuJoCoPickAndPlace-v1` | `WarpPickAndPlace-v1` | `MJBatchPickAndPlace-v1` | `PickAndPlaceConfig` | 1024 | 43 |
+| Stack cube A on cube B | `MuJoCoStackCube-v1` | `WarpStackCube-v1` | `MJBatchStackCube-v1` | `StackCubeConfig` | 1024 | 43 |
+| Touch an object on the table | `MuJoCoTouch-v1` | `WarpTouch-v1` | `MJBatchTouch-v1` | `TouchConfig` | 512 | 31 |
+| Gaze at an object | `MuJoCoLookAt-v1` | `WarpLookAt-v1` | `MJBatchLookAt-v1` | `LookAtConfig` | 256 | 23 |
+| Move the TCP a fixed distance | `MuJoCoMove-v1` | `WarpMove-v1` | `MJBatchMove-v1` | `MoveConfig` | 256 | 22 |
 
 State dim is the width of the default state observation. It changes if you override
 `observations` on the config. `all_registered_env_ids()` returns all versions for each imported backend.
@@ -42,6 +42,11 @@ Each Warp world has separate task, robot, wrist-camera, and visualization-camera
 Only worlds that reset advance their episode counters. Camera randomization does not change
 task sampling. GPU physics can still differ despite identical random samples.
 For training reproducibility and checkpoint limits, see [Training](/docs/workflow/training#reproducibility).
+
+mjbatch uses Gymnasium seed semantics: a scalar seed assigns `seed + i` to world `i`,
+and a list assigns each world its explicit seed. Masked resets use
+`reset(options={"reset_mask": mask})`, where `mask` is a Boolean NumPy array of length `num_envs`.
+Other reset options, including `target_index`, are forwarded to the selected worlds.
 
 ## Success conditions
 
@@ -178,7 +183,7 @@ Return shaping normalizes the angular error beyond tolerance by 180 degrees,
 keeping useful credit for progress when the arm is far from rest.
 Dropping the object removes grasp and task credit. Dwelling before success pays
 zero, and a drop/regrasp cycle cannot accumulate net shaping credit.
-Both backends expose the weighted terms in `info["reward_components"]`, plus
+All three backends expose the weighted terms in `info["reward_components"]`, plus
 `rest_error_deg`, `arm_speed` (rad/s), `lift_height`, and `is_robot_static`.
 
 This follows Habitat's grasp-and-return task and ManiSkill-HAB's posture and

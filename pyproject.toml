@@ -43,6 +43,7 @@ train = [
     "wandb[media]>=0.16.0",
     "torch",
 ]
+mjbatch = ["mjbatch>=0.1.4,<0.2"]
 warp = [
     "mujoco-warp>=3.13.0,<4",
     "torch<2.10",
@@ -169,6 +170,8 @@ replace-imports-with-any = [
     "gradio",
     "gradio.**",
     "hatchling.metadata.plugin.interface",
+    "mjbatch",
+    "mjbatch.**",
     "mujoco",
     "mujoco.**",
     "mujoco_warp",

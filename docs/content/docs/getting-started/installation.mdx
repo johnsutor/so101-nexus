@@ -45,10 +45,18 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |
 | `viz` | Pillow image labels and high-quality resizing in visualization helpers | `pip install "so101-nexus[viz]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
+| `mjbatch` | Native CPU batch stepping with mjbatch, no GPU required | `pip install "so101-nexus[mjbatch]"` |
 | `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.8 | `pip install "so101-nexus[warp]"` |
 | `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
 
 Extras combine: `pip install "so101-nexus[teleop,train]"`.
+
+## CPU batch backend (mjbatch)
+
+Install the `mjbatch` extra from the table above, or run `uv sync --extra mjbatch` from source.
+It installs [mjbatch](https://github.com/kevinzakka/mjbatch), which pins its compatible MuJoCo version.
+Registration stays available without the extra; constructing a batch requires it.
+See [Backends](/docs/concepts/backends#cpu-batching-with-mjbatch) for a runnable example and batching limits.
 
 ## Try without installing
 

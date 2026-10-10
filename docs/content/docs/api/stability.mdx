@@ -11,13 +11,13 @@ The public, supported surface is:
 
 - Every name exported from the top-level package, `so101_nexus.__all__` (configs, rewards, observation components, scene objects, asset helpers, and the LeRobot adapter helpers).
 - The documented [Gymnasium environment IDs](/docs/environments) and construction keyword arguments.
-  Import `so101_nexus.mujoco` or `so101_nexus.warp` to register the corresponding backend.
+  Import `so101_nexus.mujoco`, `so101_nexus.warp`, or `so101_nexus.mjbatch` to register the corresponding backend.
 - `so101_nexus.__version__`.
 
 The following are internal and may change at any time without a major version bump:
 
 - Any name prefixed with an underscore.
-- Backend submodule internals (`so101_nexus.mujoco.*`, `so101_nexus.warp.*`) beyond environment registration and names re-exported from the top level.
+- Backend submodule internals (`so101_nexus.mujoco.*`, `so101_nexus.warp.*`, `so101_nexus.mjbatch.*`) beyond environment registration and names re-exported from the top level.
 - The `so101_nexus.testing` helpers and the teleoperation application internals.
 
 Import public objects from `so101_nexus`, not from backend submodules.
@@ -43,7 +43,7 @@ A name whose only safe behavior would be a breaking change, for example a path t
 
 ## Supported platforms
 
-The MuJoCo backend is stable. The MuJoCo Warp backend is experimental, and its API and physics can change between minor releases.
+The MuJoCo backend is stable. The mjbatch and MuJoCo Warp backends are experimental, and their APIs and physics can change between minor releases.
 [Installation](/docs/getting-started/installation) lists supported Python versions, operating systems, and GPU requirements.
 
 ## Determinism

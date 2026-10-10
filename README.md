@@ -55,7 +55,7 @@ Select a GPU runtime and run all cells.
 The [workflow guide](https://so101-nexus.com/docs/workflow/overview) connects these stages.
 The [examples index](examples/README.md) lists the training scripts and notebooks.
 
-MuJoCo provides the default simulation backend. The optional Warp backend supports batched GPU training.
+MuJoCo provides the default simulation backend. The optional Warp backend supports batched GPU training. The optional mjbatch backend adds native CPU batch stepping through `gym.make_vec`.
 See [Backends](https://so101-nexus.com/docs/concepts/backends) for rendering, hardware requirements, and physics differences.
 
 ## Development

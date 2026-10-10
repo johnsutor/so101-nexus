@@ -189,16 +189,16 @@ def test_core_overview_lists_only_real_public_symbols() -> None:
 
 
 def test_docs_reference_only_registered_env_ids() -> None:
-    """Every ``MuJoCo*``/``Warp*`` env id in docs must be a registered id."""
+    """Every ``MuJoCo*``/``Warp*``/``MJBatch*`` env id in docs must be a registered id."""
     registered: set[str] = set()
-    for backend in ("mujoco", "warp"):
+    for backend in ("mujoco", "warp", "mjbatch"):
         src = _read(ROOT / "src" / "so101_nexus" / backend / "__init__.py")
         registered.update(re.findall(r'id="([^"]+)"', src))
     assert registered, "could not parse any registered env ids from backend modules"
 
     offenders: list[tuple[str, str]] = []
     docs = set(DOCS.rglob("*.mdx")) | set(TEXT_DOCS)
-    pattern = re.compile(r"\b(?:MuJoCo|Warp)[A-Za-z]*-v\d+\b")
+    pattern = re.compile(r"\b(?:MuJoCo|Warp|MJBatch)[A-Za-z]*-v\d+\b")
     for path in docs:
         for found in pattern.finditer(_read(path)):
             if found.group(0) not in registered:
@@ -215,18 +215,19 @@ def test_environment_table_state_dimensions_match_public_configs() -> None:
     import so101_nexus
 
     rows = re.findall(
-        r"\| `(MuJoCo[\w-]+)` \| `(Warp[\w-]+)` \| `(\w+Config)` \| (\d+) \| (\d+) \|",
+        r"\| `(MuJoCo[\w-]+)` \| `(Warp[\w-]+)` \| `(MJBatch[\w-]+)` "
+        r"\| `(\w+Config)` \| (\d+) \| (\d+) \|",
         _read(DOCS / "environments" / "index.mdx"),
     )
     assert rows
     documented = set()
-    for mujoco_id, warp_id, config_name, _, dimensions in rows:
+    for mujoco_id, warp_id, mjbatch_id, config_name, _, dimensions in rows:
         config = getattr(so101_nexus, config_name)()
         actual = sum(component.size for component in config.observations)
         assert actual == int(dimensions), config_name
-        documented.update((mujoco_id, warp_id))
+        documented.update((mujoco_id, warp_id, mjbatch_id))
     registered = set()
-    for backend in ("mujoco", "warp"):
+    for backend in ("mujoco", "warp", "mjbatch"):
         src = _read(ROOT / "src" / "so101_nexus" / backend / "__init__.py")
         registered.update(re.findall(r'id="([^"]+)"', src))
     assert documented == registered
@@ -469,7 +470,7 @@ def test_lerobot_wrapper_docs_require_a_camera_component() -> None:
 
 def test_entry_pages_link_to_canonical_references() -> None:
     """Entry pages route readers to catalogs instead of maintaining partial copies."""
-    env_id = r"`(?:MuJoCo|Warp)[A-Za-z]*-v\d+`"
+    env_id = r"`(?:MuJoCo|Warp|MJBatch)[A-Za-z]*-v\d+`"
     for relative in ("api/stability.mdx", "getting-started/quickstart.mdx"):
         text = _read(DOCS / relative)
         assert "](/docs/environments)" in text
