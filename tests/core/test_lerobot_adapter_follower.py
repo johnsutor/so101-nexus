@@ -328,6 +328,7 @@ def test_initial_state_provenance_serializes_reset_state(tmp_path: Path, fake_en
             geom_rgba=np.array([[1.0, 0.0, 0.0, 1.0]]),
             mat_rgba=np.array([[0.0, 0.0, 0.0, 1.0]]),
         )
+        env.rendering_metadata = {"model": {"msaa_samples": 4}, "renderers": {}}
 
         provenance = robot.initial_state_provenance()
 
@@ -336,6 +337,8 @@ def test_initial_state_provenance_serializes_reset_state(tmp_path: Path, fake_en
         assert provenance["cam_fovy"] == [58.0]
         assert provenance["geom_rgba"] == [[1.0, 0.0, 0.0, 1.0]]
         assert provenance["mat_rgba"] == [[0.0, 0.0, 0.0, 1.0]]
+        assert "rendering" not in provenance
+        assert robot.rendering_metadata() == env.rendering_metadata
     finally:
         robot.disconnect()
 
@@ -635,5 +638,18 @@ def test_cached_cameras_do_not_cache_privileged_state(
         privileged[0] = 3.0
         np.testing.assert_array_equal(obs["environment_state"], [2.0])
         np.testing.assert_array_equal(robot.get_observation()["environment_state"], [3.0])
+    finally:
+        robot.disconnect()
+
+
+def test_rendering_metadata_for_environment_without_renderer(tmp_path: Path, fake_env_id: str):
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}))
+    with pytest.raises(RuntimeError, match="not connected"):
+        robot.rendering_metadata()
+    try:
+        robot.connect()
+        assert robot.rendering_metadata() == {}
     finally:
         robot.disconnect()

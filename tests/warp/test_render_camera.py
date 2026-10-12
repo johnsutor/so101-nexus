@@ -228,3 +228,62 @@ def test_look_at_side_camera_fits_square_spawn(env_factory):
     target = torch.as_tensor(expected["lookat"], dtype=torch.float32, device=env.device)
     distance = torch.linalg.vector_norm(target - env._cam_pos[:, env._visual_cam_id], dim=-1)
     torch.testing.assert_close(distance, torch.full_like(distance, float(expected["distance"])))
+
+
+@pytest.mark.parametrize(
+    "quality",
+    [
+        {"profile": "reproducible"},
+        {"msaa_samples": 0},
+        {"shadows": False},
+        {"shadow_map_size": 1024},
+        {"profile": "reproducible", "msaa_samples": 8, "shadows": True},
+    ],
+)
+def test_warp_rejects_nondefault_rendering_quality_before_transfer(
+    env_factory, monkeypatch, quality
+):
+    from so101_nexus import RenderingQuality, TouchConfig
+
+    def reject_transfer(*args, **kwargs):
+        pytest.fail("Unsupported rendering quality must fail before transferring the model")
+
+    monkeypatch.setattr("mujoco_warp.put_model", reject_transfer)
+    config = TouchConfig(render=RenderConfig(quality=RenderingQuality(**quality)))
+    with pytest.raises(ValueError, match=r"Warp.*rendering quality"):
+        env_factory(backend="warp", config=config)
+
+
+@pytest.mark.parametrize("camera_type", ["wrist", "overhead"])
+def test_warp_rejects_camera_quality_before_transfer(env_factory, monkeypatch, camera_type):
+    from so101_nexus import OverheadCamera, RenderingQuality, TouchConfig, WristCamera
+
+    def reject_transfer(*args, **kwargs):
+        pytest.fail("Unsupported camera quality must fail before transferring the model")
+
+    monkeypatch.setattr("mujoco_warp.put_model", reject_transfer)
+    camera = WristCamera if camera_type == "wrist" else OverheadCamera
+    config = TouchConfig(observations=[camera(quality=RenderingQuality(shadows=False))])
+    with pytest.raises(ValueError, match=r"Warp.*rendering quality"):
+        env_factory(backend="warp", config=config)
+
+
+def test_warp_rejects_quality_changed_before_lazy_render(env_factory):
+    from so101_nexus import RenderingQuality
+
+    env = env_factory(backend="warp", render_mode="rgb_array")
+    assert env._visual_render_ctx is None
+    env.config.render = RenderConfig(quality=RenderingQuality("reproducible"))
+    with pytest.raises(ValueError, match=r"Warp.*rendering quality"):
+        env.render()
+    assert env._visual_render_ctx is None
+
+
+def test_warp_rejects_camera_quality_changed_after_setup(env_factory):
+    from so101_nexus import OverheadCamera, RenderingQuality, TouchConfig
+
+    camera = OverheadCamera(width=16, height=12, quality=RenderingQuality())
+    env = env_factory(backend="warp", config=TouchConfig(observations=[camera]))
+    camera.quality = RenderingQuality(shadows=False)
+    with pytest.raises(ValueError, match=r"Warp.*rendering quality"):
+        env.reset(seed=0)

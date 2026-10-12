@@ -245,6 +245,24 @@ def test_render_camera_documented_angle_defaults_match_config() -> None:
         assert float(row.group(1)) == getattr(config, field)
 
 
+def test_rendering_quality_profiles_match_public_config() -> None:
+    """The canonical reference must preserve profile defaults and backend limits."""
+    text = _read(DOCS / "api" / "configs.mdx")
+    assert "## RenderingQuality" in text
+    from so101_nexus import RenderingQuality
+
+    for profile in ("default", "reproducible"):
+        quality = RenderingQuality(profile=profile)
+        row = re.search(rf"\| `{profile}` \| `(\d+)` \| `(True|False)` \| `(\d+)` \|", text)
+        assert row, f"Missing RenderingQuality profile: {profile}"
+        assert int(row.group(1)) == quality.msaa_samples
+        assert (row.group(2) == "True") == quality.shadows
+        assert int(row.group(3)) == quality.shadow_map_size
+    assert "Warp rejects" in text
+    assert "rendering_metadata" in text
+    assert "/docs/api/configs#rendering-quality" in _read(DOCS / "workflow" / "training.mdx")
+
+
 def test_training_reference_entropy_matches_ppo_warp_defaults() -> None:
     """workflow/training.mdx entropy flags must match ``ppo_warp.py`` Args defaults."""
     ppo = _read(ROOT / "examples" / "ppo_warp.py")

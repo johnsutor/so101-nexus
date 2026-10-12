@@ -11,6 +11,11 @@ def test_video_evaluation_does_not_advance_training_rng(monkeypatch):
 
     class Env:
         spec = SimpleNamespace(max_episode_steps=1)
+        rendering_metadata = {"renderers": {"render": {"actual_msaa_samples": 4}}}
+
+        @property
+        def unwrapped(self):
+            return self
 
         def reset(self, seed=None):
             return np.zeros(3, dtype=np.float32), {}
@@ -25,6 +30,8 @@ def test_video_evaluation_does_not_advance_training_rng(monkeypatch):
             pass
 
     class Wandb:
+        config = {}
+
         class Video:
             def __init__(self, *args, **kwargs):
                 pass
@@ -59,3 +66,4 @@ def test_video_evaluation_does_not_advance_training_rng(monkeypatch):
     )
 
     assert torch.equal(torch.random.get_rng_state(), before)
+    assert Wandb.config["evaluation_rendering"] == Env.rendering_metadata

@@ -126,12 +126,20 @@ def _replace_wrist_camera(existing: WristCamera, width: int, height: int) -> Wri
         pos_y_noise=existing.pos_y_noise,
         pos_z_center=existing.pos_z_center,
         pos_z_noise=existing.pos_z_noise,
+        modalities=existing.modalities,
+        quality=existing.quality,
     )
 
 
 def _replace_overhead_camera(existing: OverheadCamera, width: int, height: int) -> OverheadCamera:
-    """Return a new :class:`OverheadCamera` with the requested size, preserving ``fov_deg``."""
-    return OverheadCamera(width=width, height=height, fov_deg=existing.fov_deg)
+    """Return a resized :class:`OverheadCamera`, preserving other settings."""
+    return OverheadCamera(
+        width=width,
+        height=height,
+        fov_deg=existing.fov_deg,
+        modalities=existing.modalities,
+        quality=existing.quality,
+    )
 
 
 def _resolve_env_ctor(env_id: str):

@@ -9,6 +9,19 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Public immutable `RenderingQuality` configuration for MuJoCo and mjbatch cameras,
+  with MSAA, shadow flags, shadow map size, and an opt-in four-sample, no-shadow
+  `reproducible` profile. Camera components inherit `RenderConfig` quality and
+  support compatible overrides before renderer allocation.
+- Rendering metadata reports effective camera quality and renderer runtime details
+  for reproducibility records. Unsupported Warp quality configurations raise an error.
+
+### Fixed
+
+- Teleoperation preserves configured depth modalities when it resizes observation cameras.
+
 ## [0.9.1] - 2026-10-10
 
 ### Added

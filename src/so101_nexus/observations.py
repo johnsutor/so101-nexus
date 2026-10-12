@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from gymnasium import spaces
 
+from so101_nexus.rendering import RenderingQuality
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -312,6 +314,10 @@ class CameraObservation(Observation):
         Image width in pixels.
     height : int
         Image height in pixels.
+    quality : RenderingQuality, optional
+        Image quality override. ``None`` inherits ``RenderConfig.quality``.
+        MSAA samples and shadow map size must match the environment settings;
+        shadow visibility may differ between cameras.
     modalities : tuple of {"rgb", "depth"}
         Requested outputs. Depth uses a separate ``<name>_depth`` key with
         float32 optical-axis distances in meters and shape ``(height, width)``.
@@ -325,7 +331,11 @@ class CameraObservation(Observation):
         height: int = 480,
         *,
         modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
+        quality: RenderingQuality | None = None,
     ) -> None:
+        if quality is not None and not isinstance(quality, RenderingQuality):
+            raise TypeError("quality must be a RenderingQuality or None")
+        self.quality = quality
         if width <= 0 or height <= 0:
             raise ValueError(f"Camera dimensions must be > 0, got {width}x{height}")
         self.width = width
@@ -394,6 +404,10 @@ class WristCamera(CameraObservation):
         Nominal z-offset of the camera from the wrist.
     pos_z_noise : float
         Noise magnitude for camera z-position.
+    quality : RenderingQuality, optional
+        Image quality override. ``None`` inherits ``RenderConfig.quality``.
+        MSAA samples and shadow map size must match the environment settings;
+        shadow visibility may differ between cameras.
     modalities : tuple of {"rgb", "depth"}
         Requested outputs, defaulting to RGB only.
     """
@@ -413,8 +427,9 @@ class WristCamera(CameraObservation):
         pos_z_noise: float = 0.01,
         *,
         modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
+        quality: RenderingQuality | None = None,
     ) -> None:
-        super().__init__(width=width, height=height, modalities=modalities)
+        super().__init__(width=width, height=height, modalities=modalities, quality=quality)
         self.fov_deg_range = fov_deg_range
         self.pitch_deg_range = pitch_deg_range
         self.pos_x_noise = pos_x_noise
@@ -451,6 +466,10 @@ class OverheadCamera(CameraObservation):
         Image height in pixels.
     fov_deg : float
         Vertical field-of-view in degrees.
+    quality : RenderingQuality, optional
+        Image quality override. ``None`` inherits ``RenderConfig.quality``.
+        MSAA samples and shadow map size must match the environment settings;
+        shadow visibility may differ between cameras.
     modalities : tuple of {"rgb", "depth"}
         Requested outputs, defaulting to RGB only.
     """
@@ -464,8 +483,9 @@ class OverheadCamera(CameraObservation):
         fov_deg: float = 45.0,
         *,
         modalities: tuple[Literal["rgb", "depth"], ...] = ("rgb",),
+        quality: RenderingQuality | None = None,
     ) -> None:
-        super().__init__(width=width, height=height, modalities=modalities)
+        super().__init__(width=width, height=height, modalities=modalities, quality=quality)
         self.fov_deg = fov_deg
 
 

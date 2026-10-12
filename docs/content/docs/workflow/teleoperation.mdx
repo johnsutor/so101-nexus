@@ -129,6 +129,13 @@ The state includes robot and object positions, velocities, controls, mocap poses
 These snapshot fields preserve native simulator units for replay: hinge angles use radians,
 translations use meters, and camera FOV uses degrees. User-facing joint actions still use degrees.
 
+For environments that expose rendering metadata, the top-level `rendering` field records
+camera quality and allocated renderer details after the recording finishes.
+`RolloutRecorder` saves the same sidecar path with `seed` and `rendering` fields when it writes a dataset.
+It also returns the metadata in `EpisodeResult.info["rendering"]` without a dataset.
+Lazy visualization cameras appear after their first render.
+See [RenderingQuality](/docs/api/configs#rendering-quality) for profile selection and hardware limits.
+
 On first recording the app creates a simulator-only calibration file at
 `$HF_LEROBOT_CALIBRATION/robots/sim_so_follower/teleop_sim.json`, or under the LeRobot default
 calibration root when that variable is unset. No physical follower calibration is needed.

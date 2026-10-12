@@ -39,6 +39,7 @@ from so101_nexus.observations import (
     TargetOffset,
     TargetPosition,
 )
+from so101_nexus.rendering import RenderingQuality
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -133,7 +134,7 @@ _validate_color_config = validate_color_config
 
 
 class RenderConfig:
-    """Render camera settings (visualization only, not observations).
+    """Visualization camera settings and shared rendering quality.
 
     Parameters
     ----------
@@ -147,6 +148,9 @@ class RenderConfig:
         straight down at the workspace; ``"side"`` is an angled tabletop
         bystander view. Both backends support RGB and depth visualization;
         the interactive human viewer is MuJoCo-only.
+    quality : RenderingQuality, optional
+        Shared model and image quality for visualization and camera observations.
+        Omitted settings resolve to the default profile.
     side_azimuth_deg : float
         Azimuth of the side view in degrees.
     side_elevation_deg : float
@@ -176,7 +180,11 @@ class RenderConfig:
         side_azimuth_range_deg: tuple[float, float] | None = None,
         side_elevation_range_deg: tuple[float, float] | None = None,
         side_distance_range: tuple[float, float] | None = None,
+        quality: RenderingQuality | None = None,
     ) -> None:
+        if quality is not None and not isinstance(quality, RenderingQuality):
+            raise TypeError("quality must be a RenderingQuality or None")
+        self.quality = quality if quality is not None else RenderingQuality()
         self.width = width
         self.height = height
         self.camera = camera

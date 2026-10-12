@@ -112,6 +112,7 @@ from so101_nexus.observations import (
     observations_from_feature_names,
     privileged_state_feature_names,
 )
+from so101_nexus.rendering import RenderingQuality
 from so101_nexus.rewards import (
     lift_progress,
     orientation_progress,
@@ -259,6 +260,7 @@ __all__ = [
     "PrimitiveObject",
     "PyramidObject",
     "RenderConfig",
+    "RenderingQuality",
     "RestingJointPositions",
     "RewardConfig",
     "RobotCameraPreset",
