@@ -1,0 +1,260 @@
+"""Reusable human-gated policy collection, independent of the viewer and backend."""
+
+from __future__ import annotations
+
+import queue
+import threading
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+import numpy as np
+
+from so101_nexus.config import SO101_JOINT_NAMES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from so101_nexus.policy_adapters.chunked_policy import ChunkedActionPolicy
+
+ControlSource = Literal["policy", "human", "hold"]
+
+
+class LeaderSynchronizer(Protocol):
+    """Incrementally align a leader with follower readback before releasing it."""
+
+    def start(self, target: dict[str, float]) -> None:
+        """Start alignment to follower joint targets in LeRobot units."""
+
+    def tick(self) -> bool:
+        """Advance alignment and report completion with torque released."""
+
+    def cancel(self) -> None:
+        """Cancel alignment and release leader torque."""
+
+
+class _InferenceWorker:
+    def __init__(self, policy: ChunkedActionPolicy) -> None:
+        self.policy = policy
+        self.jobs: queue.Queue[tuple[Future, dict[str, Any], bool] | None] = queue.Queue()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def submit(self, batch: dict[str, Any], reset: bool) -> Future:
+        future = Future()
+        self.jobs.put((future, batch, reset))
+        return future
+
+    def _run(self) -> None:
+        while (job := self.jobs.get()) is not None:
+            future, batch, reset = job
+            try:
+                if reset:
+                    self.policy.reset()
+                future.set_result(self.policy.select_action(batch))
+            except Exception as exc:
+                future.set_exception(exc)
+
+    def close(self) -> None:
+        # Arbitrary model calls cannot be canceled; late results never control the robot.
+        self.jobs.put(None)
+
+
+class InterventionSession:
+    """Arbitrate model and human actions with interruptible, serialized inference.
+
+    Parameters
+    ----------
+    policy
+        Model adapter consuming unbatched LeRobot observations: NumPy state,
+        HWC uint8 images, and task text. Returns one absolute joint target in
+        joint order, body degrees and gripper percent (0 to 100).
+    synchronizer
+        Aligns the leader with follower readback during every takeover.
+    joint_names
+        Joint order shared by observations, policy output, and follower commands.
+    action_space
+        Whether policy outputs absolute targets or deltas from current readback.
+    """
+
+    def __init__(
+        self,
+        policy: ChunkedActionPolicy,
+        synchronizer: LeaderSynchronizer,
+        joint_names: tuple[str, ...] = SO101_JOINT_NAMES,
+        *,
+        action_space: Literal["joint_pos", "joint_pos_delta"] = "joint_pos",
+    ) -> None:
+        if action_space not in ("joint_pos", "joint_pos_delta"):
+            raise ValueError("policy action_space must be joint_pos or joint_pos_delta")
+        self.action_space = action_space
+        self.joint_names = joint_names
+        self.synchronizer = synchronizer
+        self._worker = _InferenceWorker(policy)
+        self._lock = threading.Lock()
+        self._requested: ControlSource = "hold"
+        self._version = 0
+        self._applied_version = -1
+        self._action_version = -1
+        self._pending: tuple[int, Future] | None = None
+        self._reset_policy = True
+        self._interventions = 0
+        self._closed = False
+        self.status = "hold"
+        self.source: ControlSource = "hold"
+
+    @property
+    def intervention_id(self) -> int:
+        """Current correction segment, or zero for autonomous frames."""
+        return self._interventions if self.source == "human" else 0
+
+    def begin_episode(self) -> None:
+        """Start autonomous collection and invalidate previous episode predictions."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("intervention session is closed")
+            self._version += 1
+            self._requested = "policy"
+        self._interventions = 0
+        self._reset_policy = True
+
+    def request(self, source: ControlSource) -> None:
+        """Request a handoff from a UI, keyboard, pedal, or other input thread."""
+        if source not in ("policy", "human", "hold"):
+            raise ValueError(f"Unknown control source: {source!r}")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("intervention session is closed")
+            if source != self._requested:
+                self._requested = source
+                self._version += 1
+
+    def action(
+        self,
+        obs: Mapping[str, Any],
+        task: str,
+        human_action: Callable[[], dict[str, float]],
+    ) -> dict[str, float] | None:
+        """Return the next action, or hold simulation while waiting for a handoff."""
+        with self._lock:
+            version, requested = self._version, self._requested
+            if self._closed:
+                return None
+        target = {f"{name}.pos": float(obs[f"{name}.pos"]) for name in self.joint_names}
+        if version != self._applied_version:
+            self.synchronizer.cancel()
+            self._applied_version = version
+            self.source = "hold"
+            self.status = requested
+            if requested == "human":
+                self.status = "synchronizing"
+                self.synchronizer.start(target)
+            if requested == "policy":
+                self._reset_policy = True
+        self._action_version = version
+        if self.status == "synchronizing":
+            if not self.synchronizer.tick():
+                return None
+            self.status = "human"
+            self._interventions += 1
+        if self.status == "human":
+            self.source = "human"
+            return human_action()
+        if requested == "hold":
+            return None
+        self.source = "policy"
+        return self._policy_action(obs, task, version)
+
+    def _policy_action(
+        self, obs: Mapping[str, Any], task: str, version: int
+    ) -> dict[str, float] | None:
+        if self._pending is not None:
+            pending_version, future = self._pending
+            if not future.done():
+                self.status = "waiting for policy"
+                return None
+            self._pending = None
+            if pending_version == version:
+                output = future.result()
+                if hasattr(output, "detach"):
+                    output = output.detach().float().cpu().numpy()
+                action = np.asarray(output, dtype=np.float32)
+                if action.shape != (len(self.joint_names),) or not np.isfinite(action).all():
+                    raise ValueError(
+                        f"Policy must return a finite vector of {len(self.joint_names)} "
+                        "joint targets."
+                    )
+                if self.action_space == "joint_pos_delta":
+                    action = action + np.array([obs[f"{name}.pos"] for name in self.joint_names])
+                self.status = "policy"
+                return dict(
+                    zip((f"{name}.pos" for name in self.joint_names), action.tolist(), strict=True)
+                )
+        batch: dict[str, Any] = {
+            "observation.state": np.array(
+                [obs[f"{name}.pos"] for name in self.joint_names], dtype=np.float32
+            ),
+            "task": task,
+            **(
+                {"observation.environment_state": np.array(obs["environment_state"], copy=True)}
+                if "environment_state" in obs
+                else {}
+            ),
+            **{
+                f"observation.images.{key}": np.array(obs[key], copy=True)
+                for key in ("wrist", "overhead", "side")
+                if key in obs
+            },
+        }
+        self._pending = (version, self._worker.submit(batch, self._reset_policy))
+        self._reset_policy = False
+        self.status = "waiting for policy"
+        return None
+
+    def execute(self, action: dict[str, float], send: Callable) -> Any | None:
+        """Send an action only if no handoff arrived since it was selected."""
+        with self._lock:
+            if self._closed or self._action_version != self._version:
+                return None
+            return send(action)
+
+    def end_episode(self) -> None:
+        """Invalidate outstanding inference and release leader torque."""
+        self.request("hold")
+        self.synchronizer.cancel()
+        self.source = "hold"
+        self.status = "hold"
+
+    def close(self) -> None:
+        """Release the leader and reject further requests without waiting for inference."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._version += 1
+        try:
+            self.synchronizer.cancel()
+        finally:
+            self._worker.close()
+
+
+def intervention_chunk_mask(intervention_ids: Any, horizon: int) -> Any:
+    """Mask targets outside a human segment, including padded chunk tails.
+
+    Accepts one episode as a one-dimensional NumPy array or torch tensor. Positive IDs identify
+    distinct human segments; zero identifies autonomous frames. Returns a boolean
+    array or tensor of shape ``(frames, horizon)`` on the input tensor's device.
+    """
+    if horizon < 1 or intervention_ids.ndim != 1:
+        raise ValueError("horizon must be positive and intervention_ids must be one-dimensional")
+    if isinstance(intervention_ids, np.ndarray):
+        offsets = np.arange(horizon)
+        starts = np.arange(len(intervention_ids))[:, None]
+        indices = starts + offsets
+        padded = np.concatenate([intervention_ids, np.zeros(horizon, dtype=intervention_ids.dtype)])
+        return (intervention_ids[:, None] > 0) & (padded[indices] == intervention_ids[:, None])
+    import torch
+
+    starts = torch.arange(len(intervention_ids), device=intervention_ids.device)[:, None]
+    offsets = torch.arange(horizon, device=intervention_ids.device)
+    padded = torch.cat([intervention_ids, intervention_ids.new_zeros(horizon)])
+    return (intervention_ids[:, None] > 0) & (padded[starts + offsets] == intervention_ids[:, None])

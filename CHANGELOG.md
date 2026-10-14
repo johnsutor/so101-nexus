@@ -11,6 +11,12 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Policy correction collection in the teleop viewer, with leader synchronization,
+  keyboard takeover, hold and resume controls, LeRobot checkpoint loading, and custom
+  model factories. Correction datasets record intervention flags, segment IDs, and
+  policy provenance. Public `InterventionSession`, `SOLeaderSynchronizer`,
+  `LeRobotPolicyAdapter`, and `intervention_chunk_mask` support custom integrations.
+
 - Public immutable `RenderingQuality` configuration for MuJoCo and mjbatch cameras,
   with MSAA, shadow flags, shadow map size, and an opt-in four-sample, no-shadow
   `reproducible` profile. Camera components inherit `RenderConfig` quality and

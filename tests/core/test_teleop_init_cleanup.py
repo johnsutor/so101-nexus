@@ -51,3 +51,57 @@ def test_init_failure_disconnects_connected_leader(
     assert init_state["error"] == "invalid recording config"
     assert "leader" not in session
     leader.disconnect.assert_called_once_with()
+
+
+def test_policy_initialization_creates_intervention_schema_and_releases_on_failure(monkeypatch):
+    from types import SimpleNamespace
+
+    leader = Mock()
+    policy = SimpleNamespace(reset=lambda: None, select_action=lambda batch: None)
+    sessions = []
+    original = app.InterventionSession
+
+    def create(*args, **kwargs):
+        session = original(*args, **kwargs)
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(app, "import_backend_for_env_id", lambda _: None)
+    monkeypatch.setattr(app, "_connect_leader", lambda *_: leader)
+    monkeypatch.setattr(app, "load_collection_policy", lambda **kwargs: policy)
+    monkeypatch.setattr(app, "InterventionSession", create)
+    monkeypatch.setattr(app, "_resolve_env_state_names", lambda *_, **__: [])
+    features = []
+
+    def create_dataset(repo_id, fps, robot_type, schema):
+        features.append(schema)
+        raise RuntimeError("dataset creation failed")
+
+    monkeypatch.setattr(app, "_create_dataset", create_dataset)
+    session = {"policy_options": {"factory": "example:build"}}
+    init = {}
+    app._run_init_worker(
+        session,
+        init,
+        "/dev/null",
+        "MuJoCoTouch-v1",
+        "so101",
+        "leader",
+        30,
+        (4, 4),
+        (4, 4),
+        "local/correction",
+        1,
+        "joint_pos",
+        10,
+        0,
+        -90,
+        app.FieldSelection(),
+        None,
+    )
+    assert init["error"] == "dataset creation failed"
+    assert {"is_intervention", "intervention_id"} <= set(features[0])
+    leader.disconnect.assert_called_once_with()
+    assert len(sessions) == 1
+    with pytest.raises(RuntimeError, match="closed"):
+        sessions[0].request("human")

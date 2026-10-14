@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import tyro
 
@@ -22,6 +22,10 @@ class TeleopArgs:
     leader_port: str = "/dev/ttyACM0"
     leader_id: str = "so101_leader"
     wrist_roll_offset_deg: float = DEFAULT_WRIST_ROLL_OFFSET_DEG
+    policy_path: str | None = None
+    policy_factory: str | None = None
+    policy_device: str = "cpu"
+    policy_action_space: Literal["joint_pos", "joint_pos_delta"] = "joint_pos"
     seed: int = 0
     env_config_profile: str | None = None
     env_config_factory: str | None = None

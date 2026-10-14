@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, cast
 from so101_nexus.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus.env_ids import Backend, env_ids_for_backend
 from so101_nexus.objects import CubeObject, GSOObject, SceneObject, YCBObject
+from so101_nexus.policy_adapters.collection import load_collection_policy
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
     apply_config_overrides,
@@ -41,8 +42,10 @@ from so101_nexus.teleop.dataset import (
     build_frame,
     save_recorded_episode,
 )
+from so101_nexus.teleop.intervention import InterventionSession
 from so101_nexus.teleop.leader import (
     ROBOT_JOINT_NAMES,
+    SOLeaderSynchronizer,
     check_robot_env_mismatch,
     diagnose_leader_port,
     format_leader_connection_error,
@@ -422,10 +425,23 @@ def _run_init_worker(
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
     leader = None
+    intervention = None
     try:
         _append_init_log(init_state, f"Connecting leader arm on {leader_port} (id={leader_id})...")
         import_backend_for_env_id(env_id)
         leader = _connect_leader(robot_type, leader_port, leader_id)
+        policy_options = session.get("policy_options", {})
+        if any(policy_options.get(key) for key in ("path", "factory")):
+            _append_init_log(init_state, "Loading policy and saved processors...")
+            policy = load_collection_policy(**policy_options)
+            if policy is None:
+                raise RuntimeError("No collection policy was loaded")
+            intervention = InterventionSession(
+                policy,
+                SOLeaderSynchronizer(leader.bus, wrist_roll_offset_deg=wrist_roll_offset_deg),
+                joint_names,
+                action_space=session.get("policy_action_space", "joint_pos"),
+            )
         _append_init_log(init_state, "Creating LeRobot dataset...")
         action_features = {f"{name}.pos": float for name in joint_names}
         follower_features: dict[str, type[float] | tuple[int, int, int]] = dict(action_features)
@@ -449,10 +465,12 @@ def _run_init_worker(
             follower_features,
             action_features,
             env_state_names=env_state_names,
+            intervention=intervention is not None,
         )
         dataset = _create_dataset(repo_id, fps, robot_type, features)
         session.update(
             leader=leader,
+            intervention=intervention,
             dataset=dataset,
             state=RecordingState(num_episodes=num_episodes),
             joint_names=joint_names,
@@ -472,6 +490,9 @@ def _run_init_worker(
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
     except Exception as exc:
+        if intervention is not None:
+            with contextlib.suppress(Exception):
+                intervention.close()
         if leader is not None:
             with contextlib.suppress(Exception):
                 leader.disconnect()
@@ -865,6 +886,7 @@ def _cb_start_recording(session: dict):
         env_config_factory=session.get("env_config_factory"),
         success_hold_seconds=session.get("success_hold_seconds", 0.5),
         seed=session.get("seed", 0),
+        intervention=session.get("intervention"),
     )
     return (
         gr.update(value="Starting..."),
@@ -1011,7 +1033,11 @@ def _cb_approve_episode(session: dict):
     try:
         actions = list(s.episode_actions)
         if session["action_space"] == "joint_pos_delta":
-            actions = compute_delta_actions(actions)
+            actions = (
+                [action - obs for action, obs in zip(actions, s.episode_states, strict=True)]
+                if session.get("intervention")
+                else compute_delta_actions(actions)
+            )
 
         sel = session["field_selection"]
         rewards = list(s.episode_rewards)
@@ -1042,6 +1068,9 @@ def _cb_approve_episode(session: dict):
                 wrist_image=wrist_img,
                 overhead_image=overhead_img,
                 side_image=s.episode_side_images[i] if i < len(s.episode_side_images) else None,
+                intervention_id=s.episode_intervention_ids[i]
+                if session.get("intervention")
+                else None,
             )
             dataset.add_frame(frame)
 
@@ -1054,6 +1083,16 @@ def _cb_approve_episode(session: dict):
                 "task_description": s.task_description,
                 "initial_sim_state": s.initial_sim_state,
                 "rendering": s.rendering_metadata,
+                **(
+                    {
+                        "policy": {
+                            **session["policy_options"],
+                            "action_space": session["policy_action_space"],
+                        }
+                    }
+                    if session.get("intervention")
+                    else {}
+                ),
             },
         )
     except Exception as exc:
@@ -1223,6 +1262,8 @@ def _close_recording_worker(session: dict) -> None:
     worker = session.pop("recording_worker", None)
     if worker is not None:
         worker.close()
+    if (intervention := session.pop("intervention", None)) is not None:
+        intervention.close()
 
 
 def _cb_finalize_and_close(session: dict):
@@ -1524,6 +1565,81 @@ def _build_record_step(gr):
     return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
 
 
+def _build_intervention_controls(gr, *, enabled: bool):
+    with gr.Group(visible=enabled):
+        status = gr.Markdown("Controller: ready")
+        with gr.Row():
+            takeover = gr.Button("Take control (T)", elem_id="teleop-takeover", interactive=False)
+            hold = gr.Button("Hold (H)", elem_id="teleop-hold", interactive=False)
+            resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
+        gr.Markdown(
+            "Take control moves the leader to the follower pose before releasing it. "
+            "Keep the leader clear during synchronization. Hold freezes the simulation."
+        )
+    return status, takeover, hold, resume
+
+
+def _wire_intervention_controls(app, timer, session: dict, controls) -> None:
+    import functools
+
+    status, takeover, hold, resume = controls
+    for button, source in ((takeover, "human"), (hold, "hold"), (resume, "policy")):
+        button.click(
+            fn=functools.partial(_cb_request_intervention, session, source),
+            outputs=[status],
+            queue=False,
+        )
+    timer.tick(
+        fn=functools.partial(_cb_poll_intervention, session),
+        outputs=list(controls),
+        queue=False,
+    )
+    app.load(fn=None, js=_INTERVENTION_SHORTCUTS)
+
+
+def _cb_request_intervention(session: dict, source: str) -> str:
+    """Request a controller change without blocking on inference or hardware."""
+    intervention = session.get("intervention")
+    state = session.get("state")
+    if intervention is None or state is None or not state.is_recording:
+        return "Controller: ready"
+    intervention.request(source)
+    return "Controller: handoff requested"
+
+
+def _cb_poll_intervention(session: dict):
+    """Show active control and disable actions that do not apply."""
+    import gradio as gr
+
+    intervention = session.get("intervention")
+    state = session.get("state")
+    active = intervention is not None and state is not None and state.is_recording
+    status = intervention.status if active else "ready"
+    return (
+        f"Controller: {status}",
+        gr.update(interactive=active and status not in ("human", "synchronizing")),
+        gr.update(interactive=active),
+        gr.update(interactive=active and status not in ("policy", "waiting for policy")),
+    )
+
+
+_INTERVENTION_SHORTCUTS = """() => {
+    if (window.soNexusInterventionKeys) return;
+    window.soNexusInterventionKeys = true;
+    document.addEventListener('keydown', (event) => {
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+            event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        const ids = {t: 'teleop-takeover', h: 'teleop-hold', p: 'teleop-resume'};
+        const id = ids[event.key.toLowerCase()];
+        const button = id && document.querySelector('button#' + id + ', #' + id + ' button');
+        if (button && !button.disabled && button.getClientRects().length) {
+            event.preventDefault();
+            button.click();
+        }
+    });
+}"""
+
+
 def _build_review_step(gr):
     """Build the Review step contents."""
     gr.Markdown("### Review Episode")
@@ -1759,7 +1875,15 @@ def main(
     extra_env_ids = list(args.extra_env_ids)
     _import_env_modules(env_modules)
 
+    if args.policy_path and args.policy_factory:
+        raise ValueError("Choose either --policy-path or --policy-factory")
     session: dict = {
+        "policy_options": {
+            "path": args.policy_path,
+            "factory": args.policy_factory,
+            "device": args.policy_device,
+        },
+        "policy_action_space": args.policy_action_space,
         "env_config_profile": env_config_profile,
         "env_config_factory": env_config_factory,
         "seed": seed,
@@ -1779,6 +1903,11 @@ def main(
 
     with gr.Blocks(title="SO Nexus Teleop Recorder", fill_width=True) as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
+        if args.policy_path or args.policy_factory:
+            gr.Markdown(
+                "Policy correction collection is enabled. Start recording to run the policy, "
+                "then use Take control to synchronize the leader and correct its behavior."
+            )
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
 
@@ -1844,6 +1973,9 @@ def main(
                     task_status,
                     rec_timer,
                 ) = _build_record_step(gr)
+                intervention_controls = _build_intervention_controls(
+                    gr, enabled=bool(args.policy_path or args.policy_factory)
+                )
 
             with gr.Step("Review", id=3):
                 (
@@ -1954,6 +2086,8 @@ def main(
             leader_port=leader_port,
             leader_id_default=leader_id_default,
         )
+
+        _wire_intervention_controls(app, rec_timer, session, intervention_controls)
 
     try:
         app.launch(inbrowser=True)

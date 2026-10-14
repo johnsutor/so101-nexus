@@ -7,9 +7,11 @@ can be imported without the ``teleop`` extra installed.
 from __future__ import annotations
 
 import importlib
+import math
 import os
+import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from so101_nexus.config import SO101_JOINT_NAMES
 
@@ -149,3 +151,79 @@ def import_backend_for_env_id(env_id: str) -> None:
             f"Unknown custom env_id {env_id!r}. Import its registration module with "
             "--env-module and pass it with --extra-env-id."
         ) from exc
+
+
+class SOLeaderSynchronizer:
+    """Move a calibrated SO leader to follower readback at a bounded target speed.
+
+    Parameters
+    ----------
+    bus
+        Connected LeRobot motor bus with degree body joints and percent gripper.
+    wrist_roll_offset_deg
+        Offset added to leader readings by teleoperation, inverted for alignment.
+    """
+
+    def __init__(self, bus: Any, *, wrist_roll_offset_deg: float) -> None:
+        self.bus = bus
+        self.wrist_roll_offset_deg = wrist_roll_offset_deg
+        self._target: dict[str, float] | None = None
+        self._initial: dict[str, float] = {}
+        self._started = 0.0
+        self._duration = 0.0
+
+    def start(self, target: dict[str, float]) -> None:
+        """Enable torque at the current pose, then begin interpolated alignment."""
+        self.cancel()
+        target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
+        self._target = {key.removesuffix(".pos"): value for key, value in target.items()}
+        if not all(math.isfinite(value) for value in self._target.values()):
+            self._target = None
+            raise ValueError("Synchronization targets must be finite")
+        try:
+            self._initial = self.bus.sync_read("Present_Position")
+            self._duration = max(
+                abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
+                for name, value in self._target.items()
+            )
+            self.bus.sync_write("Goal_Position", self._initial)
+            self.bus.enable_torque()
+            self._started = time.monotonic()
+        except Exception:
+            self.cancel()
+            raise
+
+    def tick(self) -> bool:
+        """Advance the target and release torque after measured convergence."""
+        if self._target is None:
+            return True
+        try:
+            elapsed = time.monotonic() - self._started
+            if elapsed > self._duration + 3.0:
+                raise TimeoutError(
+                    "Leader synchronization timed out; check alignment and calibration"
+                )
+            fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
+            self.bus.sync_write(
+                "Goal_Position",
+                {
+                    name: self._initial[name] + fraction * (value - self._initial[name])
+                    for name, value in self._target.items()
+                },
+            )
+            positions = self.bus.sync_read("Present_Position")
+            if fraction == 1.0 and all(
+                abs(positions[name] - value) <= 2.0 for name, value in self._target.items()
+            ):
+                self.cancel()
+                return True
+            return False
+        except Exception:
+            self.cancel()
+            raise
+
+    def cancel(self) -> None:
+        """Release leader torque if alignment is active."""
+        if self._target is not None:
+            self.bus.disable_torque()
+            self._target = None

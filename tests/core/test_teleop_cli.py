@@ -87,3 +87,22 @@ def test_run_teleop_works_without_setup(monkeypatch) -> None:
     run_teleop("mujoco")
 
     assert called == {"args_type": "TeleopArgs", "backend": "mujoco"}
+
+
+def test_parse_teleop_args_accepts_policy_collection_flags() -> None:
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--policy-path",
+            "checkpoint",
+            "--policy-device",
+            "cpu",
+            "--policy-action-space",
+            "joint_pos_delta",
+        ]
+    )
+    assert args.policy_path == "checkpoint"
+    assert args.policy_device == "cpu"
+    assert args.policy_action_space == "joint_pos_delta"
+    args = parse_teleop_args(["teleop", "--policy-factory", "example:build"])
+    assert args.policy_factory == "example:build"

@@ -1594,3 +1594,49 @@ def test_finalize_closes_recording_worker_even_when_dataset_finalize_fails(
         teleop_app._cb_finalize_and_close(session)
         assert events == ["close", "finalize", "disconnect"]
     assert "recording_worker" not in session
+
+
+@pytest.mark.parametrize("action_space", ["joint_pos", "joint_pos_delta"])
+def test_approve_correction_preserves_provenance_and_action_semantics(
+    fake_gradio,
+    tmp_path,
+    action_space,
+):
+    import json
+
+    from so101_nexus.teleop.dataset import FieldSelection
+
+    frames = []
+    state = RecordingState(num_episodes=2)
+    state.episode_actions = [np.full(6, 20.0), np.full(6, 21.0)]
+    state.episode_states = [np.full(6, 15.0), np.full(6, 19.0)]
+    state.episode_intervention_ids = [0, 1]
+    dataset = types.SimpleNamespace(
+        root=tmp_path,
+        num_episodes=0,
+        add_frame=frames.append,
+        save_episode=lambda: None,
+        clear_episode_buffer=lambda: None,
+    )
+    session = {
+        "state": state,
+        "dataset": dataset,
+        "intervention": object(),
+        "action_space": action_space,
+        "policy_options": {"factory": "example:build", "device": "cpu"},
+        "policy_action_space": "joint_pos",
+        "env_id": "MuJoCoTouch-v1",
+        "fps": 30,
+        "field_selection": FieldSelection(
+            wrist_image=False, overhead_image=False, environment_state=False
+        ),
+    }
+    _cb_approve_episode(session)
+    assert state.episodes_completed == 1
+    expected = [20, 21] if action_space == "joint_pos" else [5, 2]
+    for frame, value, segment in zip(frames, expected, (0, 1), strict=True):
+        np.testing.assert_array_equal(frame["action"], np.full(6, value))
+        np.testing.assert_array_equal(frame["intervention_id"], [segment])
+    metadata = json.loads((tmp_path / "meta/reproducibility/episode_000000.json").read_text())
+    assert metadata["policy"]["factory"] == "example:build"
+    assert metadata["policy"]["action_space"] == "joint_pos"

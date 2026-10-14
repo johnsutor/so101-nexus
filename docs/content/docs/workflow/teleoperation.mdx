@@ -20,6 +20,107 @@ A Gradio UI opens in your browser. Most settings live in the UI; the CLI only ta
 connection-level options. For a repeat-use install of the `teleop` extra, see
 [Installation](/docs/getting-started/installation).
 
+## Policy correction collection
+
+Run a trained policy in the same viewer and take control when it needs correction:
+
+```bash
+uv run --extra teleop so101-nexus teleop \
+    --leader-port /dev/ttyACM0 \
+    --policy-path outputs/train/checkpoints/last/pretrained_model \
+    --policy-device cpu
+```
+
+The checkpoint must include its LeRobot preprocessor and postprocessor files.
+The adapter loads the saved normalization statistics and resets cached actions on each handoff.
+Set camera resolutions to match the checkpoint, and use its trained joint order and units.
+The default policy output is an absolute six-joint target.
+For a checkpoint trained to predict deltas from current readback, add
+`--policy-action-space joint_pos_delta`.
+This flag describes model output; the UI action-space setting describes saved dataset actions.
+
+1. Start recording. The policy controls the follower after the countdown.
+2. Click **Take control (T)** when correction is needed. Policy stepping stops immediately.
+   The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
+   Keep the leader clear while **Controller: synchronizing** is shown.
+3. When **Controller: human** appears, the leader is free to move and drives the follower.
+4. Click **Resume policy (P)** to continue from the corrected state with a fresh prediction.
+5. Repeat as needed, then review and approve the entire episode.
+
+**Hold (H)** freezes simulation stepping and cancels an active leader synchronization.
+The keyboard shortcuts work while the Record controls are visible and you are not typing in a field.
+Slow model inference does not block a takeover request. A request takes effect between simulator steps.
+Late predictions and cached chunks from before a handoff cannot control the follower afterward.
+Simulation time freezes while inference or synchronization is pending; these waits add no dataset frames.
+This collector currently supports the simulated follower, not real-robot deployment.
+
+Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.
+Targets ramp at up to 20 degrees per second for body joints and 40 percentage points per second for the gripper.
+The leader must converge within 2 degrees or 2 percentage points of its target.
+A timeout or motor error ends recording and attempts to release torque.
+These are target-command bounds, not guarantees of physical motor speed.
+
+### Custom model adapters
+
+Use `--policy-factory my_project.policy:build_policy` for a custom model or remote inference client.
+The no-argument factory returns an object with `select_action(batch)` and `reset()` methods.
+This runnable scaffold holds the current pose; replace `select_action` with your model's prediction:
+
+```python
+class MyPolicy:
+    def select_action(self, batch):
+        return batch["observation.state"].copy()
+
+    def reset(self):
+        pass
+
+
+def build_policy():
+    return MyPolicy()
+```
+
+The batch contains an unbatched float32 `observation.state`, task text, and available
+`observation.images.wrist`, `observation.images.overhead`, and `observation.images.side` arrays.
+When available, `observation.environment_state` contains the privileged component vector.
+Images use HWC uint8 RGB format. The state follows `SO101_JOINT_NAMES` order.
+Body joints use degrees and the gripper uses 0 to 100 percent, matching follower readback.
+Return a finite NumPy array or torch tensor of shape `(6,)` in the same order and units.
+For delta output, use the policy action-space flag described above.
+Map camera names, normalization, and any other model-specific inputs inside the adapter.
+`reset()` must clear action chunks and recurrent history. All model calls run serially on an inference thread.
+Custom factories own device selection; `--policy-device` applies to the built-in LeRobot loader.
+
+For another input device, `InterventionSession.request("human")`, `request("hold")`,
+and `request("policy")` expose the same handoffs independently of Gradio.
+The session accepts a synchronizer with `start(target)`, `tick()`, and `cancel()` methods.
+`SOLeaderSynchronizer` provides the SO leader implementation.
+These public objects are available from `so101_nexus`.
+
+### Training on corrections
+
+Collection records autonomous context and human corrections in one continuous episode.
+Dataset fields identify which actions are expert supervision; the schema is described
+[below](#recorded-dataset-format).
+Do not train behavior cloning on autonomous actions as if they were human demonstrations.
+Aggregate the original demonstrations with human-controlled targets from the new episodes.
+
+For chunked policies, sample human-controlled starting frames and mask targets after the human segment ends.
+The public helper works with NumPy arrays and torch tensors:
+
+```python
+import torch
+from so101_nexus import intervention_chunk_mask
+
+intervention_ids = torch.tensor([0, 1, 1, 0, 2])
+mask = intervention_chunk_mask(intervention_ids, horizon=3)
+```
+
+Pass one episode at a time. Each mask row describes valid human targets for a chunk starting at that frame.
+Zero marks autonomous frames; positive IDs distinguish correction segments.
+Use the mask in your trainer's loss, and exclude autonomous starting frames from correction sampling.
+The standard LeRobot training CLI does not automatically apply this helper or filter these fields.
+Recovery and correction share the same human label in this initial collector.
+
 ## Hardware and the serial port
 
 You need a physical SO-100 or SO-101 leader arm on USB and a host with access to its serial
@@ -66,6 +167,10 @@ You do not need to record the episodes again.
 | `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
 | `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
 | `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+| `--policy-path` | `str \| None` | `None` | LeRobot checkpoint directory or Hub model ID |
+| `--policy-factory` | `str \| None` | `None` | No-argument Python `module:function` returning a model adapter |
+| `--policy-device` | `str` | `cpu` | Device for the built-in LeRobot loader |
+| `--policy-action-space` | `str` | `joint_pos` | Model output: absolute `joint_pos` or readback-relative `joint_pos_delta` |
 | `--seed` | `int` | `0` | Base seed for simulation episodes |
 | `--env-config-profile` | `str \| None` | `None` | JSON or TOML profile with environment config overrides |
 | `--env-config-factory` | `str \| None` | `None` | Python `module:function` that returns a config or `gym.make` kwargs |
@@ -94,10 +199,18 @@ stay forced on because LeRobot datasets require them for policy training and tas
 Datasets use the LeRobot v3 SO follower schema. Always present:
 
 - `observation.state`: follower readback, 6D
-- `action`: commanded absolute joint positions, 6D
+- `action`: executed joint targets, 6D (absolute by default)
 - `reward`: scalar transition reward from the same environment step as `action`
 - `success` and `done`: episode success and termination flags
 - `task`: language description, from LeRobot v3 metadata
+
+Policy correction datasets additionally require `is_intervention` (float32, 0 or 1) and
+`intervention_id` (int64, 0 for autonomy, positive per human segment).
+The recorder preserves the executed follower command after limiting, paired with pre-action readback.
+When the UI selects `joint_pos_delta`, correction datasets store target minus pre-action readback.
+Ordinary teleop delta datasets retain their frame-to-frame target differences.
+Episode reproducibility metadata includes the policy path or factory, device, and policy action convention.
+A local checkpoint path identifies its source; it does not capture a hash of mutable weights.
 
 Optional, on by default: `observation.images.wrist`, `observation.images.overhead`,
 `observation.images.side`, and

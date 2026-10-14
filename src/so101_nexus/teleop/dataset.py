@@ -142,6 +142,7 @@ def build_features(
     action_features: dict[str, Any],
     *,
     env_state_names: list[str] | None = None,
+    intervention: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return the LeRobot feature dict for the selected fields.
 
@@ -158,6 +159,8 @@ def build_features(
         vector (see :func:`so101_nexus.observations.privileged_state_feature_names`).
         When provided and ``selection.environment_state`` is set, the channel is
         declared as a ``(len(names),)`` float32 feature; otherwise it is omitted.
+    intervention
+        Include human-control flags and intervention segment IDs for policy collection.
     """
     hw_to_dataset_features = _hw_to_dataset_features()
     features: dict[str, dict[str, Any]] = {}
@@ -182,6 +185,9 @@ def build_features(
     # recorded; they are not user-toggleable fields, so declared unconditionally.
     for key in SCALAR_KEYS:
         features[key] = dict(SCALAR_FEATURE)
+    if intervention:
+        features["is_intervention"] = dict(SCALAR_FEATURE)
+        features["intervention_id"] = {"dtype": "int64", "shape": (1,), "names": None}
     return features
 
 
@@ -199,6 +205,7 @@ def build_frame(
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
     side_image: np.ndarray | None = None,
+    intervention_id: int | None = None,
 ) -> dict[str, Any]:
     """Assemble one LeRobot frame dict using only the selected fields."""
     components = reward_components or {}
@@ -249,6 +256,11 @@ def build_frame(
                 "check that the env exposes non-camera observation components."
             )
         frame[ENV_STATE_KEY] = np.asarray(env_state, dtype=np.float32)
+    if intervention_id is not None:
+        if intervention_id < 0:
+            raise ValueError("intervention_id must be nonnegative")
+        frame["is_intervention"] = np.array([intervention_id > 0], dtype=np.float32)
+        frame["intervention_id"] = np.array([intervention_id], dtype=np.int64)
     return frame
 
 
@@ -292,9 +304,9 @@ def _make_reward_scalar_dataset_cls():
             if episode_data is None:
                 buf = self._active_episode_buffer()
                 if buf is not None:
-                    for key in SCALAR_KEYS:
+                    for key in (*SCALAR_KEYS, "is_intervention", "intervention_id"):
                         if isinstance(buf.get(key), list):
-                            buf[key] = [float(np.asarray(v).reshape(-1)[0]) for v in buf[key]]
+                            buf[key] = [np.asarray(v).reshape(-1)[0].item() for v in buf[key]]
             super().save_episode(episode_data, parallel_encoding)
 
     return RewardRecordingDataset

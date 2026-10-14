@@ -110,3 +110,68 @@ def test_app_upload_uses_complete_step_destination(monkeypatch) -> None:
     assert upload.inputs == [destination]
     populate = next(fn for fn in app.fns.values() if fn.outputs == [destination])
     assert populate.trigger_after is not None
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_intervention_controls_request_handoffs_without_queueing(monkeypatch):
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _cb_request_intervention, main
+    from so101_nexus.teleop.cli import TeleopArgs
+
+    apps = []
+    monkeypatch.setattr(gr.Blocks, "launch", lambda app, **kwargs: apps.append(app))
+    main(TeleopArgs(leader_port="/dev/null", policy_factory="example:build"), backend="mujoco")
+    app = apps[0]
+    buttons = [
+        component
+        for component in app.blocks.values()
+        if isinstance(component, gr.Button)
+        and component.elem_id in {"teleop-takeover", "teleop-hold", "teleop-resume"}
+    ]
+    assert len(buttons) == 3
+    handlers = [
+        fn for fn in app.fns.values() if getattr(fn.fn, "func", None) is _cb_request_intervention
+    ]
+    assert len(handlers) == 3
+    assert all(fn.queue is False for fn in handlers)
+
+
+def test_intervention_shortcuts_handle_direct_buttons_and_editable_fields():
+    import shutil
+    import subprocess
+
+    from so101_nexus.teleop.app import _INTERVENTION_SHORTCUTS
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is needed to execute viewer keyboard shortcuts")
+    script = (
+        """
+const assert = require('node:assert/strict');
+let handler;
+let clicks = 0;
+let prevented = 0;
+const button = {disabled: false, getClientRects: () => [1], click: () => clicks++};
+global.window = {};
+global.document = {
+    addEventListener: (_, callback) => handler = callback,
+    querySelector: selector => selector.split(',').some(s => s.trim() === 'button#teleop-takeover')
+        ? button : null,
+};
+"""
+        + f"({_INTERVENTION_SHORTCUTS})();"
+        + """
+const event = {key: 't', target: {closest: () => null}, preventDefault: () => prevented++};
+handler(event);
+assert.equal(clicks, 1);
+assert.equal(prevented, 1);
+handler({...event, target: {closest: () => ({})}});
+handler({...event, repeat: true});
+handler({...event, ctrlKey: true});
+button.disabled = true;
+handler(event);
+assert.equal(clicks, 1);
+"""
+    )
+    subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
