@@ -349,9 +349,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _setup_rendering_quality(self) -> None:
         self._render_quality = self.config.render.quality
-        context_type = gl_context.GLContext
+        context_type = getattr(gl_context, "GLContext", None)
         self._gl_backend = (
-            context_type.__module__.removeprefix("mujoco.") if context_type else "external"
+            context_type.__module__.removeprefix("mujoco.") if context_type else "disabled"
         )
         self._camera_qualities: dict[str, RenderingQuality] = {}
         for comp in self.config.observations or ():

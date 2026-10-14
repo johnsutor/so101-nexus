@@ -20,6 +20,7 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- State-only MuJoCo environments initialize when OpenGL is disabled, including macOS CI.
 - Teleoperation preserves configured depth modalities when it resizes observation cameras.
 
 ## [0.9.1] - 2026-10-10
