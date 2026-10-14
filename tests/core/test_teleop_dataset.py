@@ -456,17 +456,6 @@ def _reload_dataset_module():
     return importlib.import_module("so101_nexus.teleop.dataset")
 
 
-def _install_stub(monkeypatch, module_path: str, attr: str, value) -> None:
-    parent_path, _, leaf = module_path.rpartition(".")
-    stub = types.ModuleType(module_path)
-    setattr(stub, attr, value)
-    monkeypatch.setitem(sys.modules, module_path, stub)
-
-    parent = sys.modules.get(parent_path)
-    if parent is not None:
-        monkeypatch.setattr(parent, leaf, stub, raising=False)
-
-
 def test_dataset_module_import_does_not_require_lerobot(monkeypatch) -> None:
     """MuJoCo-only installs import teleop.app without installing LeRobot."""
     with monkeypatch.context() as mp:
@@ -489,43 +478,19 @@ def test_dataset_module_import_does_not_require_lerobot(monkeypatch) -> None:
     _reload_dataset_module()
 
 
-def test_dataset_prefers_lerobot_feature_utils(monkeypatch) -> None:
-    """When LeRobot exposes feature_utils.hw_to_dataset_features, use it."""
-    with monkeypatch.context() as mp:
-        sentinel = lambda *a, **kw: {"sentinel": "feature_utils"}  # noqa: E731
-        _install_stub(
-            mp,
-            "lerobot.datasets.feature_utils",
-            "hw_to_dataset_features",
-            sentinel,
-        )
+def test_dataset_uses_lerobot_061_feature_utils(monkeypatch) -> None:
+    from lerobot.utils import feature_utils
 
-        module = _reload_dataset_module()
+    calls = []
+    original = feature_utils.hw_to_dataset_features
 
-        assert module._hw_to_dataset_features() is sentinel
-    _reload_dataset_module()
+    def convert(*args, **kwargs):
+        calls.append(args[1])
+        return original(*args, **kwargs)
 
-
-def test_dataset_falls_back_to_lerobot_datasets_utils(monkeypatch) -> None:
-    """When feature_utils is absent, fall back to the LeRobot 0.5.0 path."""
-    with monkeypatch.context() as mp:
-        sentinel = lambda *a, **kw: {"sentinel": "datasets.utils"}  # noqa: E731
-        mp.delitem(sys.modules, "lerobot.datasets.feature_utils", raising=False)
-        _install_stub(mp, "lerobot.datasets.utils", "hw_to_dataset_features", sentinel)
-
-        real_import = builtins.__import__
-
-        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == "lerobot.datasets.feature_utils":
-                raise ImportError("simulated missing feature_utils")
-            return real_import(name, globals, locals, fromlist, level)
-
-        mp.setattr(builtins, "__import__", fake_import)
-
-        module = _reload_dataset_module()
-
-        assert module._hw_to_dataset_features() is sentinel
-    _reload_dataset_module()
+    monkeypatch.setattr(feature_utils, "hw_to_dataset_features", convert)
+    build_features(FieldSelection(), _follower_features(), _motor_features())
+    assert calls == ["action", "observation"]
 
 
 def _reward_buffer() -> dict:
@@ -549,7 +514,7 @@ def _blank_recording_obj(cls):
     """Construct a recording instance without LeRobot's heavy ``create()``.
 
     ``_is_finalized`` and no-op writer hooks keep ``LeRobotDataset.__del__``
-    quiet at GC time across both 0.5.x layouts.
+    quiet at GC time without a live writer.
     """
     obj = cls.__new__(cls)
     obj._is_finalized = True
@@ -636,25 +601,8 @@ def test_save_recorded_episode_without_metadata_does_not_require_root() -> None:
     assert calls == [None]
 
 
-def test_reward_squeeze_finds_dataset_buffer_lerobot_050(monkeypatch) -> None:
-    """0.5.0 keeps the in-progress buffer on the dataset itself."""
-    pytest.importorskip("lerobot")
-    from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
-
-    seen = _patch_parent_save_episode(monkeypatch)
-    obj = _blank_recording_obj(_make_reward_scalar_dataset_cls())
-    buf = _reward_buffer()
-    obj.episode_buffer = buf
-
-    obj.save_episode()
-
-    assert seen["episode_data"] is None
-    assert buf["reward"] == [pytest.approx(0.25), pytest.approx(1.5)]
-    assert all(isinstance(v, float) for v in buf["reward"])
-
-
-def test_reward_squeeze_finds_writer_buffer_lerobot_051(monkeypatch) -> None:
-    """0.5.1 routes recording through a DatasetWriter; the dataset has no episode_buffer."""
+def test_reward_squeeze_finds_writer_buffer_lerobot_061(monkeypatch) -> None:
+    """0.6 routes recording through DatasetWriter.episode_buffer."""
     pytest.importorskip("lerobot")
     from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
 

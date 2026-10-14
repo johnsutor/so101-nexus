@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     import gymnasium as gym
     import numpy as np
-    from lerobot.types import EnvTransition
+    from lerobot.lerobot_types import EnvTransition
 
 
 def _leader_action_to_transition(data: dict[str, Any]) -> EnvTransition:

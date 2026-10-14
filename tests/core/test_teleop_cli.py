@@ -106,3 +106,25 @@ def test_parse_teleop_args_accepts_policy_collection_flags() -> None:
     assert args.policy_action_space == "joint_pos_delta"
     args = parse_teleop_args(["teleop", "--policy-factory", "example:build"])
     assert args.policy_factory == "example:build"
+
+
+def test_parse_teleop_args_accepts_model_contract_flags() -> None:
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--policy-type",
+            "molmoact2",
+            "--policy-norm-tag",
+            "so100_so101_molmoact2",
+            "--policy-fps",
+            "30",
+            "--policy-camera",
+            "overhead=front",
+            "--policy-camera",
+            "wrist=wrist",
+        ]
+    )
+    assert args.policy_type == "molmoact2"
+    assert args.policy_norm_tag == "so100_so101_molmoact2"
+    assert args.policy_fps == 30
+    assert args.policy_cameras == ["overhead=front", "wrist=wrist"]

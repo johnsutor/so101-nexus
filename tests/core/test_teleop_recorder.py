@@ -66,7 +66,9 @@ class _FakeRecordingFollower:
         self.initial_leader_action: dict[str, float] | None = None
         self._last_step_info = None
         self._env = types.SimpleNamespace(
-            unwrapped=types.SimpleNamespace(task_description="Fake recording task")
+            unwrapped=types.SimpleNamespace(
+                task_description="Fake recording task", control_dt=1 / config.fps
+            )
         )
         type(self).instances.append(self)
 

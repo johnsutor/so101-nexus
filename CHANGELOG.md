@@ -11,6 +11,11 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Direct MolmoAct2 SO100/101 checkpoint loading for policy correction collection,
+  with checkpoint normalization, legacy joint-frame conversion, configurable
+  camera mappings, and explicit
+  policy rate validation for generic LeRobot SO101 checkpoints.
+
 - Policy correction collection in the teleop viewer, with leader synchronization,
   keyboard takeover, hold and resume controls, LeRobot checkpoint loading, and custom
   model factories. Correction datasets record intervention flags, segment IDs, and
@@ -23,6 +28,13 @@ for the public-API and deprecation policy.
   support compatible overrides before renderer allocation.
 - Rendering metadata reports effective camera quality and renderer runtime details
   for reproducibility records. Unsupported Warp quality configurations raise an error.
+
+### Changed
+
+- Upgrade the supported LeRobot dependency to released 0.6.1, including its dataset
+  extra and optional MolmoAct2 dependencies. Use the 0.6 video encoder and feature APIs.
+- Policy correction collection aligns simulator control periods with dataset FPS.
+  Desktop Torch/TorchCodec bounds stay unchanged; Linux ARM64 uses the 2.11/0.11 pair.
 
 ### Fixed
 

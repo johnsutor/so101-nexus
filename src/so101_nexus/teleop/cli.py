@@ -25,6 +25,12 @@ class TeleopArgs:
     policy_path: str | None = None
     policy_factory: str | None = None
     policy_device: str = "cpu"
+    policy_type: str | None = None
+    policy_norm_tag: str | None = None
+    policy_fps: int | None = None
+    policy_cameras: Annotated[
+        list[str], tyro.conf.arg(name="policy-camera"), tyro.conf.UseAppendAction
+    ] = field(default_factory=list)
     policy_action_space: Literal["joint_pos", "joint_pos_delta"] = "joint_pos"
     seed: int = 0
     env_config_profile: str | None = None

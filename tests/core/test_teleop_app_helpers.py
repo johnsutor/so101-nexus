@@ -850,56 +850,38 @@ def test_connect_leader_returns_connected_leader_on_success(monkeypatch) -> None
 
 
 def test_create_dataset_wraps_creation_failure(monkeypatch) -> None:
-    """Expose dataset creation failures with recording context."""
-
-    class _RaisingDataset:
+    class Dataset:
         @classmethod
-        def create(cls, **_kwargs):
+        def create(cls, **kwargs):
             raise ValueError("schema mismatch")
 
-    fake_module = types.ModuleType("lerobot.datasets.lerobot_dataset")
-    fake_module.LeRobotDataset = _RaisingDataset  # type: ignore[attr-defined]
-
-    for name, mod in [
-        ("lerobot", types.ModuleType("lerobot")),
-        ("lerobot.datasets", types.ModuleType("lerobot.datasets")),
-        ("lerobot.datasets.lerobot_dataset", fake_module),
-    ]:
-        monkeypatch.setitem(sys.modules, name, mod)
-
+    monkeypatch.setattr(
+        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
+    )
     with pytest.raises(RuntimeError, match="Failed to create dataset: schema mismatch"):
         _create_dataset("local/test", 30, "so101", {})
 
 
 def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
-    """Happy path: _create_dataset returns the LeRobotDataset instance."""
     seen = {}
 
-    class _OkDataset:
+    class Dataset:
         @classmethod
         def create(cls, **kwargs):
             seen.update(kwargs)
             return cls()
 
-    fake_module = types.ModuleType("lerobot.datasets.lerobot_dataset")
-    fake_module.LeRobotDataset = _OkDataset  # type: ignore[attr-defined]
-
-    for name, mod in [
-        ("lerobot", types.ModuleType("lerobot")),
-        ("lerobot.datasets", types.ModuleType("lerobot.datasets")),
-        ("lerobot.datasets.lerobot_dataset", fake_module),
-    ]:
-        monkeypatch.setitem(sys.modules, name, mod)
-
-    ds = _create_dataset("local/test", 30, "so101", {"action": {}})
-
-    assert isinstance(ds, _OkDataset)
+    monkeypatch.setattr(
+        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
+    )
+    dataset = _create_dataset("local/test", 30, "so101", {"action": {}})
+    assert isinstance(dataset, Dataset)
     assert seen["repo_id"] == "local/test"
     assert seen["fps"] == 30
     assert seen["robot_type"] == "so101"
     assert seen["features"] == {"action": {}}
     assert seen["image_writer_threads"] == 4
-    assert seen["vcodec"] == "h264"
+    assert seen["rgb_encoder"].vcodec == "h264"
 
 
 def test_write_env_config_meta_writes_reloadable_profile(tmp_path) -> None:
@@ -1640,3 +1622,4 @@ def test_approve_correction_preserves_provenance_and_action_semantics(
     metadata = json.loads((tmp_path / "meta/reproducibility/episode_000000.json").read_text())
     assert metadata["policy"]["factory"] == "example:build"
     assert metadata["policy"]["action_space"] == "joint_pos"
+    assert metadata["policy"]["fps"] == 30

@@ -57,7 +57,7 @@ def test_policy_initialization_creates_intervention_schema_and_releases_on_failu
     from types import SimpleNamespace
 
     leader = Mock()
-    policy = SimpleNamespace(reset=lambda: None, select_action=lambda batch: None)
+    policy = SimpleNamespace(reset=lambda: None, select_action=lambda batch: None, fps=30)
     sessions = []
     original = app.InterventionSession
 

@@ -9,7 +9,6 @@ LeRobot feature schema and every recorded frame.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -124,18 +123,6 @@ def _with_selected_cameras(
     return features
 
 
-def _hw_to_dataset_features():
-    """Return LeRobot's feature-schema converter across supported 0.5.x layouts."""
-    if TYPE_CHECKING:
-        from lerobot.datasets.feature_utils import hw_to_dataset_features
-
-        return hw_to_dataset_features
-    try:
-        return import_module("lerobot.datasets.feature_utils").hw_to_dataset_features
-    except (ImportError, AttributeError):  # LeRobot 0.5.0 compatibility
-        return import_module("lerobot.datasets.utils").hw_to_dataset_features
-
-
 def build_features(
     selection: FieldSelection,
     follower_features: dict[str, Any],
@@ -162,7 +149,8 @@ def build_features(
     intervention
         Include human-control flags and intervention segment IDs for policy collection.
     """
-    hw_to_dataset_features = _hw_to_dataset_features()
+    from lerobot.utils.feature_utils import hw_to_dataset_features
+
     features: dict[str, dict[str, Any]] = {}
     features.update(hw_to_dataset_features(action_features, "action", use_video=True))
     features.update(
@@ -277,24 +265,13 @@ def _make_reward_scalar_dataset_cls():
     ``save_episode``, matching how LeRobot handles its own ``DEFAULT_FEATURES``
     (timestamp, frame_index, etc.).
 
-    The in-progress buffer moved between supported 0.5.x layouts: 0.5.0 keeps
-    it on the dataset (``self.episode_buffer``), while 0.5.1 routes recording
-    through a ``DatasetWriter`` reached via ``self.writer.episode_buffer``.
-    Only ``save_episode`` needs overriding: ``add_frame`` and
-    ``clear_episode_buffer`` already act on the live buffer on both layouts
-    (native in 0.5.0, writer-delegated in 0.5.1) and never stack reward.
+    LeRobot 0.6 records through ``DatasetWriter.episode_buffer``. Only
+    ``save_episode`` needs overriding; other methods already use that buffer.
     """
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     class RewardRecordingDataset(LeRobotDataset):
         """LeRobotDataset that records scalar features without coercion warnings."""
-
-        def _active_episode_buffer(self) -> dict | None:
-            """Return the in-progress episode buffer across LeRobot 0.5.x layouts."""
-            buf = getattr(self, "episode_buffer", None)
-            if buf is None:
-                buf = getattr(getattr(self, "writer", None), "episode_buffer", None)
-            return buf
 
         def save_episode(
             self,
@@ -302,7 +279,7 @@ def _make_reward_scalar_dataset_cls():
             parallel_encoding: bool = True,
         ) -> None:
             if episode_data is None:
-                buf = self._active_episode_buffer()
+                buf = getattr(getattr(self, "writer", None), "episode_buffer", None)
                 if buf is not None:
                     for key in (*SCALAR_KEYS, "is_intervention", "intervention_id"):
                         if isinstance(buf.get(key), list):

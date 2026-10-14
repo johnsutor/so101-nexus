@@ -8,6 +8,20 @@ import pytest
 from so101_nexus.config import SO101_JOINT_NAMES
 
 
+def _use_reproducible_rendering(monkeypatch):
+    from so101_nexus import RenderingQuality
+    from so101_nexus.teleop import session
+
+    build = session.build_sim_follower_config
+
+    def build_config(**kwargs):
+        config = build(**kwargs)
+        config.env_kwargs["config"].render.quality = RenderingQuality(profile="reproducible")
+        return config
+
+    monkeypatch.setattr(session, "build_sim_follower_config", build_config)
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("env_id", ["MuJoCoTouch-v1", "MuJoCoPickAndPlace-v2"])
 def test_worker_reuses_native_simulator_and_preserves_seeded_resets(monkeypatch, tmp_path, env_id):
@@ -15,6 +29,7 @@ def test_worker_reuses_native_simulator_and_preserves_seeded_resets(monkeypatch,
 
     from so101_nexus.teleop.recorder import RecordingState, RecordingWorker, recording_thread
 
+    _use_reproducible_rendering(monkeypatch)
     environments = []
     owner_threads = []
     make = gym.make

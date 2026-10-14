@@ -149,10 +149,10 @@ def _record_episode(tmp_path, *, env_id: str, max_steps: int, robot_id: str):
 
 @pytest.mark.slow
 def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
-    pytest.importorskip("mujoco")
     pytest.importorskip("so101_nexus.mujoco")
 
     import torch
+    from lerobot.configs.video import RGBEncoderConfig
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     from so101_nexus.config import SO101_JOINT_NAMES
@@ -195,7 +195,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         root=dataset_root,
         use_videos=True,
         image_writer_threads=4,
-        vcodec="h264",
+        rgb_encoder=RGBEncoderConfig(vcodec="h264"),
     )
 
     for i in range(len(state.episode_actions)):

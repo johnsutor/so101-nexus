@@ -201,7 +201,8 @@ def test_task_description_reaches_lerobot(hub_env):
     assert hasattr(env.envs[0], "task")
 
     features = lerobot_utils.preprocess_observation(observation)
-    tasks = lerobot_utils.add_envs_task(env, features)["task"]
+    features["task"] = list(env.call("task_description"))
+    tasks = features["task"]
 
     assert tasks == [env.envs[0].task_description] * 2
     assert tasks[0].startswith("Touch the ")

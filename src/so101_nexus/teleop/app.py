@@ -19,7 +19,11 @@ from typing import TYPE_CHECKING, cast
 from so101_nexus.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus.env_ids import Backend, env_ids_for_backend
 from so101_nexus.objects import CubeObject, GSOObject, SceneObject, YCBObject
-from so101_nexus.policy_adapters.collection import load_collection_policy
+from so101_nexus.policy_adapters.collection import (
+    load_collection_policy,
+    parse_policy_camera_map,
+    validate_policy_fps,
+)
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
     apply_config_overrides,
@@ -359,6 +363,8 @@ def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
 
 def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
     """Create and return a LeRobotDataset."""
+    from lerobot.configs.video import RGBEncoderConfig
+
     from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
 
     reward_dataset_cls = _make_reward_scalar_dataset_cls()
@@ -369,7 +375,7 @@ def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
             robot_type=robot_type,
             features=features,
             image_writer_threads=4,
-            vcodec="h264",
+            rgb_encoder=RGBEncoderConfig(vcodec="h264"),
         )
     except Exception as exc:
         raise RuntimeError(f"Failed to create dataset: {exc}") from exc
@@ -436,6 +442,7 @@ def _run_init_worker(
             policy = load_collection_policy(**policy_options)
             if policy is None:
                 raise RuntimeError("No collection policy was loaded")
+            validate_policy_fps(policy, fps, expected_fps=policy_options.get("fps"))
             intervention = InterventionSession(
                 policy,
                 SOLeaderSynchronizer(leader.bus, wrist_roll_offset_deg=wrist_roll_offset_deg),
@@ -1087,6 +1094,7 @@ def _cb_approve_episode(session: dict):
                     {
                         "policy": {
                             **session["policy_options"],
+                            "fps": session["fps"],
                             "action_space": session["policy_action_space"],
                         }
                     }
@@ -1882,6 +1890,10 @@ def main(
             "path": args.policy_path,
             "factory": args.policy_factory,
             "device": args.policy_device,
+            "policy_type": args.policy_type,
+            "norm_tag": args.policy_norm_tag,
+            "fps": args.policy_fps,
+            "camera_map": parse_policy_camera_map(args.policy_cameras),
         },
         "policy_action_space": args.policy_action_space,
         "env_config_profile": env_config_profile,

@@ -428,6 +428,7 @@ def recording_thread(
             overrides=customization_overrides,
             profile_path=env_config_profile,
             factory=env_config_factory,
+            **({"align_fps": True} if intervention is not None else {}),
         )
 
         state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
@@ -435,8 +436,7 @@ def recording_thread(
         if env is None:
             raise RuntimeError("follower environment is not connected after connect()")
         state.task_description = getattr(env.unwrapped, "task_description", "")
-        if intervention is not None:
-            intervention.begin_episode()
+        _begin_intervention_episode(intervention, env.unwrapped, fps)
         state.is_recording = True
 
         frame_duration = 1.0 / fps
@@ -472,6 +472,18 @@ def recording_thread(
         follower_session.close()
     finally:
         _finish_recording(state, follower_session, _follower_session is None, intervention)
+
+
+def _begin_intervention_episode(
+    intervention: InterventionSession | None, env: Any, fps: int
+) -> None:
+    if intervention is not None:
+        control_dt = getattr(env, "control_dt", None)
+        if control_dt is None or not np.isclose(control_dt, 1 / fps, rtol=1e-6, atol=0):
+            raise ValueError(
+                "Policy collection requires simulator control_dt to match recording FPS"
+            )
+        intervention.begin_episode()
 
 
 def _finish_recording(

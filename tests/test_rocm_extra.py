@@ -11,6 +11,9 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 ROCM_INDEX_URL = "https://download.pytorch.org/whl/rocm7.2"
@@ -31,23 +34,40 @@ def test_default_extras_do_not_reference_rocm_index() -> None:
         torch_requirements = [
             dependency for dependency in extras[extra] if dependency.startswith("torch")
         ]
-        assert len(torch_requirements) == 1
+        assert len(torch_requirements) == (2 if extra == "warp" else 1)
         assert all("rocm" not in dependency for dependency in torch_requirements)
 
 
+def _assert_torch_pairs(dependencies, *, include_codec=False) -> None:
+    requirements = [Requirement(dependency) for dependency in dependencies]
+    for platform, machine, torch_bound, codec_bound in (
+        ("linux", "x86_64", "<2.10", "<0.10"),
+        ("darwin", "arm64", "<2.10", "<0.10"),
+        ("linux", "aarch64", ">=2.11,<2.12", ">=0.11,<0.12"),
+        ("linux", "arm64", ">=2.11,<2.12", ">=0.11,<0.12"),
+    ):
+        environment = {"sys_platform": platform, "platform_machine": machine}
+        for package, bound in (("torch", torch_bound), ("torchcodec", codec_bound)):
+            if package == "torchcodec" and not include_codec:
+                continue
+            active = [
+                req
+                for req in requirements
+                if req.name == package and (req.marker is None or req.marker.evaluate(environment))
+            ]
+            assert len(active) == 1
+            assert active[0].specifier == SpecifierSet(bound)
+
+
 def test_warp_extra_pins_compatible_runtime_versions() -> None:
-    """The Warp runtime pins versions that its released package smoke test supports."""
     warp = PYPROJECT["project"]["optional-dependencies"]["warp"]
     assert "mujoco-warp>=3.13.0,<4" in warp
-    assert "torch<2.10" in warp
     assert "warp-lang>=1.15,<1.16" in warp
+    _assert_torch_pairs(warp)
 
 
 def test_test_group_pins_compatible_torchcodec() -> None:
-    """The test suite uses a TorchCodec release compatible with the Warp Torch cap."""
-    test_dependencies = PYPROJECT["dependency-groups"]["test"]
-    assert "torch<2.10" in test_dependencies
-    assert "torchcodec<0.10" in test_dependencies
+    _assert_torch_pairs(PYPROJECT["dependency-groups"]["test"], include_codec=True)
 
 
 def test_torch_sources_route_only_the_rocm_extra_to_the_rocm_index() -> None:

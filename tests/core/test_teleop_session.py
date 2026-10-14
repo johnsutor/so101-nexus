@@ -555,3 +555,70 @@ def test_build_sim_follower_config_wires_cameras_and_env_kwargs(
     assert overhead.height == 360
     assert overhead.fps == 15
     assert overhead.source == "overhead_camera"
+
+
+@pytest.mark.parametrize("fps", [20, 30, 60])
+def test_policy_collection_physics_matches_dataset_fps(fps):
+    from so101_nexus.teleop.session import build_sim_follower_config
+
+    config = build_sim_follower_config(
+        env_id="MuJoCoTouch-v1",
+        robot_id="policy",
+        wrist_wh=(32, 32),
+        overhead_wh=(32, 32),
+        fps=fps,
+        align_fps=True,
+    )
+    physics = config.env_kwargs["config"].physics
+    assert physics.control_period_s == pytest.approx(1 / fps)
+    assert physics.timestep_s <= 0.005
+    assert physics.substeps * physics.timestep_s == pytest.approx(1 / fps)
+
+
+@pytest.mark.parametrize("fps", [20, 30, 60])
+def test_policy_collection_advances_native_simulator_by_one_dataset_frame(env_factory, fps):
+    from so101_nexus.teleop.session import build_sim_follower_config
+
+    config = build_sim_follower_config(
+        env_id="MuJoCoTouch-v1",
+        robot_id="policy",
+        wrist_wh=(32, 32),
+        overhead_wh=(32, 32),
+        fps=fps,
+        align_fps=True,
+    )
+    env = env_factory(config=config.env_kwargs["config"], control_mode="pd_joint_pos")
+    env.reset(seed=0)
+    before = env.unwrapped.data.time
+    env.step(np.zeros(6, dtype=np.float32))
+    assert env.unwrapped.data.time - before == pytest.approx(1 / fps)
+    assert env.unwrapped.control_dt == pytest.approx(1 / fps)
+    assert env.metadata["render_fps"] == pytest.approx(fps)
+
+
+def test_policy_timing_preserves_native_mujoco_numerical_options(env_factory):
+    from so101_nexus.teleop.session import build_sim_follower_config
+
+    baseline = env_factory()
+    config = build_sim_follower_config(
+        env_id="MuJoCoTouch-v1",
+        robot_id="policy",
+        wrist_wh=(32, 32),
+        overhead_wh=(32, 32),
+        fps=30,
+        align_fps=True,
+    )
+    policy_env = env_factory(config=config.env_kwargs["config"])
+    for field in (
+        "integrator",
+        "solver",
+        "cone",
+        "impratio",
+        "iterations",
+        "ls_iterations",
+        "tolerance",
+        "noslip_iterations",
+    ):
+        assert getattr(policy_env.unwrapped.model.opt, field) == getattr(
+            baseline.unwrapped.model.opt, field
+        )
