@@ -198,6 +198,9 @@ def maybe_log_wandb_rollout_video(
         if frame is not None:
             frames.append(frame)
         steps += 1
+    wandb_module.config.update(
+        {"evaluation_rendering": getattr(eval_env.unwrapped, "rendering_metadata", None)}
+    )
     eval_env.close()
 
     if not frames:
@@ -304,6 +307,10 @@ if __name__ == "__main__":
             for i in range(args.num_envs)
         ]
     )
+    if wandb is not None:
+        wandb.config.update(
+            {"rendering": getattr(envs.envs[0].unwrapped, "rendering_metadata", None)}
+        )
     assert isinstance(envs.single_action_space, gym.spaces.Box), (
         "only continuous action space is supported"
     )
@@ -476,6 +483,7 @@ if __name__ == "__main__":
             device=device,
             env_config=getattr(envs.envs[0].unwrapped, "config", None),
             run_config=vars(args),
+            rendering=getattr(envs.envs[0].unwrapped, "rendering_metadata", None),
         )
         with open(f"{model_path}.json", "w", encoding="utf-8") as metadata_file:
             json.dump(provenance, metadata_file, indent=2, sort_keys=True)

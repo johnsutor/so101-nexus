@@ -78,7 +78,10 @@ Contact impedance affects tangential regularization as well as penetration. Vali
 
 ## RenderConfig
 
-Controls the visualization render camera (not observations): image resolution and which view `render_mode` shows. `camera="side"` selects an angled tabletop bystander view, useful for watching rollouts and recording presentation-quality videos of trained policies; it never enters the observation space. Both backends support these views. See [Render modes](/docs/concepts/backends#render-modes) for backend output formats.
+Controls the visualization camera geometry and the inherited [rendering quality](#rendering-quality) of all cameras.
+Image resolution and view selection affect visualization only.
+`camera="side"` selects an angled tabletop view for rollout videos; it never enters the observation space.
+Both backends support these views. See [Render modes](/docs/concepts/backends#render-modes) for backend output formats.
 
 ```python
 from so101_nexus import RenderConfig
@@ -106,6 +109,7 @@ render = RenderConfig(
 | `side_azimuth_range_deg` | `tuple[float, float] \| None` | `None` | Uniform azimuth bounds in degrees, overriding `side_azimuth_deg` |
 | `side_elevation_range_deg` | `tuple[float, float] \| None` | `None` | Uniform elevation bounds in degrees within `[-90, 0)`, overriding `side_elevation_deg` |
 | `side_distance_range` | `tuple[float, float] \| None` | `None` | Uniform positive straight-line distance bounds in meters from the workspace look-at target; `None` retains automatic workspace framing |
+| `quality` | `RenderingQuality \| None` | `None` | Shared camera quality. `None` uses `RenderingQuality()` defaults. |
 
 Ranges apply to every task's side view on both backends, including RGB and depth, and the MuJoCo human viewer. Each reset samples the configured ranges using the environment's seeded RNG. Warp samples independently per world and only resamples worlds that reset, including same-step autoresets. The sampled pose stays fixed during the episode; the human viewer still allows manual orbiting. An open viewer adopts the newly sampled pose on reset.
 
@@ -121,6 +125,59 @@ With randomized angles, each reset computes both the aim point and distance for 
 An explicit `side_distance_range` overrides the automatic distance.
 
 Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omitted angle ranges retain the corresponding fixed angles, and `camera="overhead"` ignores all side ranges. With no ranges, the camera uses fixed angles and automatic distance. Explicit distance bounds can crop the workspace or place the camera inside geometry, so choose bounds that suit your scene. These settings do not change camera observations.
+
+## RenderingQuality
+
+MuJoCo and mjbatch apply this configuration before they allocate camera framebuffers.
+To select the opt-in reproducibility profile, pass it through `RenderConfig`:
+
+```python
+from so101_nexus import PickConfig, RenderConfig, RenderingQuality, WristCamera
+
+config = PickConfig(
+    render=RenderConfig(quality=RenderingQuality(profile="reproducible")),
+    observations=[WristCamera()],
+)
+```
+
+`WristCamera` and `OverheadCamera` inherit this quality when their `quality` argument is `None`.
+An omitted `RenderConfig` uses the default profile.
+The visualization camera also uses the environment's quality.
+
+| Profile | MSAA samples | Shadows | Shadow map size |
+|---------|--------------|---------|-----------------|
+| `default` | `8` | `True` | `8192` |
+| `reproducible` | `4` | `False` | `8192` |
+
+### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `profile` | `"default" \| "reproducible"` | `"default"` | Profile that supplies omitted values |
+| `msaa_samples` | `int \| None` | `None` | Requested offscreen MSAA sample count. Zero disables MSAA. |
+| `shadows` | `bool \| None` | `None` | Whether camera scenes render shadows |
+| `shadow_map_size` | `int \| None` | `None` | Positive shadow map size in pixels |
+
+Explicit values override the selected profile, for example `RenderingQuality(profile="reproducible", msaa_samples=0)`.
+Camera overrides can change `shadows` independently.
+MuJoCo stores MSAA and shadow map size on the shared model.
+Therefore, camera overrides must match the environment's `msaa_samples` and `shadow_map_size`.
+Conflicting values raise `ValueError`.
+
+`RenderingQuality` is immutable. Quality changes require a new environment.
+Changing the model's sample request after framebuffer allocation does not change the allocated sample count.
+Warp uses a separate ray renderer without equivalent MSAA or shadow map controls.
+Warp rejects unsupported quality configurations rather than silently applying this MuJoCo profile.
+
+The `reproducible` profile retains anti-aliasing.
+It is a tested workaround without a guarantee of determinism across drivers, GPUs, or render histories.
+The `check_msaa_no_shadow.py` probe in the companion `so101-tasks` project tested NVIDIA RTX 5090, driver `580.178.04`, EGL, and MuJoCo `3.14.0`.
+Other installations require their own repeated-state image and policy tests.
+
+`env.unwrapped.rendering_metadata` reports requested quality, allocated sample counts, camera dimensions, and renderer runtime details.
+Read it after each relevant camera renders so lazy camera allocations appear in the report.
+Store it with evaluation results and experiment configuration.
+See [Training reproducibility](/docs/workflow/training#reproducibility) for baseline and render cadence requirements.
 
 ---
 
@@ -307,7 +364,7 @@ config = EnvironmentConfig(obs_mode="state")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `render` | `RenderConfig \| None` | `None` | Render camera settings (visualization only): resolution and overhead/side view selection. Uses `RenderConfig()` defaults when `None`. |
+| `render` | `RenderConfig \| None` | `None` | Visualization camera geometry and inherited quality for all cameras. Uses `RenderConfig()` defaults when `None`. |
 | `reward` | `RewardConfig \| None` | `None` | Reward weights. Uses `RewardConfig()` defaults when `None`. |
 | `robot` | `RobotConfig \| None` | `None` | Robot settings. Uses `RobotConfig()` defaults when `None`. |
 | `ground_colors` | `ColorConfig` | `"gray"` | Ground plane color(s) |
@@ -377,6 +434,7 @@ Both camera classes accept the keyword-only `modalities` parameter.
 Use `("rgb",)` for RGB, `("depth",)` for depth, or `("rgb", "depth")` for both.
 The default is `("rgb",)`. Empty, duplicate, and unknown modalities raise `ValueError`.
 See [Depth observations](/docs/concepts/observations#depth-observations) for output keys, units, shapes, and clipping behavior.
+Both also accept `quality` for a [rendering quality override](#rendering-quality).
 
 #### `WristCamera`
 
@@ -398,6 +456,7 @@ cam = WristCamera(width=224, height=224)
 | `pos_z_center` | `float` | `-0.04` | Nominal z-offset from the wrist |
 | `pos_z_noise` | `float` | `0.01` | Position noise along z-axis |
 | `modalities` | `tuple[Literal["rgb", "depth"], ...]` | `("rgb",)` | Requested camera outputs |
+| `quality` | `RenderingQuality \| None` | `None` | Optional override; `None` inherits the environment's render quality |
 
 Properties: `fov_rad_range`, `pitch_rad_range` (converted to radians).
 
@@ -415,6 +474,7 @@ cam = OverheadCamera(width=320, height=240, fov_deg=45.0)
 | `height` | `int` | `480` | Image height in pixels |
 | `fov_deg` | `float` | `45.0` | Vertical field-of-view in degrees |
 | `modalities` | `tuple[Literal["rgb", "depth"], ...]` | `("rgb",)` | Requested camera outputs |
+| `quality` | `RenderingQuality \| None` | `None` | Optional override; `None` inherits the environment's render quality |
 
 ---
 

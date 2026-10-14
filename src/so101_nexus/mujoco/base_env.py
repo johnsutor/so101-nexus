@@ -11,6 +11,7 @@ import gymnasium
 import mujoco
 import numpy as np
 from gymnasium import spaces
+from mujoco import gl_context
 
 from so101_nexus.camera_utils import compute_angled_camera_params, compute_overhead_camera_params
 from so101_nexus.config import (
@@ -62,6 +63,8 @@ from so101_nexus.scene import robot_material_ids
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+    from so101_nexus.rendering import RenderingQuality
 
 logger = logging.getLogger(__name__)
 
@@ -337,11 +340,97 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         # None means "no action since the last reset" so the first step reports
         # an action_delta_norm of 0.0.
         self._prev_action: np.ndarray | None = None
+        self._setup_rendering_quality()
         self._setup_camera_renderers()
         self._renderer = None
         self._side_camera_overrides: dict[str, float] = {}
         self._render_cam: mujoco.MjvCamera | None = None
         self._viewer = None
+
+    def _setup_rendering_quality(self) -> None:
+        self._render_quality = self.config.render.quality
+        context_type = getattr(gl_context, "GLContext", None)
+        self._gl_backend = (
+            context_type.__module__.removeprefix("mujoco.") if context_type else "disabled"
+        )
+        self._camera_qualities: dict[str, RenderingQuality] = {}
+        for comp in self.config.observations or ():
+            if not isinstance(comp, (WristCamera, OverheadCamera)):
+                continue
+            quality = comp.quality or self._render_quality
+            for field in ("msaa_samples", "shadow_map_size"):
+                if getattr(quality, field) != getattr(self._render_quality, field):
+                    raise ValueError(
+                        f"camera {comp.name!r} {field} must match RenderConfig.quality"
+                    )
+            self._camera_qualities[comp.name] = quality
+        self.model.vis.quality.offsamples = self._render_quality.msaa_samples
+        self.model.vis.quality.shadowsize = self._render_quality.shadow_map_size
+        self._renderer_metadata: dict[str, dict[str, Any]] = {}
+
+    def _check_rendering_quality(self) -> None:
+        if (
+            self.config.render.quality != self._render_quality
+            or self.model.vis.quality.offsamples != self._render_quality.msaa_samples
+            or self.model.vis.quality.shadowsize != self._render_quality.shadow_map_size
+        ) or any(
+            (comp.quality or self._render_quality) != self._camera_qualities.get(comp.name)
+            for comp in self.config.observations or ()
+            if isinstance(comp, (WristCamera, OverheadCamera))
+        ):
+            raise RuntimeError("rendering quality cannot change after environment construction")
+
+    def _make_renderer(
+        self, name: str, *, width: int, height: int, quality: RenderingQuality
+    ) -> mujoco.Renderer:
+        renderer = mujoco.Renderer(self.model, width=width, height=height)
+        renderer.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = quality.shadows
+        context = getattr(renderer, "_mjr_context", None)
+        actual_samples = getattr(context, "offSamples", None)
+        metadata: dict[str, Any] = {
+            "profile": quality.profile,
+            "requested_msaa_samples": quality.msaa_samples,
+            "actual_msaa_samples": int(actual_samples) if actual_samples is not None else None,
+            "shadows": quality.shadows,
+            "shadow_map_size": quality.shadow_map_size,
+            "width": width,
+            "height": height,
+        }
+        # Constructor leaves this renderer's GL context current, so no unrelated
+        # application context is queried or switched for optional provenance.
+        try:
+            from OpenGL import GL
+
+            for key, enum in (
+                ("gl_vendor", GL.GL_VENDOR),
+                ("gl_renderer", GL.GL_RENDERER),
+                ("gl_version", GL.GL_VERSION),
+            ):
+                value = GL.glGetString(enum)
+                metadata[key] = value.decode("utf-8", errors="replace") if value else None
+        except Exception:
+            logger.debug("OpenGL rendering provenance unavailable", exc_info=True)
+        self._renderer_metadata[name] = metadata
+        return renderer
+
+    @property
+    def rendering_metadata(self) -> dict[str, Any]:
+        """Return JSON-compatible quality and allocated-context provenance.
+
+        Actual sample counts and GL information are reported only after the
+        corresponding renderer is allocated. Quality is fixed at construction.
+        """
+        return {
+            "mujoco_version": mujoco.__version__,
+            "gl_backend": self._gl_backend,
+            "model": {
+                "profile": self._render_quality.profile,
+                "shadows": self._render_quality.shadows,
+                "msaa_samples": self._render_quality.msaa_samples,
+                "shadow_map_size": self._render_quality.shadow_map_size,
+            },
+            "renderers": {name: dict(values) for name, values in self._renderer_metadata.items()},
+        }
 
     def _setup_camera_renderers(self) -> None:
         """Detect camera observation components and set up renderers + obs space."""
@@ -357,7 +446,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self._wrist_cam_component is not None:
             wrist_w = self._wrist_cam_component.width
             wrist_h = self._wrist_cam_component.height
-            self._wrist_renderer = mujoco.Renderer(self.model, height=wrist_h, width=wrist_w)
+            self._wrist_renderer = self._make_renderer(
+                "wrist",
+                width=wrist_w,
+                height=wrist_h,
+                quality=self._camera_qualities[self._wrist_cam_component.name],
+            )
         else:
             self._wrist_renderer = None
 
@@ -371,8 +465,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
             )
             self._overhead_obs_cam = mujoco.MjvCamera()
             _configure_free_camera(self._overhead_obs_cam, params)
-            self._overhead_obs_renderer = mujoco.Renderer(
-                self.model, height=cam.height, width=cam.width
+            self._overhead_obs_renderer = self._make_renderer(
+                "overhead",
+                width=cam.width,
+                height=cam.height,
+                quality=self._camera_qualities[cam.name],
             )
         else:
             self._overhead_obs_cam = None
@@ -1094,12 +1191,14 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def render(self) -> np.ndarray | None:
         """Return RGB pixels, metric depth, or None according to render mode."""
+        self._check_rendering_quality()
         if self.render_mode in ("rgb_array", "depth_array"):
             if self._renderer is None:
-                self._renderer = mujoco.Renderer(
-                    self.model,
+                self._renderer = self._make_renderer(
+                    "render",
                     height=self.config.render.height,
                     width=self.config.render.width,
+                    quality=self._render_quality,
                 )
             if self._render_cam is None:
                 self._render_cam = mujoco.MjvCamera()
@@ -1112,6 +1211,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         if self.render_mode == "human":
             if self._viewer is None:
                 self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+                with self._viewer.lock():
+                    self._viewer.user_scn.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = (
+                        self._render_quality.shadows
+                    )
                 # Open on the configured view; the user can still orbit freely.
                 _configure_free_camera(self._viewer.cam, self._render_camera_params())
             self._viewer.sync()
@@ -1181,6 +1284,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
 
     def _get_obs(self) -> np.ndarray | dict[str, np.ndarray]:
         """Build observation from component list, optionally including camera images."""
+        self._check_rendering_quality()
         state = self._compute_obs_components()
         has_any_camera = self._wrist_renderer is not None or self._overhead_obs_renderer is not None
         if not has_any_camera:

@@ -1209,6 +1209,8 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio, 
     state.episode_actions.append(np.zeros(6, dtype=np.float32))
     state.episode_states.append(np.zeros(6, dtype=np.float32))
     state.episode_rewards.append(0.75)
+    state.initial_sim_state = {"qpos": [0.0]}
+    state.rendering_metadata = {"renderers": {"side": {"msaa_samples": 4}}}
     dataset = _Dataset()
     session = {
         "state": state,
@@ -1223,6 +1225,12 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio, 
 
     outputs = _cb_approve_episode(session)
 
+    import json
+
+    metadata = json.loads((tmp_path / "meta/reproducibility/episode_000000.json").read_text())
+    assert metadata["initial_sim_state"] == {"qpos": [0.0]}
+    assert metadata["rendering"] == {"renderers": {"side": {"msaa_samples": 4}}}
+    assert state.rendering_metadata == {}
     assert dataset.saved == 1
     assert len(dataset.frames) == 1
     assert "reward" in dataset.frames[0]

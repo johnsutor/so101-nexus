@@ -167,8 +167,17 @@ class RolloutRecorder:
             if terminated or truncated:
                 break
 
+        rendering = getattr(self.env.unwrapped, "rendering_metadata", None)
+        if rendering is not None:
+            info = {**info, "rendering": rendering}
         if self.dataset is not None:
-            save_recorded_episode(self.dataset, info.get("placement_contract"))
+            save_recorded_episode(
+                self.dataset,
+                info.get("placement_contract"),
+                reproducibility={"seed": seed, "rendering": rendering}
+                if rendering is not None
+                else None,
+            )
 
         return EpisodeResult(
             success=bool(info.get("success", False)),

@@ -99,6 +99,7 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.physics import apply_physics_config
+from so101_nexus.rendering import RenderingQuality
 from so101_nexus.scene import robot_material_ids
 from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
@@ -293,6 +294,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         if config.observations is not None:
             self._validate_obs_components(config.observations)
 
+        self._validate_rendering_quality(config)
         self.config = config
         self.control_mode = control_mode
         self.render_mode = render_mode
@@ -497,6 +499,22 @@ class SO101NexusWarpVectorEnv(VectorEnv):
             (self.num_envs, SO101_ARM_JOINT_COUNT), device=self.device
         )
 
+    @staticmethod
+    def _validate_rendering_quality(config: EnvironmentConfig) -> None:
+        """Reject OpenGL quality overrides the Warp rasterizer cannot reproduce."""
+        default = RenderingQuality()
+        qualities = [config.render.quality]
+        qualities.extend(
+            component.quality
+            for component in config.observations or []
+            if isinstance(component, CameraObservation) and component.quality is not None
+        )
+        if any(quality != default for quality in qualities):
+            raise ValueError(
+                "Warp supports only default rendering quality; MuJoCo OpenGL MSAA and "
+                "shadow quality overrides are unsupported by its rasterizer"
+            )
+
     def _setup_cameras(self) -> None:
         """Detect camera components and configure batched rendering (no-op if none).
 
@@ -509,6 +527,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         The observation SCHEMA and the camera intrinsics/extrinsics match the
         MuJoCo backend; the rendered pixels do not. See this module's docstring.
         """
+        self._validate_rendering_quality(self.config)
         obs = self.config.observations or []
         self._wrist_cam: WristCamera | None = next(
             (c for c in obs if isinstance(c, WristCamera)), None
@@ -612,6 +631,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
 
     def _render_camera_images(self) -> dict[str, torch.Tensor]:
         """Allocate independent images through Torch's cache and render into their storage."""
+        self._validate_rendering_quality(self.config)
         images: dict[str, torch.Tensor] = {}
         with wp.ScopedDevice(self._wp_device):
             self._update_render_markers()
@@ -803,6 +823,7 @@ class SO101NexusWarpVectorEnv(VectorEnv):
         """
         if self.render_mode is None:
             return None
+        self._validate_rendering_quality(self.config)
         render = self.config.render
         modality = "rgb" if self.render_mode == "rgb_array" else "depth"
         if self._visual_render_ctx is None:

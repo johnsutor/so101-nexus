@@ -1053,6 +1053,7 @@ def _cb_approve_episode(session: dict):
                 "seed": s.episode_seed,
                 "task_description": s.task_description,
                 "initial_sim_state": s.initial_sim_state,
+                "rendering": s.rendering_metadata,
             },
         )
     except Exception as exc:

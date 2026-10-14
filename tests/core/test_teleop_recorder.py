@@ -62,6 +62,7 @@ class _FakeRecordingFollower:
     def __init__(self, config) -> None:
         self.config = config
         self.step_calls = 0
+        self.camera_requested = False
         self.initial_leader_action: dict[str, float] | None = None
         self._last_step_info = None
         self._env = types.SimpleNamespace(
@@ -90,6 +91,7 @@ class _FakeRecordingFollower:
         return dict(action)
 
     def get_observation(self) -> dict[str, object]:
+        self.camera_requested = True
         obs = {f"{name}.pos": float(self.step_calls) for name in SO101_JOINT_NAMES}
         obs["wrist"] = np.zeros((4, 4, 3), dtype=np.uint8)
         return obs
@@ -99,6 +101,9 @@ class _FakeRecordingFollower:
 
     def initial_state_provenance(self) -> dict[str, object]:
         return {"qpos": [1.0, 2.0]}
+
+    def rendering_metadata(self) -> dict[str, object]:
+        return {"renderers": {"side": {"msaa_samples": 4}} if self.camera_requested else {}}
 
 
 def _run_fake_recording(
@@ -571,3 +576,15 @@ def test_append_step_buffers_pre_first_step_defaults_and_skips_env_state() -> No
     assert state.episode_dones == [0.0]
     assert state.episode_reward_components == [{}]
     assert state.episode_env_states == []
+
+
+@pytest.mark.parametrize("max_steps", [0, 1])
+def test_recording_captures_final_rendering_metadata(monkeypatch, max_steps):
+    state, follower = _run_fake_recording(monkeypatch, max_steps=max_steps)
+    assert state.error is None
+    expected = {"renderers": {"side": {"msaa_samples": 4}} if max_steps else {}}
+    assert state.rendering_metadata == expected
+    assert state.rendering_metadata == follower.rendering_metadata()
+    assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
+    state.clear_episode()
+    assert state.rendering_metadata == {}

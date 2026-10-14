@@ -181,6 +181,18 @@ The loader resolves one commit before reading metadata or data. It loads every p
 shard in a stable order. For asset revision controls, see
 [Scene Objects and Assets](/docs/api/objects#ycb-assets).
 
+For visual policies on MuJoCo or mjbatch, select and record a
+[rendering quality profile](/docs/api/configs#rendering-quality) before environment construction.
+Preserve the render cadence for every camera throughout baseline and policy comparisons.
+Render-skip optimizations can change policy observations even with unchanged quality and seeds.
+Before adopting a different cadence, compare images at policy queries and complete policy episodes against the established reference.
+
+After a rendering quality or MuJoCo version change, establish a fresh behavior-cloning baseline.
+Compare RL against that baseline under the same camera configuration and cadence.
+Rendering changes alter the observation distribution relative to recorded demonstrations.
+Store effective rendering metadata with evaluation reports and experiment configuration.
+The profile alone does not establish cross-GPU image equality or complete policy repeatability.
+
 Torch deterministic execution is strict by default. Known nondeterministic Torch operations
 raise an error. `--torch-deterministic-warn-only` permits those operations with a warning.
 This flag does not control Warp kernels. GPU contact physics can still produce different

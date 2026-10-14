@@ -63,6 +63,28 @@ class _Policy:
         return self.action_deg
 
 
+@pytest.mark.parametrize("with_dataset", [False, True])
+def test_record_episode_retains_rendering_provenance(tmp_path, with_dataset) -> None:
+    import json
+
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    env = _DatasetEnv(terminate_after=1)
+    env.rendering_metadata = {"model": {"msaa_samples": 4}, "renderers": {}}
+    dataset = _Dataset() if with_dataset else None
+    if dataset is not None:
+        dataset.root = tmp_path
+        dataset.num_episodes = 0
+    recorder = RolloutRecorder(env, _Policy(np.zeros(6, dtype=np.float32)), dataset=dataset)
+
+    result = recorder.record_episode(seed=17)
+
+    assert result.info["rendering"] == env.rendering_metadata
+    if with_dataset:
+        metadata = json.loads((tmp_path / "meta/reproducibility/episode_000000.json").read_text())
+        assert metadata == {"seed": 17, "rendering": env.rendering_metadata}
+
+
 class _Dataset:
     def __init__(self) -> None:
         self.frames: list[dict[str, Any]] = []

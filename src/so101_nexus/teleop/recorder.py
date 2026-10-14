@@ -105,6 +105,7 @@ class RecordingState:
     placement_contract: dict[str, Any] | None = None
     episode_seed: int | None = None
     initial_sim_state: dict[str, Any] = field(default_factory=dict)
+    rendering_metadata: dict[str, Any] = field(default_factory=dict)
     episode_duration: float = 0.0
     live_frame: np.ndarray | None = None
     live_overhead_frame: np.ndarray | None = None
@@ -131,6 +132,7 @@ class RecordingState:
         self.placement_contract = None
         self.episode_seed = None
         self.initial_sim_state.clear()
+        self.rendering_metadata.clear()
         self.episode_duration = 0.0
         self.live_frame = None
         self.live_overhead_frame = None
@@ -463,6 +465,7 @@ def recording_thread(
                 time.sleep(sleep_time)
 
         state.episode_duration = time.monotonic() - start_time
+        state.rendering_metadata = follower.rendering_metadata()
     except Exception as exc:
         state.error = f"{type(exc).__name__}: {exc}"
         follower_session.close()

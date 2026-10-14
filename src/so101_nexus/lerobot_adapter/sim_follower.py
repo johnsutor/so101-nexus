@@ -374,6 +374,12 @@ class SimSOFollower(Robot):
                     fields[name] = _array_to_list(value)
         return fields
 
+    def rendering_metadata(self) -> dict[str, Any]:
+        """Return rendering provenance for the currently allocated camera contexts."""
+        if self._env is None:
+            raise RuntimeError("SimSOFollower is not connected to an environment")
+        return getattr(self._env.unwrapped, "rendering_metadata", {})
+
     @check_if_not_connected
     def send_action(self, action: RobotAction) -> RobotAction:
         """Send a normalized LeRobot joint or end-effector target to the simulator."""

@@ -35,6 +35,22 @@ def _make_from_factory(env_factory, env_id):
 
 
 @pytest.mark.parametrize("env_id", ENV_IDS)
+def test_state_only_environments_work_without_gl_context(env_factory, monkeypatch, env_id):
+    from mujoco import gl_context
+
+    monkeypatch.delattr(gl_context, "GLContext", raising=False)
+    env = _make_from_factory(env_factory, env_id)
+    observation, _ = env.reset(seed=19)
+    assert env.observation_space.contains(observation)
+    observation, reward, _, _, _ = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+    assert env.observation_space.contains(observation)
+    assert np.isfinite(reward)
+    assert env.unwrapped.rendering_metadata["gl_backend"] == "disabled"
+    assert env.unwrapped.rendering_metadata["renderers"] == {}
+    assert env.render() is None
+
+
+@pytest.mark.parametrize("env_id", ENV_IDS)
 def test_seeded_rollout_replays_after_dirty_episode(env_id):
     import gymnasium as gym
 
