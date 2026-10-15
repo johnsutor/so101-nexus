@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import math
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -171,59 +172,82 @@ class SOLeaderSynchronizer:
         self._initial: dict[str, float] = {}
         self._started = 0.0
         self._duration = 0.0
+        self._holding = False
+        self._lock = threading.RLock()
+
+    @property
+    def holding(self) -> bool:
+        """Whether the last pose-hold command completed successfully."""
+        return self._holding
 
     def start(self, target: dict[str, float]) -> None:
-        """Enable torque at the current pose, then begin interpolated alignment."""
-        self.cancel()
-        target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
-        self._target = {key.removesuffix(".pos"): value for key, value in target.items()}
-        if not all(math.isfinite(value) for value in self._target.values()):
-            self._target = None
-            raise ValueError("Synchronization targets must be finite")
-        try:
-            self._initial = self.bus.sync_read("Present_Position")
+        """Hold the measured pose, then begin interpolated alignment."""
+        with self._lock:
+            self.cancel()
+            target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
+            target = {key.removesuffix(".pos"): value for key, value in target.items()}
+            if not all(math.isfinite(value) for value in target.values()):
+                raise ValueError("Synchronization targets must be finite")
+            self._target = target
             self._duration = max(
                 abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
-                for name, value in self._target.items()
+                for name, value in target.items()
             )
-            self.bus.sync_write("Goal_Position", self._initial)
-            self.bus.enable_torque()
             self._started = time.monotonic()
-        except Exception:
-            self.cancel()
-            raise
 
     def tick(self) -> bool:
-        """Advance the target and release torque after measured convergence."""
-        if self._target is None:
-            return True
-        try:
-            elapsed = time.monotonic() - self._started
-            if elapsed > self._duration + 3.0:
-                raise TimeoutError(
-                    "Leader synchronization timed out; check alignment and calibration"
-                )
-            fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
-            self.bus.sync_write(
-                "Goal_Position",
-                {
-                    name: self._initial[name] + fraction * (value - self._initial[name])
-                    for name, value in self._target.items()
-                },
-            )
-            positions = self.bus.sync_read("Present_Position")
-            if fraction == 1.0 and all(
-                abs(positions[name] - value) <= 2.0 for name, value in self._target.items()
-            ):
-                self.cancel()
+        """Advance alignment and keep torque enabled after convergence."""
+        with self._lock:
+            if self._target is None:
                 return True
-            return False
-        except Exception:
-            self.cancel()
-            raise
+            try:
+                elapsed = time.monotonic() - self._started
+                if elapsed > self._duration + 3.0:
+                    raise TimeoutError(
+                        "Leader synchronization timed out; check alignment and calibration"
+                    )
+                fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
+                self.bus.sync_write(
+                    "Goal_Position",
+                    {
+                        name: self._initial[name] + fraction * (value - self._initial[name])
+                        for name, value in self._target.items()
+                    },
+                )
+                positions = self.bus.sync_read("Present_Position")
+                if fraction == 1.0 and all(
+                    abs(positions[name] - value) <= 2.0 for name, value in self._target.items()
+                ):
+                    self._target = None
+                    return True
+                return False
+            except Exception as exc:
+                try:
+                    self.cancel()
+                except Exception as hold_exc:
+                    raise RuntimeError(
+                        f"{exc}; leader pose hold failed: {hold_exc}. Support the physical arm now."
+                    ) from exc
+                raise
 
     def cancel(self) -> None:
-        """Release leader torque if alignment is active."""
-        if self._target is not None:
-            self.bus.disable_torque()
+        """Stop alignment and hold measured joint positions without releasing torque."""
+        with self._lock:
             self._target = None
+            self._holding = False
+            positions = self.bus.sync_read("Present_Position")
+            if set(positions) != set(SO101_JOINT_NAMES) or not all(
+                math.isfinite(value) for value in positions.values()
+            ):
+                raise ValueError("Leader pose hold requires finite readings for every joint")
+            self.bus.sync_write("Goal_Position", positions)
+            self.bus.enable_torque()
+            self._initial = positions
+            self._holding = True
+
+    def release(self) -> None:
+        """Disable torque only after the operator explicitly supports the leader."""
+        with self._lock:
+            self._target = None
+            self._holding = False
+            self.bus.disable_torque()

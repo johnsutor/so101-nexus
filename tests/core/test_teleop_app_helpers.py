@@ -1469,7 +1469,10 @@ def test_poll_recording_failed_empty_episode_warns_without_plot_error(
 
     assert len(outputs) == 13
     assert warnings == ["Recording failed: RuntimeError: boom"]
-    assert state.error is None
+    assert state.error == "RuntimeError: boom"
+    assert "RuntimeError: boom" in outputs[10]["value"]
+    assert outputs[10]["visible"] is True
+    assert outputs[11]["interactive"] is False
     assert outputs[7]["value"] is None
 
 

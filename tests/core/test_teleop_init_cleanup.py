@@ -53,7 +53,7 @@ def test_init_failure_disconnects_connected_leader(
     leader.disconnect.assert_called_once_with()
 
 
-def test_policy_initialization_creates_intervention_schema_and_releases_on_failure(monkeypatch):
+def test_policy_initialization_failure_closes_serial_without_disabling_torque(monkeypatch):
     from types import SimpleNamespace
 
     leader = Mock()
@@ -101,7 +101,8 @@ def test_policy_initialization_creates_intervention_schema_and_releases_on_failu
     )
     assert init["error"] == "dataset creation failed"
     assert {"is_intervention", "intervention_id"} <= set(features[0])
-    leader.disconnect.assert_called_once_with()
+    leader.disconnect.assert_not_called()
+    leader.bus.disconnect.assert_called_once_with(disable_torque=False)
     assert len(sessions) == 1
     with pytest.raises(RuntimeError, match="closed"):
         sessions[0].request("human")

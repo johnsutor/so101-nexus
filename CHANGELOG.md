@@ -43,6 +43,11 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Physical leaders retain motor torque after policy collection errors, alignment,
+  pause, episode completion, and process cleanup. Explicit motor release requires
+  operator support confirmation in the viewer. Recording errors remain visible
+  in Review, and failed pose holds are reported without disabling torque.
+
 - State-only MuJoCo environments initialize when OpenGL is disabled, including macOS CI.
 - Teleoperation preserves configured depth modalities when it resizes observation cameras.
 

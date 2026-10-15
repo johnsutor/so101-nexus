@@ -107,8 +107,9 @@ a custom adapter rather than being accepted based on their action dimension alon
 2. Click **Pause and take control (T)** when correction is needed. Policy stepping stops immediately.
    The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
    Keep the leader clear while **Paused: aligning leader** is shown.
-3. Wait for **Paused: ready for correction**. Keep the leader in its aligned pose,
-   then click **Start correction (C)** and move it to drive the simulated arm.
+3. Wait for **Paused: ready for correction**. The leader motors keep holding the aligned pose.
+   Support the physical arm and gripper, then check **I am supporting the physical leader arm and gripper**.
+   Click **Release leader and start correction (C)** and move the leader to drive the simulated arm.
    The simulation stays paused until you explicitly start correction.
 4. Click **Resume policy (P)** to continue from the corrected state with a fresh prediction.
 5. Repeat as needed, then review and approve the entire episode.
@@ -129,8 +130,18 @@ This collector currently supports the simulated follower, not real-robot deploym
 Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.
 Targets ramp at up to 20 degrees per second for body joints and 40 percentage points per second for the gripper.
 The leader must converge within 2 degrees or 2 percentage points of its target.
-A timeout or motor error ends recording and attempts to release torque.
-These are target-command bounds, not guarantees of physical motor speed.
+A timeout or motor error ends recording and commands a hold at the measured physical pose.
+Pausing, finishing an episode, and process cleanup also preserve motor torque.
+Recording errors stay visible in Review, along with any failure to hold the leader.
+If holding is unconfirmed, support the arm and gripper immediately.
+These are target-command bounds, not guarantees of physical motor speed or successful holding
+when motor communication or power fails.
+
+To park the leader after recording stops, support the arm and gripper, check the support
+confirmation, and click **Release leader motors**. The hardware panel stays available in
+Review and Complete. Finalization and reinitialization require this explicit release. The confirmation resets
+after each handoff or release. Closing the process without releasing the leader preserves
+motor torque; support and park the arm before disconnecting power.
 
 ### Custom model adapters
 
@@ -165,7 +176,13 @@ A factory adapter may expose an integer `fps`; otherwise declare its rate with `
 
 For another input device, `InterventionSession.request("human")`, `request("hold")`,
 and `request("policy")` expose the same handoffs independently of Gradio.
-The session accepts a synchronizer with `start(target)`, `tick()`, and `cancel()` methods.
+The session accepts a synchronizer with `start(target)`, `tick()`, `cancel()`, and `release()`
+methods and a `holding` property. `cancel()` stops alignment and holds the measured pose;
+`tick()` keeps torque enabled after convergence. Only `release()` disables torque.
+For a staged takeover, call `request("human", pause_after_sync=True)`, then
+`start_correction()` after the operator supports the leader. A direct `request("human")`
+aligns and releases the leader, so its caller must obtain support confirmation first.
+`end_episode()` holds the leader; `release_leader()` explicitly releases an idle leader.
 `SOLeaderSynchronizer` provides the SO leader implementation.
 These public objects are available from `so101_nexus`.
 

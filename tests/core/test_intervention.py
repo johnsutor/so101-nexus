@@ -35,6 +35,7 @@ class Synchronizer:
     def __init__(self):
         self.targets = []
         self.cancels = 0
+        self.releases = 0
         self.ready = False
 
     def start(self, target):
@@ -45,6 +46,9 @@ class Synchronizer:
 
     def cancel(self):
         self.cancels += 1
+
+    def release(self):
+        self.releases += 1
 
 
 def await_action(session, obs):
@@ -185,7 +189,7 @@ class Bus:
         self.events.append(("disable",))
 
 
-def test_leader_sync_interpolates_converts_offset_and_releases_torque(monkeypatch):
+def test_leader_sync_interpolates_converts_offset_and_holds_until_explicit_release(monkeypatch):
     now = [0.0]
     monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
     bus = Bus()
@@ -201,10 +205,12 @@ def test_leader_sync_interpolates_converts_offset_and_releases_torque(monkeypatc
     assert sync.tick()
     assert bus.positions["wrist_roll"] == 100
     assert bus.positions["gripper"] == 10
+    assert ("disable",) not in bus.events
+    sync.release()
     assert bus.events[-1] == ("disable",)
 
 
-def test_leader_sync_timeout_and_cancel_disable_torque(monkeypatch):
+def test_leader_sync_timeout_and_cancel_hold_measured_pose(monkeypatch):
     now = [0.0]
     monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
     bus = Bus()
@@ -214,9 +220,11 @@ def test_leader_sync_timeout_and_cancel_disable_torque(monkeypatch):
     now[0] = 10
     with pytest.raises(TimeoutError, match="synchron"):
         sync.tick()
-    assert bus.events[-1] == ("disable",)
+    assert ("disable",) not in bus.events
+    assert bus.events[-1] == ("enable",)
     sync.cancel()
-    assert bus.events[-1] == ("disable",)
+    assert bus.events[-1] == ("enable",)
+    assert ("disable",) not in bus.events
 
 
 def test_late_policy_result_is_discarded_after_human_correction():
@@ -555,5 +563,159 @@ def test_fresh_takeover_after_pending_handoff_stays_paused(destination):
         assert session.action(observation(2), "Pick", lambda: pytest.fail("human read")) is None
         assert session.status == "human paused"
         assert sync.targets == [observation(), observation(2)]
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("failure", ["read", "write"])
+def test_sync_io_failure_never_disables_torque_or_continues_trajectory(monkeypatch, failure):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start(observation(10))
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 3.0)
+    method = "sync_read" if failure == "read" else "sync_write"
+    monkeypatch.setattr(bus, method, lambda *args: (_ for _ in ()).throw(OSError("bus failed")))
+    now[0] = 0.1
+    with pytest.raises((OSError, RuntimeError), match="bus failed"):
+        sync.tick()
+    assert ("disable",) not in bus.events
+    assert sync.tick()
+
+
+def test_cancel_holds_current_pose_instead_of_finishing_alignment(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start(observation(40))
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 5.0)
+    sync.cancel()
+    assert bus.events[-2:] == [("write", dict.fromkeys(SO101_JOINT_NAMES, 5.0)), ("enable",)]
+    assert ("disable",) not in bus.events
+    assert sync.tick()
+
+
+def test_paused_alignment_keeps_support_until_correction_explicitly_starts():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        assert sync.releases == 0
+        assert session.start_correction()
+        session.action(observation(), "Pick", lambda: observation(3))
+        session.action(observation(), "Pick", lambda: observation(3))
+        assert sync.releases == 1
+        session.end_episode()
+        assert sync.releases == 1
+    finally:
+        session.close()
+    assert sync.releases == 1
+
+
+def test_explicit_idle_release_survives_repeated_cleanup_without_reengaging():
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    session.end_episode()
+    assert session.release_leader()
+    cancels = sync.cancels
+    session.end_episode()
+    session.close()
+    assert sync.cancels == cancels
+    assert sync.releases == 1
+    assert session.leader_released
+
+
+def test_recording_failure_holds_physical_pose_and_preserves_error(worker_setup):  # noqa: F811
+    from so101_nexus.teleop.recorder import RecordingWorker
+
+    kwargs, _, _ = worker_setup
+    bus = Bus()
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 7.0)
+    policy = Policy()
+
+    def fail(batch):
+        raise RuntimeError("teleoperation inference failed")
+
+    policy.select_action = fail
+    session = InterventionSession(policy, SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0))
+    worker = RecordingWorker()
+    try:
+        worker.submit(**kwargs, intervention=session)
+        assert worker.wait(3)
+        assert "teleoperation inference failed" in kwargs["state"].error
+        assert session.synchronizer.holding
+        assert ("disable",) not in bus.events
+        assert bus.events[-2:] == [("write", dict.fromkeys(SO101_JOINT_NAMES, 7.0)), ("enable",)]
+    finally:
+        worker.close()
+        session.close()
+    assert ("disable",) not in bus.events
+
+
+def test_pause_arriving_during_correction_start_prevents_motor_release():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        assert session.start_correction()
+        cancel = sync.cancel
+
+        def pause_during_hold():
+            sync.cancel = cancel
+            cancel()
+            session.request("hold")
+
+        sync.cancel = pause_during_hold
+        assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+        assert sync.releases == 0
+    finally:
+        session.close()
+
+
+def test_unused_session_cleanup_does_not_engage_leader_motors():
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    session.close()
+    assert sync.cancels == 0
+    assert sync.releases == 0
+
+
+def test_failed_motor_release_invalidates_hold_status(monkeypatch):
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.cancel()
+    assert sync.holding
+
+    def fail():
+        raise OSError("partial torque release")
+
+    monkeypatch.setattr(bus, "disable_torque", fail)
+    with pytest.raises(OSError, match="partial torque release"):
+        sync.release()
+    assert not sync.holding
+
+
+def test_stale_support_token_cannot_authorize_motor_release():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        old = session.support_token
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        assert not session.start_correction(support_token=old)
+        session.end_episode()
+        assert not session.release_leader(support_token=old)
+        assert sync.releases == 0
+        assert session.release_leader(support_token=session.support_token)
     finally:
         session.close()

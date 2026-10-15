@@ -209,7 +209,7 @@ def test_intervention_status_explains_simulation_and_available_actions(status, e
         "intervention": SimpleNamespace(status=status),
         "state": SimpleNamespace(is_recording=status != "ready"),
     }
-    text, *updates = _cb_poll_intervention(session)
+    text, *updates = _cb_poll_intervention(session, leader_supported=True)
     assert message in text
     assert tuple(update["interactive"] for update in updates) == enabled
     assert updates[0]["variant"] == ("primary" if enabled[0] else "secondary")
@@ -258,12 +258,15 @@ def test_correction_callback_uses_guarded_start(aligned):
 
     from so101_nexus.teleop.app import _cb_request_intervention
 
-    intervention = Mock()
+    intervention = Mock(support_token=(1, 1))
     intervention.start_correction.return_value = aligned
     message = _cb_request_intervention(
-        {"intervention": intervention, "state": SimpleNamespace(is_recording=True)}, "human"
+        {"intervention": intervention, "state": SimpleNamespace(is_recording=True)},
+        "human",
+        leader_supported=True,
+        support_token=intervention.support_token,
     )
-    intervention.start_correction.assert_called_once_with()
+    intervention.start_correction.assert_called_once_with(support_token=intervention.support_token)
     intervention.request.assert_not_called()
     assert ("Human correction requested" if aligned else "Correction not started") in message
 
@@ -279,3 +282,131 @@ def test_policy_record_step_explains_autonomous_start_and_review():
     assert "policy drives the simulated arm after the countdown" in status.value
     assert start.value == "Start policy episode"
     assert stop.value == "Stop and review episode"
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_start_correction_requires_support_acknowledgment():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from so101_nexus.teleop.app import _cb_request_intervention
+
+    intervention = Mock()
+    message = _cb_request_intervention(
+        {"intervention": intervention, "state": SimpleNamespace(is_recording=True)}, "human"
+    )
+    intervention.start_correction.assert_not_called()
+    assert "support" in message.lower()
+
+
+@pytest.mark.usefixtures("_require_gradio")
+@pytest.mark.parametrize("supported", [False, True])
+def test_idle_release_requires_support_and_an_idle_worker(supported):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from so101_nexus.teleop.app import _cb_release_leader
+
+    intervention = Mock()
+    worker = Mock()
+    worker.wait.return_value = False
+    session = {
+        "intervention": intervention,
+        "state": SimpleNamespace(is_recording=False),
+        "recording_worker": worker,
+    }
+    _cb_release_leader(session, supported, intervention.support_token)
+    intervention.release_leader.assert_not_called()
+    worker.wait.return_value = True
+    _cb_release_leader(session, supported, intervention.support_token)
+    assert intervention.release_leader.call_count == int(supported)
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_finalize_refuses_to_disconnect_an_unreleased_physical_leader():
+    from unittest.mock import Mock
+
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _cb_finalize_and_close
+
+    intervention = Mock(leader_released=False)
+    leader = Mock()
+    dataset = Mock()
+    with pytest.raises(gr.Error, match="release its motors"):
+        _cb_finalize_and_close({"intervention": intervention, "leader": leader, "dataset": dataset})
+    intervention.close.assert_not_called()
+    leader.disconnect.assert_not_called()
+    dataset.finalize.assert_not_called()
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_unconfirmed_hold_is_never_reported_as_holding():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.app import _cb_poll_leader_support
+
+    intervention = SimpleNamespace(
+        leader_released=False,
+        status="hold",
+        synchronizer=SimpleNamespace(holding=False),
+        support_token=(1, 1),
+    )
+    state = SimpleNamespace(is_recording=False, error="Bus read failed")
+    message, update, *_ = _cb_poll_leader_support({"intervention": intervention, "state": state})
+    assert "hold unconfirmed" in message
+    assert "Support the arm and gripper now" in message
+    assert update["interactive"] is False
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_uninitialized_support_panel_resets_confirmation():
+    from so101_nexus.teleop.app import _cb_poll_leader_support
+
+    _, release, support, token = _cb_poll_leader_support({}, True)
+    assert release["interactive"] is False
+    assert support["interactive"] is False
+    assert support["value"] is False
+    assert token is None
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_automatic_episode_end_expires_support_confirmation():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.app import _cb_poll_leader_support
+
+    intervention = SimpleNamespace(
+        leader_released=False,
+        status="human paused",
+        synchronizer=SimpleNamespace(holding=True),
+        support_token=(1, 1),
+    )
+    state = SimpleNamespace(is_recording=True, error=None)
+    session = {"intervention": intervention, "state": state}
+    _cb_poll_leader_support(session)
+    _, _, support, token = _cb_poll_leader_support(session, True)
+    assert "value" not in support
+    assert token == (1, 1)
+    intervention.support_token = (1, 2)
+    intervention.status = "hold"
+    state.is_recording = False
+    _, release, support, token = _cb_poll_leader_support(session, True)
+    assert release["interactive"] is False
+    assert support["value"] is False
+    assert token == (1, 2)
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_reinitialization_requires_explicit_motor_release(monkeypatch):
+    from unittest.mock import Mock
+
+    import gradio as gr
+
+    from so101_nexus.teleop import app
+
+    close = Mock()
+    monkeypatch.setattr(app, "_close_recording_worker", close)
+    with pytest.raises(gr.Error, match="release its motors"):
+        app._start_init_attempt({"intervention": Mock(leader_released=False)}, {}, "/dev/null", {})
+    close.assert_not_called()

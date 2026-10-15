@@ -496,7 +496,8 @@ def _finish_recording(
         try:
             intervention.end_episode()
         except Exception as exc:
-            state.error = state.error or f"Failed to release leader: {exc}"
+            message = f"Leader pose hold failed: {exc}. Support the physical arm now."
+            state.error = f"{state.error}\n{message}" if state.error else message
     if close_follower:
         follower_session.close()
     state.countdown_value = 0

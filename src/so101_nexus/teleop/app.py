@@ -502,7 +502,7 @@ def _run_init_worker(
                 intervention.close()
         if leader is not None:
             with contextlib.suppress(Exception):
-                leader.disconnect()
+                _disconnect_leader(session, leader)
         init_state["error"] = str(exc)
         init_state["done"] = True
 
@@ -611,7 +611,12 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
     """Reset init state and launch a fresh initialization attempt."""
     import gradio as gr
 
+    intervention = session.get("intervention")
+    if intervention is not None and not intervention.leader_released:
+        raise gr.Error("Support the physical leader and release its motors before reinitializing.")
     _close_recording_worker(session)
+    if (leader := session.pop("leader", None)) is not None:
+        _disconnect_leader(session, leader)
     init_state.update(
         warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
         running=True,
@@ -871,36 +876,37 @@ def _cb_start_recording(session: dict):
     """Launch the recording thread and update UI to recording state."""
     import gradio as gr
 
-    s = session["state"]
-    worker = session.get("recording_worker")
-    if worker is None:
-        worker = session["recording_worker"] = RecordingWorker()
-    worker.submit(
-        state=s,
-        env_id=session["env_id"],
-        leader=session["leader"],
-        joint_names=session["joint_names"],
-        fps=session["fps"],
-        max_steps=session["max_steps"],
-        countdown=session["countdown"],
-        wrist_roll_offset_deg=session["wrist_roll_offset_deg"],
-        wrist_wh=session["wrist_wh"],
-        overhead_wh=session["overhead_wh"],
-        follower_calibration_dir=_default_follower_calibration_dir(),
-        follower_robot_id=_FOLLOWER_ROBOT_ID,
-        customization_overrides=session.get("env_overrides"),
-        env_config_profile=session.get("env_config_profile"),
-        env_config_factory=session.get("env_config_factory"),
-        success_hold_seconds=session.get("success_hold_seconds", 0.5),
-        seed=session.get("seed", 0),
-        intervention=session.get("intervention"),
-    )
-    return (
-        gr.update(value="Starting..."),
-        gr.update(visible=False),
-        gr.update(value=None, visible=False),
-        gr.update(value=_TASK_PENDING_TEXT),
-    )
+    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+        s = session["state"]
+        worker = session.get("recording_worker")
+        if worker is None:
+            worker = session["recording_worker"] = RecordingWorker()
+        worker.submit(
+            state=s,
+            env_id=session["env_id"],
+            leader=session["leader"],
+            joint_names=session["joint_names"],
+            fps=session["fps"],
+            max_steps=session["max_steps"],
+            countdown=session["countdown"],
+            wrist_roll_offset_deg=session["wrist_roll_offset_deg"],
+            wrist_wh=session["wrist_wh"],
+            overhead_wh=session["overhead_wh"],
+            follower_calibration_dir=_default_follower_calibration_dir(),
+            follower_robot_id=_FOLLOWER_ROBOT_ID,
+            customization_overrides=session.get("env_overrides"),
+            env_config_profile=session.get("env_config_profile"),
+            env_config_factory=session.get("env_config_factory"),
+            success_hold_seconds=session.get("success_hold_seconds", 0.5),
+            seed=session.get("seed", 0),
+            intervention=session.get("intervention"),
+        )
+        return (
+            gr.update(value="Starting..."),
+            gr.update(visible=False),
+            gr.update(value=None, visible=False),
+            gr.update(value=_TASK_PENDING_TEXT),
+        )
 
 
 def _task_status_text(task_description: str) -> str:
@@ -970,10 +976,9 @@ def _cb_poll_recording(session: dict):
             gr.update(),
             gr.update(),
         )
-    if s.error:
-        gr.Warning(f"Recording failed: {s.error}")
-        s.error = None
     if s.recording_finished:
+        if s.error:
+            gr.Warning(f"Recording failed: {s.error}")
         return _recording_finished_updates(session, s, fps)
     return tuple(gr.update() for _ in range(13))
 
@@ -1002,8 +1007,15 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         f"- Task: {s.task_description}"
     )
     s.recording_finished = False
+    failure = (
+        f"### Recording stopped after an error\n\n{s.error}\n\n"
+        "The recorded frames are preserved for review. Discard this episode to try again. "
+        "Check the physical leader status before releasing the motors."
+        if s.error
+        else ""
+    )
     return (
-        gr.update(value="Recording complete."),
+        gr.update(value="Recording stopped after an error." if s.error else "Recording complete."),
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(value=None, visible=False),
@@ -1013,8 +1025,8 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         gr.update(value=video_path),
         gr.update(value=fig),
         gr.update(value=meta),
-        gr.update(value="", visible=False),
-        gr.update(interactive=True),
+        gr.update(value=failure, visible=bool(s.error)),
+        gr.update(interactive=n > 0),
         gr.update(interactive=True),
     )
 
@@ -1265,19 +1277,33 @@ def _cb_prepare_push_to_hub():
     return gr.update(value="Pushing dataset to HuggingFace Hub...", visible=True)
 
 
+def _disconnect_leader(session: dict, leader=None) -> None:
+    """Close policy-collection serial ports without changing motor torque."""
+    leader = leader if leader is not None else session["leader"]
+    options = session.get("policy_options", {})
+    if session.get("intervention") is not None or options.get("path") or options.get("factory"):
+        leader.bus.disconnect(disable_torque=False)
+    else:
+        leader.disconnect()
+
+
 def _close_recording_worker(session: dict) -> None:
     """Release simulator resources on their recording thread."""
-    worker = session.pop("recording_worker", None)
-    if worker is not None:
-        worker.close()
-    if (intervention := session.pop("intervention", None)) is not None:
-        intervention.close()
+    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+        worker = session.pop("recording_worker", None)
+        if worker is not None:
+            worker.close()
+        if (intervention := session.pop("intervention", None)) is not None:
+            intervention.close()
 
 
 def _cb_finalize_and_close(session: dict):
     """Finalize the dataset and disconnect all hardware."""
     import gradio as gr
 
+    intervention = session.get("intervention")
+    if intervention is not None and not intervention.leader_released:
+        raise gr.Error("Support the physical leader and release its motors before finalizing.")
     _close_recording_worker(session)
     try:
         session["dataset"].finalize()
@@ -1285,7 +1311,7 @@ def _cb_finalize_and_close(session: dict):
     except Exception as exc:
         raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
     with contextlib.suppress(Exception):
-        session["leader"].disconnect()
+        _disconnect_leader(session)
     return "Session finalized. You can close this tab."
 
 
@@ -1597,8 +1623,9 @@ _INTERVENTION_STATUS = {
         "The simulation will stay paused when alignment finishes."
     ),
     "human paused": (
-        "### Paused: ready for correction\nAlignment complete. Keep the leader in this pose, "
-        "then press C and move it to correct the simulated arm."
+        "### Paused: ready for correction\nThe leader motors are holding the aligned pose. "
+        "Support the arm and gripper, check the support confirmation, "
+        "then press C to release and correct."
     ),
     "human": "### Running: human correction\nMove the leader to correct the policy. "
     "Press H to pause, or P to resume the policy.",
@@ -1620,7 +1647,9 @@ def _build_intervention_controls(gr, *, enabled: bool):
             variant="primary",
             interactive=False,
         )
-        correct = gr.Button("Start correction (C)", elem_id="teleop-correct", interactive=False)
+        correct = gr.Button(
+            "Release leader and start correction (C)", elem_id="teleop-correct", interactive=False
+        )
         with gr.Row():
             hold = gr.Button("Pause (H)", elem_id="teleop-hold", interactive=False)
             resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
@@ -1632,13 +1661,109 @@ def _build_intervention_controls(gr, *, enabled: bool):
             gr.Markdown(
                 "The **leader** is the arm you move. The **follower** is the simulated arm.\n\n"
                 "1. **T: pause and align.** Keep the leader clear while it moves.\n"
-                "2. **C: start correction.** The simulation stays paused until you are ready.\n"
+                "2. **C: release and correct.** Support the leader and confirm "
+                "before releasing its motors.\n"
                 "3. **P: resume policy.** Continue from the corrected pose.\n\n"
                 "**H: pause at any time.** This also cancels alignment. "
                 "Use T to align again before starting another correction. "
                 "Shortcuts work when you are not typing in a field."
             )
     return status, takeover, correct, hold, resume
+
+
+def _build_leader_support_controls(gr, *, enabled: bool):
+    """Keep hardware support and explicit release available in every workflow step."""
+    with gr.Group(visible=enabled):
+        status = gr.Markdown("**Physical leader:** initialize the session to see motor status.")
+        supported = gr.Checkbox(
+            label="I am supporting the physical leader arm and gripper",
+            value=False,
+            interactive=False,
+        )
+        support_token = gr.State(value=None)
+        release = gr.Button("Release leader motors", interactive=False)
+        with gr.Accordion("Motor holding and release", open=False):
+            gr.Markdown(
+                "Pause, episode completion, and recording errors command the motors to hold "
+                "the measured pose. Support the arm before starting correction or releasing "
+                "the idle leader. Release is unavailable while an episode is active. "
+                "Closing the process preserves motor torque. Support and park the arm "
+                "before disconnecting power. Holding cannot be guaranteed if motor "
+                "communication or power fails."
+            )
+    return status, supported, release, support_token
+
+
+def _leader_is_idle(session: dict) -> bool:
+    state = session.get("state")
+    worker = session.get("recording_worker")
+    return state is not None and not state.is_recording and (worker is None or worker.wait(0))
+
+
+def _cb_poll_leader_support(session: dict, leader_supported: bool = False):
+    """Report confirmed motor state without accessing hardware from the UI thread."""
+    import gradio as gr
+
+    intervention = session.get("intervention")
+    if intervention is None:
+        return (
+            "**Physical leader:** initialize the session to see motor status.",
+            gr.update(interactive=False),
+            gr.update(value=False, interactive=False),
+            None,
+        )
+    if session.get("leader_release_error") and not intervention.synchronizer.holding:
+        message = (
+            f"**Physical leader: release failed, hold unconfirmed.** "
+            f"{session['leader_release_error']}. Keep supporting the arm and gripper."
+        )
+    elif intervention.leader_released:
+        message = "**Physical leader: motors released.** Keep the arm supported or parked."
+    elif intervention.status == "synchronizing":
+        message = "**Physical leader: aligning.** Motors are engaged. Keep the arm clear."
+    elif intervention.synchronizer.holding:
+        message = "**Physical leader: motors holding.** Support the arm and gripper before release."
+    elif session.get("state") is not None and session["state"].error:
+        message = "**Physical leader: hold unconfirmed. Support the arm and gripper now.**"
+    else:
+        message = "**Physical leader: motors are not holding.** Support the arm or park it."
+    token = intervention.support_token
+    context = (token, intervention.status == "human paused")
+    reset = session.get("leader_support_context") != context
+    session["leader_support_context"] = context
+    idle = _leader_is_idle(session)
+    can_confirm = idle or intervention.status == "human paused"
+    confirmation = gr.update(interactive=can_confirm)
+    if reset or not can_confirm:
+        leader_supported = False
+        confirmation = gr.update(value=False, interactive=can_confirm)
+    can_release = idle and not intervention.leader_released and leader_supported
+    return message, gr.update(interactive=can_release), confirmation, token
+
+
+def _cb_release_leader(
+    session: dict, leader_supported: bool = False, support_token: tuple[int, int] | None = None
+):
+    """Release a supported, idle arm while excluding simultaneous episode starts."""
+    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+        if not leader_supported:
+            return (
+                "Support the physical leader arm and gripper, then confirm before release.",
+                False,
+            )
+        intervention = session.get("intervention")
+        if intervention is None or not _leader_is_idle(session):
+            return "Stop the episode and wait for motor holding before releasing the leader.", False
+        if support_token != intervention.support_token:
+            return "Confirm support again after the latest control transition.", False
+        try:
+            if not intervention.release_leader(support_token=support_token):
+                return "Leader release is unavailable until the episode has stopped.", False
+        except Exception as exc:
+            session["leader_release_error"] = str(exc)
+            return f"Leader release failed: {exc}. Keep supporting the arm and gripper.", False
+        session.pop("leader_release_error", None)
+        return "**Physical leader: motors released.** Keep the arm supported or parked.", False
 
 
 def _build_record_workspace(gr, *, policy_collection: bool):
@@ -1651,10 +1776,11 @@ def _build_record_workspace(gr, *, policy_collection: bool):
     return (*recording, intervention)
 
 
-def _wire_intervention_controls(app, timer, session: dict, controls) -> None:
+def _wire_intervention_controls(app, timer, session: dict, controls, support_controls) -> None:
     import functools
 
     status, takeover, correct, hold, resume = controls
+    support_status, supported, release, support_token = support_controls
     for button, source in (
         (takeover, "human"),
         (correct, "human"),
@@ -1665,25 +1791,57 @@ def _wire_intervention_controls(app, timer, session: dict, controls) -> None:
             fn=functools.partial(
                 _cb_request_intervention, session, source, pause_after_sync=button is takeover
             ),
+            inputs=[supported, support_token],
             outputs=[status],
             queue=False,
-        )
+        ).then(fn=lambda: False, outputs=[supported], queue=False)
     timer.tick(
         fn=functools.partial(_cb_poll_intervention, session),
+        inputs=[supported],
         outputs=list(controls),
+        queue=False,
+    )
+    supported.change(
+        fn=functools.partial(_cb_poll_intervention, session),
+        inputs=[supported],
+        outputs=list(controls),
+        queue=False,
+    )
+    timer.tick(
+        fn=functools.partial(_cb_poll_leader_support, session),
+        inputs=[supported],
+        outputs=[support_status, release, supported, support_token],
+        queue=False,
+    )
+    release.click(
+        fn=functools.partial(_cb_release_leader, session),
+        inputs=[supported, support_token],
+        outputs=[support_status, supported],
         queue=False,
     )
     app.load(fn=None, js=_INTERVENTION_SHORTCUTS)
 
 
-def _cb_request_intervention(session: dict, source: str, *, pause_after_sync: bool = False) -> str:
+def _cb_request_intervention(
+    session: dict,
+    source: str,
+    leader_supported: bool = False,
+    support_token: tuple[int, int] | None = None,
+    *,
+    pause_after_sync: bool = False,
+) -> str:
     """Request a controller change without blocking on inference or hardware."""
     intervention = session.get("intervention")
     state = session.get("state")
     if intervention is None or state is None or not state.is_recording:
         return _INTERVENTION_STATUS["ready"]
     if source == "human" and not pause_after_sync:
-        if not intervention.start_correction():
+        if not leader_supported or support_token != intervention.support_token:
+            return (
+                "### Support the physical leader first\n"
+                "Hold the arm and gripper, then check the support confirmation."
+            )
+        if not intervention.start_correction(support_token=support_token):
             return "### Correction not started\nPress T to pause and align the leader first."
     else:
         intervention.request(source, pause_after_sync=pause_after_sync)
@@ -1699,7 +1857,7 @@ def _cb_request_intervention(session: dict, source: str, *, pause_after_sync: bo
     return f"### {message}\nWaiting for the current simulator step to finish."
 
 
-def _cb_poll_intervention(session: dict):
+def _cb_poll_intervention(session: dict, leader_supported: bool = False):
     """Show active control and disable actions that do not apply."""
     import gradio as gr
 
@@ -1717,7 +1875,7 @@ def _cb_poll_intervention(session: dict):
             "Stop and review episode ends recording and opens review."
         )
     can_takeover = active and status not in ("human", "human paused", "synchronizing")
-    can_correct = active and status == "human paused"
+    can_correct = active and status == "human paused" and leader_supported
     return (
         message,
         gr.update(interactive=can_takeover, variant="primary" if can_takeover else "secondary"),
@@ -2021,6 +2179,9 @@ def main(
             )
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
+        support_controls = _build_leader_support_controls(
+            gr, enabled=bool(args.policy_path or args.policy_factory)
+        )
 
         with gr.Walkthrough(selected=0) as walkthrough:
             with gr.Step("Configure", id=0):
@@ -2198,7 +2359,9 @@ def main(
             leader_id_default=leader_id_default,
         )
 
-        _wire_intervention_controls(app, rec_timer, session, intervention_controls)
+        _wire_intervention_controls(
+            app, rec_timer, session, intervention_controls, support_controls
+        )
 
     try:
         app.launch(inbrowser=True)
@@ -2206,4 +2369,4 @@ def main(
         _close_recording_worker(session)
         if (leader := session.get("leader")) is not None:
             with contextlib.suppress(Exception):
-                leader.disconnect()
+                _disconnect_leader(session, leader)

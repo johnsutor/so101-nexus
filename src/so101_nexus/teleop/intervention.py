@@ -20,16 +20,24 @@ ControlSource = Literal["policy", "human", "hold"]
 
 
 class LeaderSynchronizer(Protocol):
-    """Incrementally align a leader with follower readback before releasing it."""
+    """Align and hold a leader until the operator explicitly releases it."""
 
     def start(self, target: dict[str, float]) -> None:
         """Start alignment to follower joint targets in LeRobot units."""
 
     def tick(self) -> bool:
-        """Advance alignment and report completion with torque released."""
+        """Advance alignment and report completion with torque still enabled."""
 
     def cancel(self) -> None:
-        """Cancel alignment and release leader torque."""
+        """Cancel alignment and hold the measured leader pose."""
+
+    @property
+    def holding(self) -> bool:
+        """Whether the last pose-hold command completed successfully."""
+        ...
+
+    def release(self) -> None:
+        """Release torque after the operator supports the leader."""
 
 
 class _InferenceWorker:
@@ -100,6 +108,8 @@ class InterventionSession:
         self._reset_policy = True
         self._interventions = 0
         self._closed = False
+        self._parked_released = False
+        self._leader_managed = False
         self.status = "hold"
         self.source: ControlSource = "hold"
 
@@ -116,6 +126,7 @@ class InterventionSession:
             self._version += 1
             self._requested = "policy"
             self._pause_after_sync = False
+            self._parked_released = False
         self._interventions = 0
         self._reset_policy = True
 
@@ -136,7 +147,7 @@ class InterventionSession:
                 self._pause_after_sync = pause_after_sync
                 self._version += 1
 
-    def start_correction(self) -> bool:
+    def start_correction(self, *, support_token: tuple[int, int] | None = None) -> bool:
         """Resume an aligned, paused takeover, rejecting stale start commands."""
         with self._lock:
             if (
@@ -145,6 +156,7 @@ class InterventionSession:
                 or not self._pause_after_sync
                 or self._applied_version != self._version
                 or self.status != "human paused"
+                or (support_token is not None and support_token != (id(self), self._version))
             ):
                 return False
             self._pause_after_sync = False
@@ -168,10 +180,11 @@ class InterventionSession:
             human_ready = (
                 self.status == "human paused" and requested == "human" and not pause_after_sync
             )
+            self._leader_managed = True
             self.synchronizer.cancel()
             self._applied_version = version
             self.source = "hold"
-            self.status = requested
+            self.status = "human paused" if human_ready else requested
             if requested == "human" and not human_ready:
                 self.status = "synchronizing"
                 self.synchronizer.start(target)
@@ -181,10 +194,12 @@ class InterventionSession:
         if self.status == "synchronizing":
             if not self.synchronizer.tick():
                 return None
-            self.status = "human paused" if pause_after_sync else "human"
+            self.status = "human paused"
             self._interventions += 1
         if self.status == "human paused":
-            return None
+            if pause_after_sync or not self._release_for_correction(version):
+                return None
+            self.status = "human"
         if self.status == "human":
             self.source = "human"
             return human_action()
@@ -192,6 +207,13 @@ class InterventionSession:
             return None
         self.source = "policy"
         return self._policy_action(obs, task, version)
+
+    def _release_for_correction(self, version: int) -> bool:
+        with self._lock:
+            if self._closed or version != self._version:
+                return False
+            self.synchronizer.release()
+            return True
 
     def _policy_action(
         self, obs: Mapping[str, Any], task: str, version: int
@@ -246,22 +268,50 @@ class InterventionSession:
                 return None
             return send(action)
 
+    @property
+    def support_token(self) -> tuple[int, int]:
+        """Generation used to expire operator support after a control transition."""
+        with self._lock:
+            return id(self), self._version
+
+    @property
+    def leader_released(self) -> bool:
+        """Whether the operator explicitly released the parked leader."""
+        return self._parked_released
+
     def end_episode(self) -> None:
-        """Invalidate outstanding inference and release leader torque."""
+        """Invalidate outstanding inference and hold the physical leader pose."""
         self.request("hold")
-        self.synchronizer.cancel()
         self.source = "hold"
         self.status = "hold"
+        if not self._parked_released:
+            self._leader_managed = True
+            self.synchronizer.cancel()
+
+    def release_leader(self, *, support_token: tuple[int, int] | None = None) -> bool:
+        """Explicitly release an idle leader, preserving release through shutdown."""
+        with self._lock:
+            if (
+                self._closed
+                or self._requested != "hold"
+                or self.status != "hold"
+                or (support_token is not None and support_token != (id(self), self._version))
+            ):
+                return False
+            self.synchronizer.release()
+            self._parked_released = True
+            return True
 
     def close(self) -> None:
-        """Release the leader and reject further requests without waiting for inference."""
+        """Hold the leader and reject further requests without waiting for inference."""
         with self._lock:
             if self._closed:
                 return
             self._closed = True
             self._version += 1
         try:
-            self.synchronizer.cancel()
+            if self._leader_managed and not self._parked_released:
+                self.synchronizer.cancel()
         finally:
             self._worker.close()
 
