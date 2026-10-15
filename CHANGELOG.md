@@ -31,6 +31,11 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Policy correction takeover now stays paused after leader alignment until Start
+  correction (C). Native Gradio controls show explicit simulation state, remaining
+  episode time, single-press shortcuts, and expandable guidance. Stale correction
+  starts cannot override a pause or policy handoff.
+
 - Upgrade the supported LeRobot dependency to released 0.6.1, including its dataset
   extra and optional MolmoAct2 dependencies. Use the 0.6 video encoder and feature APIs.
 - Policy correction collection aligns simulator control periods with dataset FPS.

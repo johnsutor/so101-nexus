@@ -103,19 +103,27 @@ a custom adapter rather than being accepted based on their action dimension alon
 
 ### Intervention controls
 
-1. Start recording. The policy controls the follower after the countdown.
-2. Click **Take control (T)** when correction is needed. Policy stepping stops immediately.
+1. Click **Start policy episode**. The policy controls the follower after the countdown.
+2. Click **Pause and take control (T)** when correction is needed. Policy stepping stops immediately.
    The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
-   Keep the leader clear while **Controller: synchronizing** is shown.
-3. When **Controller: human** appears, the leader is free to move and drives the follower.
+   Keep the leader clear while **Paused: aligning leader** is shown.
+3. Wait for **Paused: ready for correction**. Keep the leader in its aligned pose,
+   then click **Start correction (C)** and move it to drive the simulated arm.
+   The simulation stays paused until you explicitly start correction.
 4. Click **Resume policy (P)** to continue from the corrected state with a fresh prediction.
 5. Repeat as needed, then review and approve the entire episode.
 
-**Hold (H)** freezes simulation stepping and cancels an active leader synchronization.
+**Pause (H)** freezes simulation stepping and cancels an active leader synchronization.
+Press each shortcut once; you do not need to hold it. After pausing, use T to align
+the leader again before starting a correction, or P to resume the policy.
+The controller panel shows remaining simulation time and steps. Paused time does not
+consume this budget. Episodes end at Max Steps or after task success; **Stop and review episode**
+ends recording and opens review.
 The keyboard shortcuts work while the Record controls are visible and you are not typing in a field.
 Slow model inference does not block a takeover request. A request takes effect between simulator steps.
 Late predictions and cached chunks from before a handoff cannot control the follower afterward.
-Simulation time freezes while inference or synchronization is pending; these waits add no dataset frames.
+Simulation time freezes while paused or while inference or synchronization is pending;
+these waits add no dataset frames.
 This collector currently supports the simulated follower, not real-robot deployment.
 
 Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.

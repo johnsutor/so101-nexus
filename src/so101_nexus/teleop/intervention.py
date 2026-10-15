@@ -92,6 +92,7 @@ class InterventionSession:
         self._worker = _InferenceWorker(policy)
         self._lock = threading.Lock()
         self._requested: ControlSource = "hold"
+        self._pause_after_sync = False
         self._version = 0
         self._applied_version = -1
         self._action_version = -1
@@ -114,19 +115,41 @@ class InterventionSession:
                 raise RuntimeError("intervention session is closed")
             self._version += 1
             self._requested = "policy"
+            self._pause_after_sync = False
         self._interventions = 0
         self._reset_policy = True
 
-    def request(self, source: ControlSource) -> None:
-        """Request a handoff from a UI, keyboard, pedal, or other input thread."""
+    def request(self, source: ControlSource, *, pause_after_sync: bool = False) -> None:
+        """Request a handoff, optionally waiting after leader alignment.
+
+        With ``pause_after_sync=True``, human takeover stays paused until a
+        subsequent ``request("human")`` starts correction without realigning.
+        """
         if source not in ("policy", "human", "hold"):
             raise ValueError(f"Unknown control source: {source!r}")
         with self._lock:
             if self._closed:
                 raise RuntimeError("intervention session is closed")
-            if source != self._requested:
+            pause_after_sync = source == "human" and pause_after_sync
+            if (source, pause_after_sync) != (self._requested, self._pause_after_sync):
                 self._requested = source
+                self._pause_after_sync = pause_after_sync
                 self._version += 1
+
+    def start_correction(self) -> bool:
+        """Resume an aligned, paused takeover, rejecting stale start commands."""
+        with self._lock:
+            if (
+                self._closed
+                or self._requested != "human"
+                or not self._pause_after_sync
+                or self._applied_version != self._version
+                or self.status != "human paused"
+            ):
+                return False
+            self._pause_after_sync = False
+            self._version += 1
+            return True
 
     def action(
         self,
@@ -137,15 +160,19 @@ class InterventionSession:
         """Return the next action, or hold simulation while waiting for a handoff."""
         with self._lock:
             version, requested = self._version, self._requested
+            pause_after_sync = self._pause_after_sync
             if self._closed:
                 return None
         target = {f"{name}.pos": float(obs[f"{name}.pos"]) for name in self.joint_names}
         if version != self._applied_version:
+            human_ready = (
+                self.status == "human paused" and requested == "human" and not pause_after_sync
+            )
             self.synchronizer.cancel()
             self._applied_version = version
             self.source = "hold"
             self.status = requested
-            if requested == "human":
+            if requested == "human" and not human_ready:
                 self.status = "synchronizing"
                 self.synchronizer.start(target)
             if requested == "policy":
@@ -154,8 +181,10 @@ class InterventionSession:
         if self.status == "synchronizing":
             if not self.synchronizer.tick():
                 return None
-            self.status = "human"
+            self.status = "human paused" if pause_after_sync else "human"
             self._interventions += 1
+        if self.status == "human paused":
+            return None
         if self.status == "human":
             self.source = "human"
             return human_action()

@@ -437,3 +437,123 @@ def test_torch_policy_outputs_convert_to_follower_targets(dtype_name):
         assert await_action(session, observation()) == observation(12)
     finally:
         session.close()
+
+
+def test_paused_takeover_waits_for_explicit_correction_start():
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+        assert session.status == "synchronizing"
+        sync.ready = True
+        for _ in range(3):
+            assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+            assert session.status == "human paused"
+            assert session.source == "hold"
+        session.request("human")
+        assert session.action(observation(), "Pick", lambda: observation(3)) == observation(3)
+        assert session.intervention_id == 1
+        assert sync.targets == [observation()]
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("destination", ["hold", "policy"])
+def test_paused_takeover_can_be_canceled(destination):
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+        session.request(destination)
+        if destination == "policy":
+            assert await_action(session, observation()) == observation(10)
+        else:
+            assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+            assert session.status == "hold"
+    finally:
+        session.close()
+
+
+def test_paused_takeover_does_not_record_or_step_simulation():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.recorder import RecordingState, _record_step
+
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    follower = SimpleNamespace(
+        get_observation=observation,
+        send_action=lambda _: pytest.fail("simulation stepped while paused"),
+    )
+    state = RecordingState(num_episodes=1)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        for _ in range(5):
+            assert not _record_step(state, follower, None, session, SO101_JOINT_NAMES, 0)
+        assert state.episode_actions == []
+        assert state.episode_intervention_ids == []
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("destination", ["hold", "policy"])
+def test_stale_start_correction_cannot_override_pending_handoff(destination):
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        assert not session.start_correction()
+        session.request("human", pause_after_sync=True)
+        assert not session.start_correction()
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        session.request(destination)
+        assert not session.start_correction()
+        if destination == "policy":
+            assert await_action(session, observation()) == observation(10)
+        else:
+            assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+    finally:
+        session.close()
+
+
+def test_start_correction_resumes_only_aligned_paused_leader():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        assert session.start_correction()
+        assert not session.start_correction()
+        assert session.action(observation(), "Pick", lambda: observation(3)) == observation(3)
+        assert sync.targets == [observation()]
+        assert session.intervention_id == 1
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("destination", ["hold", "policy"])
+def test_fresh_takeover_after_pending_handoff_stays_paused(destination):
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        session.request(destination)
+        session.request("human", pause_after_sync=True)
+        assert session.action(observation(2), "Pick", lambda: pytest.fail("human read")) is None
+        assert session.status == "human paused"
+        assert sync.targets == [observation(), observation(2)]
+    finally:
+        session.close()

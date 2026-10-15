@@ -1403,7 +1403,16 @@ def _build_setup_screen(
                 step=32,
                 label="Overhead and Side Camera Height",
             )
-        max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
+        max_steps_input = gr.Number(
+            value=1024,
+            minimum=1,
+            precision=0,
+            label="Max Steps",
+            info=(
+                "Episode limit in simulation steps. At 30 FPS, 1024 steps is about 34 seconds. "
+                "Paused time does not count."
+            ),
+        )
         success_hold_seconds_input = gr.Slider(
             minimum=0.0,
             maximum=2.0,
@@ -1555,10 +1564,17 @@ def _build_init_step(gr):
     return init_log, retry_btn, init_timer
 
 
-def _build_record_step(gr):
+def _build_record_step(gr, *, policy_collection: bool = False):
     """Build the Record step contents."""
-    record_status = gr.Markdown("Ready to record. Click the button below to begin.")
-    start_btn = gr.Button("Start Recording", variant="primary")
+    record_status = gr.Markdown(
+        "Ready. The policy drives the simulated arm after the countdown. "
+        "Press T to pause and prepare a correction."
+        if policy_collection
+        else "Ready to record. Start recording, then move the leader to drive the simulated arm."
+    )
+    start_btn = gr.Button(
+        "Start policy episode" if policy_collection else "Start Recording", variant="primary"
+    )
     countdown_area = gr.Markdown("", visible=False)
     preview_feed = gr.Image(
         label="Live Preview (wrist | overhead | side)",
@@ -1567,33 +1583,88 @@ def _build_record_step(gr):
         show_label=True,
         interactive=False,
     )
-    stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
+    stop_btn = gr.Button("Stop and review episode", variant="stop", visible=False)
     task_status = gr.Markdown(_TASK_PENDING_TEXT)
     rec_timer = gr.Timer(value=PREVIEW_INTERVAL_SECONDS)
     return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
 
 
+_INTERVENTION_STATUS = {
+    "ready": "### Ready\nStart a policy episode to run the simulated arm after the countdown.",
+    "policy": "### Running: policy\nPress T to pause and prepare a correction.",
+    "synchronizing": (
+        "### Paused: aligning leader\nKeep the leader clear while it moves to the follower pose. "
+        "The simulation will stay paused when alignment finishes."
+    ),
+    "human paused": (
+        "### Paused: ready for correction\nAlignment complete. Keep the leader in this pose, "
+        "then press C and move it to correct the simulated arm."
+    ),
+    "human": "### Running: human correction\nMove the leader to correct the policy. "
+    "Press H to pause, or P to resume the policy.",
+    "hold": "### Paused\nPress T to prepare a correction, or P to resume the policy.",
+    "waiting for policy": (
+        "### Policy active: waiting for prediction\nSimulation resumes automatically when the "
+        "prediction arrives. Press T to take control, or H to stay paused."
+    ),
+}
+
+
 def _build_intervention_controls(gr, *, enabled: bool):
-    with gr.Group(visible=enabled):
-        status = gr.Markdown("Controller: ready")
+    with gr.Column(visible=enabled, variant="panel"):
+        gr.Markdown("## Policy correction")
+        status = gr.Markdown(_INTERVENTION_STATUS["ready"])
+        takeover = gr.Button(
+            "Pause and take control (T)",
+            elem_id="teleop-takeover",
+            variant="primary",
+            interactive=False,
+        )
+        correct = gr.Button("Start correction (C)", elem_id="teleop-correct", interactive=False)
         with gr.Row():
-            takeover = gr.Button("Take control (T)", elem_id="teleop-takeover", interactive=False)
-            hold = gr.Button("Hold (H)", elem_id="teleop-hold", interactive=False)
+            hold = gr.Button("Pause (H)", elem_id="teleop-hold", interactive=False)
             resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
         gr.Markdown(
-            "Take control moves the leader to the follower pose before releasing it. "
-            "Keep the leader clear during synchronization. Hold freezes the simulation."
+            "Press each shortcut once; you do not need to hold it. "
+            "Pausing stops simulation time and uses no episode steps."
         )
-    return status, takeover, hold, resume
+        with gr.Accordion("How takeover works", open=False):
+            gr.Markdown(
+                "The **leader** is the arm you move. The **follower** is the simulated arm.\n\n"
+                "1. **T: pause and align.** Keep the leader clear while it moves.\n"
+                "2. **C: start correction.** The simulation stays paused until you are ready.\n"
+                "3. **P: resume policy.** Continue from the corrected pose.\n\n"
+                "**H: pause at any time.** This also cancels alignment. "
+                "Use T to align again before starting another correction. "
+                "Shortcuts work when you are not typing in a field."
+            )
+    return status, takeover, correct, hold, resume
+
+
+def _build_record_workspace(gr, *, policy_collection: bool):
+    """Keep handoff controls beside the live view, stacking on narrow screens."""
+    with gr.Row():
+        with gr.Column(scale=2, min_width=300, visible=policy_collection):
+            intervention = _build_intervention_controls(gr, enabled=policy_collection)
+        with gr.Column(scale=3):
+            recording = _build_record_step(gr, policy_collection=policy_collection)
+    return (*recording, intervention)
 
 
 def _wire_intervention_controls(app, timer, session: dict, controls) -> None:
     import functools
 
-    status, takeover, hold, resume = controls
-    for button, source in ((takeover, "human"), (hold, "hold"), (resume, "policy")):
+    status, takeover, correct, hold, resume = controls
+    for button, source in (
+        (takeover, "human"),
+        (correct, "human"),
+        (hold, "hold"),
+        (resume, "policy"),
+    ):
         button.click(
-            fn=functools.partial(_cb_request_intervention, session, source),
+            fn=functools.partial(
+                _cb_request_intervention, session, source, pause_after_sync=button is takeover
+            ),
             outputs=[status],
             queue=False,
         )
@@ -1605,14 +1676,27 @@ def _wire_intervention_controls(app, timer, session: dict, controls) -> None:
     app.load(fn=None, js=_INTERVENTION_SHORTCUTS)
 
 
-def _cb_request_intervention(session: dict, source: str) -> str:
+def _cb_request_intervention(session: dict, source: str, *, pause_after_sync: bool = False) -> str:
     """Request a controller change without blocking on inference or hardware."""
     intervention = session.get("intervention")
     state = session.get("state")
     if intervention is None or state is None or not state.is_recording:
-        return "Controller: ready"
-    intervention.request(source)
-    return "Controller: handoff requested"
+        return _INTERVENTION_STATUS["ready"]
+    if source == "human" and not pause_after_sync:
+        if not intervention.start_correction():
+            return "### Correction not started\nPress T to pause and align the leader first."
+    else:
+        intervention.request(source, pause_after_sync=pause_after_sync)
+    message = (
+        "Pause and leader alignment requested"
+        if pause_after_sync
+        else {
+            "human": "Human correction requested",
+            "hold": "Pause requested",
+            "policy": "Policy resume requested",
+        }[source]
+    )
+    return f"### {message}\nWaiting for the current simulator step to finish."
 
 
 def _cb_poll_intervention(session: dict):
@@ -1623,10 +1707,22 @@ def _cb_poll_intervention(session: dict):
     state = session.get("state")
     active = intervention is not None and state is not None and state.is_recording
     status = intervention.status if active else "ready"
+    message = _INTERVENTION_STATUS[status]
+    if active and "max_steps" in session:
+        remaining = max(0, session["max_steps"] - len(state.episode_actions))
+        message += (
+            f"\n\n**{remaining / session['fps']:.1f}s of simulation remaining** "
+            f"({remaining} steps).\n\n"
+            "The episode also ends automatically after task success. "
+            "Stop and review episode ends recording and opens review."
+        )
+    can_takeover = active and status not in ("human", "human paused", "synchronizing")
+    can_correct = active and status == "human paused"
     return (
-        f"Controller: {status}",
-        gr.update(interactive=active and status not in ("human", "synchronizing")),
-        gr.update(interactive=active),
+        message,
+        gr.update(interactive=can_takeover, variant="primary" if can_takeover else "secondary"),
+        gr.update(interactive=can_correct, variant="primary" if can_correct else "secondary"),
+        gr.update(interactive=active and status != "hold"),
         gr.update(interactive=active and status not in ("policy", "waiting for policy")),
     )
 
@@ -1637,7 +1733,9 @@ _INTERVENTION_SHORTCUTS = """() => {
     document.addEventListener('keydown', (event) => {
         if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
             event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
-        const ids = {t: 'teleop-takeover', h: 'teleop-hold', p: 'teleop-resume'};
+        const ids = {
+            t: 'teleop-takeover', c: 'teleop-correct', h: 'teleop-hold', p: 'teleop-resume'
+        };
         const id = ids[event.key.toLowerCase()];
         const button = id && document.querySelector('button#' + id + ', #' + id + ' button');
         if (button && !button.disabled && button.getClientRects().length) {
@@ -1918,7 +2016,8 @@ def main(
         if args.policy_path or args.policy_factory:
             gr.Markdown(
                 "Policy correction collection is enabled. Start recording to run the policy, "
-                "then use Take control to synchronize the leader and correct its behavior."
+                "then press T to pause and align the leader. "
+                "Press C when ready to correct its behavior."
             )
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
@@ -1984,9 +2083,9 @@ def main(
                     stop_btn,
                     task_status,
                     rec_timer,
-                ) = _build_record_step(gr)
-                intervention_controls = _build_intervention_controls(
-                    gr, enabled=bool(args.policy_path or args.policy_factory)
+                    intervention_controls,
+                ) = _build_record_workspace(
+                    gr, policy_collection=bool(args.policy_path or args.policy_factory)
                 )
 
             with gr.Step("Review", id=3):
