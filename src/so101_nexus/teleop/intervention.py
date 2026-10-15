@@ -111,6 +111,7 @@ class InterventionSession:
         self._parked_released = False
         self._leader_managed = False
         self.status = "hold"
+        self.synchronization_error: str | None = None
         self.source: ControlSource = "hold"
 
     @property
@@ -142,7 +143,9 @@ class InterventionSession:
             if self._closed:
                 raise RuntimeError("intervention session is closed")
             pause_after_sync = source == "human" and pause_after_sync
-            if (source, pause_after_sync) != (self._requested, self._pause_after_sync):
+            if (source, pause_after_sync) != (self._requested, self._pause_after_sync) or (
+                source == "human" and self.status == "alignment paused"
+            ):
                 self._requested = source
                 self._pause_after_sync = pause_after_sync
                 self._version += 1
@@ -181,6 +184,7 @@ class InterventionSession:
                 self.status == "human paused" and requested == "human" and not pause_after_sync
             )
             self._leader_managed = True
+            self.synchronization_error = None
             self.synchronizer.cancel()
             self._applied_version = version
             self.source = "hold"
@@ -192,10 +196,9 @@ class InterventionSession:
                 self._reset_policy = True
         self._action_version = version
         if self.status == "synchronizing":
-            if not self.synchronizer.tick():
-                return None
-            self.status = "human paused"
-            self._interventions += 1
+            self._synchronize()
+        if self.status in ("synchronizing", "alignment paused"):
+            return None
         if self.status == "human paused":
             if pause_after_sync or not self._release_for_correction(version):
                 return None
@@ -207,6 +210,18 @@ class InterventionSession:
             return None
         self.source = "policy"
         return self._policy_action(obs, task, version)
+
+    def _synchronize(self) -> None:
+        try:
+            ready = self.synchronizer.tick()
+        except TimeoutError as exc:
+            self.synchronizer.cancel()
+            self.synchronization_error = str(exc)
+            self.status = "alignment paused"
+            return
+        if ready:
+            self.status = "human paused"
+            self._interventions += 1
 
     def _release_for_correction(self, version: int) -> bool:
         with self._lock:

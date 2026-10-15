@@ -49,11 +49,22 @@ class LeaderPortDiagnostic:
     recovery_hint: str = ""
 
 
-def apply_wrist_roll_offset_deg(action: dict[str, float], offset_deg: float) -> dict[str, float]:
-    """Return a copy of *action* with ``wrist_roll.pos`` shifted by *offset_deg*."""
+def apply_wrist_roll_offset_deg(
+    action: dict[str, float],
+    offset_deg: float,
+    *,
+    reference_wrist_roll_deg: float | None = None,
+) -> dict[str, float]:
+    """Shift wrist roll to the equivalent angle nearest a reference.
+
+    Without a reference, use the single-turn motor range [-180, 180).
+    Correction uses follower readback as the reference to avoid target jumps.
+    """
     result = dict(action)
     if "wrist_roll.pos" in result:
-        result["wrist_roll.pos"] = float(result["wrist_roll.pos"]) + offset_deg
+        reference = reference_wrist_roll_deg if reference_wrist_roll_deg is not None else 0.0
+        shifted = float(result["wrist_roll.pos"]) + offset_deg
+        result["wrist_roll.pos"] = reference + (shifted - reference + 180) % 360 - 180
     return result
 
 
@@ -202,24 +213,34 @@ class SOLeaderSynchronizer:
                 return True
             try:
                 elapsed = time.monotonic() - self._started
-                if elapsed > self._duration + 3.0:
-                    raise TimeoutError(
-                        "Leader synchronization timed out; check alignment and calibration"
-                    )
+                expired = elapsed > self._duration + 3.0
                 fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
-                self.bus.sync_write(
-                    "Goal_Position",
-                    {
-                        name: self._initial[name] + fraction * (value - self._initial[name])
-                        for name, value in self._target.items()
-                    },
-                )
-                positions = self.bus.sync_read("Present_Position")
-                if fraction == 1.0 and all(
-                    abs(positions[name] - value) <= 2.0 for name, value in self._target.items()
-                ):
+                if not expired:
+                    self.bus.sync_write(
+                        "Goal_Position",
+                        {
+                            name: self._initial[name] + fraction * (value - self._initial[name])
+                            for name, value in self._target.items()
+                        },
+                    )
+                positions = self._read_positions()
+                errors = {
+                    name: abs((positions[name] - value + 180) % 360 - 180)
+                    if name == "wrist_roll"
+                    else abs(positions[name] - value)
+                    for name, value in self._target.items()
+                }
+                if fraction == 1.0 and all(error <= 2.0 for error in errors.values()):
                     self._target = None
                     return True
+                if expired:
+                    details = "; ".join(
+                        f"{name}: measured {positions[name]:.1f}, target {value:.1f} "
+                        f"{'percent' if name == 'gripper' else 'deg'}"
+                        for name, value in self._target.items()
+                        if errors[name] > 2.0
+                    )
+                    raise TimeoutError(f"Leader synchronization timed out. {details}")
                 return False
             except Exception as exc:
                 try:
@@ -235,15 +256,19 @@ class SOLeaderSynchronizer:
         with self._lock:
             self._target = None
             self._holding = False
-            positions = self.bus.sync_read("Present_Position")
-            if set(positions) != set(SO101_JOINT_NAMES) or not all(
-                math.isfinite(value) for value in positions.values()
-            ):
-                raise ValueError("Leader pose hold requires finite readings for every joint")
+            positions = self._read_positions()
             self.bus.sync_write("Goal_Position", positions)
             self.bus.enable_torque()
             self._initial = positions
             self._holding = True
+
+    def _read_positions(self) -> dict[str, float]:
+        positions = self.bus.sync_read("Present_Position")
+        if set(positions) != set(SO101_JOINT_NAMES) or not all(
+            math.isfinite(value) for value in positions.values()
+        ):
+            raise ValueError("Leader pose hold requires finite readings for every joint")
+        return positions
 
     def release(self) -> None:
         """Disable torque only after the operator explicitly supports the leader."""

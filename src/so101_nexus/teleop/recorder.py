@@ -517,7 +517,13 @@ def _record_step(
     from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
 
     def human_action() -> dict[str, float]:
-        return apply_wrist_roll_offset_deg(leader.get_action(), wrist_roll_offset_deg)
+        return apply_wrist_roll_offset_deg(
+            leader.get_action(),
+            wrist_roll_offset_deg,
+            reference_wrist_roll_deg=float(obs["wrist_roll.pos"])
+            if "wrist_roll.pos" in obs
+            else None,
+        )
 
     obs = follower.get_observation()
     if intervention is None:

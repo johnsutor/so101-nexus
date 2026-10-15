@@ -1619,8 +1619,14 @@ _INTERVENTION_STATUS = {
     "ready": "### Ready\nStart a policy episode to run the simulated arm after the countdown.",
     "policy": "### Running: policy\nPress T to pause and prepare a correction.",
     "synchronizing": (
-        "### Paused: aligning leader\nKeep the leader clear while it moves to the follower pose. "
-        "The simulation will stay paused when alignment finishes."
+        "### Paused: aligning leader\nThe motors are moving the physical arm. "
+        "Keep it clear until alignment finishes; press H to stop alignment. "
+        "The simulation stays paused."
+    ),
+    "alignment paused": (
+        "### Paused: alignment needs attention\nThe leader motors are holding the measured pose. "
+        "Keep the arm clear and press T to retry alignment, or P to resume the policy. "
+        "The episode is still open; no simulation steps are used while paused."
     ),
     "human paused": (
         "### Paused: ready for correction\nThe leader motors are holding the aligned pose. "
@@ -1866,6 +1872,12 @@ def _cb_poll_intervention(session: dict, leader_supported: bool = False):
     active = intervention is not None and state is not None and state.is_recording
     status = intervention.status if active else "ready"
     message = _INTERVENTION_STATUS[status]
+    if (
+        intervention is not None
+        and status == "alignment paused"
+        and intervention.synchronization_error
+    ):
+        message += f"\n\n**Alignment details:** {intervention.synchronization_error}"
     if active and "max_steps" in session:
         remaining = max(0, session["max_steps"] - len(state.episode_actions))
         message += (

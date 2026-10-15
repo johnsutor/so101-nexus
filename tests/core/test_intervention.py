@@ -719,3 +719,169 @@ def test_stale_support_token_cannot_authorize_motor_release():
         assert session.release_leader(support_token=session.support_token)
     finally:
         session.close()
+
+
+def test_alignment_already_converged_is_accepted_after_deadline(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start(observation(10))
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 10.0)
+    now[0] = 10.0
+    assert sync.tick()
+    assert sync.holding
+    assert ("disable",) not in bus.events
+
+
+def test_alignment_timeout_reports_joint_errors_without_new_motion(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start(observation(10))
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 10.0)
+    bus.positions["wrist_flex"] = 6.0
+    bus.positions["gripper"] = 5.0
+    now[0] = 10.0
+    with pytest.raises(TimeoutError, match=r"wrist_flex.*6.0.*10.0.*deg") as error:
+        sync.tick()
+    assert "gripper" in str(error.value)
+    assert "percent" in str(error.value)
+    assert bus.events[-2:] == [("write", bus.positions), ("enable",)]
+    assert bus.positions["wrist_flex"] == 6.0
+    assert ("disable",) not in bus.events
+
+
+@pytest.mark.parametrize("destination", ["human", "policy"])
+def test_alignment_timeout_pauses_until_explicit_retry_or_policy_resume(destination):
+    sync = Synchronizer()
+    calls = []
+
+    def tick():
+        calls.append(None)
+        if len(calls) == 1:
+            raise TimeoutError("wrist_flex is 4 deg away")
+        return True
+
+    sync.tick = tick
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        for _ in range(3):
+            assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+            assert session.status == "alignment paused"
+            assert session.source == "hold"
+            assert "wrist_flex" in session.synchronization_error
+        assert len(calls) == 1
+        assert not session.start_correction()
+        session.request(destination, pause_after_sync=True)
+        if destination == "policy":
+            assert await_action(session, observation()) == observation(10)
+        else:
+            assert session.action(observation(), "Pick", lambda: pytest.fail("human read")) is None
+            assert session.status == "human paused"
+            assert len(sync.targets) == 2
+        assert session.synchronization_error is None
+        assert sync.releases == 0
+    finally:
+        session.close()
+
+
+def test_moving_leader_during_correction_never_restarts_alignment():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", lambda: pytest.fail("human read"))
+        assert session.start_correction()
+        for value in (3, 4, 20):
+            assert session.action(
+                observation(), "Pick", lambda value=value: observation(value)
+            ) == observation(value)
+        assert sync.targets == [observation()]
+        assert session.status == "human"
+    finally:
+        session.close()
+
+
+def test_takeover_wraps_offset_target_into_physical_wrist_range(monkeypatch):
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
+    follower_pose = {**observation(), "wrist_roll.pos": 163.0}
+    sync.start(follower_pose)
+    now[0] = 1.0
+    assert not sync.tick()
+    assert bus.positions["wrist_roll"] == pytest.approx(-20.0, abs=1e-12)
+    now[0] = 6.0
+    assert sync.tick()
+    assert bus.positions["wrist_roll"] == -107.0
+    corrected = apply_wrist_roll_offset_deg(
+        {f"{name}.pos": value for name, value in bus.positions.items()}, -90.0
+    )
+    assert corrected == follower_pose
+
+
+def test_worker_preserves_episode_after_alignment_timeout(worker_setup):  # noqa: F811
+    from so101_nexus.teleop.recorder import RecordingWorker
+
+    kwargs, follower_type, _ = worker_setup
+    timed_out = threading.Event()
+    sync = Synchronizer()
+
+    def tick():
+        timed_out.set()
+        raise TimeoutError("wrist_flex is 4 deg away")
+
+    sync.tick = tick
+    session = InterventionSession(Policy(), sync)
+    original = follower_type.get_observation
+    requested = False
+
+    def get_observation(follower):
+        nonlocal requested
+        if not requested and kwargs["state"].is_recording:
+            requested = True
+            session.request("human", pause_after_sync=True)
+        return original(follower)
+
+    follower_type.get_observation = get_observation
+    worker = RecordingWorker()
+    try:
+        worker.submit(**kwargs, intervention=session)
+        assert timed_out.wait(3)
+        assert not worker.wait(0.05)
+        state = kwargs["state"]
+        assert state.is_recording
+        assert not state.recording_finished
+        assert state.error is None
+        assert state.episode_actions == []
+        assert state.episode_intervention_ids == []
+        session.request("policy")
+        assert worker.wait(3)
+        assert state.error is None
+        assert len(state.episode_actions) == 1
+        assert state.episode_intervention_ids == [0]
+    finally:
+        worker.close()
+        session.close()
+
+
+def test_wrist_alignment_accepts_equivalent_single_turn_endpoints(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
+    sync.start({**observation(), "wrist_roll.pos": 90.0})
+    bus.positions["wrist_roll"] = 179.95
+    now[0] = 20.0
+    assert sync.tick()
+    assert sync.holding
+    assert ("disable",) not in bus.events

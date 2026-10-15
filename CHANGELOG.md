@@ -43,6 +43,12 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Wrist offsets wrap takeover targets into the physical motor's single-turn range
+  and preserve continuous correction targets across angle boundaries. Alignment
+  checks measured convergence before timeout, including equivalent wrist endpoints.
+  Alignment timeouts keep the episode paused with per-joint diagnostics and retry
+  controls instead of ending recording.
+
 - Physical leaders retain motor torque after policy collection errors, alignment,
   pause, episode completion, and process cleanup. Explicit motor release requires
   operator support confirmation in the viewer. Recording errors remain visible

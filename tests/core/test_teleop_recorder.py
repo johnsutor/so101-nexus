@@ -590,3 +590,28 @@ def test_recording_captures_final_rendering_metadata(monkeypatch, max_steps):
     assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
     state.clear_episode()
     assert state.rendering_metadata == {}
+
+
+def test_human_correction_uses_follower_wrist_reference_at_wrap_boundary():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.recorder import _record_step
+
+    obs = dict.fromkeys((f"{name}.pos" for name in SO101_JOINT_NAMES), 0.0)
+    obs["wrist_roll.pos"] = 163.0
+    sent = []
+
+    def send(action):
+        sent.append(action)
+        return action
+
+    follower = SimpleNamespace(
+        get_observation=lambda: obs, send_action=send, last_step_info=lambda: None
+    )
+    state = RecordingState(num_episodes=1)
+    for wrist_deg in (-90.1, -89.9):
+        leader = SimpleNamespace(
+            get_action=lambda wrist_deg=wrist_deg: {**obs, "wrist_roll.pos": wrist_deg}
+        )
+        assert _record_step(state, follower, leader, None, SO101_JOINT_NAMES, -90.0)
+    assert [action["wrist_roll.pos"] for action in sent] == pytest.approx([179.9, 180.1])

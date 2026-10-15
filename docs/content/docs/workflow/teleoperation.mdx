@@ -130,7 +130,13 @@ This collector currently supports the simulated follower, not real-robot deploym
 Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.
 Targets ramp at up to 20 degrees per second for body joints and 40 percentage points per second for the gripper.
 The leader must converge within 2 degrees or 2 percentage points of its target.
-A timeout or motor error ends recording and commands a hold at the measured physical pose.
+Wrist roll uses circular angular distance, and its inverse offset wraps into the physical
+single-turn range. During correction, wrist targets use the equivalent angle nearest
+follower readback so crossing the angle boundary does not flip the simulated target.
+An alignment timeout holds the measured physical pose and keeps the episode paused.
+The controller panel lists the joints that did not reach their targets, including measured
+and target positions. Keep the leader clear and press T to retry, or P to resume the policy.
+A motor communication error that prevents holding still ends recording.
 Pausing, finishing an episode, and process cleanup also preserve motor torque.
 Recording errors stay visible in Review, along with any failure to hold the leader.
 If holding is unconfirmed, support the arm and gripper immediately.

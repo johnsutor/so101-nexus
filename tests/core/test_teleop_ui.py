@@ -194,6 +194,7 @@ assert.equal(clicks, 1);
         ("ready", (False, False, False, False), "Ready"),
         ("policy", (True, False, True, False), "Running: policy"),
         ("synchronizing", (False, False, True, True), "Paused: aligning leader"),
+        ("alignment paused", (True, False, True, True), "Paused: alignment needs attention"),
         ("human paused", (False, True, True, True), "Paused: ready for correction"),
         ("human", (False, False, True, True), "Running: human correction"),
         ("hold", (True, False, False, True), "Paused"),
@@ -206,7 +207,7 @@ def test_intervention_status_explains_simulation_and_available_actions(status, e
     from so101_nexus.teleop.app import _cb_poll_intervention
 
     session = {
-        "intervention": SimpleNamespace(status=status),
+        "intervention": SimpleNamespace(status=status, synchronization_error=None),
         "state": SimpleNamespace(is_recording=status != "ready"),
     }
     text, *updates = _cb_poll_intervention(session, leader_supported=True)
@@ -410,3 +411,26 @@ def test_reinitialization_requires_explicit_motor_release(monkeypatch):
     with pytest.raises(gr.Error, match="release its motors"):
         app._start_init_attempt({"intervention": Mock(leader_released=False)}, {}, "/dev/null", {})
     close.assert_not_called()
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_alignment_pause_shows_joint_diagnostics_and_recovery_actions():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.app import _cb_poll_intervention
+
+    session = {
+        "intervention": SimpleNamespace(
+            status="alignment paused",
+            synchronization_error="wrist_flex: measured 6.0, target 10.0 deg",
+        ),
+        "state": SimpleNamespace(is_recording=True),
+    }
+    message, takeover, correct, _, policy = _cb_poll_intervention(session)
+    assert "wrist_flex" in message
+    assert "6.0" in message
+    assert "10.0 deg" in message
+    assert "retry" in message.lower()
+    assert takeover["interactive"] is True
+    assert correct["interactive"] is False
+    assert policy["interactive"] is True
