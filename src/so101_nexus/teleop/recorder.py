@@ -82,6 +82,23 @@ class _StepInfoLike(Protocol):
     def info(self) -> dict[str, Any]: ...
 
 
+@dataclass(frozen=True)
+class RecordedTransition:
+    """One pre-step observation and action with its resulting reward and flags."""
+
+    state: np.ndarray
+    action: np.ndarray
+    reward: float = 0.0
+    reward_components: Mapping[str, float] = field(default_factory=dict)
+    success: float = 0.0
+    done: float = 0.0
+    env_state: np.ndarray | None = None
+    wrist_image: np.ndarray | None = None
+    overhead_image: np.ndarray | None = None
+    side_image: np.ndarray | None = None
+    intervention_id: int | None = None
+
+
 @dataclass
 class RecordingState:
     """Mutable state shared between the recording thread and the Gradio UI."""
@@ -92,17 +109,7 @@ class RecordingState:
     recording_finished: bool = False
     error: str | None = None
 
-    episode_actions: list[np.ndarray] = field(default_factory=list)
-    episode_intervention_ids: list[int] = field(default_factory=list)
-    episode_states: list[np.ndarray] = field(default_factory=list)
-    episode_rewards: list[float] = field(default_factory=list)
-    episode_reward_components: list[dict[str, float]] = field(default_factory=list)
-    episode_env_states: list[np.ndarray] = field(default_factory=list)
-    episode_successes: list[float] = field(default_factory=list)
-    episode_dones: list[float] = field(default_factory=list)
-    episode_wrist_images: list[np.ndarray] = field(default_factory=list)
-    episode_overhead_images: list[np.ndarray] = field(default_factory=list)
-    episode_side_images: list[np.ndarray] = field(default_factory=list)
+    transitions: list[RecordedTransition] = field(default_factory=list)
     task_description: str = ""
     placement_contract: dict[str, Any] | None = None
     episode_seed: int | None = None
@@ -120,17 +127,7 @@ class RecordingState:
 
     def clear_episode(self) -> None:
         """Reset all per-episode buffers."""
-        self.episode_actions.clear()
-        self.episode_intervention_ids.clear()
-        self.episode_states.clear()
-        self.episode_rewards.clear()
-        self.episode_reward_components.clear()
-        self.episode_env_states.clear()
-        self.episode_successes.clear()
-        self.episode_dones.clear()
-        self.episode_wrist_images.clear()
-        self.episode_overhead_images.clear()
-        self.episode_side_images.clear()
+        self.transitions.clear()
         self.task_description = ""
         self.placement_contract = None
         self.episode_seed = None
@@ -200,30 +197,23 @@ def _make_preview_frame(
     return out
 
 
-def _publish_camera_frames(state: RecordingState, obs: object, *, record: bool = True) -> None:
-    """Copy camera observations into episode buffers and the UI preview slot."""
-    wrist_image = None
-    overhead_image = None
-    if isinstance(obs, Mapping):
-        camera_obs = cast("Mapping[str, np.ndarray]", obs)
-        wrist_image = camera_obs.get("wrist")
-        if wrist_image is None:
-            wrist_image = camera_obs.get("wrist_camera")
-        overhead_image = camera_obs.get("overhead")
-        if overhead_image is None:
-            overhead_image = camera_obs.get("overhead_camera")
+def _camera_images(obs: object) -> dict[str, np.ndarray | None]:
+    camera_obs = cast("Mapping[str, np.ndarray]", obs) if isinstance(obs, Mapping) else {}
+    images = {name: camera_obs.get(name) for name in ("wrist", "overhead", "side")}
+    for name in ("wrist", "overhead"):
+        if images[name] is None:
+            images[name] = camera_obs.get(f"{name}_camera")
+    return images
 
+
+def _publish_camera_frames(state: RecordingState, obs: object) -> None:
+    """Publish camera observations to the UI preview slots."""
+    images = _camera_images(obs)
+    wrist_image, overhead_image, side_image = images["wrist"], images["overhead"], images["side"]
     if wrist_image is not None:
-        if record:
-            state.episode_wrist_images.append(wrist_image)
         state.live_frame = wrist_image
     if overhead_image is not None:
-        if record:
-            state.episode_overhead_images.append(overhead_image)
         state.live_overhead_frame = overhead_image
-    side_image = obs.get("side") if isinstance(obs, Mapping) else None
-    if record and side_image is not None:
-        state.episode_side_images.append(side_image)
     if wrist_image is None and overhead_image is None and side_image is None:
         state.live_preview = None
         state._next_preview_at = None
@@ -267,10 +257,10 @@ def _should_stop_after_termination(
     if state.terminated_at_frame is None:
         if not step_info.terminated:
             return False
-        state.terminated_at_frame = len(state.episode_actions)
+        state.terminated_at_frame = len(state.transitions)
 
     hold_frames = max(0, round(success_hold_seconds * fps))
-    frames_since_success = len(state.episode_actions) - state.terminated_at_frame
+    frames_since_success = len(state.transitions) - state.terminated_at_frame
     return frames_since_success >= hold_frames
 
 
@@ -448,7 +438,7 @@ def recording_thread(
 
         while not state.should_stop:
             step_start = time.monotonic()
-            if len(state.episode_actions) >= max_steps:
+            if len(state.transitions) >= max_steps:
                 break
             if not _record_step(
                 state, follower, leader, intervention, joint_names, wrist_roll_offset_deg
@@ -552,10 +542,16 @@ def _record_step(
             else None
         )
         if sent_action is None:
-            _publish_camera_frames(state, obs, record=False)
+            _publish_camera_frames(state, obs)
             return False
-        state.episode_intervention_ids.append(intervention.intervention_id)
-    _append_step_buffers(state, sent_action, obs, follower.last_step_info(), joint_names)
+    _append_transition(
+        state,
+        sent_action,
+        obs,
+        follower.last_step_info(),
+        joint_names,
+        intervention_id=intervention.intervention_id if intervention is not None else None,
+    )
     return True
 
 
@@ -570,35 +566,36 @@ def _dict_to_vector(
     )
 
 
-def _append_step_buffers(
+def _append_transition(
     state: RecordingState,
     sent_action: Mapping[str, object],
     obs: Mapping[str, object],
     step_info: _StepInfoLike | None,
     joint_names: tuple[str, ...],
+    *,
+    intervention_id: int | None = None,
 ) -> None:
-    """Append one step's actions, states, reward, success, done, env state, and cameras."""
-    state.episode_actions.append(_dict_to_vector(sent_action, joint_names))
-    state.episode_states.append(_dict_to_vector(obs, joint_names))
-    # Reward/success/done from `env.step(a_t)` (captured by
-    # `SimSOFollower.send_action`) align with this frame's action; default before
-    # the first step. `done` is `terminated or truncated`; `success` is the env's
-    # `info["success"]` (0.0 when the env sets no success key). `reward_components`
-    # is the per-facet breakdown the env stored on `info` (empty when absent).
-    state.episode_rewards.append(step_info.reward if step_info is not None else 0.0)
-    state.episode_reward_components.append(
-        step_info.info.get("reward_components", {}) if step_info is not None else {}
-    )
-    if step_info is None:
-        state.episode_successes.append(0.0)
-        state.episode_dones.append(0.0)
-    else:
-        state.placement_contract = step_info.info.get("placement_contract")
-        state.episode_successes.append(float(bool(step_info.info.get("success", False))))
-        state.episode_dones.append(float(step_info.terminated or step_info.truncated))
-    # Privileged state is the pre-step observation (s_t), aligned with
-    # `observation.state`. Absent when the env exposes no non-camera components.
+    """Append a complete transition, preserving missing channels at their frame index."""
+    info = step_info.info if step_info is not None else {}
     env_state = obs.get("environment_state")
-    if env_state is not None:
-        state.episode_env_states.append(np.asarray(env_state, dtype=np.float32))
+    images = _camera_images(obs)
+    state.transitions.append(
+        RecordedTransition(
+            state=_dict_to_vector(obs, joint_names),
+            action=_dict_to_vector(sent_action, joint_names),
+            reward=step_info.reward if step_info is not None else 0.0,
+            reward_components=info.get("reward_components", {}),
+            success=float(bool(info.get("success", False))),
+            done=float(step_info.terminated or step_info.truncated)
+            if step_info is not None
+            else 0.0,
+            env_state=np.asarray(env_state, dtype=np.float32) if env_state is not None else None,
+            wrist_image=images["wrist"],
+            overhead_image=images["overhead"],
+            side_image=images["side"],
+            intervention_id=intervention_id,
+        )
+    )
+    if step_info is not None:
+        state.placement_contract = info.get("placement_contract")
     _publish_camera_frames(state, obs)

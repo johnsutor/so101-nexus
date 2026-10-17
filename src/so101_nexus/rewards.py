@@ -136,6 +136,30 @@ def potential_shaping(potential, prev_potential):
     return potential - prev_potential
 
 
+class _PotentialState[PotentialT]:
+    """Maintain the previous reach, grasp, and task potentials across transitions."""
+
+    def __init__(self, reach: PotentialT, grasp: PotentialT, task: PotentialT) -> None:
+        self._prev_reach_progress = reach
+        self._prev_grasp_progress = grasp
+        self._prev_task_potential = task
+
+    def _update_potentials(
+        self, reach: PotentialT, grasp: PotentialT, task: PotentialT
+    ) -> tuple[PotentialT, PotentialT, PotentialT]:
+        deltas = (
+            potential_shaping(reach, self._prev_reach_progress),
+            potential_shaping(grasp, self._prev_grasp_progress),
+            potential_shaping(task, self._prev_task_potential),
+        )
+        self._prev_reach_progress, self._prev_grasp_progress, self._prev_task_potential = (
+            reach,
+            grasp,
+            task,
+        )
+        return deltas
+
+
 def _elementwise_max(a, b):
     """Elementwise ``max(a, b)`` across Python floats, NumPy arrays, and torch tensors."""
     diff = b - a

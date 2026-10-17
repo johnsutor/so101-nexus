@@ -14,16 +14,11 @@ disabled, matching ``PickEnv``'s slot machinery.
 
 from __future__ import annotations
 
-import tempfile
 from typing import ClassVar, cast
 
 import mujoco
 import numpy as np
 
-from so101_nexus import (
-    get_so101_mujoco_model_dir,
-    get_so101_mujoco_model_path,
-)
 from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
 from so101_nexus.constants import COLOR_MAP, ColorName, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
@@ -33,24 +28,17 @@ from so101_nexus.mujoco.spawn_utils import (
     sample_separated_positions,
 )
 from so101_nexus.object_slots import (
-    ObjectSlot,
-    build_object_scene_xml,
-    ensure_scanned_mesh_assets,
-    extract_object_slots,
+    compile_object_scene,
 )
-from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
+from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.rewards import (
     cube_stack_offset_ok,
     object_static_ok,
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
-    potential_shaping,
 )
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
-
-_SO101_DIR = get_so101_mujoco_model_dir()
-_SO101_XML = get_so101_mujoco_model_path()
 
 
 class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
@@ -115,29 +103,20 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         # Distractor slots are only compiled when requested, so the default
         # two-cube scene stays identical.
         distractor_pool = list(config.distractors) if config.n_distractors else []
-        for obj in distractor_pool:
-            if isinstance(obj, ScannedMeshObject):
-                ensure_scanned_mesh_assets(obj)
         scene_objects: list[SceneObject] = [cube_a_obj, cube_b_obj, *distractor_pool]
         slot_names = ["cube_a", "cube_b"] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))
         ]
 
-        xml_string = build_object_scene_xml(
+        self.model, slots = compile_object_scene(
             scene_objects,
             slot_names,
             COLOR_MAP[ground_name],
             option_xml=MUJOCO_SCENE_OPTION_XML,
-            robot_xml_path=str(_SO101_XML),
             model_name="stack_cube_scene",
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
-            f.write(xml_string)
-            f.flush()
-            self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        slots: list[ObjectSlot] = extract_object_slots(self.model, slot_names, scene_objects)
         self._slot_a, self._slot_b = slots[0], slots[1]
         self._distractor_slots = slots[2:]
         self._n_distractors = config.n_distractors
@@ -297,16 +276,10 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         # post-stack retreat pay no negative delta.
         reach_now = place_reach_potential(info["tcp_to_obj_dist"], info["is_stacked"], scale=scale)
         grasp_now = place_grasp_potential(info["is_grasped"], info["is_stacked"])
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = grasp_now
-        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
-        # 1999; see _task_potential), not the raw potential -- dwelling at any
-        # fixed state pays ~0 per step instead of the potential's full value.
         task_potential = info["task_potential"]
-        task_progress = potential_shaping(task_potential, self._prev_task_potential)
-        self._prev_task_potential = task_potential
+        reach_delta, grasp_delta, task_progress = self._update_potentials(
+            reach_now, grasp_now, task_potential
+        )
         components = self.config.reward.compute_components(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

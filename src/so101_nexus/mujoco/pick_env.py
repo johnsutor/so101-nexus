@@ -12,16 +12,11 @@ Supported object types: ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``,
 
 from __future__ import annotations
 
-import tempfile
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import mujoco
 import numpy as np
 
-from so101_nexus import (
-    get_so101_mujoco_model_dir,
-    get_so101_mujoco_model_path,
-)
 from so101_nexus.config import (
     ControlMode,
     PickConfig,
@@ -36,17 +31,13 @@ from so101_nexus.mujoco.spawn_utils import (
     set_slot_contacts,
 )
 from so101_nexus.object_slots import (
-    ObjectSlot,
-    build_object_scene_xml,
-    ensure_scanned_mesh_assets,
-    extract_object_slots,
+    compile_object_scene,
 )
-from so101_nexus.objects import ScannedMeshObject, SceneObject
 from so101_nexus.rewards import reach_progress
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
 
-_SO101_DIR = get_so101_mujoco_model_dir()
-_SO101_XML = get_so101_mujoco_model_path()
+if TYPE_CHECKING:
+    from so101_nexus.objects import SceneObject
 
 
 class PickEnv(SO101NexusMuJoCoBaseEnv):
@@ -87,31 +78,18 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         n_pool = len(scene_objects)
         n_slots = 1 + self._n_distractors
 
-        # Ensure scanned-mesh assets (YCB, GSO) are on disk before building XML
-        for obj in scene_objects:
-            if isinstance(obj, ScannedMeshObject):
-                ensure_scanned_mesh_assets(obj)
-
         # Body slot names: one per pool object (not just active slots).
         # Slots beyond n_slots will be hidden off-world at reset time.
         slot_names = [f"pick_slot_{i}" for i in range(n_pool)]
 
-        xml_string = build_object_scene_xml(
+        self.model, self._slots = compile_object_scene(
             scene_objects,
             slot_names,
             sample_color(config.ground_colors),
             option_xml=MUJOCO_SCENE_OPTION_XML,
-            robot_xml_path=str(_SO101_XML),
             model_name="pick_scene",
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
-            f.write(xml_string)
-            f.flush()
-            self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
-
-        # Per-slot runtime metadata (one entry per pool object).
-        self._slots: list[ObjectSlot] = extract_object_slots(self.model, slot_names, scene_objects)
 
         # n_slots = active slots (target + distractors); the rest are hidden.
         self._n_slots = n_slots

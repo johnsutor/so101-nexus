@@ -12,7 +12,7 @@ from so101_nexus.teleop.app import (
     _cb_approve_episode,
 )
 from so101_nexus.teleop.dataset import SIDE_KEY
-from so101_nexus.teleop.recorder import RecordingState, _publish_camera_frames
+from so101_nexus.teleop.recorder import RecordedTransition, RecordingState
 
 
 @pytest.mark.parametrize("selected", [True, False])
@@ -26,9 +26,14 @@ def test_side_camera_saved_only_when_selected(monkeypatch, tmp_path, selected):
     assert _build_field_selection(_OPTIONAL_FIELD_CHOICES).side_image
     state = RecordingState(num_episodes=2)
     side = np.full((24, 32, 3), 17, dtype=np.uint8)
-    _publish_camera_frames(state, {"side": side})
-    state.episode_states.append(np.zeros(6, dtype=np.float32))
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+
+    state.transitions.append(
+        RecordedTransition(
+            state=np.zeros(6, dtype=np.float32),
+            action=np.zeros(6, dtype=np.float32),
+            side_image=side,
+        )
+    )
     frames = []
     dataset = SimpleNamespace(
         root=tmp_path,
@@ -52,7 +57,7 @@ def test_side_camera_saved_only_when_selected(monkeypatch, tmp_path, selected):
     if selected:
         np.testing.assert_array_equal(frames[0][SIDE_KEY], side)
     state.clear_episode()
-    assert state.episode_side_images == []
+    assert [t.side_image for t in state.transitions] == []
 
 
 def test_recording_config_uses_clear_side_camera_ranges():

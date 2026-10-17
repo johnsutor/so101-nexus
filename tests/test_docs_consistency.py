@@ -27,6 +27,12 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _registered_env_ids() -> set[str]:
+    from so101_nexus.env_ids import _BACKEND_PREFIXES, _TASKS
+
+    return {prefix + task[0] for prefix in _BACKEND_PREFIXES.values() for task in _TASKS}
+
+
 def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     """User-facing docs must not contain em dashes, en dashes, or emoji."""
     emoji = re.compile(r"[\U0001f300-\U0001faff]")
@@ -200,11 +206,7 @@ def test_core_overview_lists_only_real_public_symbols() -> None:
 
 def test_docs_reference_only_registered_env_ids() -> None:
     """Every ``MuJoCo*``/``Warp*``/``MJBatch*`` env id in docs must be a registered id."""
-    registered: set[str] = set()
-    for backend in ("mujoco", "warp", "mjbatch"):
-        src = _read(ROOT / "src" / "so101_nexus" / backend / "__init__.py")
-        registered.update(re.findall(r'id="([^"]+)"', src))
-    assert registered, "could not parse any registered env ids from backend modules"
+    registered = _registered_env_ids()
 
     offenders: list[tuple[str, str]] = []
     docs = set(DOCS.rglob("*.mdx")) | set(TEXT_DOCS)
@@ -236,11 +238,7 @@ def test_environment_table_state_dimensions_match_public_configs() -> None:
         actual = sum(component.size for component in config.observations)
         assert actual == int(dimensions), config_name
         documented.update((mujoco_id, warp_id, mjbatch_id))
-    registered = set()
-    for backend in ("mujoco", "warp", "mjbatch"):
-        src = _read(ROOT / "src" / "so101_nexus" / backend / "__init__.py")
-        registered.update(re.findall(r'id="([^"]+)"', src))
-    assert documented == registered
+    assert documented == _registered_env_ids()
 
 
 def test_render_camera_documented_angle_defaults_match_config() -> None:

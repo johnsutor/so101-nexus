@@ -13,9 +13,10 @@ import pytest
 
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.teleop.recorder import (
+    RecordedTransition,
     RecordingState,
     TeeStream,
-    _append_step_buffers,
+    _append_transition,
     _publish_camera_frames,
     _should_stop_after_termination,
     compute_delta_actions,
@@ -167,10 +168,7 @@ def test_compute_delta_actions_zero_prefix() -> None:
 
 def test_recording_state_starts_clean() -> None:
     state = RecordingState()
-    assert state.episode_actions == []
-    assert state.episode_states == []
-    assert state.episode_wrist_images == []
-    assert state.episode_overhead_images == []
+    assert state.transitions == []
     assert not state.is_recording
 
 
@@ -202,15 +200,18 @@ def test_recording_thread_signature_drops_action_pipeline_kwarg() -> None:
     assert "success_hold_seconds" in sig.parameters
 
 
-def test_publish_camera_frames_extracts_follower_camera_keys() -> None:
+@pytest.mark.parametrize("suffix", ["", "_camera"])
+def test_recorded_transition_extracts_camera_aliases(suffix) -> None:
     state = RecordingState()
     wrist = np.full((8, 10, 3), 128, dtype=np.uint8)
     overhead = np.full((6, 12, 3), 64, dtype=np.uint8)
 
-    _publish_camera_frames(state, {"wrist": wrist, "overhead": overhead})
+    _append_transition(
+        state, {}, {f"wrist{suffix}": wrist, f"overhead{suffix}": overhead}, None, ()
+    )
 
-    assert state.episode_wrist_images == [wrist]
-    assert state.episode_overhead_images == [overhead]
+    assert [t.wrist_image for t in state.transitions] == [wrist]
+    assert [t.overhead_image for t in state.transitions] == [overhead]
     assert state.live_preview is not None
     assert state.live_preview.shape == (8, 26, 3)
 
@@ -226,9 +227,9 @@ def test_publish_camera_frames_includes_side_in_live_preview(side_only: bool) ->
             overhead=np.full((6, 12, 3), 64, dtype=np.uint8),
         )
 
-    _publish_camera_frames(state, obs)
+    _append_transition(state, {}, obs, None, ())
 
-    assert state.episode_side_images == [side]
+    assert [t.side_image for t in state.transitions] == [side]
     preview = state.live_preview
     assert preview is not None
     if side_only:
@@ -247,9 +248,9 @@ def test_publish_camera_frames_downscales_side_preview_only() -> None:
     state = RecordingState()
     side = np.full((480, 640, 3), 32, dtype=np.uint8)
 
-    _publish_camera_frames(state, {"side": side})
+    _append_transition(state, {}, {"side": side}, None, ())
 
-    assert state.episode_side_images[0] is side
+    assert state.transitions[0].side_image is side
     np.testing.assert_array_equal(state.live_preview, np.full((240, 320, 3), 32, dtype=np.uint8))
 
 
@@ -263,35 +264,33 @@ def test_publish_camera_frames_throttles_preview_without_dropping_images(monkeyp
             name: np.full((480, 640, 3), index, dtype=np.uint8)
             for name in ("wrist", "overhead", "side")
         }
-        _publish_camera_frames(state, cameras)
+        _append_transition(state, {}, cameras, None, ())
 
         if index % 3 == 0:
             assert state.live_preview is not preview
             preview = state.live_preview
         else:
             assert state.live_preview is preview
-        assert state.episode_wrist_images[-1] is cameras["wrist"]
-        assert state.episode_overhead_images[-1] is cameras["overhead"]
-        assert state.episode_side_images[-1] is cameras["side"]
+        assert state.transitions[-1].wrist_image is cameras["wrist"]
+        assert state.transitions[-1].overhead_image is cameras["overhead"]
+        assert state.transitions[-1].side_image is cameras["side"]
         assert state.live_frame is cameras["wrist"]
         assert state.live_overhead_frame is cameras["overhead"]
 
-    assert len(state.episode_wrist_images) == 7
-    assert len(state.episode_overhead_images) == 7
-    assert len(state.episode_side_images) == 7
+    assert len(state.transitions) == 7
 
 
 def test_publish_camera_frames_refreshes_immediately_after_episode_reset(monkeypatch) -> None:
     times = iter((10.0, 10.01))
     monkeypatch.setattr("so101_nexus.teleop.recorder.time.monotonic", lambda: next(times))
     state = RecordingState()
-    _publish_camera_frames(state, {"side": np.zeros((4, 4, 3), dtype=np.uint8)})
+    _append_transition(state, {}, {"side": np.zeros((4, 4, 3), dtype=np.uint8)}, None, ())
     state.clear_episode()
     frame = np.ones((4, 4, 3), dtype=np.uint8)
-    _publish_camera_frames(state, {"side": frame})
+    _append_transition(state, {}, {"side": frame}, None, ())
 
     np.testing.assert_array_equal(state.live_preview, frame)
-    assert state.episode_side_images == [frame]
+    assert [t.side_image for t in state.transitions] == [frame]
 
 
 @pytest.mark.parametrize("obs", [{}, {"motor.pos": 1.0}, None])
@@ -304,9 +303,7 @@ def test_publish_camera_frames_skips_composition_without_cameras(monkeypatch, ob
     _publish_camera_frames(state, obs)
 
     assert state.live_preview is None
-    assert state.episode_wrist_images == []
-    assert state.episode_overhead_images == []
-    assert state.episode_side_images == []
+    assert state.transitions == []
 
 
 def test_recording_thread_stops_after_terminated_plus_hold(monkeypatch) -> None:
@@ -320,7 +317,7 @@ def test_recording_thread_stops_after_terminated_plus_hold(monkeypatch) -> None:
 
     assert state.error is None
     assert state.terminated_at_frame == 5
-    assert len(state.episode_actions) == 10
+    assert len(state.transitions) == 10
 
 
 def test_recording_thread_stops_immediately_with_zero_hold(monkeypatch) -> None:
@@ -334,7 +331,7 @@ def test_recording_thread_stops_immediately_with_zero_hold(monkeypatch) -> None:
 
     assert state.error is None
     assert state.terminated_at_frame == 3
-    assert len(state.episode_actions) == 3
+    assert len(state.transitions) == 3
 
 
 @pytest.mark.parametrize("truncated", [False, True])
@@ -350,15 +347,15 @@ def test_recording_stop_handles_truncation(truncated: bool) -> None:
 
 
 def test_recording_success_hold_finishes_after_transient_success() -> None:
-    state = RecordingState(episode_actions=[np.zeros(6)])
+    state = RecordingState(transitions=[RecordedTransition(state=np.zeros(6), action=np.zeros(6))])
     step_info = types.SimpleNamespace(terminated=True, truncated=False)
     assert not _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
     assert state.terminated_at_frame == 1
 
     step_info.terminated = False
-    state.episode_actions.append(np.zeros(6))
+    state.transitions.append(RecordedTransition(action=np.zeros(6), state=np.zeros(6)))
     assert not _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
-    state.episode_actions.append(np.zeros(6))
+    state.transitions.append(RecordedTransition(action=np.zeros(6), state=np.zeros(6)))
     assert _should_stop_after_termination(state, step_info, fps=10, success_hold_seconds=0.2)
 
 
@@ -409,7 +406,7 @@ def test_recording_failure_preserves_elapsed_time_and_rendering_metadata(monkeyp
     state, _ = _run_fake_recording(monkeypatch, leader=InterruptedLeader())
 
     assert "missing motor status packet" in state.error
-    assert len(state.episode_actions) == 1
+    assert len(state.transitions) == 1
     assert state.episode_duration > 0
     assert state.rendering_metadata == {"renderers": {"side": {"msaa_samples": 4}}}
     assert events == ["metadata", "close"]
@@ -472,11 +469,11 @@ def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -
     assert not thread.is_alive(), "recording thread did not finish"
     assert state.recording_finished
     assert state.error is None, f"recording errored: {state.error}"
-    assert len(state.episode_actions) > 0
-    assert len(state.episode_states) == len(state.episode_actions)
+    assert len(state.transitions) > 0
+    assert all(t.state.shape == t.action.shape for t in state.transitions)
 
-    action0 = state.episode_actions[0]
-    state0 = state.episode_states[0]
+    action0 = state.transitions[0].action
+    state0 = state.transitions[0].state
     assert action0.shape == (len(SO101_JOINT_NAMES),)
     assert state0.shape == (len(SO101_JOINT_NAMES),)
     assert action0.dtype == np.float32
@@ -537,10 +534,10 @@ def _step_info(*, terminated=False, truncated=False, info=None, reward=0.0):
     )
 
 
-def test_append_step_buffers_non_terminal_step_records_zero_success_and_done() -> None:
+def test_append_transition_non_terminal_step_records_zero_success_and_done() -> None:
     state = RecordingState()
 
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         _motor_obs(2.0),
@@ -548,16 +545,16 @@ def test_append_step_buffers_non_terminal_step_records_zero_success_and_done() -
         SO101_JOINT_NAMES,
     )
 
-    assert state.episode_rewards == [0.5]
-    assert state.episode_successes == [0.0]
-    assert state.episode_dones == [0.0]
+    assert [t.reward for t in state.transitions] == [0.5]
+    assert [t.success for t in state.transitions] == [0.0]
+    assert [t.done for t in state.transitions] == [0.0]
 
 
-def test_append_step_buffers_records_reward_components_from_info() -> None:
+def test_append_transition_records_reward_components_from_info() -> None:
     state = RecordingState()
     components = {"reaching": 0.2, "grasping": 0.0, "task_objective": 0.1}
 
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         _motor_obs(2.0),
@@ -565,13 +562,13 @@ def test_append_step_buffers_records_reward_components_from_info() -> None:
         SO101_JOINT_NAMES,
     )
 
-    assert state.episode_reward_components == [components]
+    assert [t.reward_components for t in state.transitions] == [components]
 
 
-def test_append_step_buffers_terminal_success_records_success_and_done() -> None:
+def test_append_transition_terminal_success_records_success_and_done() -> None:
     state = RecordingState()
 
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         _motor_obs(2.0),
@@ -579,14 +576,14 @@ def test_append_step_buffers_terminal_success_records_success_and_done() -> None
         SO101_JOINT_NAMES,
     )
 
-    assert state.episode_successes == [1.0]
-    assert state.episode_dones == [1.0]
+    assert [t.success for t in state.transitions] == [1.0]
+    assert [t.done for t in state.transitions] == [1.0]
 
 
-def test_append_step_buffers_truncated_step_records_done_without_success() -> None:
+def test_append_transition_truncated_step_records_done_without_success() -> None:
     state = RecordingState()
 
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         _motor_obs(2.0),
@@ -594,16 +591,16 @@ def test_append_step_buffers_truncated_step_records_done_without_success() -> No
         SO101_JOINT_NAMES,
     )
 
-    assert state.episode_successes == [0.0]
-    assert state.episode_dones == [1.0]
+    assert [t.success for t in state.transitions] == [0.0]
+    assert [t.done for t in state.transitions] == [1.0]
 
 
-def test_append_step_buffers_appends_env_state_from_obs() -> None:
+def test_append_transition_appends_env_state_from_obs() -> None:
     state = RecordingState()
     obs = _motor_obs(2.0)
     obs["environment_state"] = np.arange(18, dtype=np.float64)
 
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         obs,
@@ -611,19 +608,19 @@ def test_append_step_buffers_appends_env_state_from_obs() -> None:
         SO101_JOINT_NAMES,
     )
 
-    assert len(state.episode_env_states) == 1
-    stored = state.episode_env_states[0]
+    assert len([t.env_state for t in state.transitions]) == 1
+    stored = state.transitions[0].env_state
     assert stored.dtype == np.float32
     assert stored.shape == (18,)
     np.testing.assert_array_equal(stored, np.arange(18, dtype=np.float32))
 
 
-def test_append_step_buffers_pre_first_step_defaults_and_skips_env_state() -> None:
+def test_append_transition_pre_first_step_defaults_and_skips_env_state() -> None:
     state = RecordingState()
 
     # step_info is None before the first env.step (seed frame); obs has no
     # environment_state key, so no privileged vector is buffered.
-    _append_step_buffers(
+    _append_transition(
         state,
         _motor_obs(1.0),
         _motor_obs(1.0),
@@ -631,11 +628,11 @@ def test_append_step_buffers_pre_first_step_defaults_and_skips_env_state() -> No
         SO101_JOINT_NAMES,
     )
 
-    assert state.episode_rewards == [0.0]
-    assert state.episode_successes == [0.0]
-    assert state.episode_dones == [0.0]
-    assert state.episode_reward_components == [{}]
-    assert state.episode_env_states == []
+    assert [t.reward for t in state.transitions] == [0.0]
+    assert [t.success for t in state.transitions] == [0.0]
+    assert [t.done for t in state.transitions] == [0.0]
+    assert [t.reward_components for t in state.transitions] == [{}]
+    assert state.transitions[0].env_state is None
 
 
 @pytest.mark.parametrize("max_steps", [0, 1])

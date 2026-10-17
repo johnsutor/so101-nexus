@@ -143,7 +143,7 @@ def _record_episode(tmp_path, *, env_id: str, max_steps: int, robot_id: str):
     thread.join(timeout=30)
     assert not thread.is_alive()
     assert state.error is None, state.error
-    assert len(state.episode_actions) == max_steps
+    assert len(state.transitions) == max_steps
     return state
 
 
@@ -198,21 +198,17 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         rgb_encoder=RGBEncoderConfig(vcodec="h264"),
     )
 
-    for i in range(len(state.episode_actions)):
-        reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
-        components = (
-            state.episode_reward_components[i] if i < len(state.episode_reward_components) else None
-        )
+    for transition in state.transitions:
         frame = build_frame(
             selection,
-            state=state.episode_states[i],
-            action=state.episode_actions[i],
+            state=transition.state,
+            action=transition.action,
             task="reach the target",
-            reward=reward,
-            reward_components=components,
-            env_state=state.episode_env_states[i],
-            wrist_image=state.episode_wrist_images[i],
-            overhead_image=state.episode_overhead_images[i],
+            reward=transition.reward,
+            reward_components=transition.reward_components,
+            env_state=transition.env_state,
+            wrist_image=transition.wrist_image,
+            overhead_image=transition.overhead_image,
         )
         dataset.add_frame(frame)
     dataset.save_episode()
@@ -237,7 +233,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     assert reloaded.fps == 30
     assert len(reloaded) == 5
     assert list(reloaded.meta.tasks.index) == ["reach the target"]
-    _assert_camera_videos(reloaded, (WRIST_KEY, OVERHEAD_KEY), len(state.episode_actions))
+    _assert_camera_videos(reloaded, (WRIST_KEY, OVERHEAD_KEY), len(state.transitions))
 
     sample = reloaded[0]
     assert sample["action"].shape == (len(SO101_JOINT_NAMES),)
@@ -246,7 +242,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     # back as a 0-d tensor holding the per-step transition reward.
     assert sample[REWARD_KEY].dim() == 0
     assert torch.isfinite(sample[REWARD_KEY]).all()
-    assert float(sample[REWARD_KEY]) == pytest.approx(state.episode_rewards[0])
+    assert float(sample[REWARD_KEY]) == pytest.approx(state.transitions[0].reward)
 
     # LeRobot computes per-feature min/max/mean/std/quantiles in stats.json
     # automatically (compute_episode_stats -> aggregate_stats), so reward
@@ -267,7 +263,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     assert component_total == pytest.approx(float(sample[REWARD_KEY]), abs=1e-5)
     np.testing.assert_allclose(
         float(sample["reward_components.reaching"]),
-        state.episode_reward_components[0]["reaching"],
+        state.transitions[0].reward_components["reaching"],
         atol=1e-5,
     )
 
@@ -309,11 +305,8 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     state = _record_episode(
         tmp_path, env_id=env_id, max_steps=max_steps, robot_id="teleop_envstate_smoke"
     )
-    # The privileged low-dim state, success, and done are recorded once per step,
-    # aligned with the action buffer.
-    assert len(state.episode_env_states) == max_steps
-    assert len(state.episode_successes) == max_steps
-    assert len(state.episode_dones) == max_steps
+    assert len(state.transitions) == max_steps
+    assert all(t.env_state is not None for t in state.transitions)
 
     # Camera-free selection: no wrist/overhead video, so `finalize` never invokes
     # ffmpeg. This isolates the env_state/success/done channels from video encoding
@@ -352,21 +345,17 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
         use_videos=False,
     )
 
-    for i in range(len(state.episode_actions)):
-        reward = state.episode_rewards[i] if i < len(state.episode_rewards) else 0.0
-        components = (
-            state.episode_reward_components[i] if i < len(state.episode_reward_components) else None
-        )
+    for transition in state.transitions:
         frame = build_frame(
             selection,
-            state=state.episode_states[i],
-            action=state.episode_actions[i],
+            state=transition.state,
+            action=transition.action,
             task="pick and lift the object",
-            reward=reward,
-            reward_components=components,
-            success=state.episode_successes[i],
-            done=state.episode_dones[i],
-            env_state=state.episode_env_states[i],
+            reward=transition.reward,
+            reward_components=transition.reward_components,
+            success=transition.success,
+            done=transition.done,
+            env_state=transition.env_state,
             wrist_image=None,
             overhead_image=None,
         )
@@ -393,7 +382,7 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     assert sample[ENV_STATE_KEY].shape == (n,)
     np.testing.assert_allclose(
         sample[ENV_STATE_KEY].numpy(),
-        state.episode_env_states[0],
+        state.transitions[0].env_state,
         rtol=1e-5,
         atol=1e-6,
     )
@@ -401,13 +390,13 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     # read back as 0-d tensors (one per frame), not (1,) vectors.
     assert sample[SUCCESS_KEY].dim() == 0
     assert sample[DONE_KEY].dim() == 0
-    assert float(sample[SUCCESS_KEY]) == pytest.approx(state.episode_successes[0])
-    assert float(sample[DONE_KEY]) == pytest.approx(state.episode_dones[0])
+    assert float(sample[SUCCESS_KEY]) == pytest.approx(state.transitions[0].success)
+    assert float(sample[DONE_KEY]) == pytest.approx(state.transitions[0].done)
     # PickEnv's multi-objective breakdown records a live "grasping" facet
     # (unlike TouchEnv/MoveEnv/LookAtEnv, where it is pinned at zero).
     assert sample["reward_components.grasping"].dim() == 0
     assert float(sample["reward_components.grasping"]) == pytest.approx(
-        state.episode_reward_components[0]["grasping"], abs=1e-5
+        state.transitions[0].reward_components["grasping"], abs=1e-5
     )
 
     # LeRobot's automatic per-feature stats aggregation covers every recorded

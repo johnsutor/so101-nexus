@@ -84,6 +84,27 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class RecordingOptions:
+    """Normalized recording settings shared by initialization and retries."""
+
+    env_id: str
+    robot_type: str
+    leader_id: str
+    fps: int
+    wrist_wh: tuple[int, int]
+    overhead_wh: tuple[int, int]
+    repo_id: str
+    num_episodes: int
+    action_space: str
+    max_steps: int
+    countdown: int
+    wrist_roll_offset_deg: float
+    field_selection: FieldSelection
+    env_overrides: TeleopConfigOverrides | None
+    success_hold_seconds: float = 0.5
+
+
+@dataclass(frozen=True)
 class CustomizationUIState:
     """UI defaults and capability flags for environment customization controls."""
 
@@ -413,42 +434,31 @@ def _run_init_worker(
     session: dict,
     init_state: dict,
     leader_port: str,
-    env_id: str,
-    robot_type: str,
-    leader_id: str,
-    fps: int,
-    wrist_wh: tuple[int, int],
-    overhead_wh: tuple[int, int],
-    repo_id: str,
-    num_episodes: int,
-    action_space: str,
-    max_steps: int,
-    countdown: int,
-    wrist_roll_offset_deg: float,
-    field_selection: FieldSelection,
-    env_overrides: TeleopConfigOverrides | None,
-    success_hold_seconds: float = 0.5,
+    config: RecordingOptions,
 ) -> None:
     """Body of the background init worker."""
-    joint_names = ROBOT_JOINT_NAMES[robot_type]
+    field_selection = config.field_selection
+    joint_names = ROBOT_JOINT_NAMES[config.robot_type]
     leader = None
     intervention = None
     try:
-        _append_init_log(init_state, f"Connecting leader arm on {leader_port} (id={leader_id})...")
-        import_backend_for_env_id(env_id)
-        leader = _connect_leader(robot_type, leader_port, leader_id)
+        _append_init_log(
+            init_state, f"Connecting leader arm on {leader_port} (id={config.leader_id})..."
+        )
+        import_backend_for_env_id(config.env_id)
+        leader = _connect_leader(config.robot_type, leader_port, config.leader_id)
         policy_options = session.get("policy_options", {})
         if any(policy_options.get(key) for key in ("path", "factory")):
             _append_init_log(init_state, "Loading model weights and saved processors...")
             policy = load_collection_policy(**policy_options)
             if policy is None:
                 raise RuntimeError("No collection policy was loaded")
-            validate_policy_fps(policy, fps, expected_fps=policy_options.get("fps"))
+            validate_policy_fps(policy, config.fps, expected_fps=policy_options.get("fps"))
             intervention = InterventionSession(
                 policy,
                 SOLeaderSynchronizer(
                     leader.bus,
-                    wrist_roll_offset_deg=wrist_roll_offset_deg,
+                    wrist_roll_offset_deg=config.wrist_roll_offset_deg,
                     **session.get("leader_alignment_options", {}),
                 ),
                 joint_names,
@@ -457,14 +467,14 @@ def _run_init_worker(
         _append_init_log(init_state, "Creating LeRobot dataset...")
         action_features = {f"{name}.pos": float for name in joint_names}
         follower_features: dict[str, type[float] | tuple[int, int, int]] = dict(action_features)
-        follower_features["wrist"] = (wrist_wh[1], wrist_wh[0], 3)
-        follower_features["overhead"] = (overhead_wh[1], overhead_wh[0], 3)
-        follower_features["side"] = (overhead_wh[1], overhead_wh[0], 3)
+        follower_features["wrist"] = (config.wrist_wh[1], config.wrist_wh[0], 3)
+        follower_features["overhead"] = (config.overhead_wh[1], config.overhead_wh[0], 3)
+        follower_features["side"] = (config.overhead_wh[1], config.overhead_wh[0], 3)
         env_state_names = _resolve_env_state_names(
-            env_id,
-            wrist_wh,
-            overhead_wh,
-            overrides=env_overrides,
+            config.env_id,
+            config.wrist_wh,
+            config.overhead_wh,
+            overrides=config.env_overrides,
             profile_path=session.get("env_config_profile"),
             factory=session.get("env_config_factory"),
         )
@@ -479,25 +489,15 @@ def _run_init_worker(
             env_state_names=env_state_names,
             intervention=intervention is not None,
         )
-        dataset = _create_dataset(repo_id, fps, robot_type, features)
+        dataset = _create_dataset(config.repo_id, config.fps, config.robot_type, features)
         session.update(
+            vars(config),
             leader=leader,
             intervention=intervention,
             dataset=dataset,
-            state=RecordingState(num_episodes=num_episodes),
+            state=RecordingState(num_episodes=config.num_episodes),
             joint_names=joint_names,
-            fps=fps,
-            action_space=action_space,
-            max_steps=max_steps,
-            countdown=countdown,
-            wrist_wh=wrist_wh,
-            overhead_wh=overhead_wh,
-            env_id=env_id,
-            robot_type=robot_type,
-            wrist_roll_offset_deg=wrist_roll_offset_deg,
             field_selection=field_selection,
-            env_overrides=env_overrides,
-            success_hold_seconds=success_hold_seconds,
         )
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
@@ -544,8 +544,8 @@ def _normalized_init_config(
     cube_b_color_value: list[str],
     *,
     success_hold_seconds: float = 0.5,
-) -> dict:
-    """Validate UI inputs and return a normalized init config dict."""
+) -> RecordingOptions:
+    """Validate UI inputs and return normalized recording settings."""
     fps_i = int(fps)
     wrist_wh = (int(wrist_camera_width), int(wrist_camera_height))
     overhead_wh = (int(overhead_camera_width), int(overhead_camera_height))
@@ -593,26 +593,28 @@ def _normalized_init_config(
             ),
         )
 
-    return {
-        "env_id": env_id,
-        "robot_type": robot_type,
-        "leader_id": leader_id_value,
-        "fps": fps_i,
-        "wrist_wh": wrist_wh,
-        "overhead_wh": overhead_wh,
-        "repo_id": repo_id_value,
-        "num_episodes": num_ep_i,
-        "action_space": action_space,
-        "max_steps": max_steps_i,
-        "countdown": countdown_i,
-        "wrist_roll_offset_deg": float(wrist_roll_offset_deg),
-        "field_selection": field_selection,
-        "env_overrides": env_overrides,
-        "success_hold_seconds": float(success_hold_seconds),
-    }
+    return RecordingOptions(
+        env_id=env_id,
+        robot_type=robot_type,
+        leader_id=leader_id_value,
+        fps=fps_i,
+        wrist_wh=wrist_wh,
+        overhead_wh=overhead_wh,
+        repo_id=repo_id_value,
+        num_episodes=num_ep_i,
+        action_space=action_space,
+        max_steps=max_steps_i,
+        countdown=countdown_i,
+        wrist_roll_offset_deg=float(wrist_roll_offset_deg),
+        field_selection=field_selection,
+        env_overrides=env_overrides,
+        success_hold_seconds=float(success_hold_seconds),
+    )
 
 
-def _start_init_attempt(session: dict, init_state: dict, leader_port: str, config: dict):
+def _start_init_attempt(
+    session: dict, init_state: dict, leader_port: str, config: RecordingOptions
+):
     """Reset init state and launch a fresh initialization attempt."""
     import gradio as gr
 
@@ -628,7 +630,7 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
         if (leader := session.pop("leader", None)) is not None:
             _disconnect_leader(session, leader)
         init_state.update(
-            warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
+            warning=check_robot_env_mismatch(config.env_id, config.robot_type),
             running=True,
             done=False,
             processed=False,
@@ -640,26 +642,7 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
 
         threading.Thread(
             target=_run_init_worker,
-            args=(
-                session,
-                init_state,
-                leader_port,
-                config["env_id"],
-                config["robot_type"],
-                config["leader_id"],
-                config["fps"],
-                config["wrist_wh"],
-                config["overhead_wh"],
-                config["repo_id"],
-                config["num_episodes"],
-                config["action_space"],
-                config["max_steps"],
-                config["countdown"],
-                config["wrist_roll_offset_deg"],
-                config["field_selection"],
-                config["env_overrides"],
-                config["success_hold_seconds"],
-            ),
+            args=(session, init_state, leader_port, config),
             daemon=True,
         ).start()
 
@@ -742,7 +725,7 @@ def _cb_start_init(
         cube_b_color_value,
         success_hold_seconds=success_hold_seconds,
     )
-    if config["max_steps"] < 1:
+    if config.max_steps < 1:
         raise gr.Error("Max Steps must be at least 1.")
 
     return _start_init_attempt(session, init_state, leader_port, config)
@@ -910,7 +893,7 @@ def _cb_start_recording(session: dict):
             raise gr.Error(
                 "This recording session is complete. Initialize a new session to record more."
             )
-        if s.episode_actions or s.error:
+        if s.transitions or s.error:
             raise gr.Error("Save or discard the current episode before starting another.")
         worker = session.get("recording_worker")
         if worker is None:
@@ -975,7 +958,7 @@ def _cb_poll_recording(session: dict):
         )
     if s.is_recording:
         preview = s.live_preview
-        n = len(s.episode_actions)
+        n = len(s.transitions)
         ep = s.episodes_completed + 1
         status = f"Recording episode {ep}/{s.num_episodes}: {n} frames ({n / fps:.1f}s)"
         if s.terminated_at_frame is not None:
@@ -1033,20 +1016,24 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     try:
         video_path = make_review_video(
             {
-                "Wrist": s.episode_wrist_images,
-                "Overhead": s.episode_overhead_images,
-                "Side": s.episode_side_images,
+                "Wrist": [t.wrist_image for t in s.transitions if t.wrist_image is not None],
+                "Overhead": [
+                    t.overhead_image for t in s.transitions if t.overhead_image is not None
+                ],
+                "Side": [t.side_image for t in s.transitions if t.side_image is not None],
             },
             fps,
         )
     except Exception as exc:
         preview_warnings.append(f"Video preview could not be generated: {exc}")
-    if s.episode_states:
+    if s.transitions:
         try:
-            fig = make_state_plot(s.episode_states, jn, fps, s.episode_rewards)
+            fig = make_state_plot(
+                [t.state for t in s.transitions], jn, fps, [t.reward for t in s.transitions]
+            )
         except Exception as exc:
             preview_warnings.append(f"State plot could not be generated: {exc}")
-    n = len(s.episode_actions)
+    n = len(s.transitions)
     meta = (
         f"**Episode {s.episodes_completed + 1} / {s.num_episodes}**\n\n"
         f"- Frames: {n}\n"
@@ -1115,7 +1102,7 @@ def _cb_approve_episode(session: dict):
     import gradio as gr
 
     with _episode_transaction(session):
-        if not _leader_is_idle(session) or not session["state"].episode_actions:
+        if not _leader_is_idle(session) or not session["state"].transitions:
             return tuple(gr.update() for _ in range(9))
         return _save_episode(session)
 
@@ -1128,48 +1115,32 @@ def _save_episode(session: dict):
     dataset = session["dataset"]
 
     try:
-        actions = list(s.episode_actions)
+        actions = [transition.action for transition in s.transitions]
         if session["action_space"] == "joint_pos_delta":
             actions = (
-                [action - obs for action, obs in zip(actions, s.episode_states, strict=True)]
+                [transition.action - transition.state for transition in s.transitions]
                 if session.get("intervention")
                 else compute_delta_actions(actions)
             )
 
-        sel = session["field_selection"]
-        rewards = list(s.episode_rewards)
-        reward_components = list(s.episode_reward_components)
-        successes = list(s.episode_successes)
-        dones = list(s.episode_dones)
-        env_states = list(s.episode_env_states)
-        for i in range(len(actions)):
-            wrist_img = s.episode_wrist_images[i] if i < len(s.episode_wrist_images) else None
-            overhead_img = (
-                s.episode_overhead_images[i] if i < len(s.episode_overhead_images) else None
+        for transition, action in zip(s.transitions, actions, strict=True):
+            dataset.add_frame(
+                build_frame(
+                    session["field_selection"],
+                    task=s.task_description,
+                    state=transition.state,
+                    action=action,
+                    reward=transition.reward,
+                    reward_components=transition.reward_components,
+                    success=transition.success,
+                    done=transition.done,
+                    env_state=transition.env_state,
+                    wrist_image=transition.wrist_image,
+                    overhead_image=transition.overhead_image,
+                    side_image=transition.side_image,
+                    intervention_id=transition.intervention_id,
+                )
             )
-            reward = rewards[i] if i < len(rewards) else 0.0
-            components = reward_components[i] if i < len(reward_components) else None
-            success = successes[i] if i < len(successes) else 0.0
-            done = dones[i] if i < len(dones) else 0.0
-            env_state = env_states[i] if i < len(env_states) else None
-            frame = build_frame(
-                sel,
-                state=s.episode_states[i],
-                action=actions[i],
-                task=s.task_description,
-                reward=reward,
-                reward_components=components,
-                success=success,
-                done=done,
-                env_state=env_state,
-                wrist_image=wrist_img,
-                overhead_image=overhead_img,
-                side_image=s.episode_side_images[i] if i < len(s.episode_side_images) else None,
-                intervention_id=s.episode_intervention_ids[i]
-                if session.get("intervention")
-                else None,
-            )
-            dataset.add_frame(frame)
 
         save_recorded_episode(
             dataset,
@@ -1986,7 +1957,7 @@ def _cb_poll_intervention(session: dict, leader_supported: bool = False):
     ):
         message += f"\n\n**Alignment details:** {intervention.synchronization_error}"
     if active and "max_steps" in session:
-        remaining = max(0, session["max_steps"] - len(state.episode_actions))
+        remaining = max(0, session["max_steps"] - len(state.transitions))
         message += (
             f"\n\n**{remaining / session['fps']:.1f}s of simulation remaining** "
             f"({remaining} steps).\n\n"

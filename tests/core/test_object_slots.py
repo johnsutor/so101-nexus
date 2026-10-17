@@ -231,6 +231,43 @@ class TestXmlBuilders:
 
 
 class TestSlotExtraction:
+    @pytest.mark.parametrize("option", ["mujoco", "warp"])
+    def test_compile_scene_preserves_slots_and_optional_bodies(self, option):
+        from so101_nexus.object_slots import compile_object_scene
+        from so101_nexus.scene import WARP_SCENE_OPTION_XML
+
+        objects = [CubeObject(half_size=0.02, mass=0.03), SphereObject()]
+        names = ["carried", "distractor"]
+        model, slots = compile_object_scene(
+            objects,
+            names,
+            [0.5, 0.5, 0.5, 1.0],
+            option_xml=MUJOCO_SCENE_OPTION_XML if option == "mujoco" else WARP_SCENE_OPTION_XML,
+            model_name="compiled_scene",
+            extra_bodies='<body name="goal" mocap="true"/>',
+            overhead_camera_xml='<camera name="overhead" pos="0 0 1"/>',
+        )
+        assert len(slots) == 2
+        assert [slot.obj for slot in slots] == objects
+        assert [int(model.geom_bodyid[slot.geom_id]) for slot in slots] == [
+            model.body(name).id for name in names
+        ]
+        assert model.opt.noslip_iterations == (3 if option == "mujoco" else 0)
+        assert model.body("goal").mocapid == 0
+        assert model.camera("overhead").pos[2] == 1
+        assert model.body("carried").mass == pytest.approx(0.03)
+        assert slots[0].spawn_z == pytest.approx(0.02)
+        assert slots[1].qpos_addr - slots[0].qpos_addr == 7
+
+    def test_compile_scene_cleans_up_invalid_xml(self):
+        from so101_nexus.object_slots import compile_object_scene
+
+        model_dir = get_so101_mujoco_model_path().parent
+        before = set(model_dir.glob("tmp*.xml"))
+        with pytest.raises(ValueError, match="XML"):
+            compile_object_scene([], [], [0.5, 0.5, 0.5, 1.0], option_xml="<invalid>")
+        assert set(model_dir.glob("tmp*.xml")) == before
+
     def test_extract_cube_slots(self):
         objects = [
             CubeObject(half_size=0.0125, color="red"),

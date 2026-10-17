@@ -100,6 +100,7 @@ from so101_nexus.observations import (
 )
 from so101_nexus.physics import apply_physics_config
 from so101_nexus.rendering import RenderingQuality
+from so101_nexus.rewards import _PotentialState
 from so101_nexus.scene import robot_material_ids
 from so101_nexus.warp._random import WorldEpisodeRNG
 from so101_nexus.warp.render import read_depth_meters, unpack_rgb_uint8
@@ -260,7 +261,7 @@ def _grasp_from_contacts(
     return (both_sides & opposing).to(torch.float32)
 
 
-class SO101NexusWarpVectorEnv(VectorEnv):
+class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
     """Shared GPU-batched Warp base class for SO101-Nexus tasks."""
 
     metadata = {

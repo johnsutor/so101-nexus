@@ -12,25 +12,16 @@ coloured cube slots give per-world colour variation through selection.
 
 from __future__ import annotations
 
-import tempfile
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-import mujoco
 import numpy as np
 import torch
 
-from so101_nexus import (
-    get_so101_mujoco_model_dir,
-    get_so101_mujoco_model_path,
-)
 from so101_nexus.config import ControlMode, PickConfig, describe_pick_target
 from so101_nexus.constants import sample_color
 from so101_nexus.object_slots import (
-    build_object_scene_xml,
-    ensure_scanned_mesh_assets,
-    extract_object_slots,
+    compile_object_scene,
 )
-from so101_nexus.objects import ScannedMeshObject, SceneObject
 from so101_nexus.observations import (
     GazeDirection,
     GazeState,
@@ -38,43 +29,20 @@ from so101_nexus.observations import (
     ObjectPose,
     ObjectVelocity,
 )
-from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
+from so101_nexus.rewards import lift_progress, reach_progress
 from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 from so101_nexus.warp.object_slots import (
-    hidden_slot_band_xy,
-    quat_mul_wxyz,
-    random_yaw_quat_batch,
+    _contact_budget,
+    _ObjectSlotRuntime,
     sample_separated_polar,
-    slot_geom_masks,
 )
 
-_SO101_DIR = get_so101_mujoco_model_dir()
-_SO101_XML = get_so101_mujoco_model_path()
-
-# Contact budget per world. The single-cube scene needs a generous floor for
-# active grasping, and every compiled slot (carried pool and distractor alike)
-# adds resting contacts. The convex parts of one decomposed mesh never collide
-# with each other and only two or three of them touch the floor at once, so an
-# extra part costs far less than an extra slot: measured peaks per world are 6.5
-# contacts for one cube, 6.2 for a 16-part spatula, and 34.7 for a seven-slot
-# 61-geom YCB pool, against budgets of 208, 238 and 412. naconmax = nconmax *
-# num_envs, so the per-part term stays small on purpose.
-_PICK_NCONMAX_BASE = 192
-_PICK_NCONMAX_PER_SLOT = 16
-_PICK_NCONMAX_PER_EXTRA_PART = 2
+if TYPE_CHECKING:
+    from so101_nexus.objects import SceneObject
 
 
-def _contact_budget(n_slots: int, n_collision_geoms: int) -> tuple[int, int]:
-    nconmax = (
-        _PICK_NCONMAX_BASE
-        + _PICK_NCONMAX_PER_SLOT * n_slots
-        + _PICK_NCONMAX_PER_EXTRA_PART * (n_collision_geoms - n_slots)
-    )
-    return nconmax, nconmax * 2
-
-
-class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
+class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
     """Batched pick-lift: grasp the per-world target object and lift it.
 
     Default obs (31,): joint_positions(6) + joint_velocities(6) +
@@ -149,9 +117,6 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
             Body-name stems for the compiled slots. ``None`` (default) names
             them ``pick_slot_{i}``.
         """
-        for obj in scene_objects:
-            if isinstance(obj, ScannedMeshObject):
-                ensure_scanned_mesh_assets(obj)
         self._n_total_slots = len(scene_objects)
         # ``_n_pool`` is the carried/distractor boundary: ``_select_active_slots``
         # draws from ``[0, _n_pool)`` and ``_parse_target_index`` range-checks a
@@ -171,21 +136,15 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
                 f"({self._n_total_slots}), got {len(slot_names)}"
             )
 
-        xml_string = build_object_scene_xml(
+        mjm, slots = compile_object_scene(
             scene_objects,
             slot_names,
             sample_color(config.ground_colors),
             option_xml=WARP_SCENE_OPTION_XML,
-            robot_xml_path=str(_SO101_XML),
             model_name=model_name,
             extra_bodies=extra_bodies,
             overhead_camera_xml=self._world_camera_xml(config, render_mode),
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
-            f.write(xml_string)
-            f.flush()
-            mjm = mujoco.MjModel.from_xml_path(f.name)
-        slots = extract_object_slots(mjm, slot_names, scene_objects)
         default_nconmax, default_njmax = _contact_budget(
             len(slots), sum(len(slot.geom_ids) for slot in slots)
         )
@@ -204,34 +163,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         self._mjm = mjm
 
         self._slot_objs = scene_objects
-        self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
-        self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
-        # Host-side copies of the same addresses. ``_hide_all_slots`` indexes one
-        # slot at a time, and reading each address back off the device there is a
-        # synchronization per slot per autoreset, i.e. on most steps of a rollout.
-        self._slot_qadr_host = [s.qpos_addr for s in slots]
-        self._slot_dadr_host = [s.dof_addr for s in slots]
-        # Free-joint position offsets, reused by every slot write below so the
-        # reset path does not rebuild them per active slot.
-        self._qpos_offsets = torch.arange(7, device=self.device)
-        self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
-        self._setup_slot_visibility(slots)
-        self._slot_spawn_z = torch.tensor(
-            [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
-        )
-        self._slot_bradius = torch.tensor(
-            [s.bounding_radius for s in slots], dtype=torch.float32, device=self.device
-        )
-        self._slot_rest_quat = torch.tensor(
-            np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
-        )
-        self._hide_xy = hidden_slot_band_xy(
-            self.device,
-            self._n_total_slots,
-            float(self._slot_bradius.max()),
-            config.spawn_max_radius,
-            config.spawn_center,
-        )
+        self._init_slot_tensors(slots, mjm.ngeom, config.spawn_max_radius, config.spawn_center)
 
         # Per-world target tracking (set at reset). ``_obj_geom_mask`` drives grasp
         # detection in the base; ``_target_qadr`` indexes the selected slot pose.
@@ -304,36 +236,6 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         sel = sel.clone()
         sel[:, 0] = torch.where(present, sel[:, 0], forced)
         return sel, forced
-
-    def _hide_all_slots(self, idx: torch.Tensor) -> None:
-        """Park every slot at its hidden resting pose for the reset worlds.
-
-        Slot qpos columns are shared across worlds, so hiding uses fixed slices;
-        active slots are overwritten afterward by ``_place_active_slots``.
-        """
-        for j, qa in enumerate(self._slot_qadr_host):
-            self.qpos[idx, qa] = self._hide_xy[j, 0]
-            self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
-            self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
-            self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
-            da = self._slot_dadr_host[j]
-            self.qvel[idx, da : da + 6] = 0.0
-
-    def _place_active_slots(
-        self, idx: torch.Tensor, sel: torch.Tensor, positions: torch.Tensor
-    ) -> None:
-        """Place each rank's selected slot at ``positions[:, k]`` with random yaw."""
-        self._set_slot_visibility(idx, sel)
-        rows = idx[:, None]
-        for k in range(sel.shape[1]):
-            sel_k = sel[:, k]  # (n,) pool idx per reset world
-            base = self._slot_qadr[sel_k]
-            yaw = random_yaw_quat_batch(self._rng, idx)
-            quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
-            self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
-                [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
-            )
-            self.qpos[rows, base[:, None] + self._qpos_offsets[3:]] = quat
 
     def _set_target_tracking(self, idx: torch.Tensor, target: torch.Tensor) -> None:
         """Record the per-world target slot and refresh its task description."""
@@ -410,17 +312,10 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv):
         # (dwelling) value lets a policy park at "reached and grasped, never
         # lifted" and collect up to their combined budget every step forever.
         reach_now = reach_progress(tcp_to_obj, scale=scale)
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(is_grasped, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = is_grasped
-        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
-        # 1999; see rewards.potential_shaping), not the raw lift potential --
-        # dwelling at a fixed lift height pays ~0 per step instead of the
-        # potential's full value every step.
         lift_potential = lift_progress(lift_height, scale=scale, grasped=grasped)
-        task_progress = potential_shaping(lift_potential, self._prev_task_potential)
-        self._prev_task_potential = lift_potential
+        reach_delta, grasp_delta, task_progress = self._update_potentials(
+            reach_now, is_grasped, lift_potential
+        )
         reward = self.config.reward.compute(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

@@ -58,7 +58,7 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.physics import apply_physics_config
-from so101_nexus.rewards import lift_progress, potential_shaping, reach_progress
+from so101_nexus.rewards import _PotentialState, lift_progress, reach_progress
 from so101_nexus.scene import robot_material_ids
 
 if TYPE_CHECKING:
@@ -161,7 +161,7 @@ def _configure_free_camera(cam: mujoco.MjvCamera, params: dict[str, Any]) -> Non
     cam.azimuth = params["azimuth"]
 
 
-class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
+class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
     """Shared MuJoCo base class for SO101-Nexus tasks.
 
     Notes
@@ -1256,13 +1256,10 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env):
         scale = self.config.reward.tanh_shaping_scale
         reach_now = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         grasp_now = float(info["is_grasped"] > 0.5)
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = grasp_now
         lift_potential = lift_progress(info["lift_height"], scale=scale, grasped=grasp_now)
-        lift_prog = potential_shaping(lift_potential, self._prev_task_potential)
-        self._prev_task_potential = lift_potential
+        reach_delta, grasp_delta, lift_prog = self._update_potentials(
+            reach_now, grasp_now, lift_potential
+        )
         components = self.config.reward.compute_components(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

@@ -271,7 +271,7 @@ def test_intervention_status_shows_simulation_budget(remaining):
 
     from so101_nexus.teleop.app import _cb_poll_intervention
 
-    state = SimpleNamespace(is_recording=True, episode_actions=[None] * (600 - remaining))
+    state = SimpleNamespace(is_recording=True, transitions=[None] * (600 - remaining))
     session = {
         "intervention": SimpleNamespace(status="human paused", support_token=(1, 1)),
         "state": state,
