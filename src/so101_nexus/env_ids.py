@@ -12,6 +12,43 @@ _BACKEND_PREFIXES: dict[Backend, str] = {
     "mjbatch": "MJBatch",
 }
 
+_TASKS = (
+    ("Touch-v1", "touch_env", "Touch", 512),
+    ("LookAt-v1", "look_at_env", "LookAt", 256),
+    ("Move-v1", "move_env", "Move", 256),
+    ("PickLift-v1", "pick_env", "PickLift", 1024),
+    ("PickReturn-v1", "pick_return", "PickReturn", 1024),
+    ("PickAndPlace-v1", "pick_and_place", "PickAndPlace", 1024),
+    ("PickAndPlace-v2", "pick_and_place", "PickAndPlaceV2", 1024),
+    ("StackCube-v1", "stack_cube", "StackCube", 1024),
+)
+
+
+def _register_backend(backend: Backend) -> None:
+    """Register one backend's task inventory without importing its simulator."""
+    import gymnasium as gym
+
+    # Preserve discovery order for callers choosing the first available task.
+    tasks = _TASKS[3:] + _TASKS[:3] if backend == "mujoco" else _TASKS
+    for task_id, module, cls, limit in tasks:
+        env_id = _BACKEND_PREFIXES[backend] + task_id
+        scalar_entry = f"so101_nexus.mujoco.{module}:{cls}Env"
+        if backend == "mujoco":
+            gym.register(id=env_id, entry_point=scalar_entry, max_episode_steps=limit)
+        elif backend == "warp":
+            gym.register(
+                id=env_id,
+                vector_entry_point=f"so101_nexus.warp.{module}:Warp{cls}VectorEnv",
+                max_episode_steps=limit,
+            )
+        else:
+            gym.register(
+                id=env_id,
+                vector_entry_point="so101_nexus.mjbatch.vector_env:MJBatchVectorEnv",
+                max_episode_steps=limit,
+                kwargs={"task_entry_point": scalar_entry},
+            )
+
 
 def _registered_so101_env_ids() -> list[str]:
     """Return registered SO101-Nexus env ids in registration order.
