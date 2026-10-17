@@ -53,6 +53,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- MolmoAct2 dependencies require patched Transformers releases, avoiding the
+  vulnerable version selected by LeRobot's aggregate policy extra. Installation
+  documentation formats version constraints as code so MDX builds successfully.
+
 - Physical leader holds acknowledge each joint target before enabling its torque,
   continue holding healthy joints after another motor fails, and retry alignment
   reads and transmissions. Nearly equivalent wrist poses across the angle boundary

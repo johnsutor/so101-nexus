@@ -38,7 +38,7 @@ teleop = [
     "opencv-python>=4.8.0",
     "Pillow",
 ]
-molmoact2 = ["lerobot[molmoact2]>=0.6.1,<0.7"]
+molmoact2 = ["lerobot[peft-dep,scipy-dep]>=0.6.1,<0.7", "transformers>=5.10.0,<5.11"]
 train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
@@ -103,7 +103,8 @@ test = [
     "hypothesis>=6.140.0",
     "imageio[ffmpeg]",
     "Pillow",
-    "lerobot[dataset,feetech,molmoact2]>=0.6.1,<0.7",
+    "lerobot[dataset,feetech,peft-dep,scipy-dep]>=0.6.1,<0.7",
+    "transformers>=5.10.0,<5.11",
     "torch<2.10; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
     "torch>=2.11,<2.12; sys_platform == 'linux' and (platform_machine == 'aarch64' or platform_machine == 'arm64')",
     "torchcodec<0.10; sys_platform != 'linux' or (platform_machine != 'aarch64' and platform_machine != 'arm64')",
