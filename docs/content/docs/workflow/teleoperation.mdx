@@ -78,52 +78,42 @@ See [LeRobot backward compatibility](https://huggingface.co/docs/lerobot/backwar
 
 ### DM0.5 SO101 Pick Cube
 
-Start [OpenDM's SO101 server](https://github.com/dexmal/opendm/blob/main/docs/en/dm05_so101_lora_training.md#checkpoints-and-inference)
-from the published weights, then connect teleop:
+Load the published SO101 checkpoint directly through LeRobot:
 
 ```bash
-uv run --extra teleop so101-nexus teleop \
-    --policy-type dm05 \
-    --policy-path http://127.0.0.1:7891/v1/infer \
+uv run --extra teleop --extra dm05 so101-nexus teleop \
+    --policy-path Dexmal/DM05-SO101-Pick-Cube \
+    --policy-device cuda \
     --policy-fps 30
 ```
 
 Set the UI FPS to the training dataset's action rate, matching `--policy-fps`.
-The adapter sends overhead RGB as the head view and wrist RGB as the wrist view.
-It replays each returned chunk one action per tick and discards pending targets on takeover.
-Keep `--policy-action-space joint_pos`: OpenDM's SO101 server normalizes the state,
-denormalizes model output, and converts relative joint predictions to absolute targets.
-The five arm channels use degrees, and the gripper uses percent.
+The Hub ID selects DM0.5 automatically. Hugging Face downloads and caches the base model,
+LoRA weights, tokenizer, and normalization statistics on first use. No separate inference
+server or OpenDM installation is required. See
+[Installation](/docs/getting-started/installation#native-dm05) for dependencies and pip setup.
 
-Run OpenDM in its own environment or the Docker image from the
-[checkpoint model card](https://huggingface.co/Dexmal/DM05-SO101-Pick-Cube).
-Its pinned Torch and Transformers versions conflict with this project's dependencies.
-From the OpenDM repository root in that environment:
+The native adapter preserves the release's SO101 prompt and head/wrist camera order.
+Overhead RGB supplies the head view, and wrist RGB supplies the wrist view.
+LeRobot normalizes observations, denormalizes output with the checkpoint's `norm_stats.json`,
+and converts relative joint predictions to absolute targets. Each 50-action chunk keeps
+its state reference from the observation that generated it. The five arm channels use
+degrees, and the gripper uses percent. Keep `--policy-action-space joint_pos`.
+Takeover and episode resets discard queued actions and the previous state reference.
 
-```bash
-hf download Dexmal/DM05 --local-dir checkpoints/DM05
-hf download Dexmal/DM05-SO101-Pick-Cube --local-dir checkpoints/DM05-SO101-Pick-Cube
-script/dm05_launcher.sh \
-    --exp playground/dm05_so101_lora.py \
-    --task inference \
-    --nproc_per_node 1 \
-    --model-config.model-name-or-path ./checkpoints/DM05-SO101-Pick-Cube \
-    --model-config.chunk-size 50 \
-    --inference-config.output-action-dim 6 \
-    --inference-config.port 7891
-```
-
-The SO101 configuration loads the LoRA adapter and its base model, uses the checkpoint's
-`norm_stats.json`, and selects the head and wrist image prompts. Base-model access can
-require accepting its Hugging Face license and authenticating before download.
-`--policy-path` selects the server URL for DM0.5; the server command selects the weights.
-Teleop cannot inspect or change a running server's checkpoint. `--policy-device` and
-`--policy-norm-tag` apply to local LeRobot loading; OpenDM owns those settings here.
+For a local copy of this raw release, use `--policy-type dm05 --policy-path /path/to/checkpoint`.
+Converted six-joint LeRobot DM0.5 checkpoints use the standard saved-processor loading path.
+The generic `lerobot/dm05_base` release has a 14-dimensional action contract and cannot
+drive the six-joint follower without SO101 fine-tuning.
 
 To change viewpoints, map exactly two collector cameras to `images_1` (head) and
 `images_2` (wrist), for example `--policy-camera side=images_1 --policy-camera wrist=images_2`.
 Loading support does not establish task success or calibration compatibility.
 Use a custom adapter for checkpoints with different units, joint frames, or action semantics.
+
+If you already run [OpenDM's SO101 server](https://github.com/dexmal/opendm/blob/main/docs/en/dm05_so101_lora_training.md#checkpoints-and-inference),
+connect with `--policy-type dm05 --policy-path http://127.0.0.1:7891/v1/infer --policy-fps 30`.
+The server selects and loads its own weights; `--policy-device` controls native loading only.
 
 ### Other SO101 policy checkpoints
 

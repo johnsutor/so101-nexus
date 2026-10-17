@@ -29,7 +29,7 @@ class TeleopArgs:
     leader_alignment_tolerance_deg: float = DEFAULT_ALIGNMENT_TOLERANCE_DEG
     leader_gripper_tolerance_percent: float = DEFAULT_GRIPPER_TOLERANCE_PERCENT
     policy_path: str | None = None
-    """Checkpoint path or Hub ID; OpenDM /v1/infer URL for --policy-type dm05."""
+    """Checkpoint path or Hub ID; also accepts an OpenDM /v1/infer URL for DM0.5."""
     policy_factory: str | None = None
     policy_device: str = "cpu"
     policy_type: str | None = None

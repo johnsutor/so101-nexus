@@ -251,6 +251,7 @@ def test_native_molmoact2_replays_one_action_per_tick_and_resets_chunks(monkeypa
         device="cpu",
         chunk_size=30,
         n_action_steps=30,
+        train_mode_vlm="fft",
     )
     generations = []
     monkeypatch.setattr(MolmoAct2Policy, "_load_hf_model", lambda self: None)

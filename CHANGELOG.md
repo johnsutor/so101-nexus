@@ -11,9 +11,11 @@ for the public-API and deprecation policy.
 
 ### Added
 
-- DM0.5 SO101 policy correction collection through OpenDM's inference server,
-  with head/wrist camera mapping, validated action chunks, reset on takeover,
-  and instructions for serving `Dexmal/DM05-SO101-Pick-Cube` weights.
+- Native DM0.5 SO101 policy correction collection from
+  `Dexmal/DM05-SO101-Pick-Cube`, with automatic Hub downloads, LoRA loading,
+  checkpoint normalization, original SO101 prompts, and chunk-anchored absolute
+  targets. The `dm05` extra selects a pinned LeRobot source revision with the
+  bundled model implementation. OpenDM server connections remain available.
 
 - Inclusive `min_distractors` and `max_distractors` settings for seeded uniform
   per-episode sampling across MuJoCo and Warp tasks, with teleop controls and

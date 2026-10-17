@@ -109,7 +109,6 @@ def test_dm05_rejects_invalid_action_chunks(opendm_server, dm05_batch, actions):
 @pytest.mark.parametrize(
     "kwargs, message",
     [
-        ({"path": "Dexmal/DM05-SO101-Pick-Cube", "fps": 30}, "OpenDM.*URL"),
         ({"path": "http://localhost:7891/v1/infer"}, "policy-fps"),
         ({"path": "http://localhost:7891/v1/infer", "fps": 0}, "policy-fps"),
         (
@@ -125,6 +124,13 @@ def test_dm05_rejects_invalid_action_chunks(opendm_server, dm05_batch, actions):
 def test_dm05_configuration_fails_before_connecting(kwargs, message):
     with pytest.raises(ValueError, match=message):
         load_collection_policy(policy_type="dm05", **kwargs)
+
+
+def test_opendm_server_adapter_requires_url():
+    from so101_nexus.policy_adapters.dm05 import DM05PolicyAdapter
+
+    with pytest.raises(ValueError, match=r"OpenDM.*URL"):
+        DM05PolicyAdapter("Dexmal/DM05-SO101-Pick-Cube", fps=30)
 
 
 def test_dm05_missing_camera_fails_before_request(opendm_server, dm05_batch):
