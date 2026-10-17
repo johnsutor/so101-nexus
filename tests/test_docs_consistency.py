@@ -33,6 +33,20 @@ def _registered_env_ids() -> set[str]:
     return {prefix + task[0] for prefix in _BACKEND_PREFIXES.values() for task in _TASKS}
 
 
+def test_dm05_docs_use_native_hub_loading_and_the_pinned_dependency():
+    project = tomllib.loads(_read(ROOT / "pyproject.toml"))
+    source = project["tool"]["uv"]["sources"]["lerobot"][0]["url"]
+    assert source in _read(DOCS / "getting-started" / "installation.mdx")
+    teleop = _read(DOCS / "workflow" / "teleoperation.mdx")
+    section = teleop.split("### DM0.5 SO101 Pick Cube", 1)[1].split("### Other SO101", 1)[0]
+    command = re.search(r"```bash\n(.*?)```", section, re.DOTALL)
+    assert command is not None
+    assert "--extra dm05" in command[1]
+    assert "--policy-path Dexmal/DM05-SO101-Pick-Cube" in command[1]
+    assert "http://" not in command[1]
+    assert "hf download" not in section
+
+
 def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     """User-facing docs must not contain em dashes, en dashes, or emoji."""
     emoji = re.compile(r"[\U0001f300-\U0001faff]")

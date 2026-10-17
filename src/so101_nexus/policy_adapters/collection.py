@@ -91,6 +91,10 @@ class LeRobotPolicyAdapter:
             preprocessor_overrides={"device_processor": {"device": device}},
             postprocessor_overrides={"device_processor": {"device": "cpu"}},
         )
+        if config.type == "dm05":
+            from lerobot.processor import bind_relative_anchor
+
+            bind_relative_anchor(policy, pre)
         policy.to(device).eval()
         return cls(policy, pre, post, device=device, fps=fps, camera_map=camera_map)
 
@@ -115,10 +119,9 @@ class LeRobotPolicyAdapter:
             )
         for key, feature in required.items():
             shape = feature.shape
-            if (
-                key.startswith("observation.images.")
-                and getattr(self.policy.config, "type", None) == "molmoact2"
-            ):
+            if key.startswith("observation.images.") and getattr(
+                self.policy.config, "type", None
+            ) in ("molmoact2", "dm05"):
                 continue
             if key.startswith("observation.images."):
                 shape = (shape[1], shape[2], shape[0])
@@ -156,10 +159,18 @@ def load_collection_policy(
     fps: int | None = None,
     camera_map: dict[str, str] | None = None,
 ) -> ChunkedActionPolicy | None:
-    """Load a LeRobot checkpoint or call a custom no-argument model factory."""
+    """Load a checkpoint, connect to OpenDM, or call a custom model factory."""
     if path and factory:
         raise ValueError("Choose either --policy-path or --policy-factory")
     if path:
+        if path == "Dexmal/DM05-SO101-Pick-Cube" and policy_type not in (None, "dm05"):
+            raise ValueError("--policy-type does not match the checkpoint")
+        if policy_type == "dm05" or path == "Dexmal/DM05-SO101-Pick-Cube":
+            from so101_nexus.policy_adapters.dm05 import DM05PolicyAdapter, load_native_dm05_policy
+
+            if path.startswith(("http://", "https://")):
+                return DM05PolicyAdapter(path, fps=fps, camera_map=camera_map)
+            return load_native_dm05_policy(path, device=device, fps=fps, camera_map=camera_map)
         return LeRobotPolicyAdapter.from_pretrained(
             path,
             device=device,
@@ -184,13 +195,14 @@ def load_collection_policy(
     return cast("ChunkedActionPolicy", policy)
 
 
-def _checkpoint_json(path: str, filename: str) -> dict[str, Any]:
+def _checkpoint_file(path: str, filename: str) -> Path:
     from huggingface_hub import hf_hub_download
 
-    location = (
-        Path(path) / filename if Path(path).is_dir() else Path(hf_hub_download(path, filename))
-    )
-    return json.loads(location.read_text())
+    return Path(path) / filename if Path(path).is_dir() else Path(hf_hub_download(path, filename))
+
+
+def _checkpoint_json(path: str, filename: str) -> dict[str, Any]:
+    return json.loads(_checkpoint_file(path, filename).read_text())
 
 
 def _molmoact2_config(path: str, norm_tag: str | None, device: str, camera_map: dict[str, str]):

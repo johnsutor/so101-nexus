@@ -6,6 +6,25 @@ from pathlib import Path
 from packaging.requirements import Requirement
 
 
+def test_dm05_extra_pins_native_lerobot_and_secure_transformers():
+    root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads((root / "pyproject.toml").read_text())
+    dependencies = project["project"]["optional-dependencies"]["dm05"]
+    requirements = {Requirement(item).name: Requirement(item) for item in dependencies}
+    assert project["tool"]["uv"]["sources"]["lerobot"] == [
+        {
+            "url": (
+                "https://github.com/huggingface/lerobot/archive/"
+                "2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz"
+            ),
+            "extra": "dm05",
+        }
+    ]
+    assert requirements["lerobot"].extras == {"peft-dep"}
+    assert "5.10.0" in requirements["transformers"].specifier
+    assert "5.5.4" not in requirements["transformers"].specifier
+
+
 def test_lerobot_061_includes_dataset_dependencies_and_opt_in_molmoact2():
     project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
     extras = project["project"]["optional-dependencies"]

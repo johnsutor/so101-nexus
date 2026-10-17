@@ -39,6 +39,10 @@ teleop = [
     "Pillow",
 ]
 molmoact2 = ["lerobot[peft-dep,scipy-dep]>=0.6.1,<0.7", "transformers>=5.10.0,<5.11"]
+dm05 = [
+    "lerobot[peft-dep]>=0.6.1,<0.7",
+    "transformers>=5.10.0,<5.11",
+]
 train = [
     "tensorboard>=2.0.0",
     "wandb[media]>=0.16.0",
@@ -61,12 +65,14 @@ rocm = [
 conflicts = [
     [{ extra = "rocm" }, { extra = "teleop" }],
     [{ extra = "rocm" }, { extra = "molmoact2" }],
+    [{ extra = "rocm" }, { extra = "dm05" }],
     [{ extra = "rocm" }, { group = "test" }],
     [{ extra = "rocm" }, { group = "dev" }],
     [{ extra = "rocm" }, { extra = "warp" }],
 ]
 
 [tool.uv.sources]
+lerobot = [{ url = "https://github.com/huggingface/lerobot/archive/2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz", extra = "dm05" }]
 torch = [{ index = "pytorch-rocm", extra = "rocm" }]
 pytorch-triton-rocm = [{ index = "pytorch-rocm", extra = "rocm" }]
 triton-rocm = [{ index = "pytorch-rocm", extra = "rocm" }]
