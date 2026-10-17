@@ -128,3 +128,17 @@ def test_parse_teleop_args_accepts_model_contract_flags() -> None:
     assert args.policy_norm_tag == "so100_so101_molmoact2"
     assert args.policy_fps == 30
     assert args.policy_cameras == ["overhead=front", "wrist=wrist"]
+
+
+def test_alignment_tolerance_flags_parse():
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--leader-alignment-tolerance-deg",
+            "12",
+            "--leader-gripper-tolerance-percent",
+            "6",
+        ]
+    )
+    assert args.leader_alignment_tolerance_deg == 12
+    assert args.leader_gripper_tolerance_percent == 6

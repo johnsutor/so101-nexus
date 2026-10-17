@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 import tyro
 
-from so101_nexus.teleop.leader import DEFAULT_WRIST_ROLL_OFFSET_DEG
+from so101_nexus.teleop.leader import (
+    DEFAULT_ALIGNMENT_TOLERANCE_DEG,
+    DEFAULT_GRIPPER_TOLERANCE_PERCENT,
+    DEFAULT_WRIST_ROLL_OFFSET_DEG,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,6 +26,8 @@ class TeleopArgs:
     leader_port: str = "/dev/ttyACM0"
     leader_id: str = "so101_leader"
     wrist_roll_offset_deg: float = DEFAULT_WRIST_ROLL_OFFSET_DEG
+    leader_alignment_tolerance_deg: float = DEFAULT_ALIGNMENT_TOLERANCE_DEG
+    leader_gripper_tolerance_percent: float = DEFAULT_GRIPPER_TOLERANCE_PERCENT
     policy_path: str | None = None
     policy_factory: str | None = None
     policy_device: str = "cpu"

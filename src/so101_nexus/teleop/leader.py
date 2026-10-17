@@ -17,6 +17,8 @@ from typing import Any, Protocol
 from so101_nexus.config import SO101_JOINT_NAMES
 
 DEFAULT_WRIST_ROLL_OFFSET_DEG = -90.0
+DEFAULT_ALIGNMENT_TOLERANCE_DEG = 10.0
+DEFAULT_GRIPPER_TOLERANCE_PERCENT = 5.0
 
 ROBOT_JOINT_NAMES: dict[str, tuple[str, ...]] = {
     "so100": SO101_JOINT_NAMES,
@@ -174,9 +176,27 @@ class SOLeaderSynchronizer:
         Connected LeRobot motor bus with degree body joints and percent gripper.
     wrist_roll_offset_deg
         Offset added to leader readings by teleoperation, inverted for alignment.
+    joint_tolerance_deg
+        Maximum body-joint alignment error in degrees.
+    gripper_tolerance_percent
+        Maximum gripper alignment error in percentage points.
     """
 
-    def __init__(self, bus: Any, *, wrist_roll_offset_deg: float) -> None:
+    def __init__(
+        self,
+        bus: Any,
+        *,
+        wrist_roll_offset_deg: float,
+        joint_tolerance_deg: float = DEFAULT_ALIGNMENT_TOLERANCE_DEG,
+        gripper_tolerance_percent: float = DEFAULT_GRIPPER_TOLERANCE_PERCENT,
+    ) -> None:
+        if not all(
+            math.isfinite(value) and value > 0
+            for value in (joint_tolerance_deg, gripper_tolerance_percent)
+        ):
+            raise ValueError("Alignment tolerances must be positive and finite")
+        self.joint_tolerance_deg = joint_tolerance_deg
+        self.gripper_tolerance_percent = gripper_tolerance_percent
         self.bus = bus
         self.wrist_roll_offset_deg = wrist_roll_offset_deg
         self._target: dict[str, float] | None = None
@@ -230,7 +250,17 @@ class SOLeaderSynchronizer:
                     else abs(positions[name] - value)
                     for name, value in self._target.items()
                 }
-                if fraction == 1.0 and all(error <= 2.0 for error in errors.values()):
+                outside = {
+                    name: error
+                    for name, error in errors.items()
+                    if error
+                    > (
+                        self.gripper_tolerance_percent
+                        if name == "gripper"
+                        else self.joint_tolerance_deg
+                    )
+                }
+                if fraction == 1.0 and not outside:
                     self._target = None
                     return True
                 if expired:
@@ -238,7 +268,7 @@ class SOLeaderSynchronizer:
                         f"{name}: measured {positions[name]:.1f}, target {value:.1f} "
                         f"{'percent' if name == 'gripper' else 'deg'}"
                         for name, value in self._target.items()
-                        if errors[name] > 2.0
+                        if name in outside
                     )
                     raise TimeoutError(f"Leader synchronization timed out. {details}")
                 return False

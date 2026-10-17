@@ -78,7 +78,10 @@ def test_policy_initialization_failure_closes_serial_without_disabling_torque(mo
         raise RuntimeError("dataset creation failed")
 
     monkeypatch.setattr(app, "_create_dataset", create_dataset)
-    session = {"policy_options": {"factory": "example:build"}}
+    session = {
+        "policy_options": {"factory": "example:build"},
+        "leader_alignment_options": {"joint_tolerance_deg": 12, "gripper_tolerance_percent": 6},
+    }
     init = {}
     app._run_init_worker(
         session,
@@ -104,5 +107,7 @@ def test_policy_initialization_failure_closes_serial_without_disabling_torque(mo
     leader.disconnect.assert_not_called()
     leader.bus.disconnect.assert_called_once_with(disable_torque=False)
     assert len(sessions) == 1
+    assert sessions[0].synchronizer.joint_tolerance_deg == 12
+    assert sessions[0].synchronizer.gripper_tolerance_percent == 6
     with pytest.raises(RuntimeError, match="closed"):
         sessions[0].request("human")

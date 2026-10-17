@@ -31,6 +31,13 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Supported policy correction can start from a paused alignment pose, compensating
+  leader/follower offsets for every joint and the gripper to avoid a takeover jump.
+  Default alignment tolerances are 10 degrees and 5 gripper percentage points,
+  adjustable with `--leader-alignment-tolerance-deg` and
+  `--leader-gripper-tolerance-percent`. Correction support confirmation now sits
+  beside C; separate parking controls are collapsed.
+
 - Policy correction takeover now stays paused after leader alignment until Start
   correction (C). Native Gradio controls show explicit simulation state, remaining
   episode time, single-press shortcuts, and expandable guidance. Stale correction

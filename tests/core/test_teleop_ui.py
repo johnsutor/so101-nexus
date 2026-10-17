@@ -194,7 +194,7 @@ assert.equal(clicks, 1);
         ("ready", (False, False, False, False), "Ready"),
         ("policy", (True, False, True, False), "Running: policy"),
         ("synchronizing", (False, False, True, True), "Paused: aligning leader"),
-        ("alignment paused", (True, False, True, True), "Paused: alignment needs attention"),
+        ("alignment paused", (True, True, True, True), "Paused: alignment needs attention"),
         ("human paused", (False, True, True, True), "Paused: ready for correction"),
         ("human", (False, False, True, True), "Running: human correction"),
         ("hold", (True, False, False, True), "Paused"),
@@ -207,12 +207,15 @@ def test_intervention_status_explains_simulation_and_available_actions(status, e
     from so101_nexus.teleop.app import _cb_poll_intervention
 
     session = {
-        "intervention": SimpleNamespace(status=status, synchronization_error=None),
+        "intervention": SimpleNamespace(
+            status=status, synchronization_error=None, support_token=(1, 1)
+        ),
         "state": SimpleNamespace(is_recording=status != "ready"),
     }
+    _cb_poll_intervention(session)
     text, *updates = _cb_poll_intervention(session, leader_supported=True)
     assert message in text
-    assert tuple(update["interactive"] for update in updates) == enabled
+    assert tuple(update["interactive"] for update in updates[:4]) == enabled
     assert updates[0]["variant"] == ("primary" if enabled[0] else "secondary")
     assert updates[1]["variant"] == ("primary" if enabled[1] else "secondary")
 
@@ -240,7 +243,7 @@ def test_intervention_status_shows_simulation_budget(remaining):
 
     state = SimpleNamespace(is_recording=True, episode_actions=[None] * (600 - remaining))
     session = {
-        "intervention": SimpleNamespace(status="human paused"),
+        "intervention": SimpleNamespace(status="human paused", support_token=(1, 1)),
         "state": state,
         "fps": 30,
         "max_steps": 600,
@@ -364,7 +367,7 @@ def test_unconfirmed_hold_is_never_reported_as_holding():
 def test_uninitialized_support_panel_resets_confirmation():
     from so101_nexus.teleop.app import _cb_poll_leader_support
 
-    _, release, support, token = _cb_poll_leader_support({}, True)
+    _, release, support, token, *_ = _cb_poll_leader_support({}, True)
     assert release["interactive"] is False
     assert support["interactive"] is False
     assert support["value"] is False
@@ -375,27 +378,26 @@ def test_uninitialized_support_panel_resets_confirmation():
 def test_automatic_episode_end_expires_support_confirmation():
     from types import SimpleNamespace
 
-    from so101_nexus.teleop.app import _cb_poll_leader_support
+    from so101_nexus.teleop.app import _cb_poll_intervention
 
     intervention = SimpleNamespace(
-        leader_released=False,
         status="human paused",
-        synchronizer=SimpleNamespace(holding=True),
         support_token=(1, 1),
+        synchronization_error=None,
     )
-    state = SimpleNamespace(is_recording=True, error=None)
+    state = SimpleNamespace(is_recording=True)
     session = {"intervention": intervention, "state": state}
-    _cb_poll_leader_support(session)
-    _, _, support, token = _cb_poll_leader_support(session, True)
+    _cb_poll_intervention(session)
+    _, _, _, _, _, support, token = _cb_poll_intervention(session, True)
     assert "value" not in support
     assert token == (1, 1)
     intervention.support_token = (1, 2)
     intervention.status = "hold"
     state.is_recording = False
-    _, release, support, token = _cb_poll_leader_support(session, True)
-    assert release["interactive"] is False
+    _, _, correction, _, _, support, token = _cb_poll_intervention(session, True)
+    assert correction["interactive"] is False
     assert support["value"] is False
-    assert token == (1, 2)
+    assert token is None
 
 
 @pytest.mark.usefixtures("_require_gradio")
@@ -423,14 +425,15 @@ def test_alignment_pause_shows_joint_diagnostics_and_recovery_actions():
         "intervention": SimpleNamespace(
             status="alignment paused",
             synchronization_error="wrist_flex: measured 6.0, target 10.0 deg",
+            support_token=(1, 1),
         ),
         "state": SimpleNamespace(is_recording=True),
     }
-    message, takeover, correct, _, policy = _cb_poll_intervention(session)
+    message, takeover, correct, _, policy, *_ = _cb_poll_intervention(session)
     assert "wrist_flex" in message
     assert "6.0" in message
     assert "10.0 deg" in message
-    assert "retry" in message.lower()
+    assert "retries" in message.lower()
     assert takeover["interactive"] is True
     assert correct["interactive"] is False
     assert policy["interactive"] is True

@@ -37,6 +37,7 @@ class Synchronizer:
         self.cancels = 0
         self.releases = 0
         self.ready = False
+        self.holding = True
 
     def start(self, target):
         self.targets.append(target)
@@ -46,9 +47,11 @@ class Synchronizer:
 
     def cancel(self):
         self.cancels += 1
+        self.holding = True
 
     def release(self):
         self.releases += 1
+        self.holding = False
 
 
 def await_action(session, obs):
@@ -532,7 +535,7 @@ def test_stale_start_correction_cannot_override_pending_handoff(destination):
         session.close()
 
 
-def test_start_correction_resumes_only_aligned_paused_leader():
+def test_start_correction_anchors_paused_leader_before_resuming():
     sync = Synchronizer()
     sync.ready = True
     session = InterventionSession(Policy(), sync)
@@ -542,7 +545,8 @@ def test_start_correction_resumes_only_aligned_paused_leader():
         session.action(observation(), "Pick", lambda: pytest.fail("human read"))
         assert session.start_correction()
         assert not session.start_correction()
-        assert session.action(observation(), "Pick", lambda: observation(3)) == observation(3)
+        assert session.action(observation(), "Pick", lambda: observation(3)) == observation()
+        assert session.action(observation(), "Pick", lambda: observation(4)) == observation(1)
         assert sync.targets == [observation()]
         assert session.intervention_id == 1
     finally:
@@ -738,7 +742,9 @@ def test_alignment_timeout_reports_joint_errors_without_new_motion(monkeypatch):
     now = [0.0]
     monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
     bus = Bus()
-    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync = SOLeaderSynchronizer(
+        bus, wrist_roll_offset_deg=0, joint_tolerance_deg=2, gripper_tolerance_percent=2
+    )
     sync.start(observation(10))
     bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 10.0)
     bus.positions["wrist_flex"] = 6.0
@@ -775,7 +781,7 @@ def test_alignment_timeout_pauses_until_explicit_retry_or_policy_resume(destinat
             assert session.source == "hold"
             assert "wrist_flex" in session.synchronization_error
         assert len(calls) == 1
-        assert not session.start_correction()
+        assert session.intervention_id == 0
         session.request(destination, pause_after_sync=True)
         if destination == "policy":
             assert await_action(session, observation()) == observation(10)
@@ -801,7 +807,7 @@ def test_moving_leader_during_correction_never_restarts_alignment():
         for value in (3, 4, 20):
             assert session.action(
                 observation(), "Pick", lambda value=value: observation(value)
-            ) == observation(value)
+            ) == observation(value - 3)
         assert sync.targets == [observation()]
         assert session.status == "human"
     finally:
@@ -885,3 +891,125 @@ def test_wrist_alignment_accepts_equivalent_single_turn_endpoints(monkeypatch):
     assert sync.tick()
     assert sync.holding
     assert ("disable",) not in bus.events
+
+
+def test_supported_correction_can_start_from_timed_out_pose_without_a_jump():
+    sync = Synchronizer()
+
+    def tick():
+        raise TimeoutError("shoulder_lift measured 38.0 target 30.3")
+
+    sync.tick = tick
+    session = InterventionSession(Policy(), sync)
+    follower = {**observation(), "shoulder_lift.pos": 30.3, "elbow_flex.pos": -36.8}
+    leader = {**observation(), "shoulder_lift.pos": 38.0, "elbow_flex.pos": -29.4}
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        assert session.action(follower, "Pick", lambda: dict(leader)) is None
+        assert session.status == "alignment paused"
+        assert session.start_correction(support_token=session.support_token)
+        first = session.action(follower, "Pick", lambda: dict(leader))
+        assert first == follower
+        assert sync.releases == 1
+        assert len(sync.targets) == 1
+        assert session.intervention_id == 1
+        leader["shoulder_lift.pos"] += 2.0
+        leader["elbow_flex.pos"] -= 1.0
+        moved = session.action(follower, "Pick", lambda: dict(leader))
+        assert moved["shoulder_lift.pos"] == pytest.approx(32.3)
+        assert moved["elbow_flex.pos"] == pytest.approx(-37.8)
+        session.request("policy")
+        assert await_action(session, follower) == observation(10)
+    finally:
+        session.close()
+
+
+def test_invalid_leader_anchor_cannot_release_motors():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", observation)
+        assert session.start_correction()
+        with pytest.raises(ValueError, match="finite"):
+            session.action(observation(), "Pick", lambda: observation(float("nan")))
+        assert sync.releases == 0
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    "field,joint,error,tolerance,ready",
+    [
+        ("joint_tolerance_deg", "shoulder_lift", 7.7, 10.0, True),
+        ("joint_tolerance_deg", "shoulder_lift", 7.7, 2.0, False),
+        ("gripper_tolerance_percent", "gripper", 4.0, 5.0, True),
+        ("gripper_tolerance_percent", "gripper", 4.0, 2.0, False),
+    ],
+)
+def test_alignment_tolerance_affects_measured_readiness(
+    monkeypatch, field, joint, error, tolerance, ready
+):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0, **{field: tolerance})
+    sync.start(observation(10))
+    bus.sync_write = lambda *args: None
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 10.0)
+    bus.positions[joint] += error
+    now[0] = 1.0
+    assert sync.tick() is ready
+
+
+@pytest.mark.parametrize("field", ["joint_tolerance_deg", "gripper_tolerance_percent"])
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
+def test_alignment_tolerances_must_be_positive_and_finite(field, value):
+    with pytest.raises(ValueError, match="positive and finite"):
+        SOLeaderSynchronizer(Bus(), wrist_roll_offset_deg=0, **{field: value})
+
+
+def test_anchored_correction_preserves_gripper_and_wrist_continuity():
+    sync = Synchronizer()
+    sync.ready = True
+    session = InterventionSession(Policy(), sync)
+    follower = {**observation(10), "wrist_roll.pos": 163.0, "gripper.pos": 60.0}
+    leader = {**observation(20), "wrist_roll.pos": 179.9, "gripper.pos": 20.0}
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(follower, "Pick", lambda: dict(leader))
+        assert session.start_correction()
+        assert session.action(follower, "Pick", lambda: dict(leader)) == follower
+        leader["wrist_roll.pos"] = -179.9
+        leader["gripper.pos"] = 21.0
+        action = session.action(follower, "Pick", lambda: dict(leader))
+        assert action["wrist_roll.pos"] == pytest.approx(163.2)
+        assert action["gripper.pos"] == 61
+        session.request("hold")
+        session.action(follower, "Pick", lambda: pytest.fail("human read"))
+        session.request("human", pause_after_sync=True)
+        session.action(follower, "Pick", lambda: pytest.fail("human read"))
+        assert session.start_correction()
+        assert session.action(follower, "Pick", lambda: dict(leader)) == follower
+        assert session.intervention_id == 2
+    finally:
+        session.close()
+
+
+def test_failed_hold_cannot_authorize_current_pose_takeover():
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    try:
+        session.begin_episode()
+        session.request("human", pause_after_sync=True)
+        session.action(observation(), "Pick", observation)
+        session.status = "alignment paused"
+        sync.holding = False
+        assert not session.start_correction(support_token=session.support_token)
+        assert sync.releases == 0
+    finally:
+        session.close()

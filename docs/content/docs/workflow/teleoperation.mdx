@@ -107,10 +107,12 @@ a custom adapter rather than being accepted based on their action dimension alon
 2. Click **Pause and take control (T)** when correction is needed. Policy stepping stops immediately.
    The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
    Keep the leader clear while **Paused: aligning leader** is shown.
-3. Wait for **Paused: ready for correction**. The leader motors keep holding the aligned pose.
-   Support the physical arm and gripper, then check **I am supporting the physical leader arm and gripper**.
-   Click **Release leader and start correction (C)** and move the leader to drive the simulated arm.
-   The simulation stays paused until you explicitly start correction.
+3. When alignment finishes or pauses, hold the physical arm and gripper.
+   Check the support confirmation directly above C, then click **Start correction (C)**.
+   If alignment needs attention, the button reads **Take control from this pose (C)**.
+   The first correction action preserves the current simulated pose. Your movements
+   from this point drive the follower, with pose differences compensated for every joint
+   and the gripper. The simulation stays paused until you start correction.
 4. Click **Resume policy (P)** to continue from the corrected state with a fresh prediction.
 5. Repeat as needed, then review and approve the entire episode.
 
@@ -129,13 +131,18 @@ This collector currently supports the simulated follower, not real-robot deploym
 
 Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.
 Targets ramp at up to 20 degrees per second for body joints and 40 percentage points per second for the gripper.
-The leader must converge within 2 degrees or 2 percentage points of its target.
+Default alignment tolerances are 10 degrees for body joints and 5 percentage points
+for the gripper. Set `--leader-alignment-tolerance-deg` and
+`--leader-gripper-tolerance-percent` to override them. Both must be positive and finite.
+These tolerances guide alignment readiness; they do not block supported takeover
+from a paused alignment pose.
 Wrist roll uses circular angular distance, and its inverse offset wraps into the physical
 single-turn range. During correction, wrist targets use the equivalent angle nearest
 follower readback so crossing the angle boundary does not flip the simulated target.
 An alignment timeout holds the measured physical pose and keeps the episode paused.
 The controller panel lists the joints that did not reach their targets, including measured
-and target positions. Keep the leader clear and press T to retry, or P to resume the policy.
+and target positions. Hold the arm, confirm support beside C, and take control from
+this pose. You can also press T to retry alignment or P to resume the policy.
 A motor communication error that prevents holding still ends recording.
 Pausing, finishing an episode, and process cleanup also preserve motor torque.
 Recording errors stay visible in Review, along with any failure to hold the leader.
@@ -143,9 +150,11 @@ If holding is unconfirmed, support the arm and gripper immediately.
 These are target-command bounds, not guarantees of physical motor speed or successful holding
 when motor communication or power fails.
 
-To park the leader after recording stops, support the arm and gripper, check the support
-confirmation, and click **Release leader motors**. The hardware panel stays available in
-Review and Complete. Finalization and reinitialization require this explicit release. The confirmation resets
+To park the leader after recording stops, expand **Park or release the leader arm**.
+Support or park the arm and gripper, check the parking confirmation, and click
+**Release motors for parking**. This panel is not needed for normal takeover and
+stays available in Review and Complete. Finalization and reinitialization require
+this explicit release. The confirmation resets
 after each handoff or release. Closing the process without releasing the leader preserves
 motor torque; support and park the arm before disconnecting power.
 
@@ -186,7 +195,9 @@ The session accepts a synchronizer with `start(target)`, `tick()`, `cancel()`, a
 methods and a `holding` property. `cancel()` stops alignment and holds the measured pose;
 `tick()` keeps torque enabled after convergence. Only `release()` disables torque.
 For a staged takeover, call `request("human", pause_after_sync=True)`, then
-`start_correction()` after the operator supports the leader. A direct `request("human")`
+`start_correction()` after the operator supports the leader. It captures an anchor
+before releasing torque, so correction starts from the current follower pose even
+when alignment timed out. The anchor resets at each handoff. A direct `request("human")`
 aligns and releases the leader, so its caller must obtain support confirmation first.
 `end_episode()` holds the leader; `release_leader()` explicitly releases an idle leader.
 `SOLeaderSynchronizer` provides the SO leader implementation.

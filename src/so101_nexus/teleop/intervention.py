@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 import numpy as np
 
 from so101_nexus.config import SO101_JOINT_NAMES
+from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -110,6 +111,8 @@ class InterventionSession:
         self._closed = False
         self._parked_released = False
         self._leader_managed = False
+        self._anchor_next_action = False
+        self._human_offset: dict[str, float] | None = None
         self.status = "hold"
         self.synchronization_error: str | None = None
         self.source: ControlSource = "hold"
@@ -130,6 +133,8 @@ class InterventionSession:
             self._parked_released = False
         self._interventions = 0
         self._reset_policy = True
+        self._human_offset = None
+        self._anchor_next_action = False
 
     def request(self, source: ControlSource, *, pause_after_sync: bool = False) -> None:
         """Request a handoff, optionally waiting after leader alignment.
@@ -151,18 +156,20 @@ class InterventionSession:
                 self._version += 1
 
     def start_correction(self, *, support_token: tuple[int, int] | None = None) -> bool:
-        """Resume an aligned, paused takeover, rejecting stale start commands."""
+        """Start anchored correction from a held pose, rejecting stale commands."""
         with self._lock:
             if (
                 self._closed
                 or self._requested != "human"
                 or not self._pause_after_sync
                 or self._applied_version != self._version
-                or self.status != "human paused"
+                or self.status not in ("human paused", "alignment paused")
+                or not self.synchronizer.holding
                 or (support_token is not None and support_token != (id(self), self._version))
             ):
                 return False
             self._pause_after_sync = False
+            self._anchor_next_action = True
             self._version += 1
             return True
 
@@ -180,36 +187,87 @@ class InterventionSession:
                 return None
         target = {f"{name}.pos": float(obs[f"{name}.pos"]) for name in self.joint_names}
         if version != self._applied_version:
-            human_ready = (
-                self.status == "human paused" and requested == "human" and not pause_after_sync
-            )
-            self._leader_managed = True
-            self.synchronization_error = None
-            self.synchronizer.cancel()
-            self._applied_version = version
-            self.source = "hold"
-            self.status = "human paused" if human_ready else requested
-            if requested == "human" and not human_ready:
-                self.status = "synchronizing"
-                self.synchronizer.start(target)
-            if requested == "policy":
-                self._reset_policy = True
+            self._apply_request(target, version, requested, pause_after_sync)
         self._action_version = version
         if self.status == "synchronizing":
             self._synchronize()
-        if self.status in ("synchronizing", "alignment paused"):
+        if self.status == "human paused" and not pause_after_sync:
+            return self._begin_correction(obs, human_action, version)
+        if self.status in ("synchronizing", "alignment paused", "human paused"):
             return None
-        if self.status == "human paused":
-            if pause_after_sync or not self._release_for_correction(version):
-                return None
-            self.status = "human"
         if self.status == "human":
-            self.source = "human"
-            return human_action()
+            return self._corrected_action(obs, human_action)
         if requested == "hold":
             return None
         self.source = "policy"
         return self._policy_action(obs, task, version)
+
+    def _apply_request(
+        self,
+        target: dict[str, float],
+        version: int,
+        requested: ControlSource,
+        pause_after_sync: bool,
+    ) -> None:
+        human_ready = (
+            self.status in ("human paused", "alignment paused")
+            and requested == "human"
+            and not pause_after_sync
+        )
+        if human_ready and self.status == "alignment paused":
+            self._interventions += 1
+        if not human_ready:
+            self._human_offset = None
+            self._anchor_next_action = False
+        self._leader_managed = True
+        self.synchronization_error = None
+        self.synchronizer.cancel()
+        self._applied_version = version
+        self.source = "hold"
+        self.status = "human paused" if human_ready else requested
+        if requested == "human" and not human_ready:
+            self.status = "synchronizing"
+            self.synchronizer.start(target)
+        if requested == "policy":
+            self._reset_policy = True
+
+    def _begin_correction(
+        self, obs: Mapping[str, Any], human_action: Callable[[], dict[str, float]], version: int
+    ) -> dict[str, float] | None:
+        with self._lock:
+            if self._closed or version != self._version:
+                return None
+        action = self._corrected_action(obs, human_action)
+        if not self._release_for_correction(version):
+            return None
+        self.status = "human"
+        self.source = "human"
+        return action
+
+    def _corrected_action(
+        self, obs: Mapping[str, Any], human_action: Callable[[], dict[str, float]]
+    ) -> dict[str, float]:
+        action = human_action()
+        keys = [f"{name}.pos" for name in self.joint_names]
+        if any(key not in action or not np.isfinite(action[key]) for key in keys):
+            raise ValueError("Leader correction requires complete, finite joint readings")
+        if self._anchor_next_action:
+            target = {key: float(obs[key]) for key in keys}
+            if not all(np.isfinite(value) for value in target.values()):
+                raise ValueError("Follower correction anchor requires finite joint readings")
+            self._human_offset = {key: target[key] - float(action[key]) for key in keys}
+            self._anchor_next_action = False
+            return target
+        if self._human_offset is None:
+            return action
+        corrected = {key: float(action[key]) + self._human_offset[key] for key in keys}
+        return apply_wrist_roll_offset_deg(
+            corrected,
+            0.0,
+            reference_wrist_roll_deg=float(obs["wrist_roll.pos"])
+            if "wrist_roll.pos" in obs
+            else None,
+        )
 
     def _synchronize(self) -> None:
         try:
@@ -299,6 +357,8 @@ class InterventionSession:
         self.request("hold")
         self.source = "hold"
         self.status = "hold"
+        self._human_offset = None
+        self._anchor_next_action = False
         if not self._parked_released:
             self._leader_managed = True
             self.synchronizer.cancel()
