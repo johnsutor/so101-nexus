@@ -116,7 +116,8 @@ class CustomizationUIState:
     pick_and_place_visible: bool = False
     stack_visible: bool = False
     object_specs: list[str] = field(default_factory=lambda: ["cube:red"])
-    n_distractors: int = 0
+    min_distractors: int = 0
+    max_distractors: int = 0
     ground_colors: list[str] = field(default_factory=lambda: ["gray"])
     robot_colors: list[str] = field(default_factory=lambda: ["yellow"])
     spawn_min_radius: float = 0.10
@@ -267,7 +268,8 @@ def _customization_ui_state_from_config(config: object | None) -> CustomizationU
         pick_and_place_visible=pick_and_place_visible,
         stack_visible=stack_visible,
         object_specs=_object_specs_from_config(attrs.get("objects")),
-        n_distractors=int(attrs.get("n_distractors", 0)),
+        min_distractors=int(attrs.get("min_distractors", attrs.get("n_distractors", 0))),
+        max_distractors=int(attrs.get("max_distractors", attrs.get("n_distractors", 0))),
         ground_colors=_color_config_to_names(attrs.get("ground_colors"), ["gray"]),
         robot_colors=_color_config_to_names(attrs.get("robot_colors"), ["yellow"]),
         spawn_min_radius=float(attrs.get("spawn_min_radius", 0.10)),
@@ -531,7 +533,7 @@ def _normalized_init_config(
     field_selection_value: list[str],
     customize_env_config: bool,
     object_pool_value: list[str],
-    n_distractors: float,
+    min_distractors: float,
     ground_color_value: list[str],
     robot_color_value: list[str],
     spawn_min_radius: float,
@@ -544,6 +546,7 @@ def _normalized_init_config(
     cube_b_color_value: list[str],
     *,
     success_hold_seconds: float = 0.5,
+    max_distractors: float | None = None,
 ) -> RecordingOptions:
     """Validate UI inputs and return normalized recording settings."""
     fps_i = int(fps)
@@ -558,7 +561,8 @@ def _normalized_init_config(
         reset_settle_frames_i = round(float(reset_settle_frames))
         env_overrides = TeleopConfigOverrides(
             object_specs=tuple(object_pool_value) or None,
-            n_distractors=int(n_distractors),
+            min_distractors=int(min_distractors),
+            max_distractors=int(min_distractors if max_distractors is None else max_distractors),
             ground_colors=_optional_color_tuple(
                 ground_color_value,
                 field_name="ground_colors",
@@ -675,7 +679,7 @@ def _cb_start_init(
     field_selection_value: list[str],
     customize_env_config: bool,
     object_pool_value: list[str],
-    n_distractors: float,
+    min_distractors: float,
     ground_color_value: list[str],
     robot_color_value: list[str],
     spawn_min_radius: float,
@@ -687,6 +691,7 @@ def _cb_start_init(
     cube_a_color_value: list[str],
     cube_b_color_value: list[str],
     success_hold_seconds: float = 0.5,
+    max_distractors: float | None = None,
 ):
     """Validate inputs and launch the init worker thread."""
     import gradio as gr
@@ -712,7 +717,7 @@ def _cb_start_init(
         field_selection_value,
         customize_env_config,
         object_pool_value,
-        n_distractors,
+        min_distractors,
         ground_color_value,
         robot_color_value,
         spawn_min_radius,
@@ -724,6 +729,7 @@ def _cb_start_init(
         cube_a_color_value,
         cube_b_color_value,
         success_hold_seconds=success_hold_seconds,
+        max_distractors=max_distractors,
     )
     if config.max_steps < 1:
         raise gr.Error("Max Steps must be at least 1.")
@@ -743,7 +749,7 @@ def _cb_update_customization_for_env(env_id: str, *, profile_path: str | None = 
             interactive=state.customize_visible,
         ),
         gr.update(value=state.object_specs, visible=state.pick_visible),
-        gr.update(value=state.n_distractors, visible=state.distractors_visible),
+        gr.update(value=state.min_distractors, visible=state.distractors_visible),
         gr.update(value=state.ground_colors),
         gr.update(value=state.robot_colors),
         gr.update(value=state.spawn_min_radius),
@@ -759,6 +765,7 @@ def _cb_update_customization_for_env(env_id: str, *, profile_path: str | None = 
         gr.update(value=state.cube_a_colors),
         gr.update(value=state.cube_b_colors),
         gr.update(visible=state.stack_visible),
+        gr.update(value=state.max_distractors, visible=state.distractors_visible),
     )
 
 
@@ -1529,11 +1536,18 @@ def _build_setup_screen(
                 label="Pick Object Pool",
                 visible=customization_state.pick_visible,
             )
-            n_distractors_input = gr.Number(
-                value=customization_state.n_distractors,
+            min_distractors_input = gr.Number(
+                value=customization_state.min_distractors,
                 minimum=0,
                 precision=0,
-                label="Distractors",
+                label="Minimum Distractors",
+                visible=customization_state.distractors_visible,
+            )
+            max_distractors_input = gr.Number(
+                value=customization_state.max_distractors,
+                minimum=0,
+                precision=0,
+                label="Maximum Distractors",
                 visible=customization_state.distractors_visible,
             )
         with gr.Group(visible=customization_state.common_visible) as common_customization_group:
@@ -1619,7 +1633,7 @@ def _build_setup_screen(
         field_selection_input,
         customize_env_input,
         object_pool_input,
-        n_distractors_input,
+        min_distractors_input,
         ground_colors_input,
         robot_colors_input,
         spawn_min_radius_input,
@@ -1638,6 +1652,7 @@ def _build_setup_screen(
         cube_a_colors_input,
         cube_b_colors_input,
         stack_customization_group,
+        max_distractors_input,
     )
 
 
@@ -2328,7 +2343,7 @@ def main(
                     field_selection_input,
                     customize_env_input,
                     object_pool_input,
-                    n_distractors_input,
+                    min_distractors_input,
                     ground_colors_input,
                     robot_colors_input,
                     spawn_min_radius_input,
@@ -2347,6 +2362,7 @@ def main(
                     cube_a_colors_input,
                     cube_b_colors_input,
                     stack_customization_group,
+                    max_distractors_input,
                 ) = _build_setup_screen(
                     gr,
                     all_env_ids,
@@ -2410,7 +2426,7 @@ def main(
             field_selection_input,
             customize_env_input,
             object_pool_input,
-            n_distractors_input,
+            min_distractors_input,
             ground_colors_input,
             robot_colors_input,
             spawn_min_radius_input,
@@ -2422,6 +2438,7 @@ def main(
             cube_a_colors_input,
             cube_b_colors_input,
             success_hold_seconds_input,
+            max_distractors_input,
         ]
 
         _wire_events(
@@ -2437,7 +2454,7 @@ def main(
             customization_outputs=[
                 customize_env_input,
                 object_pool_input,
-                n_distractors_input,
+                min_distractors_input,
                 ground_colors_input,
                 robot_colors_input,
                 spawn_min_radius_input,
@@ -2453,6 +2470,7 @@ def main(
                 cube_a_colors_input,
                 cube_b_colors_input,
                 stack_customization_group,
+                max_distractors_input,
             ],
             init_log=init_log,
             retry_btn=retry_btn,

@@ -487,7 +487,8 @@ from so101_nexus import PickConfig, CubeObject, YCBObject
 
 config = PickConfig(
     objects=[CubeObject(color="blue"), YCBObject("009_gelatin_box")],
-    n_distractors=2,
+    min_distractors=0,
+    max_distractors=1,
 )
 ```
 
@@ -498,10 +499,21 @@ These are in addition to all `EnvironmentConfig` parameters.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `objects` | `list[SceneObject] \| SceneObject \| None` | `None` | Objects to pick. A single object is auto-wrapped. Defaults to `[CubeObject()]` when `None`. |
-| `n_distractors` | `int` | `0` | Number of distractor objects to spawn |
+| `min_distractors` | `int \| None` | `None` | Inclusive minimum number of distractors per episode |
+| `max_distractors` | `int \| None` | `None` | Inclusive maximum number of distractors per episode |
+| `n_distractors` | `int \| None` | `None` | Fixed-count shorthand; omitted bounds inherit this value, or zero |
 | `lift_threshold` | `float` | `0.05` | Height above the table to count as lifted (meters) |
 | `max_goal_height` | `float` | `0.08` | Maximum target lift height (meters) |
 | `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+
+Each reset samples an integer uniformly from `min_distractors` through
+`max_distractors`, including both endpoints, using the environment's seeded RNG.
+Equal bounds give a fixed count. Both default to zero when no count is supplied.
+The object pool needs at least `max_distractors + 1` entries because one is the
+target. Bounds must be nonnegative integers with the minimum no larger than the
+maximum. `n_distractors=k` remains a shorthand for two bounds of `k`; when combined
+with explicit bounds, it must equal the maximum. Its stored value is the resolved
+maximum, rather than an episode's sampled count.
 
 ### Default Observations
 
@@ -576,10 +588,11 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `object_static_lin_threshold` | `float` | `0.01` | Maximum carried-object linear speed (m/s) for success |
 | `object_static_ang_threshold` | `float` | `0.5` | Maximum carried-object angular speed (rad/s) for success |
 | `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
-| `n_distractors` | `int` | `0` | Number of distractor objects placed alongside the carried object each episode, sampled without replacement from `distractors` |
+| `min_distractors`, `max_distractors` | `int \| None` | `None` | Inclusive per-episode bounds; see [distractor sampling](#pickconfig). The maximum cannot exceed the `distractors` pool size |
+| `n_distractors` | `int \| None` | `None` | Fixed-count shorthand, as in [PickConfig](#pickconfig) |
 | `min_object_separation` | `float` | `0.04` | Minimum spawn separation between the carried object and the distractors (meters), on top of their bounding radii |
 
-Distractor slots are only compiled when `n_distractors > 0`, so the default
+Distractor slots are only compiled when `max_distractors > 0`, so the default
 scene holds exactly one object. Distractors keep
 `min_object_target_separation` from the disc, so clutter never spawns on the
 goal. A distractor cube whose color is also a carried cube color warns,
@@ -654,12 +667,13 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `cube_static_lin_threshold` | `float` | `0.01` | Maximum linear speed (m/s) at which cube A still counts as static for success |
 | `cube_static_ang_threshold` | `float` | `0.5` | Maximum angular speed (rad/s) at which cube A still counts as static for success |
 | `distractors` | `list[SceneObject] \| SceneObject \| None` | `None` | Pool of non-target objects distractors are drawn from. Defaults to green, yellow, and purple cubes sharing `cube_half_size` / `cube_mass` |
-| `n_distractors` | `int` | `0` | Number of distractor objects placed alongside cubes A and B each episode, sampled without replacement from `distractors` |
+| `min_distractors`, `max_distractors` | `int \| None` | `None` | Inclusive per-episode bounds; see [distractor sampling](#pickconfig). The maximum cannot exceed the `distractors` pool size |
+| `n_distractors` | `int \| None` | `None` | Fixed-count shorthand, as in [PickConfig](#pickconfig) |
 
 Passing overlapping `cube_a_colors`/`cube_b_colors` pools warns (the two
 cubes may be the same color in some episodes).
 
-Distractor slots are only compiled when `n_distractors > 0`, so the default
+Distractor slots are only compiled when `max_distractors > 0`, so the default
 scene holds exactly two cubes. A distractor cube whose color is also a cube
 A/B color warns, because the task description names cubes by color alone.
 
@@ -681,7 +695,7 @@ config = TouchConfig(touch_margin=0.03)
 
 ### Additional Parameters
 
-This is in addition to all `PickConfig` object-pool parameters (`objects`, `n_distractors`, `min_object_separation`) and the inherited `EnvironmentConfig` parameters.
+This is in addition to all `PickConfig` object-pool parameters (`objects`, `min_distractors`, `max_distractors`, `n_distractors`, `min_object_separation`) and the inherited `EnvironmentConfig` parameters.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

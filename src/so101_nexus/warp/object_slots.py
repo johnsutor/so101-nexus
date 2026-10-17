@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from so101_nexus.object_slots import ObjectSlot
     from so101_nexus.warp._random import WorldEpisodeRNG
@@ -200,6 +200,22 @@ class _ObjectSlotRuntime:
             spawn_max_radius,
             spawn_center,
         )
+
+    def _distractor_reset_groups(
+        self, mask: torch.Tensor, lower: int, upper: int
+    ) -> Iterator[tuple[torch.Tensor, int]]:
+        """Group reset worlds by seeded count so placement uses active objects only."""
+        idx = mask.nonzero(as_tuple=True)[0]
+        if idx.numel() == 0:
+            return
+        if lower == upper:
+            yield idx, upper
+            return
+        counts = lower + (self._rng.rand("task", idx) * (upper - lower + 1)).long()
+        for count in range(lower, upper + 1):
+            group = idx[counts == count]
+            if group.numel():
+                yield group, count
 
     def _hide_all_slots(self, idx: torch.Tensor) -> None:
         """Park every slot at its hidden resting pose for the reset worlds.

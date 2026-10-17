@@ -21,6 +21,7 @@ from so101_nexus.config import (
     ControlMode,
     PickConfig,
     describe_pick_target,
+    sample_distractor_count,
 )
 from so101_nexus.constants import sample_color
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
@@ -46,7 +47,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
     Handles ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``, ``GSOObject``),
     and ``MeshObject`` from
     ``PickConfig.objects``. One object is randomly chosen as the target per
-    episode; ``config.n_distractors`` others are placed as distractors.
+    episode; a count sampled from the configured bounds supplies the distractors.
 
     The default observation is 31-dim; see ``PickConfig.observations`` for the
     component list and ``privileged_state_feature_names`` for per-dimension names.
@@ -71,7 +72,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self._n_distractors = config.n_distractors
+        self._n_distractors = config.max_distractors
         # Build the XML for ALL objects in the pool so any object can be
         # selected as the target or a distractor at reset time.
         scene_objects = list(config.objects)
@@ -213,7 +214,8 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
         n_pool = len(self._slots)
-        n_slots = self._n_slots  # number of active slots (target + distractors)
+        self._n_slots = 1 + sample_distractor_count(self.config, rng)
+        n_slots = self._n_slots
 
         # Restore collisions on every slot at the start of each reset. Slots
         # that remain unchosen below are re-zeroed; slots that become active

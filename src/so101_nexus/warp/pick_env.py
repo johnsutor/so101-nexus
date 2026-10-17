@@ -69,7 +69,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
             config = PickConfig()
         self._build_slot_model(
             scene_objects=list(config.objects),
-            n_active=1 + config.n_distractors,
+            n_active=1 + config.max_distractors,
             config=config,
             num_envs=num_envs,
             control_mode=control_mode,
@@ -212,7 +212,9 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
     def _target_bounding_radius(self) -> torch.Tensor:
         return self._slot_bradius[self._target_slot]
 
-    def _select_active_slots(self, idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _select_active_slots(
+        self, idx: torch.Tensor, n_active: int | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return ``(n, n_active)`` distinct target-pool indices and the ``(n,)`` target.
 
         The active set is one seeded draw, unchanged by
@@ -223,11 +225,12 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         the instruction. A pin outside the draw displaces column 0 instead, which
         does move objects.
         """
-        if self._n_active == 1:
+        n_active = self._n_active if n_active is None else n_active
+        if n_active == 1:
             sel = (self._rng.rand("task", idx, 1) * self._n_pool).to(torch.long)
         else:
             perm = self._rng.rand("task", idx, self._n_pool)
-            sel = perm.argsort(dim=1)[:, : self._n_active]
+            sel = perm.argsort(dim=1)[:, :n_active]
         override = self._target_index_override
         if override is None:
             return sel, sel[:, 0]
@@ -253,11 +256,13 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
             self.task_descriptions[world] = self._describe_target(self._slot_objs[slot])
 
     def _task_reset(self, mask: torch.Tensor) -> None:
-        idx = mask.nonzero(as_tuple=True)[0]
-        n = int(idx.numel())
-        if n == 0:
-            return
-        sel, target = self._select_active_slots(idx)  # (n, n_active), (n,)
+        for idx, count in self._distractor_reset_groups(
+            mask, self.config.min_distractors, self.config.max_distractors
+        ):
+            self._reset_slots(idx, count)
+
+    def _reset_slots(self, idx: torch.Tensor, n_distractors: int) -> None:
+        sel, target = self._select_active_slots(idx, 1 + n_distractors)
         self._hide_all_slots(idx)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(

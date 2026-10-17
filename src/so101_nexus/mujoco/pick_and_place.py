@@ -6,9 +6,9 @@ non-colliding disc whose colour is randomized per episode. Supported carried
 objects: ``CubeObject``, ``ScannedMeshObject`` (``YCBObject``, ``GSOObject``),
 ``MeshObject``.
 
-When ``PickAndPlaceConfig.n_distractors > 0``, one freejoint slot per entry in
+When ``PickAndPlaceConfig.max_distractors > 0``, one freejoint slot per entry in
 ``PickAndPlaceConfig.distractors`` is compiled after the carried pool; each reset
-activates ``n_distractors`` of them and parks the remainder off-world with
+activates a sampled number of them and parks the remainder off-world with
 collisions disabled, matching ``StackCubeEnv``'s slot machinery. As in stack-cube
 the distractor pool is separate from the task objects, so unlike ``PickEnv`` (whose
 distractors are drawn from the same pool as its target) a distractor here can never
@@ -27,6 +27,7 @@ from so101_nexus.config import (
     PickAndPlaceConfig,
     PickAndPlaceV2Config,
     describe_place_target,
+    sample_distractor_count,
 )
 from so101_nexus.constants import COLOR_MAP, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv, _observation_scoped
@@ -101,7 +102,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         n_carried = len(scene_objects)
         # Distractor slots are only compiled when requested, so the default
         # single-object scene stays identical.
-        distractor_pool = list(config.distractors) if config.n_distractors else []
+        distractor_pool = list(config.distractors) if config.max_distractors else []
         scene_objects += distractor_pool
         slot_names = [f"pick_slot_{i}" for i in range(n_carried)] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))
@@ -140,7 +141,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # ``info["target_index"]``) are unaffected by the distractor slots.
         self._slots: list[ObjectSlot] = slots[:n_carried]
         self._distractor_slots: list[ObjectSlot] = slots[n_carried:]
-        self._n_distractors = config.n_distractors
         self._target_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "target_disc"
         )
@@ -385,7 +385,11 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         self.model.body_pos[self._target_body_id] = [target_x, target_y, _TARGET_Z]
 
         distractors = activate_distractor_slots(
-            self.model, self.data, self._distractor_slots, self._n_distractors, rng
+            self.model,
+            self.data,
+            self._distractor_slots,
+            sample_distractor_count(self.config, rng),
+            rng,
         )
         active_slots = [target_slot, *distractors]
         positions = self._sample_object_positions(rng, active_slots, (target_x, target_y))

@@ -428,13 +428,18 @@ def test_update_customization_for_env_updates_success_hold_seconds(
     monkeypatch.setattr(
         teleop_app,
         "_customization_ui_state_for_env",
-        lambda _env_id, **_: teleop_app.CustomizationUIState(success_hold_seconds=1.2),
+        lambda _env_id, **_: teleop_app.CustomizationUIState(
+            success_hold_seconds=1.2, min_distractors=1, max_distractors=3, distractors_visible=True
+        ),
     )
 
     outputs = teleop_app._cb_update_customization_for_env("MuJoCoTouch-v1")
 
-    assert len(outputs) == 18
+    assert len(outputs) == 19
     assert outputs[11]["value"] == 1.2
+    assert outputs[2]["value"] == 1
+    assert outputs[18]["value"] == 3
+    assert outputs[2]["visible"] is outputs[18]["visible"] is True
 
 
 def test_default_env_id_prefers_matching_robot_variant() -> None:
@@ -466,7 +471,8 @@ def test_merge_extra_env_ids_appends_unique_ids() -> None:
     assert _merge_extra_env_ids(["A-v1"], ["A-v1", "B-v1"]) == ["A-v1", "B-v1"]
 
 
-def test_normalized_init_config_includes_env_overrides() -> None:
+@pytest.mark.parametrize("maximum", [None, 2])
+def test_normalized_init_config_includes_env_overrides(maximum) -> None:
     config = _normalized_init_config(
         "leader",
         "MuJoCoPickLift-v1",
@@ -497,11 +503,13 @@ def test_normalized_init_config_includes_env_overrides() -> None:
         ["blue"],
         ["green"],
         ["purple"],
+        max_distractors=maximum,
     )
 
     overrides = config.env_overrides
     assert overrides.object_specs == ("cube:green", "ycb:009_gelatin_box")
-    assert overrides.n_distractors == 1
+    assert overrides.min_distractors == 1
+    assert overrides.max_distractors == (1 if maximum is None else maximum)
     assert overrides.ground_colors == ("white",)
     assert overrides.robot_colors == ("yellow", "orange")
     assert overrides.spawn_min_radius == 0.15
@@ -643,7 +651,7 @@ def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> N
     assert state.pick_visible is True
     assert state.pick_and_place_visible is False
     assert state.object_specs == ["cube:green", "ycb:009_gelatin_box"]
-    assert state.n_distractors == 1
+    assert (state.min_distractors, state.max_distractors) == (1, 1)
     assert state.ground_colors == ["white"]
     assert state.robot_colors == ["yellow"]
     assert state.spawn_min_radius == 0.12
@@ -672,7 +680,7 @@ def test_customization_ui_state_for_pick_and_place_hides_pick_controls() -> None
     assert state.pick_visible is False
     assert state.distractors_visible is True
     assert state.pick_group_visible is True
-    assert state.n_distractors == 1
+    assert (state.min_distractors, state.max_distractors) == (1, 1)
     assert state.pick_and_place_visible is True
     assert state.cube_colors == ["red", "green"]
     assert state.target_colors == ["blue"]
@@ -701,7 +709,7 @@ def test_customization_ui_state_for_stack_cube_shows_stack_colors() -> None:
     # Stack-cube exposes the distractor count but no object pool.
     assert state.distractors_visible is True
     assert state.pick_group_visible is True
-    assert state.n_distractors == 2
+    assert (state.min_distractors, state.max_distractors) == (2, 2)
 
 
 def test_customization_ui_state_without_config_hides_customization() -> None:
