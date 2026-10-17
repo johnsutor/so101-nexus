@@ -219,10 +219,7 @@ class RewardScaler(_training.RewardScaler):
 
 layer_init = _training.layer_init
 Agent = _training.Agent
-_env_cls_from_spec = _training._env_cls_from_spec
 _resolve_env_cls = _training._resolve_env_cls
-_mujoco_config = _training._mujoco_config
-_fixed_horizon = _training._fixed_horizon
 _make_envs = _training._make_envs
 
 

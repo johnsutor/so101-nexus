@@ -72,15 +72,13 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             robot_init_qpos_noise=robot_init_qpos_noise,
         )
 
-        self._n_distractors = config.max_distractors
         # Build the XML for ALL objects in the pool so any object can be
         # selected as the target or a distractor at reset time.
         scene_objects = list(config.objects)
         n_pool = len(scene_objects)
-        n_slots = 1 + self._n_distractors
 
         # Body slot names: one per pool object (not just active slots).
-        # Slots beyond n_slots will be hidden off-world at reset time.
+        # Unchosen slots will be hidden off-world at reset time.
         slot_names = [f"pick_slot_{i}" for i in range(n_pool)]
 
         self.model, self._slots = compile_object_scene(
@@ -92,8 +90,6 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         )
         self.data = mujoco.MjData(self.model)
 
-        # n_slots = active slots (target + distractors); the rest are hidden.
-        self._n_slots = n_slots
         # Bookkeeping updated at each _task_reset
         self._target_slot_idx: int = 0
         self._task_description: str = ""
@@ -214,8 +210,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
         angle_half = float(np.radians(self.config.spawn_angle_half_range_deg))
 
         n_pool = len(self._slots)
-        self._n_slots = 1 + sample_distractor_count(self.config, rng)
-        n_slots = self._n_slots
+        n_slots = 1 + sample_distractor_count(self.config, rng)
 
         # Restore collisions on every slot at the start of each reset. Slots
         # that remain unchosen below are re-zeroed; slots that become active
