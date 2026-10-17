@@ -11,6 +11,10 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- DM0.5 SO101 policy correction collection through OpenDM's inference server,
+  with head/wrist camera mapping, validated action chunks, reset on takeover,
+  and instructions for serving `Dexmal/DM05-SO101-Pick-Cube` weights.
+
 - Inclusive `min_distractors` and `max_distractors` settings for seeded uniform
   per-episode sampling across MuJoCo and Warp tasks, with teleop controls and
   profile support. Existing `n_distractors` fixed-count settings remain supported.

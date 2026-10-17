@@ -156,10 +156,14 @@ def load_collection_policy(
     fps: int | None = None,
     camera_map: dict[str, str] | None = None,
 ) -> ChunkedActionPolicy | None:
-    """Load a LeRobot checkpoint or call a custom no-argument model factory."""
+    """Load a checkpoint, connect to OpenDM, or call a custom model factory."""
     if path and factory:
         raise ValueError("Choose either --policy-path or --policy-factory")
     if path:
+        if policy_type == "dm05":
+            from so101_nexus.policy_adapters.dm05 import DM05PolicyAdapter
+
+            return DM05PolicyAdapter(path, fps=fps, camera_map=camera_map)
         return LeRobotPolicyAdapter.from_pretrained(
             path,
             device=device,
