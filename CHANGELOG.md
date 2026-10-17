@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-17
+
 ### Added
 
 - Native DM0.5 SO101 policy correction collection from
@@ -869,7 +871,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/johnsutor/so101-nexus/compare/0.8.0...0.8.1
