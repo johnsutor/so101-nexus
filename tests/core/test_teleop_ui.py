@@ -113,6 +113,33 @@ def test_app_upload_uses_complete_step_destination(monkeypatch) -> None:
 
 
 @pytest.mark.usefixtures("_require_gradio")
+def test_initialization_and_retry_keep_native_progress_visible(monkeypatch):
+    import gradio as gr
+
+    from so101_nexus.teleop.app import main
+    from so101_nexus.teleop.cli import TeleopArgs
+
+    apps = []
+    monkeypatch.setattr(gr.Blocks, "launch", lambda app, **kwargs: apps.append(app))
+    main(TeleopArgs(leader_port="/dev/null"), backend="mujoco")
+    app = apps[0]
+    handlers = [fn for fn in app.fns.values() if fn.name == "show_init_progress"]
+    assert len(handlers) == 2
+    assert handlers[0].outputs == handlers[1].outputs
+    for handler in handlers:
+        assert handler.trigger_after is not None
+        assert handler.trigger_only_on_success
+        assert handler.show_progress == "full"
+        assert isinstance(handler.fn.__defaults__[0], gr.Progress)
+    details = next(
+        component
+        for component in app.blocks.values()
+        if isinstance(component, gr.Accordion) and component.label == "Initialization details"
+    )
+    assert not details.open
+
+
+@pytest.mark.usefixtures("_require_gradio")
 def test_intervention_controls_request_handoffs_without_queueing(monkeypatch):
     import gradio as gr
 

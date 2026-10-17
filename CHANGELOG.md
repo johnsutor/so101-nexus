@@ -31,6 +31,9 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Teleop initialization keeps a native loading indicator, current operation, and
+  elapsed time visible while model weights load. Detailed logs are expandable.
+
 - Supported policy correction can start from a paused alignment pose, compensating
   leader/follower offsets for every joint and the gripper to avoid a takeover jump.
   Default alignment tolerances are 10 degrees and 5 gripper percentage points,

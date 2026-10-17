@@ -7,6 +7,7 @@ base install does not fail.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import importlib
 import logging
@@ -438,7 +439,7 @@ def _run_init_worker(
         leader = _connect_leader(robot_type, leader_port, leader_id)
         policy_options = session.get("policy_options", {})
         if any(policy_options.get(key) for key in ("path", "factory")):
-            _append_init_log(init_state, "Loading policy and saved processors...")
+            _append_init_log(init_state, "Loading model weights and saved processors...")
             policy = load_collection_policy(**policy_options)
             if policy is None:
                 raise RuntimeError("No collection policy was loaded")
@@ -828,22 +829,35 @@ def _cb_validate_repo_id(repo_id: str, *, check_remote: bool = False):
     return gr.update(visible=True, value="\n\n".join(f"_{msg}_" for msg in messages))
 
 
+async def _wait_for_init(init_state: dict, progress) -> str:
+    """Keep native Gradio progress active while the background worker runs."""
+    while not init_state["done"]:
+        lines = init_state.get("log_lines", [])
+        progress(None, desc=lines[-1] if lines else "Preparing session...")
+        await asyncio.sleep(0.25)
+    if error := init_state.get("error"):
+        return f"### Initialization failed\n{error}\n\nChoose Retry Initialization to try again."
+    return "### Session ready"
+
+
 def _cb_poll_init(session: dict, init_state: dict):
     """Poll the init thread and stream log output to the UI."""
     import gradio as gr
 
     if init_state.get("processed"):
-        return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
+        return tuple(gr.update() for _ in range(6))
 
     log = _current_init_log(init_state)
 
     if not init_state["done"]:
+        stage = (init_state.get("log_lines") or ["Preparing session..."])[-1]
         return (
             gr.update(value=log or "Starting..."),
             gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
+            gr.update(value=f"### {stage}"),
         )
 
     init_state["running"] = False
@@ -856,6 +870,7 @@ def _cb_poll_init(session: dict, init_state: dict):
             gr.update(),
             gr.update(),
             gr.update(),
+            gr.update(value="### Initialization failed"),
         )
 
     if init_state["warning"]:
@@ -873,6 +888,7 @@ def _cb_poll_init(session: dict, init_state: dict):
         gr.Walkthrough(selected=2),
         gr.update(value=header, visible=True),
         gr.update(visible=True, value=_progress_text(0, n)),
+        gr.update(value="### Session ready"),
     )
 
 
@@ -1587,11 +1603,17 @@ def _build_setup_screen(
 
 def _build_init_step(gr):
     """Build the Initialize step contents."""
-    gr.Markdown("### Initializing Session...")
-    init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
+    init_stage = gr.Markdown("### Preparing your session")
+    gr.Markdown(
+        "Model weights may need to download on the first run. "
+        "Keep this page open while setup finishes. Recording has not started."
+    )
+    init_status = gr.Markdown("", min_height=80)
+    with gr.Accordion("Initialization details", open=False):
+        init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
     retry_btn = gr.Button("Retry Initialization", variant="secondary", visible=False)
     init_timer = gr.Timer(value=0.25)
-    return init_log, retry_btn, init_timer
+    return init_log, retry_btn, init_timer, init_status, init_stage
 
 
 def _build_record_step(gr, *, policy_collection: bool = False):
@@ -2000,6 +2022,8 @@ def _wire_events(
     init_log,
     retry_btn,
     init_timer,
+    init_status,
+    init_stage,
     record_status,
     start_btn,
     countdown_area,
@@ -2045,6 +2069,11 @@ def _wire_events(
     retry_init = functools.partial(_cb_retry_init_with_session, session, init_state, leader_port)
     recheck_port = functools.partial(_cb_recheck_port, leader_port)
 
+    init_progress = gr.Progress()
+
+    async def show_init_progress(progress=init_progress):
+        return await _wait_for_init(init_state, progress)
+
     env_id_input.change(
         fn=functools.partial(
             _cb_update_customization_for_env, profile_path=session.get("env_config_profile")
@@ -2063,15 +2092,17 @@ def _wire_events(
         outputs=[repo_id_warning],
     )
     recheck_port_btn.click(fn=recheck_port, outputs=[port_status])
-    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
+    init_btn.click(
+        fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn]
+    ).success(fn=show_init_progress, outputs=[init_status], show_progress="full")
     init_timer.tick(
         fn=poll_init,
-        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status],
+        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status, init_stage],
     )
     retry_btn.click(
         fn=retry_init,
         outputs=[walkthrough, init_log, retry_btn],
-    )
+    ).success(fn=show_init_progress, outputs=[init_status], show_progress="full")
     start_btn.click(
         fn=start_recording,
         outputs=[record_status, start_btn, preview_feed, task_status],
@@ -2285,7 +2316,7 @@ def main(
                 )
 
             with gr.Step("Initialize", id=1):
-                init_log, retry_btn, init_timer = _build_init_step(gr)
+                init_log, retry_btn, init_timer, init_status, init_stage = _build_init_step(gr)
 
             with gr.Step("Record", id=2):
                 (
@@ -2385,6 +2416,8 @@ def main(
             init_log=init_log,
             retry_btn=retry_btn,
             init_timer=init_timer,
+            init_status=init_status,
+            init_stage=init_stage,
             record_status=record_status,
             start_btn=start_btn,
             countdown_area=countdown_area,

@@ -8,6 +8,7 @@ gradio runtime.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import types
@@ -927,6 +928,37 @@ def test_write_env_config_meta_handles_no_overrides(tmp_path) -> None:
     assert profile == {"envs": {"So101ReachTarget-v0": {}}}
 
 
+@pytest.mark.parametrize("error", [None, "Insufficient device memory"])
+def test_init_progress_stays_active_until_worker_finishes(monkeypatch, error):
+    state = {
+        "done": False,
+        "log_lines": ["Loading model weights and saved processors..."],
+        "error": None,
+    }
+    updates = []
+
+    async def advance(_interval):
+        if len(updates) == 1:
+            state["log_lines"].append("Creating LeRobot dataset...")
+        else:
+            state.update(done=True, error=error)
+
+    monkeypatch.setattr(asyncio, "sleep", advance)
+    result = asyncio.run(
+        teleop_app._wait_for_init(state, lambda value, desc: updates.append((value, desc)))
+    )
+
+    assert updates == [
+        (None, "Loading model weights and saved processors..."),
+        (None, "Creating LeRobot dataset..."),
+    ]
+    if error:
+        assert error in result
+        assert "Retry Initialization" in result
+    else:
+        assert "Session ready" in result
+
+
 def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
     init_state = {
         "done": True,
@@ -942,7 +974,16 @@ def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
     assert "Connecting leader arm" in outputs[0]["value"]
     assert "permission denied" in outputs[0]["value"].lower()
     assert outputs[1]["visible"] is True
+    assert outputs[5]["value"] == "### Initialization failed"
     assert init_state["processed"] is True
+
+
+def test_poll_init_shows_current_operation_outside_the_log(fake_gradio):
+    state = {"done": False, "log_lines": ["Connecting leader...", "Loading model weights..."]}
+    outputs = _cb_poll_init({}, state)
+    assert outputs[5]["value"] == "### Loading model weights..."
+    state["log_lines"].append("Creating LeRobot dataset...")
+    assert _cb_poll_init({}, state)[5]["value"] == "### Creating LeRobot dataset..."
 
 
 def test_retry_init_resets_failed_state(fake_gradio) -> None:
