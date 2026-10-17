@@ -250,6 +250,7 @@ def test_training_metadata_records_resolved_config_and_runtime_versions():
     }
 
 
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
@@ -264,17 +265,20 @@ def test_training_metadata_records_resolved_config_and_runtime_versions():
         ),
     ],
 )
-def test_ppo_warp_rejects_invalid_batch_args_before_env_construction(monkeypatch, kwargs, match):
+def test_ppo_warp_rejects_invalid_batch_args_before_env_construction(
+    module, monkeypatch, kwargs, match
+):
     import importlib
 
-    mod = importlib.import_module("examples.ppo_warp")
+    mod = importlib.import_module(module)
 
     def fail_make_envs(*_args, **_kwargs):
         raise AssertionError("_make_envs should not be called for invalid batch args")
 
     monkeypatch.setattr(mod, "_make_envs", fail_make_envs)
+    extra = {"use_demos": False} if module.endswith("bc_ppo_warp") else {}
     with pytest.raises(ValueError, match=match):
-        mod.train(device="cpu", **kwargs)
+        mod.train(device="cpu", **extra, **kwargs)
 
 
 @pytest.mark.parametrize(
@@ -310,18 +314,14 @@ def test_ppo_warp_runs_on_every_warp_env(env_id):
     assert stats["iterations"] == 2
 
 
-def test_running_mean_std_update_sanitizes_nan_and_inf():
-    """A NaN/Inf row in a batch must not permanently poison the running
-    mean/variance accumulator (a corrupted stat mixes NaN into every future
-    ``update()`` via the Welford recurrence). Regression coverage for the
-    NaN-poisoning vulnerability flagged for ``examples/bc_ppo_warp.py``
-    (equally present in ``ppo_warp.py``, which the two scripts share
-    verbatim): one diverging Warp world in a batched rollout could otherwise
-    crash a long run with ``ValueError: Normal(loc=NaN, ...)``.
-    """
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_running_mean_std_update_sanitizes_nan_and_inf(module):
+    """A divergent world must not poison future running-stat updates."""
+    import importlib
+
     import torch
 
-    import examples.ppo_warp as mod
+    mod = importlib.import_module(module)
 
     rms = mod.RunningMeanStd((3,), "cpu")
     poisoned = torch.tensor(
@@ -338,10 +338,13 @@ def test_running_mean_std_update_sanitizes_nan_and_inf():
     assert torch.isfinite(rms.var).all()
 
 
-def test_obs_normalizer_sanitizes_nan_observation():
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_obs_normalizer_sanitizes_nan_observation(module):
+    import importlib
+
     import torch
 
-    import examples.ppo_warp as mod
+    mod = importlib.import_module(module)
 
     norm = mod.ObsNormalizer(3, "cpu")
     obs = torch.tensor([[float("nan"), float("inf"), 1.0]])
@@ -350,10 +353,13 @@ def test_obs_normalizer_sanitizes_nan_observation():
     assert bool((out >= -10.0).all() and (out <= 10.0).all())
 
 
-def test_reward_scaler_sanitizes_nan_reward():
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_reward_scaler_sanitizes_nan_reward(module):
+    import importlib
+
     import torch
 
-    import examples.ppo_warp as mod
+    mod = importlib.import_module(module)
 
     scaler = mod.RewardScaler(2, "cpu", gamma=0.99)
     reward = torch.tensor([float("nan"), float("inf")])
@@ -364,7 +370,8 @@ def test_reward_scaler_sanitizes_nan_reward():
     assert torch.isfinite(scaler.rms.var).all()
 
 
-def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_ppo_warp_survives_nan_reward_from_one_env_step(module, monkeypatch):
     """End-to-end regression: a single NaN reward from one parallel Warp world
     (injected at the exact ``envs.step()`` boundary ``train()`` reads) must not
     propagate into the shared reward-scaler stats, the loss, or the optimizer
@@ -375,7 +382,7 @@ def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
 
     import torch
 
-    mod = importlib.import_module("examples.ppo_warp")
+    mod = importlib.import_module(module)
     real_make_envs = mod._make_envs
     poisoned = {"done": False}
 
@@ -395,6 +402,7 @@ def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
         return envs
 
     monkeypatch.setattr(mod, "_make_envs", make_envs_with_one_nan_step)
+    extra = {"use_demos": False} if module.endswith("bc_ppo_warp") else {}
     stats = mod.train(
         num_envs=8,
         num_steps=8,
@@ -402,7 +410,77 @@ def test_ppo_warp_survives_nan_reward_from_one_env_step(monkeypatch):
         num_minibatches=4,
         device="cpu",
         seed=0,
+        **extra,
     )
     assert torch.isfinite(torch.tensor(stats["policy_loss"]))
     assert torch.isfinite(torch.tensor(stats["value_loss"]))
     assert stats["iterations"] == 2
+
+
+@pytest.mark.parametrize(
+    "module,sanitizes", [("examples.ppo_warp", False), ("examples.bc_ppo_warp", True)]
+)
+def test_recipe_normalizers_preserve_output_sanitization(module, sanitizes):
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module(module)
+    normalizer = mod.ObsNormalizer(2, "cpu")
+    normalizer.rms.var.fill_(float("nan"))
+    observations = normalizer(torch.ones((1, 2)), update=False)
+    assert torch.isfinite(observations).all().item() is sanitizes
+    scaler = mod.RewardScaler(2, "cpu", 0.99)
+    scaler.rms.var.fill_(float("nan"))
+    rewards = scaler(torch.ones(2), torch.zeros(2))
+    assert torch.isfinite(rewards).all().item() is sanitizes
+
+
+@pytest.mark.parametrize("module", ["examples.ppo_warp", "examples.bc_ppo_warp"])
+def test_checkpoint_preserves_recipe_layout_key(module, tmp_path):
+    import importlib
+
+    import torch
+
+    mod = importlib.import_module(module)
+    agent = mod.Agent(3, 2, 8)
+    normalizer = mod.ObsNormalizer(3, "cpu")
+    path = tmp_path / "agent.pt"
+    mod._save(agent, normalizer, str(path), 0, 0.0)
+    checkpoint = torch.load(path, weights_only=False)
+    assert ("env_state_names" in checkpoint) is module.endswith("bc_ppo_warp")
+    if "env_state_names" in checkpoint:
+        assert checkpoint["env_state_names"] is None
+    assert set(checkpoint["model"]) == {
+        "actor_logstd",
+        "critic.0.weight",
+        "critic.0.bias",
+        "critic.2.weight",
+        "critic.2.bias",
+        "critic.4.weight",
+        "critic.4.bias",
+        "actor_mean.0.weight",
+        "actor_mean.0.bias",
+        "actor_mean.2.weight",
+        "actor_mean.2.bias",
+        "actor_mean.4.weight",
+        "actor_mean.4.bias",
+    }
+
+
+@pytest.mark.parametrize("recipe", ["ppo_warp", "bc_ppo_warp"])
+def test_training_recipe_runs_directly(recipe):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, str(root / "examples" / f"{recipe}.py"), "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    assert "--num-envs" in result.stdout
+    assert ("--bc-coef" in result.stdout) is recipe.startswith("bc_")
