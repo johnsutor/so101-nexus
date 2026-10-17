@@ -9,7 +9,6 @@ LeRobot feature schema and every recorded frame.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -124,24 +123,13 @@ def _with_selected_cameras(
     return features
 
 
-def _hw_to_dataset_features():
-    """Return LeRobot's feature-schema converter across supported 0.5.x layouts."""
-    if TYPE_CHECKING:
-        from lerobot.datasets.feature_utils import hw_to_dataset_features
-
-        return hw_to_dataset_features
-    try:
-        return import_module("lerobot.datasets.feature_utils").hw_to_dataset_features
-    except (ImportError, AttributeError):  # LeRobot 0.5.0 compatibility
-        return import_module("lerobot.datasets.utils").hw_to_dataset_features
-
-
 def build_features(
     selection: FieldSelection,
     follower_features: dict[str, Any],
     action_features: dict[str, Any],
     *,
     env_state_names: list[str] | None = None,
+    intervention: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return the LeRobot feature dict for the selected fields.
 
@@ -158,8 +146,11 @@ def build_features(
         vector (see :func:`so101_nexus.observations.privileged_state_feature_names`).
         When provided and ``selection.environment_state`` is set, the channel is
         declared as a ``(len(names),)`` float32 feature; otherwise it is omitted.
+    intervention
+        Include human-control flags and intervention segment IDs for policy collection.
     """
-    hw_to_dataset_features = _hw_to_dataset_features()
+    from lerobot.utils.feature_utils import hw_to_dataset_features
+
     features: dict[str, dict[str, Any]] = {}
     features.update(hw_to_dataset_features(action_features, "action", use_video=True))
     features.update(
@@ -182,6 +173,9 @@ def build_features(
     # recorded; they are not user-toggleable fields, so declared unconditionally.
     for key in SCALAR_KEYS:
         features[key] = dict(SCALAR_FEATURE)
+    if intervention:
+        features["is_intervention"] = dict(SCALAR_FEATURE)
+        features["intervention_id"] = {"dtype": "int64", "shape": (1,), "names": None}
     return features
 
 
@@ -199,6 +193,7 @@ def build_frame(
     wrist_image: np.ndarray | None,
     overhead_image: np.ndarray | None,
     side_image: np.ndarray | None = None,
+    intervention_id: int | None = None,
 ) -> dict[str, Any]:
     """Assemble one LeRobot frame dict using only the selected fields."""
     components = reward_components or {}
@@ -249,6 +244,11 @@ def build_frame(
                 "check that the env exposes non-camera observation components."
             )
         frame[ENV_STATE_KEY] = np.asarray(env_state, dtype=np.float32)
+    if intervention_id is not None:
+        if intervention_id < 0:
+            raise ValueError("intervention_id must be nonnegative")
+        frame["is_intervention"] = np.array([intervention_id > 0], dtype=np.float32)
+        frame["intervention_id"] = np.array([intervention_id], dtype=np.int64)
     return frame
 
 
@@ -265,24 +265,13 @@ def _make_reward_scalar_dataset_cls():
     ``save_episode``, matching how LeRobot handles its own ``DEFAULT_FEATURES``
     (timestamp, frame_index, etc.).
 
-    The in-progress buffer moved between supported 0.5.x layouts: 0.5.0 keeps
-    it on the dataset (``self.episode_buffer``), while 0.5.1 routes recording
-    through a ``DatasetWriter`` reached via ``self.writer.episode_buffer``.
-    Only ``save_episode`` needs overriding: ``add_frame`` and
-    ``clear_episode_buffer`` already act on the live buffer on both layouts
-    (native in 0.5.0, writer-delegated in 0.5.1) and never stack reward.
+    LeRobot 0.6 records through ``DatasetWriter.episode_buffer``. Only
+    ``save_episode`` needs overriding; other methods already use that buffer.
     """
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     class RewardRecordingDataset(LeRobotDataset):
         """LeRobotDataset that records scalar features without coercion warnings."""
-
-        def _active_episode_buffer(self) -> dict | None:
-            """Return the in-progress episode buffer across LeRobot 0.5.x layouts."""
-            buf = getattr(self, "episode_buffer", None)
-            if buf is None:
-                buf = getattr(getattr(self, "writer", None), "episode_buffer", None)
-            return buf
 
         def save_episode(
             self,
@@ -290,11 +279,11 @@ def _make_reward_scalar_dataset_cls():
             parallel_encoding: bool = True,
         ) -> None:
             if episode_data is None:
-                buf = self._active_episode_buffer()
+                buf = getattr(getattr(self, "writer", None), "episode_buffer", None)
                 if buf is not None:
-                    for key in SCALAR_KEYS:
+                    for key in (*SCALAR_KEYS, "is_intervention", "intervention_id"):
                         if isinstance(buf.get(key), list):
-                            buf[key] = [float(np.asarray(v).reshape(-1)[0]) for v in buf[key]]
+                            buf[key] = [np.asarray(v).reshape(-1)[0].item() for v in buf[key]]
             super().save_episode(episode_data, parallel_encoding)
 
     return RewardRecordingDataset

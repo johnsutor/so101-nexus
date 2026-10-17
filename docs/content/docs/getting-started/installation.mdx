@@ -41,7 +41,8 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 
 | Extra | Adds | Install |
 | --- | --- | --- |
-| `teleop` | Gradio demonstration recorder: `lerobot[feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
+| `teleop` | Gradio demonstration recorder: `lerobot[dataset,feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
+| `molmoact2` | LeRobot 0.6.1 MolmoAct2 model dependencies; combine with `teleop` for correction collection | `pip install "so101-nexus[teleop,molmoact2]"` |
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |
 | `viz` | Pillow image labels and high-quality resizing in visualization helpers | `pip install "so101-nexus[viz]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
@@ -50,6 +51,13 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
 
 Extras combine: `pip install "so101-nexus[teleop,train]"`.
+
+From source, use `uv sync --extra teleop --extra molmoact2` for MolmoAct2 collection.
+Other LeRobot policy checkpoints may need their own model dependencies. For example,
+`uv run --extra teleop --with "lerobot[smolvla]==0.6.1" so101-nexus teleop ...`
+adds SmolVLA dependencies for that invocation. Use the matching LeRobot extra for
+other supported policy families. The base install stays independent of LeRobot.
+
 
 ## CPU batch backend (mjbatch)
 
@@ -74,7 +82,7 @@ The `rocm` extra installs PyTorch from the [ROCm 7.2 wheel index](https://downlo
 uv sync --extra train --extra rocm --no-default-groups
 ```
 
-`--no-default-groups` skips the `dev` dependency group. `dev` pins `lerobot<0.6` for the test suite, which in turn forces `torch<2.11`, a range incompatible with the ROCm 7.2 torch build. For the same reason `uv` rejects combining `rocm` with `teleop`, `dev`, or `test`.
+`--no-default-groups` skips the `dev` dependency group. The test suite uses LeRobot 0.6.1 and pins compatible Torch/TorchCodec pairs. Desktop platforms retain Torch `<2.10` and TorchCodec `<0.10`. Linux ARM64 uses Torch 2.11 and TorchCodec 0.11 because those dataset decoder wheels require that pair. LeRobot requires Torch `<2.12`, while the ROCm 7.2 build uses a newer version. `uv` therefore rejects combining `rocm` with `teleop`, `molmoact2`, `dev`, or `test`.
 
 <Callout type="warn">
   `rocm` affects MuJoCo-backend training only, meaning behavior cloning and PPO on CPU-simulated environments. It does not enable the Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.

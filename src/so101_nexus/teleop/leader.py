@@ -7,13 +7,19 @@ can be imported without the ``teleop`` extra installed.
 from __future__ import annotations
 
 import importlib
+import math
 import os
+import threading
+import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from so101_nexus.config import SO101_JOINT_NAMES
 
 DEFAULT_WRIST_ROLL_OFFSET_DEG = -90.0
+DEFAULT_ALIGNMENT_TOLERANCE_DEG = 10.0
+DEFAULT_GRIPPER_TOLERANCE_PERCENT = 5.0
+_COMMUNICATION_RETRIES = 3
 
 ROBOT_JOINT_NAMES: dict[str, tuple[str, ...]] = {
     "so100": SO101_JOINT_NAMES,
@@ -46,11 +52,22 @@ class LeaderPortDiagnostic:
     recovery_hint: str = ""
 
 
-def apply_wrist_roll_offset_deg(action: dict[str, float], offset_deg: float) -> dict[str, float]:
-    """Return a copy of *action* with ``wrist_roll.pos`` shifted by *offset_deg*."""
+def apply_wrist_roll_offset_deg(
+    action: dict[str, float],
+    offset_deg: float,
+    *,
+    reference_wrist_roll_deg: float | None = None,
+) -> dict[str, float]:
+    """Shift wrist roll to the equivalent angle nearest a reference.
+
+    Without a reference, use the single-turn motor range [-180, 180).
+    Correction uses follower readback as the reference to avoid target jumps.
+    """
     result = dict(action)
     if "wrist_roll.pos" in result:
-        result["wrist_roll.pos"] = float(result["wrist_roll.pos"]) + offset_deg
+        reference = reference_wrist_roll_deg if reference_wrist_roll_deg is not None else 0.0
+        shifted = float(result["wrist_roll.pos"]) + offset_deg
+        result["wrist_roll.pos"] = reference + (shifted - reference + 180) % 360 - 180
     return result
 
 
@@ -149,3 +166,160 @@ def import_backend_for_env_id(env_id: str) -> None:
             f"Unknown custom env_id {env_id!r}. Import its registration module with "
             "--env-module and pass it with --extra-env-id."
         ) from exc
+
+
+class SOLeaderSynchronizer:
+    """Move a calibrated SO leader to follower readback at a bounded target speed.
+
+    Parameters
+    ----------
+    bus
+        Connected LeRobot motor bus with degree body joints and percent gripper.
+    wrist_roll_offset_deg
+        Offset added to leader readings by teleoperation, inverted for alignment.
+    joint_tolerance_deg
+        Maximum body-joint alignment error in degrees.
+    gripper_tolerance_percent
+        Maximum gripper alignment error in percentage points.
+    """
+
+    def __init__(
+        self,
+        bus: Any,
+        *,
+        wrist_roll_offset_deg: float,
+        joint_tolerance_deg: float = DEFAULT_ALIGNMENT_TOLERANCE_DEG,
+        gripper_tolerance_percent: float = DEFAULT_GRIPPER_TOLERANCE_PERCENT,
+    ) -> None:
+        if not all(
+            math.isfinite(value) and value > 0
+            for value in (joint_tolerance_deg, gripper_tolerance_percent)
+        ):
+            raise ValueError("Alignment tolerances must be positive and finite")
+        self.joint_tolerance_deg = joint_tolerance_deg
+        self.gripper_tolerance_percent = gripper_tolerance_percent
+        self.bus = bus
+        self.wrist_roll_offset_deg = wrist_roll_offset_deg
+        self._target: dict[str, float] | None = None
+        self._initial: dict[str, float] = {}
+        self._started = 0.0
+        self._duration = 0.0
+        self._holding = False
+        self._lock = threading.RLock()
+
+    @property
+    def holding(self) -> bool:
+        """Whether the last pose-hold command completed successfully."""
+        return self._holding
+
+    def start(self, target: dict[str, float]) -> None:
+        """Hold the measured pose, then begin interpolated alignment."""
+        with self._lock:
+            self.cancel()
+            target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
+            target = {key.removesuffix(".pos"): value for key, value in target.items()}
+            if not all(math.isfinite(value) for value in target.values()):
+                raise ValueError("Synchronization targets must be finite")
+            wrist = "wrist_roll"
+            if wrist in target:
+                gap = target[wrist] - self._initial[wrist]
+                if abs(gap) > 180 and abs((gap + 180) % 360 - 180) <= self.joint_tolerance_deg:
+                    # Equivalent seam poses do not need a nearly full physical turn.
+                    target[wrist] = self._initial[wrist]
+            self._target = target
+            self._duration = max(
+                abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
+                for name, value in target.items()
+            )
+            self._started = time.monotonic()
+
+    def tick(self) -> bool:
+        """Advance alignment and keep torque enabled after convergence."""
+        with self._lock:
+            if self._target is None:
+                return True
+            try:
+                elapsed = time.monotonic() - self._started
+                expired = elapsed > self._duration + 3.0
+                fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
+                if not expired:
+                    self.bus.sync_write(
+                        "Goal_Position",
+                        {
+                            name: self._initial[name] + fraction * (value - self._initial[name])
+                            for name, value in self._target.items()
+                        },
+                        num_retry=_COMMUNICATION_RETRIES,
+                    )
+                positions = self._read_positions()
+                errors = {
+                    name: abs((positions[name] - value + 180) % 360 - 180)
+                    if name == "wrist_roll"
+                    else abs(positions[name] - value)
+                    for name, value in self._target.items()
+                }
+                outside = {
+                    name: error
+                    for name, error in errors.items()
+                    if error
+                    > (
+                        self.gripper_tolerance_percent
+                        if name == "gripper"
+                        else self.joint_tolerance_deg
+                    )
+                }
+                if fraction == 1.0 and not outside:
+                    self._target = None
+                    return True
+                if expired:
+                    details = "; ".join(
+                        f"{name}: measured {positions[name]:.1f}, target {value:.1f} "
+                        f"{'percent' if name == 'gripper' else 'deg'}"
+                        for name, value in self._target.items()
+                        if name in outside
+                    )
+                    raise TimeoutError(f"Leader synchronization timed out. {details}")
+                return False
+            except Exception as exc:
+                try:
+                    self.cancel()
+                except Exception as hold_exc:
+                    raise RuntimeError(
+                        f"{exc}; leader pose hold failed: {hold_exc}. Support the physical arm now."
+                    ) from exc
+                raise
+
+    def cancel(self) -> None:
+        """Stop alignment and hold measured joint positions without releasing torque."""
+        with self._lock:
+            self._target = None
+            self._holding = False
+            positions = self._read_positions()
+            first_error = None
+            for name, value in positions.items():
+                try:
+                    self.bus.write("Goal_Position", name, value, num_retry=_COMMUNICATION_RETRIES)
+                    self.bus.enable_torque(motors=name, num_retry=_COMMUNICATION_RETRIES)
+                except Exception as exc:
+                    # Hold the other joints even when one motor stops responding.
+                    if first_error is None:
+                        first_error = exc
+            if first_error is not None:
+                raise first_error
+            self._initial = positions
+            self._holding = True
+
+    def _read_positions(self) -> dict[str, float]:
+        positions = self.bus.sync_read("Present_Position", num_retry=_COMMUNICATION_RETRIES)
+        if set(positions) != set(SO101_JOINT_NAMES) or not all(
+            math.isfinite(value) for value in positions.values()
+        ):
+            raise ValueError("Leader pose hold requires finite readings for every joint")
+        return positions
+
+    def release(self) -> None:
+        """Disable torque only after the operator explicitly supports the leader."""
+        with self._lock:
+            self._target = None
+            self._holding = False
+            self.bus.disable_torque(num_retry=_COMMUNICATION_RETRIES)

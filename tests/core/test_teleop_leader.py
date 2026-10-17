@@ -193,3 +193,33 @@ def test_format_leader_connection_error_includes_recovery_hint(monkeypatch):
     assert "Failed to connect on /dev/ttyACM0" in msg
     assert "permission denied" in msg.lower()
     assert "chmod 666 /dev/ttyACM0" in msg
+
+
+@pytest.mark.parametrize("follower_deg", [-157.0, -90.0, 0.0, 90.0, 163.0])
+def test_wrist_offset_stays_in_one_turn_and_round_trips(follower_deg):
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    follower = {"wrist_roll.pos": follower_deg, "gripper.pos": 30.0}
+    leader = apply_wrist_roll_offset_deg(follower, 90.0)
+    assert -180.0 <= leader["wrist_roll.pos"] < 180.0
+    restored = apply_wrist_roll_offset_deg(leader, -90.0)
+    assert restored == follower
+
+
+def test_wrist_offset_wraps_both_sides_of_the_motor_boundary():
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    assert apply_wrist_roll_offset_deg({"wrist_roll.pos": 163.0}, 90.0)["wrist_roll.pos"] == -107.0
+    assert apply_wrist_roll_offset_deg({"wrist_roll.pos": -107.0}, -90.0)["wrist_roll.pos"] == 163.0
+
+
+def test_wrist_offset_preserves_correction_continuity_near_follower_limit():
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    targets = [
+        apply_wrist_roll_offset_deg(
+            {"wrist_roll.pos": leader_deg}, -90.0, reference_wrist_roll_deg=163.0
+        )["wrist_roll.pos"]
+        for leader_deg in (-90.1, -89.9)
+    ]
+    assert targets == pytest.approx([179.9, 180.1])

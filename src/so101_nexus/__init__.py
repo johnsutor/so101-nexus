@@ -112,6 +112,7 @@ from so101_nexus.observations import (
     observations_from_feature_names,
     privileged_state_feature_names,
 )
+from so101_nexus.policy_adapters.collection import LeRobotPolicyAdapter
 from so101_nexus.rendering import RenderingQuality
 from so101_nexus.rewards import (
     lift_progress,
@@ -119,6 +120,8 @@ from so101_nexus.rewards import (
     reach_progress,
     simple_reward,
 )
+from so101_nexus.teleop.intervention import InterventionSession, intervention_chunk_mask
+from so101_nexus.teleop.leader import SOLeaderSynchronizer
 from so101_nexus.ycb_assets import (
     YCBCollisionPart,
     ensure_ycb_assets,
@@ -238,9 +241,11 @@ __all__ = [
     "GraspState",
     "GripperContactForce",
     "GsoModelId",
+    "InterventionSession",
     "JointEfforts",
     "JointPositions",
     "JointVelocities",
+    "LeRobotPolicyAdapter",
     "LookAtConfig",
     "MeshObject",
     "MoveConfig",
@@ -265,6 +270,7 @@ __all__ = [
     "RewardConfig",
     "RobotCameraPreset",
     "RobotConfig",
+    "SOLeaderSynchronizer",
     "ScannedMeshObject",
     "SceneObject",
     "SphereObject",
@@ -302,6 +308,7 @@ __all__ = [
     "get_ycb_mesh_dir",
     "get_ycb_texture_file",
     "get_ycb_visual_mesh",
+    "intervention_chunk_mask",
     "lift_progress",
     "object_in_view",
     "observations_from_feature_names",

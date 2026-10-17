@@ -87,3 +87,58 @@ def test_run_teleop_works_without_setup(monkeypatch) -> None:
     run_teleop("mujoco")
 
     assert called == {"args_type": "TeleopArgs", "backend": "mujoco"}
+
+
+def test_parse_teleop_args_accepts_policy_collection_flags() -> None:
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--policy-path",
+            "checkpoint",
+            "--policy-device",
+            "cpu",
+            "--policy-action-space",
+            "joint_pos_delta",
+        ]
+    )
+    assert args.policy_path == "checkpoint"
+    assert args.policy_device == "cpu"
+    assert args.policy_action_space == "joint_pos_delta"
+    args = parse_teleop_args(["teleop", "--policy-factory", "example:build"])
+    assert args.policy_factory == "example:build"
+
+
+def test_parse_teleop_args_accepts_model_contract_flags() -> None:
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--policy-type",
+            "molmoact2",
+            "--policy-norm-tag",
+            "so100_so101_molmoact2",
+            "--policy-fps",
+            "30",
+            "--policy-camera",
+            "overhead=front",
+            "--policy-camera",
+            "wrist=wrist",
+        ]
+    )
+    assert args.policy_type == "molmoact2"
+    assert args.policy_norm_tag == "so100_so101_molmoact2"
+    assert args.policy_fps == 30
+    assert args.policy_cameras == ["overhead=front", "wrist=wrist"]
+
+
+def test_alignment_tolerance_flags_parse():
+    args = parse_teleop_args(
+        [
+            "teleop",
+            "--leader-alignment-tolerance-deg",
+            "12",
+            "--leader-gripper-tolerance-percent",
+            "6",
+        ]
+    )
+    assert args.leader_alignment_tolerance_deg == 12
+    assert args.leader_gripper_tolerance_percent == 6

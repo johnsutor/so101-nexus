@@ -22,6 +22,7 @@ import numpy as np
 if TYPE_CHECKING:
     from so101_nexus.lerobot_adapter.sim_follower import SimSOFollower
     from so101_nexus.teleop.config_customization import ConfigFactory, TeleopConfigOverrides
+    from so101_nexus.teleop.intervention import InterventionSession
     from so101_nexus.teleop.leader import LeaderProtocol
 
 
@@ -92,6 +93,7 @@ class RecordingState:
     error: str | None = None
 
     episode_actions: list[np.ndarray] = field(default_factory=list)
+    episode_intervention_ids: list[int] = field(default_factory=list)
     episode_states: list[np.ndarray] = field(default_factory=list)
     episode_rewards: list[float] = field(default_factory=list)
     episode_reward_components: list[dict[str, float]] = field(default_factory=list)
@@ -119,6 +121,7 @@ class RecordingState:
     def clear_episode(self) -> None:
         """Reset all per-episode buffers."""
         self.episode_actions.clear()
+        self.episode_intervention_ids.clear()
         self.episode_states.clear()
         self.episode_rewards.clear()
         self.episode_reward_components.clear()
@@ -197,7 +200,7 @@ def _make_preview_frame(
     return out
 
 
-def _publish_camera_frames(state: RecordingState, obs: object) -> None:
+def _publish_camera_frames(state: RecordingState, obs: object, *, record: bool = True) -> None:
     """Copy camera observations into episode buffers and the UI preview slot."""
     wrist_image = None
     overhead_image = None
@@ -211,13 +214,15 @@ def _publish_camera_frames(state: RecordingState, obs: object) -> None:
             overhead_image = camera_obs.get("overhead_camera")
 
     if wrist_image is not None:
-        state.episode_wrist_images.append(wrist_image)
+        if record:
+            state.episode_wrist_images.append(wrist_image)
         state.live_frame = wrist_image
     if overhead_image is not None:
-        state.episode_overhead_images.append(overhead_image)
+        if record:
+            state.episode_overhead_images.append(overhead_image)
         state.live_overhead_frame = overhead_image
     side_image = obs.get("side") if isinstance(obs, Mapping) else None
-    if side_image is not None:
+    if record and side_image is not None:
         state.episode_side_images.append(side_image)
     if wrist_image is None and overhead_image is None and side_image is None:
         state.live_preview = None
@@ -401,11 +406,12 @@ def recording_thread(
     success_hold_seconds: float = 0.5,
     seed: int = 0,
     _follower_session: _FollowerSession | None = None,
+    intervention: InterventionSession | None = None,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
-    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
-
     follower_session = _follower_session or _FollowerSession()
+    follower = None
+    start_time = None
     state.clear_episode()
     try:
         if not _run_countdown(state, countdown):
@@ -424,13 +430,17 @@ def recording_thread(
             overrides=customization_overrides,
             profile_path=env_config_profile,
             factory=env_config_factory,
+            **({"align_fps": True} if intervention is not None else {}),
         )
+        if state.should_stop:
+            return
 
         state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
         env = follower._env
         if env is None:
             raise RuntimeError("follower environment is not connected after connect()")
         state.task_description = getattr(env.unwrapped, "task_description", "")
+        _begin_intervention_episode(intervention, env.unwrapped, fps)
         state.is_recording = True
 
         frame_duration = 1.0 / fps
@@ -440,17 +450,12 @@ def recording_thread(
             step_start = time.monotonic()
             if len(state.episode_actions) >= max_steps:
                 break
-            leader_action = leader.get_action()
-            action_dict = apply_wrist_roll_offset_deg(leader_action, wrist_roll_offset_deg)
-            # Read the pre-step observation (s_t) BEFORE send_action steps the
-            # env, so the recorded frame pairs (s_t, a_t, r_t), matching the
-            # rollout recorder and LeRobot's Transition convention. The reward
-            # r_t comes from env.step(a_t) inside send_action.
-            obs = follower.get_observation()
-            sent_action = follower.send_action(action_dict)
+            if not _record_step(
+                state, follower, leader, intervention, joint_names, wrist_roll_offset_deg
+            ):
+                time.sleep(frame_duration)
+                continue
             step_info = follower.last_step_info()
-
-            _append_step_buffers(state, sent_action, obs, step_info, joint_names)
 
             if _should_stop_after_termination(
                 state,
@@ -463,19 +468,95 @@ def recording_thread(
             sleep_time = frame_duration - (time.monotonic() - step_start)
             if sleep_time > 0:
                 time.sleep(sleep_time)
-
-        state.episode_duration = time.monotonic() - start_time
-        state.rendering_metadata = follower.rendering_metadata()
     except Exception as exc:
         state.error = f"{type(exc).__name__}: {exc}"
-        follower_session.close()
     finally:
-        if _follower_session is None:
-            follower_session.close()
-        state.countdown_value = 0
-        state.is_recording = False
-        state.should_stop = False
-        state.recording_finished = True
+        _capture_recording_metadata(state, follower, start_time)
+        _finish_recording(
+            state, follower_session, _follower_session is None or bool(state.error), intervention
+        )
+
+
+def _capture_recording_metadata(
+    state: RecordingState, follower: SimSOFollower | None, start_time: float | None
+) -> None:
+    if start_time is not None:
+        state.episode_duration = time.monotonic() - start_time
+    if follower is not None:
+        try:
+            state.rendering_metadata = follower.rendering_metadata()
+        except Exception as exc:
+            message = f"Failed to capture rendering metadata: {exc}"
+            state.error = f"{state.error}\n{message}" if state.error else message
+
+
+def _begin_intervention_episode(
+    intervention: InterventionSession | None, env: Any, fps: int
+) -> None:
+    if intervention is not None:
+        control_dt = getattr(env, "control_dt", None)
+        if control_dt is None or not np.isclose(control_dt, 1 / fps, rtol=1e-6, atol=0):
+            raise ValueError(
+                "Policy collection requires simulator control_dt to match recording FPS"
+            )
+        intervention.begin_episode()
+
+
+def _finish_recording(
+    state: RecordingState,
+    follower_session: _FollowerSession,
+    close_follower: bool,
+    intervention: InterventionSession | None,
+) -> None:
+    if intervention is not None:
+        try:
+            intervention.end_episode()
+        except Exception as exc:
+            message = f"Leader pose hold failed: {exc}. Support the physical arm now."
+            state.error = f"{state.error}\n{message}" if state.error else message
+    if close_follower:
+        follower_session.close()
+    state.countdown_value = 0
+    state.is_recording = False
+    state.should_stop = False
+    state.recording_finished = True
+
+
+def _record_step(
+    state: RecordingState,
+    follower: SimSOFollower,
+    leader: LeaderProtocol,
+    intervention: InterventionSession | None,
+    joint_names: tuple[str, ...],
+    wrist_roll_offset_deg: float,
+) -> bool:
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    def human_action() -> dict[str, float]:
+        return apply_wrist_roll_offset_deg(
+            leader.get_action(),
+            wrist_roll_offset_deg,
+            reference_wrist_roll_deg=float(obs["wrist_roll.pos"])
+            if "wrist_roll.pos" in obs
+            else None,
+        )
+
+    obs = follower.get_observation()
+    if intervention is None:
+        sent_action = follower.send_action(human_action())
+    else:
+        action = intervention.action(obs, state.task_description, human_action)
+        sent_action = (
+            intervention.execute(action, follower.send_action)
+            if action is not None and not state.should_stop
+            else None
+        )
+        if sent_action is None:
+            _publish_camera_frames(state, obs, record=False)
+            return False
+        state.episode_intervention_ids.append(intervention.intervention_id)
+    _append_step_buffers(state, sent_action, obs, follower.last_step_info(), joint_names)
+    return True
 
 
 def _dict_to_vector(

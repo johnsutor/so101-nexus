@@ -66,7 +66,9 @@ class _FakeRecordingFollower:
         self.initial_leader_action: dict[str, float] | None = None
         self._last_step_info = None
         self._env = types.SimpleNamespace(
-            unwrapped=types.SimpleNamespace(task_description="Fake recording task")
+            unwrapped=types.SimpleNamespace(
+                task_description="Fake recording task", control_dt=1 / config.fps
+            )
         )
         type(self).instances.append(self)
 
@@ -378,6 +380,64 @@ def test_recording_thread_uses_and_records_episode_seed(monkeypatch) -> None:
     assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
 
 
+def test_recording_failure_preserves_elapsed_time_and_rendering_metadata(monkeypatch) -> None:
+    import itertools
+
+    import so101_nexus.teleop.recorder as recorder_module
+
+    class InterruptedLeader(_FakeLeader):
+        reads = 0
+
+        def get_action(self):
+            self.reads += 1
+            if self.reads >= 3:
+                raise ConnectionError("missing motor status packet")
+            return super().get_action()
+
+    events = []
+    metadata = _FakeRecordingFollower.rendering_metadata
+
+    def capture_metadata(self):
+        events.append("metadata")
+        return metadata(self)
+
+    monkeypatch.setattr(_FakeRecordingFollower, "rendering_metadata", capture_metadata)
+    monkeypatch.setattr(_FakeRecordingFollower, "disconnect", lambda self: events.append("close"))
+    monkeypatch.setattr(recorder_module.time, "monotonic", lambda: next(ticks))
+    ticks = itertools.count()
+
+    state, _ = _run_fake_recording(monkeypatch, leader=InterruptedLeader())
+
+    assert "missing motor status packet" in state.error
+    assert len(state.episode_actions) == 1
+    assert state.episode_duration > 0
+    assert state.rendering_metadata == {"renderers": {"side": {"msaa_samples": 4}}}
+    assert events == ["metadata", "close"]
+    assert state.recording_finished
+
+
+def test_rendering_metadata_failure_preserves_primary_error_and_finishes_cleanup(monkeypatch):
+    def fail_metadata(self):
+        raise RuntimeError("renderer unavailable")
+
+    closed = []
+
+    def disconnect(self):
+        closed.append(self)
+
+    monkeypatch.setattr(_FakeRecordingFollower, "rendering_metadata", fail_metadata)
+    monkeypatch.setattr(_FakeRecordingFollower, "disconnect", disconnect)
+
+    state, follower = _run_fake_recording(monkeypatch, leader=_ExplodingLeader())
+
+    assert "simulated leader read failure" in state.error
+    assert "renderer unavailable" in state.error
+    assert closed == [follower]
+    assert state.recording_finished
+    assert not state.is_recording
+    assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
+
+
 def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -> None:
     pytest.importorskip("mujoco")
     pytest.importorskip("so101_nexus.mujoco")
@@ -588,3 +648,28 @@ def test_recording_captures_final_rendering_metadata(monkeypatch, max_steps):
     assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
     state.clear_episode()
     assert state.rendering_metadata == {}
+
+
+def test_human_correction_uses_follower_wrist_reference_at_wrap_boundary():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.recorder import _record_step
+
+    obs = dict.fromkeys((f"{name}.pos" for name in SO101_JOINT_NAMES), 0.0)
+    obs["wrist_roll.pos"] = 163.0
+    sent = []
+
+    def send(action):
+        sent.append(action)
+        return action
+
+    follower = SimpleNamespace(
+        get_observation=lambda: obs, send_action=send, last_step_info=lambda: None
+    )
+    state = RecordingState(num_episodes=1)
+    for wrist_deg in (-90.1, -89.9):
+        leader = SimpleNamespace(
+            get_action=lambda wrist_deg=wrist_deg: {**obs, "wrist_roll.pos": wrist_deg}
+        )
+        assert _record_step(state, follower, leader, None, SO101_JOINT_NAMES, -90.0)
+    assert [action["wrist_roll.pos"] for action in sent] == pytest.approx([179.9, 180.1])

@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import datetime
 import importlib
+import math
 import tempfile
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from enum import Enum
 from typing import TYPE_CHECKING, cast
 
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from imageio.core.format import Format
-from so101_nexus.config import RenderConfig
+from so101_nexus.config import PhysicsConfig, RenderConfig
 from so101_nexus.observations import OverheadCamera, WristCamera
 from so101_nexus.teleop.config_customization import (
     ConfigFactory,
@@ -284,13 +286,18 @@ def build_sim_follower_config(
     wrist_wh: tuple[int, int],
     overhead_wh: tuple[int, int],
     fps: int = 30,
+    align_fps: bool = False,
     seed: int | None = None,
     calibration_dir=None,
     overrides: TeleopConfigOverrides | None = None,
     profile_path: str | None = None,
     factory: ConfigFactory | None = None,
 ):
-    """Return a SimSOFollowerConfig matching the Gradio recording env choices."""
+    """Return a follower config with recording cameras and optional policy timing.
+
+    ``align_fps`` adjusts the physics control period to ``1 / fps`` while keeping
+    physics substeps at most as large as the original configured timestep.
+    """
     from pathlib import Path
 
     from so101_nexus.lerobot_adapter.sim_camera_config import SimCameraConfig
@@ -304,6 +311,24 @@ def build_sim_follower_config(
         profile_path=profile_path,
         factory=factory,
     )
+    if align_fps:
+        if fps <= 0:
+            raise ValueError("Policy FPS must be positive")
+        config = env_kwargs.get("config")
+        if config is None or not hasattr(config, "physics"):
+            raise ValueError("Policy collection requires an environment with PhysicsConfig")
+        # Timing changes should retain the native MuJoCo numerical preset.
+        physics = config.physics or PhysicsConfig(
+            integrator="implicitfast", tolerance=1e-8, noslip_iterations=3
+        )
+        period = 1 / fps
+        substeps = max(1, math.ceil(period / physics.timestep_s))
+        env_kwargs["config"] = config.__class__(
+            **{
+                **vars(config),
+                "physics": replace(physics, control_period_s=period, timestep_s=period / substeps),
+            }
+        )
     wrist_w, wrist_h = wrist_wh
     overhead_w, overhead_h = overhead_wh
     cameras = {

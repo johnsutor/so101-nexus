@@ -20,6 +20,219 @@ A Gradio UI opens in your browser. Most settings live in the UI; the CLI only ta
 connection-level options. For a repeat-use install of the `teleop` extra, see
 [Installation](/docs/getting-started/installation).
 
+## Policy correction collection
+
+Run a trained policy in the same viewer and take control when it needs correction:
+
+```bash
+uv run --extra teleop so101-nexus teleop \
+    --leader-port /dev/ttyACM0 \
+    --policy-path outputs/train/checkpoints/last/pretrained_model \
+    --policy-fps 30 \
+    --policy-device cpu
+```
+
+LeRobot checkpoints must include their preprocessor and postprocessor files.
+The adapter loads the saved normalization statistics and resets cached actions on each handoff.
+Set camera resolutions to match the checkpoint, and use its trained joint order and units.
+Set the UI FPS to the checkpoint's action rate. Use `--policy-fps` to declare that rate
+when it is absent from the checkpoint; initialization rejects mismatched rates.
+Policy collection configures physics to advance exactly `1 / FPS` simulated seconds per
+executed action. Physics substeps divide that interval exactly and remain no larger
+than the configured physics timestep. Wall-clock inference latency can slow collection,
+but it does not change simulated action spacing or dataset timestamps.
+For chunked models, each `select_action` call consumes one action at that rate.
+The model and its processor pipelines retain responsibility for chunk replay and history.
+The default policy output is an absolute six-joint target.
+For a checkpoint trained to predict deltas from current readback, add
+`--policy-action-space joint_pos_delta`.
+This flag describes model output; the UI action-space setting describes saved dataset actions.
+
+### MolmoAct2 SO100/101
+
+The original `allenai/MolmoAct2-SO100_101` package loads directly:
+
+```bash
+uv run --extra teleop --extra molmoact2 so101-nexus teleop \
+    --policy-path allenai/MolmoAct2-SO100_101 \
+    --policy-device cuda
+```
+
+See [Installation](/docs/getting-started/installation#extras) for model dependencies.
+The loader selects continuous inference, the `so100_so101_molmoact2` normalization tag,
+the checkpoint's gripper normalization, and LeRobot's documented legacy joint-frame
+conversion for this package. Shoulder lift reverses direction about 90 degrees;
+elbow flex shifts by 90 degrees. Recorded states and actions stay in follower coordinates.
+The published rollout uses 30 Hz;
+keep the UI FPS at 30. Overhead and side RGB views are supplied by default, matching
+the published example's top and side views. The native image processor handles resizing.
+For another original MolmoAct2 checkpoint, provide `--policy-norm-tag` and `--policy-fps`.
+Its normalization metadata must describe SO101 joint order and absolute joint pose control.
+
+Loading support does not establish task success or cross-calibration compatibility.
+The default conversion follows LeRobot's SO100/101 migration recipe; a custom calibration
+can require different signs or offsets. A custom factory can configure LeRobot's
+`joint_signs` and `joint_offsets` and load its matching processors. Preserve the
+training frame when fine-tuning.
+See [LeRobot backward compatibility](https://huggingface.co/docs/lerobot/backwardcomp).
+
+### Other SO101 policy checkpoints
+
+The loader uses LeRobot's registered policy classes rather than a model allowlist.
+LeRobot 0.6.1 checkpoints for ACT, Diffusion, SmolVLA, and other registered families
+can use the same path when they have six SO101 joint channels, matching units and action
+semantics, saved processor pipelines, and the appropriate optional model dependencies.
+A policy family name alone does not establish checkpoint compatibility.
+See [Installation](/docs/getting-started/installation#extras) for dependencies.
+
+Use repeatable camera mappings when checkpoint names differ:
+
+```bash
+uv run --extra teleop so101-nexus teleop \
+    --policy-path /path/to/so101/pretrained_model \
+    --policy-fps 30 \
+    --policy-camera overhead=front \
+    --policy-camera wrist=wrist
+```
+
+Mappings rename collector inputs before preprocessing. Unmapped cameras remain available.
+For original MolmoAct2 packages without camera-name metadata, supplied mappings select
+the views passed to the model. Check the checkpoint's expected viewpoints as well as names.
+Models with end-effector actions, padded outputs, or another robot's joint order need
+a custom adapter rather than being accepted based on their action dimension alone.
+
+### Intervention controls
+
+1. Click **Start policy episode**. The policy controls the follower after the countdown.
+2. Click **Pause and take control (T)** when correction is needed. Policy stepping stops immediately.
+   The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
+   Keep the leader clear while **Paused: aligning leader** is shown.
+3. When alignment finishes or pauses, hold the physical arm and gripper.
+   Check the support confirmation directly above C, then click **Start correction (C)**.
+   If alignment needs attention, the button reads **Take control from this pose (C)**.
+   The first correction action preserves the current simulated pose. Your movements
+   from this point drive the follower, with pose differences compensated for every joint
+   and the gripper. The simulation stays paused until you start correction.
+4. Click **Resume policy (P)** to continue from the corrected state with a fresh prediction.
+5. Repeat as needed, then review and approve the entire episode.
+
+**Pause (H)** freezes simulation stepping and cancels an active leader synchronization.
+Press each shortcut once; you do not need to hold it. After pausing, use T to align
+the leader again before starting a correction, or P to resume the policy.
+The controller panel shows remaining simulation time and steps. Paused time does not
+consume this budget. Episodes end at Max Steps or after task success; **Stop and review episode**
+ends recording and opens review.
+The keyboard shortcuts work while the Record controls are visible and you are not typing in a field.
+Slow model inference does not block a takeover request. A request takes effect between simulator steps.
+Late predictions and cached chunks from before a handoff cannot control the follower afterward.
+Simulation time freezes while paused or while inference or synchronization is pending;
+these waits add no dataset frames.
+This collector currently supports the simulated follower, not real-robot deployment.
+
+Synchronization uses the calibrated leader motor bus, with body joints in degrees and the gripper in percent.
+Targets ramp at up to 20 degrees per second for body joints and 40 percentage points per second for the gripper.
+Before holding, each measured joint target must be acknowledged by that motor before
+its torque is enabled. If a motor fails, holding is still attempted for the other joints;
+the overall hold remains unconfirmed.
+Default alignment tolerances are 10 degrees for body joints and 5 percentage points
+for the gripper. Set `--leader-alignment-tolerance-deg` and
+`--leader-gripper-tolerance-percent` to override them. Both must be positive and finite.
+These tolerances guide alignment readiness; they do not block supported takeover
+from a paused alignment pose.
+Wrist roll uses circular angular distance, and its inverse offset wraps into the physical
+single-turn range. During correction, wrist targets use the equivalent angle nearest
+follower readback so crossing the angle boundary does not flip the simulated target.
+An alignment timeout holds the measured physical pose and keeps the episode paused.
+The controller panel lists the joints that did not reach their targets, including measured
+and target positions. Hold the arm, confirm support beside C, and take control from
+this pose. You can also press T to retry alignment or P to resume the policy.
+Torque changes and synchronization reads and transmissions retry communication failures
+up to three times through LeRobot.
+A persistent motor communication error that prevents holding still ends recording.
+Pausing, finishing an episode, and process cleanup also preserve motor torque.
+Recording errors stay visible in Review, along with any failure to hold the leader.
+If holding is unconfirmed, support the arm and gripper immediately.
+These are target-command bounds, not guarantees of physical motor speed or successful holding
+when motor communication or power fails.
+
+To park the leader after recording stops, expand **Park or release the leader arm**.
+Support or park the arm and gripper, check the parking confirmation, and click
+**Release motors for parking**. This panel is not needed for normal takeover and
+stays available in Review and Complete. Finalization and reinitialization require
+this explicit release. The confirmation resets
+after each handoff or release. Closing the process without releasing the leader preserves
+motor torque; support and park the arm before disconnecting power.
+
+### Custom model adapters
+
+Use `--policy-factory my_project.policy:build_policy` for a custom model or remote inference client.
+The no-argument factory returns an object with `select_action(batch)` and `reset()` methods.
+This runnable scaffold holds the current pose; replace `select_action` with your model's prediction:
+
+```python
+class MyPolicy:
+    def select_action(self, batch):
+        return batch["observation.state"].copy()
+
+    def reset(self):
+        pass
+
+
+def build_policy():
+    return MyPolicy()
+```
+
+The batch contains an unbatched float32 `observation.state`, task text, and available
+`observation.images.wrist`, `observation.images.overhead`, and `observation.images.side` arrays.
+When available, `observation.environment_state` contains the privileged component vector.
+Images use HWC uint8 RGB format. The state follows `SO101_JOINT_NAMES` order.
+Body joints use degrees and the gripper uses 0 to 100 percent, matching follower readback.
+Return a finite NumPy array or torch tensor of shape `(6,)` in the same order and units.
+For delta output, use the policy action-space flag described above.
+Map camera names, normalization, and any other model-specific inputs inside the adapter.
+`reset()` must clear action chunks and recurrent history. All model calls run serially on an inference thread.
+Custom factories own device selection; `--policy-device` applies to the built-in LeRobot loader.
+A factory adapter may expose an integer `fps`; otherwise declare its rate with `--policy-fps`.
+
+For another input device, `InterventionSession.request("human")`, `request("hold")`,
+and `request("policy")` expose the same handoffs independently of Gradio.
+The session accepts a synchronizer with `start(target)`, `tick()`, `cancel()`, and `release()`
+methods and a `holding` property. `cancel()` stops alignment and holds the measured pose;
+`tick()` keeps torque enabled after convergence. Only `release()` disables torque.
+For a staged takeover, call `request("human", pause_after_sync=True)`, then
+`start_correction()` after the operator supports the leader. It captures an anchor
+before releasing torque, so correction starts from the current follower pose even
+when alignment timed out. The anchor resets at each handoff. A direct `request("human")`
+aligns and releases the leader, so its caller must obtain support confirmation first.
+`end_episode()` holds the leader; `release_leader()` explicitly releases an idle leader.
+`SOLeaderSynchronizer` provides the SO leader implementation.
+These public objects are available from `so101_nexus`.
+
+### Training on corrections
+
+Collection records autonomous context and human corrections in one continuous episode.
+Dataset fields identify which actions are expert supervision; the schema is described
+[below](#recorded-dataset-format).
+Do not train behavior cloning on autonomous actions as if they were human demonstrations.
+Aggregate the original demonstrations with human-controlled targets from the new episodes.
+
+For chunked policies, sample human-controlled starting frames and mask targets after the human segment ends.
+The public helper works with NumPy arrays and torch tensors:
+
+```python
+import torch
+from so101_nexus import intervention_chunk_mask
+
+intervention_ids = torch.tensor([0, 1, 1, 0, 2])
+mask = intervention_chunk_mask(intervention_ids, horizon=3)
+```
+
+Pass one episode at a time. Each mask row describes valid human targets for a chunk starting at that frame.
+Zero marks autonomous frames; positive IDs distinguish correction segments.
+Use the mask in your trainer's loss, and exclude autonomous starting frames from correction sampling.
+The standard LeRobot training CLI does not automatically apply this helper or filter these fields.
+Recovery and correction share the same human label in this initial collector.
+
 ## Hardware and the serial port
 
 You need a physical SO-100 or SO-101 leader arm on USB and a host with access to its serial
@@ -66,6 +279,14 @@ You do not need to record the episodes again.
 | `--leader-port` | `str` | `/dev/ttyACM0` | Serial port of the leader arm |
 | `--leader-id` | `str` | `so101_leader` | Device identifier for the leader arm |
 | `--wrist-roll-offset-deg` | `float` | `-90.0` | Wrist roll offset in degrees |
+| `--policy-path` | `str \| None` | `None` | LeRobot checkpoint directory or Hub model ID |
+| `--policy-factory` | `str \| None` | `None` | No-argument Python `module:function` returning a model adapter |
+| `--policy-type` | `str \| None` | `None` | Optional checkpoint type check or original MolmoAct2 loader selection |
+| `--policy-norm-tag` | `str \| None` | `None` | Original MolmoAct2 normalization tag; inferred for the published SO100/101 package |
+| `--policy-fps` | `int \| None` | `None` | Required action rate when unavailable from model metadata; 30 for the published MolmoAct2 SO100/101 rollout |
+| `--policy-camera` | repeatable `str` | `[]` | Camera mapping such as `overhead=front` or `wrist=wrist` |
+| `--policy-device` | `str` | `cpu` | Device for the built-in LeRobot loader |
+| `--policy-action-space` | `str` | `joint_pos` | Model output: absolute `joint_pos` or readback-relative `joint_pos_delta` |
 | `--seed` | `int` | `0` | Base seed for simulation episodes |
 | `--env-config-profile` | `str \| None` | `None` | JSON or TOML profile with environment config overrides |
 | `--env-config-factory` | `str \| None` | `None` | Python `module:function` that returns a config or `gym.make` kwargs |
@@ -94,10 +315,19 @@ stay forced on because LeRobot datasets require them for policy training and tas
 Datasets use the LeRobot v3 SO follower schema. Always present:
 
 - `observation.state`: follower readback, 6D
-- `action`: commanded absolute joint positions, 6D
+- `action`: executed joint targets, 6D (absolute by default)
 - `reward`: scalar transition reward from the same environment step as `action`
 - `success` and `done`: episode success and termination flags
 - `task`: language description, from LeRobot v3 metadata
+
+Policy correction datasets additionally require `is_intervention` (float32, 0 or 1) and
+`intervention_id` (int64, 0 for autonomy, positive per human segment).
+The recorder preserves the executed follower command after limiting, paired with pre-action readback.
+When the UI selects `joint_pos_delta`, correction datasets store target minus pre-action readback.
+Ordinary teleop delta datasets retain their frame-to-frame target differences.
+Episode reproducibility metadata includes the policy path or factory, device, camera mappings,
+normalization options, effective FPS, and policy action convention.
+A local checkpoint path identifies its source; it does not capture a hash of mutable weights.
 
 Optional, on by default: `observation.images.wrist`, `observation.images.overhead`,
 `observation.images.side`, and

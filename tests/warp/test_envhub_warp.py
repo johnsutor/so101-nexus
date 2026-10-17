@@ -103,7 +103,8 @@ def test_worlds_expose_the_task_string_lerobot_reads(hub_env):
     assert hasattr(env.envs[0], "task")
 
     features = lerobot_utils.preprocess_observation(observation)
-    tasks = lerobot_utils.add_envs_task(env, features)["task"]
+    features["task"] = list(env.call("task_description"))
+    tasks = features["task"]
 
     assert tasks == list(env.unwrapped.task_descriptions)
     assert tasks[0].startswith("Touch the ")

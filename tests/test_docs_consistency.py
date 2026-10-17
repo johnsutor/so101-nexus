@@ -59,6 +59,16 @@ def test_every_docs_page_is_reachable_from_nav() -> None:
     assert orphans == [], f"docs pages missing from nav: {orphans}"
 
 
+def test_mdx_numeric_comparisons_use_code_spans() -> None:
+    """Bare numeric comparisons are parsed as invalid JSX in MDX prose."""
+    offenders = []
+    for path in DOCS.rglob("*.mdx"):
+        prose = re.sub(r"```.*?```|`[^`\n]*`", "", _read(path), flags=re.DOTALL)
+        if re.search(r"<\d", prose):
+            offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == [], f"Wrap numeric comparisons in code spans: {offenders}"
+
+
 def test_asset_docs_require_revision_pins_and_isolated_caches() -> None:
     """Custom asset sources must document their immutable revision and cache scope."""
     text = _read(DOCS / "api" / "objects.mdx")

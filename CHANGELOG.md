@@ -11,6 +11,17 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Direct MolmoAct2 SO100/101 checkpoint loading for policy correction collection,
+  with checkpoint normalization, legacy joint-frame conversion, configurable
+  camera mappings, and explicit
+  policy rate validation for generic LeRobot SO101 checkpoints.
+
+- Policy correction collection in the teleop viewer, with leader synchronization,
+  keyboard takeover, hold and resume controls, LeRobot checkpoint loading, and custom
+  model factories. Correction datasets record intervention flags, segment IDs, and
+  policy provenance. Public `InterventionSession`, `SOLeaderSynchronizer`,
+  `LeRobotPolicyAdapter`, and `intervention_chunk_mask` support custom integrations.
+
 - Public immutable `RenderingQuality` configuration for MuJoCo and mjbatch cameras,
   with MSAA, shadow flags, shadow map size, and an opt-in four-sample, no-shadow
   `reproducible` profile. Camera components inherit `RenderConfig` quality and
@@ -18,7 +29,59 @@ for the public-API and deprecation policy.
 - Rendering metadata reports effective camera quality and renderer runtime details
   for reproducibility records. Unsupported Warp quality configurations raise an error.
 
+### Changed
+
+- Teleop initialization keeps a native loading indicator, current operation, and
+  elapsed time visible while model weights load. Detailed logs are expandable.
+
+- Supported policy correction can start from a paused alignment pose, compensating
+  leader/follower offsets for every joint and the gripper to avoid a takeover jump.
+  Default alignment tolerances are 10 degrees and 5 gripper percentage points,
+  adjustable with `--leader-alignment-tolerance-deg` and
+  `--leader-gripper-tolerance-percent`. Correction support confirmation now sits
+  beside C; separate parking controls are collapsed.
+
+- Policy correction takeover now stays paused after leader alignment until Start
+  correction (C). Native Gradio controls show explicit simulation state, remaining
+  episode time, single-press shortcuts, and expandable guidance. Stale correction
+  starts cannot override a pause or policy handoff.
+
+- Upgrade the supported LeRobot dependency to released 0.6.1, including its dataset
+  extra and optional MolmoAct2 dependencies. Use the 0.6 video encoder and feature APIs.
+- Policy correction collection aligns simulator control periods with dataset FPS.
+  Desktop Torch/TorchCodec bounds stay unchanged; Linux ARM64 uses the 2.11/0.11 pair.
+
 ### Fixed
+
+- MolmoAct2 dependencies require patched Transformers releases, avoiding the
+  vulnerable version selected by LeRobot's aggregate policy extra. Installation
+  documentation formats version constraints as code so MDX builds successfully.
+
+- Physical leader holds acknowledge each joint target before enabling its torque,
+  continue holding healthy joints after another motor fails, and retry alignment
+  reads and transmissions. Nearly equivalent wrist poses across the angle boundary
+  no longer trigger a nearly full turn.
+- Teleop rejects overlapping initialization and episode changes, duplicate empty
+  approvals, and stale starts after completion. Keyboard shortcuts work when the
+  support checkbox has focus, and Stop is available during countdown and setup.
+- Review remains available when video or plot generation fails. Interrupted
+  recordings preserve elapsed duration and rendering metadata, and setup cancellation
+  stops before policy control begins.
+
+- Physical leader torque changes retry missing motor acknowledgments up to three
+  times through LeRobot, preventing a single dropped Feetech `Lock` response from
+  ending recording. Persistent failures still leave holding unconfirmed.
+
+- Wrist offsets wrap takeover targets into the physical motor's single-turn range
+  and preserve continuous correction targets across angle boundaries. Alignment
+  checks measured convergence before timeout, including equivalent wrist endpoints.
+  Alignment timeouts keep the episode paused with per-joint diagnostics and retry
+  controls instead of ending recording.
+
+- Physical leaders retain motor torque after policy collection errors, alignment,
+  pause, episode completion, and process cleanup. Explicit motor release requires
+  operator support confirmation in the viewer. Recording errors remain visible
+  in Review, and failed pose holds are reported without disabling torque.
 
 - State-only MuJoCo environments initialize when OpenGL is disabled, including macOS CI.
 - Teleoperation preserves configured depth modalities when it resizes observation cameras.

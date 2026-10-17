@@ -8,6 +8,7 @@ gradio runtime.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import types
@@ -850,56 +851,38 @@ def test_connect_leader_returns_connected_leader_on_success(monkeypatch) -> None
 
 
 def test_create_dataset_wraps_creation_failure(monkeypatch) -> None:
-    """Expose dataset creation failures with recording context."""
-
-    class _RaisingDataset:
+    class Dataset:
         @classmethod
-        def create(cls, **_kwargs):
+        def create(cls, **kwargs):
             raise ValueError("schema mismatch")
 
-    fake_module = types.ModuleType("lerobot.datasets.lerobot_dataset")
-    fake_module.LeRobotDataset = _RaisingDataset  # type: ignore[attr-defined]
-
-    for name, mod in [
-        ("lerobot", types.ModuleType("lerobot")),
-        ("lerobot.datasets", types.ModuleType("lerobot.datasets")),
-        ("lerobot.datasets.lerobot_dataset", fake_module),
-    ]:
-        monkeypatch.setitem(sys.modules, name, mod)
-
+    monkeypatch.setattr(
+        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
+    )
     with pytest.raises(RuntimeError, match="Failed to create dataset: schema mismatch"):
         _create_dataset("local/test", 30, "so101", {})
 
 
 def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
-    """Happy path: _create_dataset returns the LeRobotDataset instance."""
     seen = {}
 
-    class _OkDataset:
+    class Dataset:
         @classmethod
         def create(cls, **kwargs):
             seen.update(kwargs)
             return cls()
 
-    fake_module = types.ModuleType("lerobot.datasets.lerobot_dataset")
-    fake_module.LeRobotDataset = _OkDataset  # type: ignore[attr-defined]
-
-    for name, mod in [
-        ("lerobot", types.ModuleType("lerobot")),
-        ("lerobot.datasets", types.ModuleType("lerobot.datasets")),
-        ("lerobot.datasets.lerobot_dataset", fake_module),
-    ]:
-        monkeypatch.setitem(sys.modules, name, mod)
-
-    ds = _create_dataset("local/test", 30, "so101", {"action": {}})
-
-    assert isinstance(ds, _OkDataset)
+    monkeypatch.setattr(
+        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
+    )
+    dataset = _create_dataset("local/test", 30, "so101", {"action": {}})
+    assert isinstance(dataset, Dataset)
     assert seen["repo_id"] == "local/test"
     assert seen["fps"] == 30
     assert seen["robot_type"] == "so101"
     assert seen["features"] == {"action": {}}
     assert seen["image_writer_threads"] == 4
-    assert seen["vcodec"] == "h264"
+    assert seen["rgb_encoder"].vcodec == "h264"
 
 
 def test_write_env_config_meta_writes_reloadable_profile(tmp_path) -> None:
@@ -945,6 +928,37 @@ def test_write_env_config_meta_handles_no_overrides(tmp_path) -> None:
     assert profile == {"envs": {"So101ReachTarget-v0": {}}}
 
 
+@pytest.mark.parametrize("error", [None, "Insufficient device memory"])
+def test_init_progress_stays_active_until_worker_finishes(monkeypatch, error):
+    state = {
+        "done": False,
+        "log_lines": ["Loading model weights and saved processors..."],
+        "error": None,
+    }
+    updates = []
+
+    async def advance(_interval):
+        if len(updates) == 1:
+            state["log_lines"].append("Creating LeRobot dataset...")
+        else:
+            state.update(done=True, error=error)
+
+    monkeypatch.setattr(asyncio, "sleep", advance)
+    result = asyncio.run(
+        teleop_app._wait_for_init(state, lambda value, desc: updates.append((value, desc)))
+    )
+
+    assert updates == [
+        (None, "Loading model weights and saved processors..."),
+        (None, "Creating LeRobot dataset..."),
+    ]
+    if error:
+        assert error in result
+        assert "Retry Initialization" in result
+    else:
+        assert "Session ready" in result
+
+
 def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
     init_state = {
         "done": True,
@@ -960,7 +974,16 @@ def test_poll_init_surfaces_error_and_retry_button(fake_gradio) -> None:
     assert "Connecting leader arm" in outputs[0]["value"]
     assert "permission denied" in outputs[0]["value"].lower()
     assert outputs[1]["visible"] is True
+    assert outputs[5]["value"] == "### Initialization failed"
     assert init_state["processed"] is True
+
+
+def test_poll_init_shows_current_operation_outside_the_log(fake_gradio):
+    state = {"done": False, "log_lines": ["Connecting leader...", "Loading model weights..."]}
+    outputs = _cb_poll_init({}, state)
+    assert outputs[5]["value"] == "### Loading model weights..."
+    state["log_lines"].append("Creating LeRobot dataset...")
+    assert _cb_poll_init({}, state)[5]["value"] == "### Creating LeRobot dataset..."
 
 
 def test_retry_init_resets_failed_state(fake_gradio) -> None:
@@ -1086,6 +1109,52 @@ def test_poll_recording_reviews_all_buffered_cameras(fake_gradio, monkeypatch):
     assert captured["images"]["Wrist"] is state.episode_wrist_images
     assert captured["images"]["Overhead"] is state.episode_overhead_images
     assert captured["images"]["Side"] is state.episode_side_images
+
+
+@pytest.mark.parametrize("failed_preview", ["make_review_video", "make_state_plot"])
+def test_review_preview_failure_preserves_recording_and_review_controls(
+    fake_gradio, monkeypatch, failed_preview
+):
+    def fail_preview(*args, **kwargs):
+        raise OSError("preview unavailable")
+
+    monkeypatch.setattr(teleop_app, "make_review_video", lambda *args: "review.mp4")
+    monkeypatch.setattr(teleop_app, "make_state_plot", lambda *args: "state-plot")
+    monkeypatch.setattr(teleop_app, failed_preview, fail_preview)
+    state = RecordingState(recording_finished=True, error="Leader connection failed")
+    state.episode_actions.append(np.zeros(2, dtype=np.float32))
+    state.episode_states.append(np.zeros(2, dtype=np.float32))
+
+    outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ("joint_a", "joint_b")})
+
+    assert outputs[6].selected == 3
+    assert outputs[7]["value"] == (None if failed_preview == "make_review_video" else "review.mp4")
+    assert outputs[8]["value"] == (None if failed_preview == "make_state_plot" else "state-plot")
+    assert "Leader connection failed" in outputs[10]["value"]
+    assert "preview unavailable" in outputs[10]["value"]
+    assert outputs[10]["visible"] is True
+    assert outputs[11]["interactive"] is True
+    assert outputs[12]["interactive"] is True
+    assert state.error == "Leader connection failed"
+    assert not state.recording_finished
+    assert len(state.episode_actions) == len(state.episode_states) == 1
+
+
+def test_review_preview_failure_does_not_report_recording_failure(fake_gradio, monkeypatch):
+    def fail_video(*args):
+        raise OSError("encoder unavailable")
+
+    monkeypatch.setattr(teleop_app, "make_review_video", fail_video)
+    state = RecordingState(recording_finished=True)
+
+    outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ()})
+
+    assert outputs[0]["value"] == "Recording complete."
+    assert "encoder unavailable" in outputs[10]["value"]
+    assert "Recording stopped after an error" not in outputs[10]["value"]
+    assert outputs[11]["interactive"] is False
+    assert outputs[12]["interactive"] is True
+    assert state.error is None
 
 
 def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:
@@ -1487,7 +1556,10 @@ def test_poll_recording_failed_empty_episode_warns_without_plot_error(
 
     assert len(outputs) == 13
     assert warnings == ["Recording failed: RuntimeError: boom"]
-    assert state.error is None
+    assert state.error == "RuntimeError: boom"
+    assert "RuntimeError: boom" in outputs[10]["value"]
+    assert outputs[10]["visible"] is True
+    assert outputs[11]["interactive"] is False
     assert outputs[7]["value"] is None
 
 
@@ -1594,3 +1666,50 @@ def test_finalize_closes_recording_worker_even_when_dataset_finalize_fails(
         teleop_app._cb_finalize_and_close(session)
         assert events == ["close", "finalize", "disconnect"]
     assert "recording_worker" not in session
+
+
+@pytest.mark.parametrize("action_space", ["joint_pos", "joint_pos_delta"])
+def test_approve_correction_preserves_provenance_and_action_semantics(
+    fake_gradio,
+    tmp_path,
+    action_space,
+):
+    import json
+
+    from so101_nexus.teleop.dataset import FieldSelection
+
+    frames = []
+    state = RecordingState(num_episodes=2)
+    state.episode_actions = [np.full(6, 20.0), np.full(6, 21.0)]
+    state.episode_states = [np.full(6, 15.0), np.full(6, 19.0)]
+    state.episode_intervention_ids = [0, 1]
+    dataset = types.SimpleNamespace(
+        root=tmp_path,
+        num_episodes=0,
+        add_frame=frames.append,
+        save_episode=lambda: None,
+        clear_episode_buffer=lambda: None,
+    )
+    session = {
+        "state": state,
+        "dataset": dataset,
+        "intervention": object(),
+        "action_space": action_space,
+        "policy_options": {"factory": "example:build", "device": "cpu"},
+        "policy_action_space": "joint_pos",
+        "env_id": "MuJoCoTouch-v1",
+        "fps": 30,
+        "field_selection": FieldSelection(
+            wrist_image=False, overhead_image=False, environment_state=False
+        ),
+    }
+    _cb_approve_episode(session)
+    assert state.episodes_completed == 1
+    expected = [20, 21] if action_space == "joint_pos" else [5, 2]
+    for frame, value, segment in zip(frames, expected, (0, 1), strict=True):
+        np.testing.assert_array_equal(frame["action"], np.full(6, value))
+        np.testing.assert_array_equal(frame["intervention_id"], [segment])
+    metadata = json.loads((tmp_path / "meta/reproducibility/episode_000000.json").read_text())
+    assert metadata["policy"]["factory"] == "example:build"
+    assert metadata["policy"]["action_space"] == "joint_pos"
+    assert metadata["policy"]["fps"] == 30

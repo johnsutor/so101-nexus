@@ -7,6 +7,7 @@ base install does not fail.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import importlib
 import logging
@@ -19,6 +20,11 @@ from typing import TYPE_CHECKING, cast
 from so101_nexus.constants import COLOR_MAP, CUBE_COLOR_MAP, ColorName
 from so101_nexus.env_ids import Backend, env_ids_for_backend
 from so101_nexus.objects import CubeObject, GSOObject, SceneObject, YCBObject
+from so101_nexus.policy_adapters.collection import (
+    load_collection_policy,
+    parse_policy_camera_map,
+    validate_policy_fps,
+)
 from so101_nexus.teleop.config_customization import (
     TeleopConfigOverrides,
     apply_config_overrides,
@@ -41,8 +47,10 @@ from so101_nexus.teleop.dataset import (
     build_frame,
     save_recorded_episode,
 )
+from so101_nexus.teleop.intervention import InterventionSession
 from so101_nexus.teleop.leader import (
     ROBOT_JOINT_NAMES,
+    SOLeaderSynchronizer,
     check_robot_env_mismatch,
     diagnose_leader_port,
     format_leader_connection_error,
@@ -356,6 +364,8 @@ def _connect_leader(robot_type: str, leader_port: str, leader_id: str):
 
 def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
     """Create and return a LeRobotDataset."""
+    from lerobot.configs.video import RGBEncoderConfig
+
     from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
 
     reward_dataset_cls = _make_reward_scalar_dataset_cls()
@@ -366,7 +376,7 @@ def _create_dataset(repo_id: str, fps: int, robot_type: str, features: dict):
             robot_type=robot_type,
             features=features,
             image_writer_threads=4,
-            vcodec="h264",
+            rgb_encoder=RGBEncoderConfig(vcodec="h264"),
         )
     except Exception as exc:
         raise RuntimeError(f"Failed to create dataset: {exc}") from exc
@@ -422,10 +432,28 @@ def _run_init_worker(
     """Body of the background init worker."""
     joint_names = ROBOT_JOINT_NAMES[robot_type]
     leader = None
+    intervention = None
     try:
         _append_init_log(init_state, f"Connecting leader arm on {leader_port} (id={leader_id})...")
         import_backend_for_env_id(env_id)
         leader = _connect_leader(robot_type, leader_port, leader_id)
+        policy_options = session.get("policy_options", {})
+        if any(policy_options.get(key) for key in ("path", "factory")):
+            _append_init_log(init_state, "Loading model weights and saved processors...")
+            policy = load_collection_policy(**policy_options)
+            if policy is None:
+                raise RuntimeError("No collection policy was loaded")
+            validate_policy_fps(policy, fps, expected_fps=policy_options.get("fps"))
+            intervention = InterventionSession(
+                policy,
+                SOLeaderSynchronizer(
+                    leader.bus,
+                    wrist_roll_offset_deg=wrist_roll_offset_deg,
+                    **session.get("leader_alignment_options", {}),
+                ),
+                joint_names,
+                action_space=session.get("policy_action_space", "joint_pos"),
+            )
         _append_init_log(init_state, "Creating LeRobot dataset...")
         action_features = {f"{name}.pos": float for name in joint_names}
         follower_features: dict[str, type[float] | tuple[int, int, int]] = dict(action_features)
@@ -449,10 +477,12 @@ def _run_init_worker(
             follower_features,
             action_features,
             env_state_names=env_state_names,
+            intervention=intervention is not None,
         )
         dataset = _create_dataset(repo_id, fps, robot_type, features)
         session.update(
             leader=leader,
+            intervention=intervention,
             dataset=dataset,
             state=RecordingState(num_episodes=num_episodes),
             joint_names=joint_names,
@@ -472,9 +502,12 @@ def _run_init_worker(
         _append_init_log(init_state, "Initialization complete.")
         init_state["done"] = True
     except Exception as exc:
+        if intervention is not None:
+            with contextlib.suppress(Exception):
+                intervention.close()
         if leader is not None:
             with contextlib.suppress(Exception):
-                leader.disconnect()
+                _disconnect_leader(session, leader)
         init_state["error"] = str(exc)
         init_state["done"] = True
 
@@ -583,48 +616,58 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
     """Reset init state and launch a fresh initialization attempt."""
     import gradio as gr
 
-    _close_recording_worker(session)
-    init_state.update(
-        warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
-        running=True,
-        done=False,
-        processed=False,
-        error=None,
-        log_lines=[],
-        log_text="",
-        last_config=config,
-    )
+    with session.setdefault("init_lock", threading.Lock()):
+        if init_state.get("running"):
+            raise gr.Error("Initialization is already running. Wait for it to finish.")
+        intervention = session.get("intervention")
+        if intervention is not None and not intervention.leader_released:
+            raise gr.Error(
+                "Support the physical leader and release its motors before reinitializing."
+            )
+        _close_recording_worker(session)
+        if (leader := session.pop("leader", None)) is not None:
+            _disconnect_leader(session, leader)
+        init_state.update(
+            warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
+            running=True,
+            done=False,
+            processed=False,
+            error=None,
+            log_lines=[],
+            log_text="",
+            last_config=config,
+        )
 
-    threading.Thread(
-        target=_run_init_worker,
-        args=(
-            session,
-            init_state,
-            leader_port,
-            config["env_id"],
-            config["robot_type"],
-            config["leader_id"],
-            config["fps"],
-            config["wrist_wh"],
-            config["overhead_wh"],
-            config["repo_id"],
-            config["num_episodes"],
-            config["action_space"],
-            config["max_steps"],
-            config["countdown"],
-            config["wrist_roll_offset_deg"],
-            config["field_selection"],
-            config["env_overrides"],
-            config["success_hold_seconds"],
-        ),
-        daemon=True,
-    ).start()
+        threading.Thread(
+            target=_run_init_worker,
+            args=(
+                session,
+                init_state,
+                leader_port,
+                config["env_id"],
+                config["robot_type"],
+                config["leader_id"],
+                config["fps"],
+                config["wrist_wh"],
+                config["overhead_wh"],
+                config["repo_id"],
+                config["num_episodes"],
+                config["action_space"],
+                config["max_steps"],
+                config["countdown"],
+                config["wrist_roll_offset_deg"],
+                config["field_selection"],
+                config["env_overrides"],
+                config["success_hold_seconds"],
+            ),
+            daemon=True,
+        ).start()
 
-    return (
-        gr.Walkthrough(selected=1),
-        gr.update(value="Starting..."),
-        gr.update(visible=False),
-    )
+        return (
+            gr.Walkthrough(selected=1),
+            gr.update(value="Starting..."),
+            gr.update(visible=False),
+        )
 
 
 def _cb_start_init(
@@ -791,22 +834,35 @@ def _cb_validate_repo_id(repo_id: str, *, check_remote: bool = False):
     return gr.update(visible=True, value="\n\n".join(f"_{msg}_" for msg in messages))
 
 
+async def _wait_for_init(init_state: dict, progress) -> str:
+    """Keep native Gradio progress active while the background worker runs."""
+    while not init_state["done"]:
+        lines = init_state.get("log_lines", [])
+        progress(None, desc=lines[-1] if lines else "Preparing session...")
+        await asyncio.sleep(0.25)
+    if error := init_state.get("error"):
+        return f"### Initialization failed\n{error}\n\nChoose Retry Initialization to try again."
+    return "### Session ready"
+
+
 def _cb_poll_init(session: dict, init_state: dict):
     """Poll the init thread and stream log output to the UI."""
     import gradio as gr
 
     if init_state.get("processed"):
-        return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
+        return tuple(gr.update() for _ in range(6))
 
     log = _current_init_log(init_state)
 
     if not init_state["done"]:
+        stage = (init_state.get("log_lines") or ["Preparing session..."])[-1]
         return (
             gr.update(value=log or "Starting..."),
             gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),
+            gr.update(value=f"### {stage}"),
         )
 
     init_state["running"] = False
@@ -819,6 +875,7 @@ def _cb_poll_init(session: dict, init_state: dict):
             gr.update(),
             gr.update(),
             gr.update(),
+            gr.update(value="### Initialization failed"),
         )
 
     if init_state["warning"]:
@@ -836,6 +893,7 @@ def _cb_poll_init(session: dict, init_state: dict):
         gr.Walkthrough(selected=2),
         gr.update(value=header, visible=True),
         gr.update(visible=True, value=_progress_text(0, n)),
+        gr.update(value="### Session ready"),
     )
 
 
@@ -843,35 +901,47 @@ def _cb_start_recording(session: dict):
     """Launch the recording thread and update UI to recording state."""
     import gradio as gr
 
-    s = session["state"]
-    worker = session.get("recording_worker")
-    if worker is None:
-        worker = session["recording_worker"] = RecordingWorker()
-    worker.submit(
-        state=s,
-        env_id=session["env_id"],
-        leader=session["leader"],
-        joint_names=session["joint_names"],
-        fps=session["fps"],
-        max_steps=session["max_steps"],
-        countdown=session["countdown"],
-        wrist_roll_offset_deg=session["wrist_roll_offset_deg"],
-        wrist_wh=session["wrist_wh"],
-        overhead_wh=session["overhead_wh"],
-        follower_calibration_dir=_default_follower_calibration_dir(),
-        follower_robot_id=_FOLLOWER_ROBOT_ID,
-        customization_overrides=session.get("env_overrides"),
-        env_config_profile=session.get("env_config_profile"),
-        env_config_factory=session.get("env_config_factory"),
-        success_hold_seconds=session.get("success_hold_seconds", 0.5),
-        seed=session.get("seed", 0),
-    )
-    return (
-        gr.update(value="Starting..."),
-        gr.update(visible=False),
-        gr.update(value=None, visible=False),
-        gr.update(value=_TASK_PENDING_TEXT),
-    )
+    with (
+        _episode_transaction(session),
+        session.setdefault("leader_lifecycle_lock", threading.Lock()),
+    ):
+        s = session["state"]
+        if s.episodes_completed >= s.num_episodes:
+            raise gr.Error(
+                "This recording session is complete. Initialize a new session to record more."
+            )
+        if s.episode_actions or s.error:
+            raise gr.Error("Save or discard the current episode before starting another.")
+        worker = session.get("recording_worker")
+        if worker is None:
+            worker = session["recording_worker"] = RecordingWorker()
+        worker.submit(
+            state=s,
+            env_id=session["env_id"],
+            leader=session["leader"],
+            joint_names=session["joint_names"],
+            fps=session["fps"],
+            max_steps=session["max_steps"],
+            countdown=session["countdown"],
+            wrist_roll_offset_deg=session["wrist_roll_offset_deg"],
+            wrist_wh=session["wrist_wh"],
+            overhead_wh=session["overhead_wh"],
+            follower_calibration_dir=_default_follower_calibration_dir(),
+            follower_robot_id=_FOLLOWER_ROBOT_ID,
+            customization_overrides=session.get("env_overrides"),
+            env_config_profile=session.get("env_config_profile"),
+            env_config_factory=session.get("env_config_factory"),
+            success_hold_seconds=session.get("success_hold_seconds", 0.5),
+            seed=session.get("seed", 0),
+            intervention=session.get("intervention"),
+        )
+        return (
+            gr.update(value="Starting..."),
+            gr.update(visible=False),
+            gr.update(value=None, visible=False),
+            gr.update(value=_TASK_PENDING_TEXT),
+            gr.update(visible=True),
+        )
 
 
 def _task_status_text(task_description: str) -> str:
@@ -893,7 +963,7 @@ def _cb_poll_recording(session: dict):
             gr.update(visible=False),
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             gr.update(visible=False),
-            gr.update(visible=False),
+            gr.update(visible=True),
             gr.update(value=_TASK_PENDING_TEXT),
             gr.update(),
             gr.update(),
@@ -941,12 +1011,16 @@ def _cb_poll_recording(session: dict):
             gr.update(),
             gr.update(),
         )
-    if s.error:
-        gr.Warning(f"Recording failed: {s.error}")
-        s.error = None
     if s.recording_finished:
+        if s.error:
+            gr.Warning(f"Recording failed: {s.error}")
         return _recording_finished_updates(session, s, fps)
-    return tuple(gr.update() for _ in range(13))
+    updates = [gr.update() for _ in range(13)]
+    worker = session.get("recording_worker")
+    if worker is not None and not worker.wait(0):
+        updates[0] = gr.update(value="Preparing simulation... You can stop this episode.")
+        updates[4] = gr.update(visible=True)
+    return tuple(updates)
 
 
 def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
@@ -954,17 +1028,24 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     import gradio as gr
 
     jn = session["joint_names"]
-    video_path = make_review_video(
-        {
-            "Wrist": s.episode_wrist_images,
-            "Overhead": s.episode_overhead_images,
-            "Side": s.episode_side_images,
-        },
-        fps,
-    )
-    fig = (
-        make_state_plot(s.episode_states, jn, fps, s.episode_rewards) if s.episode_states else None
-    )
+    video_path = fig = None
+    preview_warnings = []
+    try:
+        video_path = make_review_video(
+            {
+                "Wrist": s.episode_wrist_images,
+                "Overhead": s.episode_overhead_images,
+                "Side": s.episode_side_images,
+            },
+            fps,
+        )
+    except Exception as exc:
+        preview_warnings.append(f"Video preview could not be generated: {exc}")
+    if s.episode_states:
+        try:
+            fig = make_state_plot(s.episode_states, jn, fps, s.episode_rewards)
+        except Exception as exc:
+            preview_warnings.append(f"State plot could not be generated: {exc}")
     n = len(s.episode_actions)
     meta = (
         f"**Episode {s.episodes_completed + 1} / {s.num_episodes}**\n\n"
@@ -973,8 +1054,22 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         f"- Task: {s.task_description}"
     )
     s.recording_finished = False
+    failure = (
+        f"### Recording stopped after an error\n\n{s.error}\n\n"
+        "The recorded frames are preserved for review. Discard this episode to try again. "
+        "Check the physical leader status before releasing the motors."
+        if s.error
+        else ""
+    )
+    if preview_warnings:
+        preview_warning = (
+            "### Review preview unavailable\n\n"
+            + "\n\n".join(preview_warnings)
+            + "\n\nThe recorded frames are unchanged. You can still save or discard this episode."
+        )
+        failure = f"{failure}\n\n{preview_warning}" if failure else preview_warning
     return (
-        gr.update(value="Recording complete."),
+        gr.update(value="Recording stopped after an error." if s.error else "Recording complete."),
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(value=None, visible=False),
@@ -984,8 +1079,8 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         gr.update(value=video_path),
         gr.update(value=fig),
         gr.update(value=meta),
-        gr.update(value="", visible=False),
-        gr.update(interactive=True),
+        gr.update(value=failure, visible=bool(failure)),
+        gr.update(interactive=n > 0),
         gr.update(interactive=True),
     )
 
@@ -1001,7 +1096,31 @@ def _cb_prepare_episode_approval():
     )
 
 
+@contextlib.contextmanager
+def _episode_transaction(session: dict):
+    """Prevent separate Gradio callbacks from mutating the same episode."""
+    import gradio as gr
+
+    lock = session.setdefault("episode_lock", threading.Lock())
+    if not lock.acquire(blocking=False):
+        raise gr.Error("This episode is already being saved or changed. Wait for it to finish.")
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 def _cb_approve_episode(session: dict):
+    """Save a reviewable episode, rejecting duplicate or conflicting requests."""
+    import gradio as gr
+
+    with _episode_transaction(session):
+        if not _leader_is_idle(session) or not session["state"].episode_actions:
+            return tuple(gr.update() for _ in range(9))
+        return _save_episode(session)
+
+
+def _save_episode(session: dict):
     """Save the recorded episode to the dataset and advance."""
     import gradio as gr
 
@@ -1011,7 +1130,11 @@ def _cb_approve_episode(session: dict):
     try:
         actions = list(s.episode_actions)
         if session["action_space"] == "joint_pos_delta":
-            actions = compute_delta_actions(actions)
+            actions = (
+                [action - obs for action, obs in zip(actions, s.episode_states, strict=True)]
+                if session.get("intervention")
+                else compute_delta_actions(actions)
+            )
 
         sel = session["field_selection"]
         rewards = list(s.episode_rewards)
@@ -1042,6 +1165,9 @@ def _cb_approve_episode(session: dict):
                 wrist_image=wrist_img,
                 overhead_image=overhead_img,
                 side_image=s.episode_side_images[i] if i < len(s.episode_side_images) else None,
+                intervention_id=s.episode_intervention_ids[i]
+                if session.get("intervention")
+                else None,
             )
             dataset.add_frame(frame)
 
@@ -1054,6 +1180,17 @@ def _cb_approve_episode(session: dict):
                 "task_description": s.task_description,
                 "initial_sim_state": s.initial_sim_state,
                 "rendering": s.rendering_metadata,
+                **(
+                    {
+                        "policy": {
+                            **session["policy_options"],
+                            "fps": session["fps"],
+                            "action_space": session["policy_action_space"],
+                        }
+                    }
+                    if session.get("intervention")
+                    else {}
+                ),
             },
         )
     except Exception as exc:
@@ -1110,6 +1247,17 @@ def _cb_approve_episode(session: dict):
 
 
 def _cb_discard_episode(session: dict):
+    """Discard a reviewable episode without interrupting recording or saving."""
+    import gradio as gr
+
+    with _episode_transaction(session):
+        state = session["state"]
+        if not _leader_is_idle(session) or state.episodes_completed >= state.num_episodes:
+            return tuple(gr.update() for _ in range(6))
+        return _discard_episode(session)
+
+
+def _discard_episode(session: dict):
     """Discard the current episode buffer without saving."""
     import gradio as gr
 
@@ -1218,17 +1366,33 @@ def _cb_prepare_push_to_hub():
     return gr.update(value="Pushing dataset to HuggingFace Hub...", visible=True)
 
 
+def _disconnect_leader(session: dict, leader=None) -> None:
+    """Close policy-collection serial ports without changing motor torque."""
+    leader = leader if leader is not None else session["leader"]
+    options = session.get("policy_options", {})
+    if session.get("intervention") is not None or options.get("path") or options.get("factory"):
+        leader.bus.disconnect(disable_torque=False)
+    else:
+        leader.disconnect()
+
+
 def _close_recording_worker(session: dict) -> None:
     """Release simulator resources on their recording thread."""
-    worker = session.pop("recording_worker", None)
-    if worker is not None:
-        worker.close()
+    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+        worker = session.pop("recording_worker", None)
+        if worker is not None:
+            worker.close()
+        if (intervention := session.pop("intervention", None)) is not None:
+            intervention.close()
 
 
 def _cb_finalize_and_close(session: dict):
     """Finalize the dataset and disconnect all hardware."""
     import gradio as gr
 
+    intervention = session.get("intervention")
+    if intervention is not None and not intervention.leader_released:
+        raise gr.Error("Support the physical leader and release its motors before finalizing.")
     _close_recording_worker(session)
     try:
         session["dataset"].finalize()
@@ -1236,7 +1400,7 @@ def _cb_finalize_and_close(session: dict):
     except Exception as exc:
         raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
     with contextlib.suppress(Exception):
-        session["leader"].disconnect()
+        _disconnect_leader(session)
     return "Session finalized. You can close this tab."
 
 
@@ -1354,7 +1518,16 @@ def _build_setup_screen(
                 step=32,
                 label="Overhead and Side Camera Height",
             )
-        max_steps_input = gr.Number(value=1024, minimum=1, precision=0, label="Max Steps")
+        max_steps_input = gr.Number(
+            value=1024,
+            minimum=1,
+            precision=0,
+            label="Max Steps",
+            info=(
+                "Episode limit in simulation steps. At 30 FPS, 1024 steps is about 34 seconds. "
+                "Paused time does not count."
+            ),
+        )
         success_hold_seconds_input = gr.Slider(
             minimum=0.0,
             maximum=2.0,
@@ -1499,17 +1672,30 @@ def _build_setup_screen(
 
 def _build_init_step(gr):
     """Build the Initialize step contents."""
-    gr.Markdown("### Initializing Session...")
-    init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
+    init_stage = gr.Markdown("### Preparing your session")
+    gr.Markdown(
+        "Model weights may need to download on the first run. "
+        "Keep this page open while setup finishes. Recording has not started."
+    )
+    init_status = gr.Markdown("", min_height=80)
+    with gr.Accordion("Initialization details", open=False):
+        init_log = gr.Textbox(label="Log Output", lines=12, max_lines=20, interactive=False)
     retry_btn = gr.Button("Retry Initialization", variant="secondary", visible=False)
     init_timer = gr.Timer(value=0.25)
-    return init_log, retry_btn, init_timer
+    return init_log, retry_btn, init_timer, init_status, init_stage
 
 
-def _build_record_step(gr):
+def _build_record_step(gr, *, policy_collection: bool = False):
     """Build the Record step contents."""
-    record_status = gr.Markdown("Ready to record. Click the button below to begin.")
-    start_btn = gr.Button("Start Recording", variant="primary")
+    record_status = gr.Markdown(
+        "Ready. The policy drives the simulated arm after the countdown. "
+        "Press T to pause and prepare a correction."
+        if policy_collection
+        else "Ready to record. Start recording, then move the leader to drive the simulated arm."
+    )
+    start_btn = gr.Button(
+        "Start policy episode" if policy_collection else "Start Recording", variant="primary"
+    )
     countdown_area = gr.Markdown("", visible=False)
     preview_feed = gr.Image(
         label="Live Preview (wrist | overhead | side)",
@@ -1518,10 +1704,344 @@ def _build_record_step(gr):
         show_label=True,
         interactive=False,
     )
-    stop_btn = gr.Button("Stop Recording", variant="stop", visible=False)
+    stop_btn = gr.Button("Stop and review episode", variant="stop", visible=False)
     task_status = gr.Markdown(_TASK_PENDING_TEXT)
     rec_timer = gr.Timer(value=PREVIEW_INTERVAL_SECONDS)
     return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
+
+
+_INTERVENTION_STATUS = {
+    "ready": "### Ready\nStart a policy episode to run the simulated arm after the countdown.",
+    "policy": "### Running: policy\nPress T to pause and prepare a correction.",
+    "synchronizing": (
+        "### Paused: aligning leader\nThe motors are moving the physical arm. "
+        "Keep it clear until alignment finishes; press H to stop alignment. "
+        "The simulation stays paused."
+    ),
+    "alignment paused": (
+        "### Paused: alignment needs attention\nThe leader motors are holding the measured pose. "
+        "You can take control from this pose. Hold the arm, confirm below, then press C. "
+        "The simulated arm stays at its current pose and follows your movements from there. "
+        "T retries alignment; P resumes the policy."
+    ),
+    "human paused": (
+        "### Paused: ready for correction\nThe leader motors are holding the aligned pose. "
+        "Hold the arm and gripper, confirm below, then press C. "
+        "Small pose differences are compensated so correction starts without a jump."
+    ),
+    "human": "### Running: human correction\nMove the leader to correct the policy. "
+    "Press H to pause, or P to resume the policy.",
+    "hold": "### Paused\nPress T to prepare a correction, or P to resume the policy.",
+    "waiting for policy": (
+        "### Policy active: waiting for prediction\nSimulation resumes automatically when the "
+        "prediction arrives. Press T to take control, or H to stay paused."
+    ),
+}
+
+
+def _build_intervention_controls(gr, *, enabled: bool):
+    with gr.Column(visible=enabled, variant="panel"):
+        gr.Markdown("## Policy correction")
+        status = gr.Markdown(_INTERVENTION_STATUS["ready"])
+        takeover = gr.Button(
+            "Pause and take control (T)",
+            elem_id="teleop-takeover",
+            variant="primary",
+            interactive=False,
+        )
+        supported = gr.Checkbox(
+            label="I am holding the arm and gripper. Release the motors when I press C.",
+            value=False,
+            interactive=False,
+        )
+        support_token = gr.State(value=None)
+        correct = gr.Button("Start correction (C)", elem_id="teleop-correct", interactive=False)
+        with gr.Row():
+            hold = gr.Button("Pause (H)", elem_id="teleop-hold", interactive=False)
+            resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
+        gr.Markdown(
+            "Press each shortcut once; you do not need to hold it. "
+            "Pausing stops simulation time and uses no episode steps."
+        )
+        with gr.Accordion("How takeover works", open=False):
+            gr.Markdown(
+                "The **leader** is the arm you move. The **follower** is the simulated arm.\n\n"
+                "1. **T: pause and align.** Keep the leader clear while it moves.\n"
+                "2. **C: release and correct.** Support the leader and confirm "
+                "before releasing its motors.\n"
+                "3. **P: resume policy.** Continue from the corrected pose.\n\n"
+                "**H: pause at any time.** This also cancels alignment. "
+                "Use T to align again before starting another correction. "
+                "Shortcuts work when you are not typing in a field."
+            )
+    return status, takeover, correct, hold, resume, supported, support_token
+
+
+def _build_leader_support_controls(gr, *, enabled: bool):
+    """Keep parking controls available without distracting from correction."""
+    with gr.Group(visible=enabled):
+        warning = gr.Markdown("", visible=False)
+        with gr.Accordion("Park or release the leader arm", open=False):
+            status = gr.Markdown("Initialize the session to see motor status.")
+            supported = gr.Checkbox(
+                label="I am supporting or have parked the arm and gripper.",
+                value=False,
+                interactive=False,
+            )
+            support_token = gr.State(value=None)
+            release = gr.Button("Release motors for parking", interactive=False)
+            gr.Markdown(
+                "Use these controls after an episode to park the physical arm. "
+                "Normal takeover uses the confirmation beside C. "
+                "Pause, episode completion, and errors command a pose hold. "
+                "Closing the process preserves torque; support and park the arm "
+                "before disconnecting power. Holding cannot be guaranteed if motor "
+                "communication or power fails."
+            )
+    return status, supported, release, support_token, warning
+
+
+def _leader_is_idle(session: dict) -> bool:
+    state = session.get("state")
+    worker = session.get("recording_worker")
+    return state is not None and not state.is_recording and (worker is None or worker.wait(0))
+
+
+def _cb_poll_leader_support(session: dict, leader_supported: bool = False):
+    """Report confirmed motor state without accessing hardware from the UI thread."""
+    import gradio as gr
+
+    intervention = session.get("intervention")
+    if intervention is None:
+        return (
+            "**Physical leader:** initialize the session to see motor status.",
+            gr.update(interactive=False),
+            gr.update(value=False, interactive=False),
+            None,
+            gr.update(value="", visible=False),
+        )
+    if session.get("leader_release_error") and not intervention.synchronizer.holding:
+        message = (
+            f"**Physical leader: release failed, hold unconfirmed.** "
+            f"{session['leader_release_error']}. Keep supporting the arm and gripper."
+        )
+    elif intervention.leader_released:
+        message = "**Physical leader: motors released.** Keep the arm supported or parked."
+    elif intervention.status == "synchronizing":
+        message = "**Physical leader: aligning.** Motors are engaged. Keep the arm clear."
+    elif intervention.synchronizer.holding:
+        message = "**Physical leader: motors holding.** Support the arm and gripper before release."
+    elif session.get("state") is not None and session["state"].error:
+        message = "**Physical leader: hold unconfirmed. Support the arm and gripper now.**"
+    else:
+        message = "**Physical leader: motors are not holding.** Support the arm or park it."
+    token = intervention.support_token
+    context = (token, intervention.status == "human paused")
+    reset = session.get("leader_support_context") != context
+    session["leader_support_context"] = context
+    idle = _leader_is_idle(session)
+    can_confirm = idle and not intervention.leader_released
+    confirmation = gr.update(interactive=can_confirm)
+    if reset or not can_confirm:
+        leader_supported = False
+        confirmation = gr.update(value=False, interactive=can_confirm)
+    can_release = idle and not intervention.leader_released and leader_supported
+    failed_hold = not intervention.synchronizer.holding and (
+        bool(session.get("leader_release_error"))
+        or (session.get("state") is not None and bool(session["state"].error))
+    )
+    return (
+        message,
+        gr.update(interactive=can_release),
+        confirmation,
+        token,
+        gr.update(value=message if failed_hold else "", visible=failed_hold),
+    )
+
+
+def _cb_release_leader(
+    session: dict, leader_supported: bool = False, support_token: tuple[int, int] | None = None
+):
+    """Release a supported, idle arm while excluding simultaneous episode starts."""
+    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+        if not leader_supported:
+            return (
+                "Support the physical leader arm and gripper, then confirm before release.",
+                False,
+            )
+        intervention = session.get("intervention")
+        if intervention is None or not _leader_is_idle(session):
+            return "Stop the episode and wait for motor holding before releasing the leader.", False
+        if support_token != intervention.support_token:
+            return "Confirm support again after the latest control transition.", False
+        try:
+            if not intervention.release_leader(support_token=support_token):
+                return "Leader release is unavailable until the episode has stopped.", False
+        except Exception as exc:
+            session["leader_release_error"] = str(exc)
+            return f"Leader release failed: {exc}. Keep supporting the arm and gripper.", False
+        session.pop("leader_release_error", None)
+        return "**Physical leader: motors released.** Keep the arm supported or parked.", False
+
+
+def _build_record_workspace(gr, *, policy_collection: bool):
+    """Keep handoff controls beside the live view, stacking on narrow screens."""
+    with gr.Row():
+        with gr.Column(scale=2, min_width=300, visible=policy_collection):
+            intervention = _build_intervention_controls(gr, enabled=policy_collection)
+        with gr.Column(scale=3):
+            recording = _build_record_step(gr, policy_collection=policy_collection)
+    return (*recording, intervention)
+
+
+def _wire_intervention_controls(app, timer, session: dict, controls, support_controls) -> None:
+    import functools
+
+    status, takeover, correct, hold, resume, supported, support_token = controls
+    parking_status, parking_supported, release, parking_token, warning = support_controls
+    for button, source in (
+        (takeover, "human"),
+        (correct, "human"),
+        (hold, "hold"),
+        (resume, "policy"),
+    ):
+        button.click(
+            fn=functools.partial(
+                _cb_request_intervention, session, source, pause_after_sync=button is takeover
+            ),
+            inputs=[supported, support_token],
+            outputs=[status],
+            queue=False,
+        ).then(fn=lambda: False, outputs=[supported], queue=False)
+    for event in (timer.tick, supported.change):
+        event(
+            fn=functools.partial(_cb_poll_intervention, session),
+            inputs=[supported],
+            outputs=list(controls),
+            queue=False,
+        )
+    timer.tick(
+        fn=functools.partial(_cb_poll_leader_support, session),
+        inputs=[parking_supported],
+        outputs=[parking_status, release, parking_supported, parking_token, warning],
+        queue=False,
+    )
+    release.click(
+        fn=functools.partial(_cb_release_leader, session),
+        inputs=[parking_supported, parking_token],
+        outputs=[parking_status, parking_supported],
+        queue=False,
+    )
+    app.load(fn=None, js=_INTERVENTION_SHORTCUTS)
+
+
+def _cb_request_intervention(
+    session: dict,
+    source: str,
+    leader_supported: bool = False,
+    support_token: tuple[int, int] | None = None,
+    *,
+    pause_after_sync: bool = False,
+) -> str:
+    """Request a controller change without blocking on inference or hardware."""
+    intervention = session.get("intervention")
+    state = session.get("state")
+    if intervention is None or state is None or not state.is_recording:
+        return _INTERVENTION_STATUS["ready"]
+    if source == "human" and not pause_after_sync:
+        if not leader_supported or support_token != intervention.support_token:
+            return (
+                "### Support the physical leader first\n"
+                "Hold the arm and gripper, then check the support confirmation."
+            )
+        if not intervention.start_correction(support_token=support_token):
+            return "### Correction not started\nPause with T, then confirm support beside C."
+    else:
+        intervention.request(source, pause_after_sync=pause_after_sync)
+    message = (
+        "Pause and leader alignment requested"
+        if pause_after_sync
+        else {
+            "human": "Human correction requested",
+            "hold": "Pause requested",
+            "policy": "Policy resume requested",
+        }[source]
+    )
+    return f"### {message}\nWaiting for the current simulator step to finish."
+
+
+def _cb_poll_intervention(session: dict, leader_supported: bool = False):
+    """Show active control and disable actions that do not apply."""
+    import gradio as gr
+
+    intervention = session.get("intervention")
+    state = session.get("state")
+    active = intervention is not None and state is not None and state.is_recording
+    status = intervention.status if active else "ready"
+    message = _INTERVENTION_STATUS[status]
+    if (
+        intervention is not None
+        and status == "alignment paused"
+        and intervention.synchronization_error
+    ):
+        message += f"\n\n**Alignment details:** {intervention.synchronization_error}"
+    if active and "max_steps" in session:
+        remaining = max(0, session["max_steps"] - len(state.episode_actions))
+        message += (
+            f"\n\n**{remaining / session['fps']:.1f}s of simulation remaining** "
+            f"({remaining} steps).\n\n"
+            "The episode also ends automatically after task success. "
+            "Stop and review episode ends recording and opens review."
+        )
+    can_takeover = active and status not in ("human", "human paused", "synchronizing")
+    token = intervention.support_token if active else None
+    ready = active and status in ("human paused", "alignment paused")
+    context = (token, ready)
+    reset = session.get("correction_support_context") != context
+    session["correction_support_context"] = context
+    confirmation = gr.update(interactive=ready)
+    if reset or not ready:
+        leader_supported = False
+        confirmation = gr.update(value=False, interactive=ready)
+    can_correct = ready and leader_supported
+    correction_label = (
+        "Take control from this pose (C)"
+        if status == "alignment paused"
+        else "Start correction (C)"
+    )
+    return (
+        message,
+        gr.update(interactive=can_takeover, variant="primary" if can_takeover else "secondary"),
+        gr.update(
+            value=correction_label,
+            interactive=can_correct,
+            variant="primary" if can_correct else "secondary",
+        ),
+        gr.update(interactive=active and status != "hold"),
+        gr.update(interactive=active and status not in ("policy", "waiting for policy")),
+        confirmation,
+        token,
+    )
+
+
+_INTERVENTION_SHORTCUTS = """() => {
+    if (window.soNexusInterventionKeys) return;
+    window.soNexusInterventionKeys = true;
+    document.addEventListener('keydown', (event) => {
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+        const field = event.target.closest('input, textarea, select, [contenteditable="true"]');
+        if (field && !field.matches('input[type="checkbox"], input[type="radio"]')) return;
+        const ids = {
+            t: 'teleop-takeover', c: 'teleop-correct', h: 'teleop-hold', p: 'teleop-resume'
+        };
+        const id = ids[event.key.toLowerCase()];
+        const button = id && document.querySelector('button#' + id + ', #' + id + ' button');
+        if (button && !button.disabled && button.getClientRects().length) {
+            event.preventDefault();
+            button.click();
+        }
+    });
+}"""
 
 
 def _build_review_step(gr):
@@ -1572,6 +2092,8 @@ def _wire_events(
     init_log,
     retry_btn,
     init_timer,
+    init_status,
+    init_stage,
     record_status,
     start_btn,
     countdown_area,
@@ -1617,6 +2139,11 @@ def _wire_events(
     retry_init = functools.partial(_cb_retry_init_with_session, session, init_state, leader_port)
     recheck_port = functools.partial(_cb_recheck_port, leader_port)
 
+    init_progress = gr.Progress()
+
+    async def show_init_progress(progress=init_progress):
+        return await _wait_for_init(init_state, progress)
+
     env_id_input.change(
         fn=functools.partial(
             _cb_update_customization_for_env, profile_path=session.get("env_config_profile")
@@ -1635,18 +2162,20 @@ def _wire_events(
         outputs=[repo_id_warning],
     )
     recheck_port_btn.click(fn=recheck_port, outputs=[port_status])
-    init_btn.click(fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn])
+    init_btn.click(
+        fn=start_init, inputs=init_inputs, outputs=[walkthrough, init_log, retry_btn]
+    ).success(fn=show_init_progress, outputs=[init_status], show_progress="full")
     init_timer.tick(
         fn=poll_init,
-        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status],
+        outputs=[init_log, retry_btn, walkthrough, session_header, progress_status, init_stage],
     )
     retry_btn.click(
         fn=retry_init,
         outputs=[walkthrough, init_log, retry_btn],
-    )
+    ).success(fn=show_init_progress, outputs=[init_status], show_progress="full")
     start_btn.click(
         fn=start_recording,
-        outputs=[record_status, start_btn, preview_feed, task_status],
+        outputs=[record_status, start_btn, preview_feed, task_status, stop_btn],
     )
     stop_btn.click(fn=stop_recording)
     rec_timer.tick(
@@ -1759,7 +2288,23 @@ def main(
     extra_env_ids = list(args.extra_env_ids)
     _import_env_modules(env_modules)
 
+    if args.policy_path and args.policy_factory:
+        raise ValueError("Choose either --policy-path or --policy-factory")
     session: dict = {
+        "policy_options": {
+            "path": args.policy_path,
+            "factory": args.policy_factory,
+            "device": args.policy_device,
+            "policy_type": args.policy_type,
+            "norm_tag": args.policy_norm_tag,
+            "fps": args.policy_fps,
+            "camera_map": parse_policy_camera_map(args.policy_cameras),
+        },
+        "policy_action_space": args.policy_action_space,
+        "leader_alignment_options": {
+            "joint_tolerance_deg": args.leader_alignment_tolerance_deg,
+            "gripper_tolerance_percent": args.leader_gripper_tolerance_percent,
+        },
         "env_config_profile": env_config_profile,
         "env_config_factory": env_config_factory,
         "seed": seed,
@@ -1779,8 +2324,17 @@ def main(
 
     with gr.Blocks(title="SO Nexus Teleop Recorder", fill_width=True) as app:
         gr.Markdown("# SO Nexus Teleop Recorder")
+        if args.policy_path or args.policy_factory:
+            gr.Markdown(
+                "Policy correction collection is enabled. Start recording to run the policy, "
+                "then press T to pause and align the leader. "
+                "Press C when ready to correct its behavior."
+            )
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
+        support_controls = _build_leader_support_controls(
+            gr, enabled=bool(args.policy_path or args.policy_factory)
+        )
 
         with gr.Walkthrough(selected=0) as walkthrough:
             with gr.Step("Configure", id=0):
@@ -1832,7 +2386,7 @@ def main(
                 )
 
             with gr.Step("Initialize", id=1):
-                init_log, retry_btn, init_timer = _build_init_step(gr)
+                init_log, retry_btn, init_timer, init_status, init_stage = _build_init_step(gr)
 
             with gr.Step("Record", id=2):
                 (
@@ -1843,7 +2397,10 @@ def main(
                     stop_btn,
                     task_status,
                     rec_timer,
-                ) = _build_record_step(gr)
+                    intervention_controls,
+                ) = _build_record_workspace(
+                    gr, policy_collection=bool(args.policy_path or args.policy_factory)
+                )
 
             with gr.Step("Review", id=3):
                 (
@@ -1929,6 +2486,8 @@ def main(
             init_log=init_log,
             retry_btn=retry_btn,
             init_timer=init_timer,
+            init_status=init_status,
+            init_stage=init_stage,
             record_status=record_status,
             start_btn=start_btn,
             countdown_area=countdown_area,
@@ -1955,10 +2514,14 @@ def main(
             leader_id_default=leader_id_default,
         )
 
+        _wire_intervention_controls(
+            app, rec_timer, session, intervention_controls, support_controls
+        )
+
     try:
         app.launch(inbrowser=True)
     finally:
         _close_recording_worker(session)
         if (leader := session.get("leader")) is not None:
             with contextlib.suppress(Exception):
-                leader.disconnect()
+                _disconnect_leader(session, leader)
