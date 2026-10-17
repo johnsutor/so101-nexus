@@ -185,11 +185,56 @@ class Bus:
         self.events.append(("write", dict(values)))
         self.positions.update(values)
 
-    def enable_torque(self):
+    def enable_torque(self, *, num_retry=0):
         self.events.append(("enable",))
 
-    def disable_torque(self):
+    def disable_torque(self, *, num_retry=0):
         self.events.append(("disable",))
+
+
+@pytest.mark.parametrize("operation,value", [("cancel", 1), ("release", 0)])
+@pytest.mark.parametrize("persistent", [False, True])
+def test_feetech_lock_acknowledgment_retries_are_bounded(monkeypatch, operation, value, persistent):
+    pytest.importorskip("scservo_sdk")
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
+
+    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
+    monkeypatch.setattr(bus.port_handler, "is_open", True)
+    monkeypatch.setattr(
+        bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 0.0)
+    )
+    monkeypatch.setattr(bus, "sync_write", lambda *args, **kwargs: None)
+    lock_address = bus.model_ctrl_table["sts3215"]["Lock"][0]
+    torque_address = bus.model_ctrl_table["sts3215"]["Torque_Enable"][0]
+    writes = []
+    attempts = 0
+
+    def write_packet(_port, motor_id, address, _length, data):
+        nonlocal attempts
+        writes.append((motor_id, address, data[0]))
+        if motor_id == 1 and address == lock_address:
+            attempts += 1
+            if persistent or attempts == 1:
+                return -6, 0
+        return 0, 0
+
+    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    if persistent:
+        with pytest.raises(ConnectionError, match=r"Lock.*after 4 tries"):
+            getattr(sync, operation)()
+        assert attempts == 4
+        assert not sync.holding
+    else:
+        getattr(sync, operation)()
+        assert attempts == 2
+        assert sync.holding is (operation == "cancel")
+        for motor_id in range(1, 7):
+            assert (motor_id, torque_address, value) in writes
+            assert (motor_id, lock_address, value) in writes
+    assert all(written == value for _, _, written in writes)
 
 
 def test_leader_sync_interpolates_converts_offset_and_holds_until_explicit_release(monkeypatch):
@@ -698,7 +743,7 @@ def test_failed_motor_release_invalidates_hold_status(monkeypatch):
     sync.cancel()
     assert sync.holding
 
-    def fail():
+    def fail(**kwargs):
         raise OSError("partial torque release")
 
     monkeypatch.setattr(bus, "disable_torque", fail)

@@ -19,6 +19,7 @@ from so101_nexus.config import SO101_JOINT_NAMES
 DEFAULT_WRIST_ROLL_OFFSET_DEG = -90.0
 DEFAULT_ALIGNMENT_TOLERANCE_DEG = 10.0
 DEFAULT_GRIPPER_TOLERANCE_PERCENT = 5.0
+_TORQUE_COMMUNICATION_RETRIES = 3
 
 ROBOT_JOINT_NAMES: dict[str, tuple[str, ...]] = {
     "so100": SO101_JOINT_NAMES,
@@ -288,7 +289,7 @@ class SOLeaderSynchronizer:
             self._holding = False
             positions = self._read_positions()
             self.bus.sync_write("Goal_Position", positions)
-            self.bus.enable_torque()
+            self.bus.enable_torque(num_retry=_TORQUE_COMMUNICATION_RETRIES)
             self._initial = positions
             self._holding = True
 
@@ -305,4 +306,4 @@ class SOLeaderSynchronizer:
         with self._lock:
             self._target = None
             self._holding = False
-            self.bus.disable_torque()
+            self.bus.disable_torque(num_retry=_TORQUE_COMMUNICATION_RETRIES)

@@ -53,6 +53,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Physical leader torque changes retry missing motor acknowledgments up to three
+  times through LeRobot, preventing a single dropped Feetech `Lock` response from
+  ending recording. Persistent failures still leave holding unconfirmed.
+
 - Wrist offsets wrap takeover targets into the physical motor's single-turn range
   and preserve continuous correction targets across angle boundaries. Alignment
   checks measured convergence before timeout, including equivalent wrist endpoints.

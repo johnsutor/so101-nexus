@@ -143,7 +143,8 @@ An alignment timeout holds the measured physical pose and keeps the episode paus
 The controller panel lists the joints that did not reach their targets, including measured
 and target positions. Hold the arm, confirm support beside C, and take control from
 this pose. You can also press T to retry alignment or P to resume the policy.
-A motor communication error that prevents holding still ends recording.
+Torque changes retry missing motor acknowledgments up to three times through LeRobot.
+A persistent motor communication error that prevents holding still ends recording.
 Pausing, finishing an episode, and process cleanup also preserve motor torque.
 Recording errors stay visible in Review, along with any failure to hold the leader.
 If holding is unconfirmed, support the arm and gripper immediately.
