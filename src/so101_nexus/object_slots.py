@@ -19,6 +19,7 @@ import this module without triggering MuJoCo env registration. No torch import.
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -363,6 +364,50 @@ def build_object_scene_xml(
 {body_entries}{extra_bodies}{overhead_camera_xml}  </worldbody>
 </mujoco>
 """
+
+
+def compile_object_scene(
+    objects: list[SceneObject],
+    slot_names: list[str],
+    ground_color: list[float],
+    *,
+    option_xml: str,
+    model_name: str = "object_scene",
+    extra_bodies: str = "",
+    overhead_camera_xml: str = "",
+) -> tuple[mujoco.MjModel, list[ObjectSlot]]:
+    """Prepare mesh assets and compile a robot scene with object-slot metadata.
+
+    Parameters
+    ----------
+    objects, slot_names, ground_color
+        Ordered object pool, matching body names, and floor RGBA color.
+    option_xml, model_name, extra_bodies, overhead_camera_xml
+        Scene options forwarded to :func:`build_object_scene_xml`.
+    """
+    from so101_nexus import get_so101_mujoco_model_dir, get_so101_mujoco_model_path
+
+    for obj in objects:
+        if isinstance(obj, ScannedMeshObject):
+            ensure_scanned_mesh_assets(obj)
+    xml = build_object_scene_xml(
+        objects,
+        slot_names,
+        ground_color,
+        option_xml=option_xml,
+        robot_xml_path=str(get_so101_mujoco_model_path()),
+        model_name=model_name,
+        extra_bodies=extra_bodies,
+        overhead_camera_xml=overhead_camera_xml,
+    )
+    # Menagerie includes resolve mesh paths relative to the temporary XML.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".xml", dir=get_so101_mujoco_model_dir(), delete=True
+    ) as file:
+        file.write(xml)
+        file.flush()
+        model = mujoco.MjModel.from_xml_path(file.name)
+    return model, extract_object_slots(model, slot_names, objects)
 
 
 class ObjectSlot:

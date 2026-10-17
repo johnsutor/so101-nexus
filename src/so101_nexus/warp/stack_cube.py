@@ -16,25 +16,17 @@ per reset and the remainder stay parked in the hidden band.
 
 from __future__ import annotations
 
-import tempfile
 from typing import ClassVar
 
-import mujoco
 import numpy as np
 import torch
 
-from so101_nexus import (
-    get_so101_mujoco_model_dir,
-    get_so101_mujoco_model_path,
-)
 from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
 from so101_nexus.constants import COLOR_MAP, ColorName
 from so101_nexus.object_slots import (
-    build_object_scene_xml,
-    ensure_scanned_mesh_assets,
-    extract_object_slots,
+    compile_object_scene,
 )
-from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
+from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.observations import (
     GazeDirection,
     GazeState,
@@ -50,45 +42,21 @@ from so101_nexus.rewards import (
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
-    potential_shaping,
 )
 from so101_nexus.scene import WARP_SCENE_OPTION_XML
 from so101_nexus.warp.base_env import SO101NexusWarpVectorEnv
 from so101_nexus.warp.object_slots import (
-    hidden_slot_band_xy,
-    quat_mul_wxyz,
-    random_yaw_quat_batch,
+    _contact_budget,
+    _ObjectSlotRuntime,
     sample_separated_polar,
-    slot_geom_masks,
 )
-
-_SO101_DIR = get_so101_mujoco_model_dir()
-_SO101_XML = get_so101_mujoco_model_path()
-
-# Contact budget per world, mirroring so101_nexus.warp.pick_env._contact_budget:
-# a generous floor for active grasping, a per-slot allowance for the parked
-# slots' resting contacts, and a small per-extra-part term (the convex parts of
-# one decomposed mesh never collide with each other). naconmax = nconmax *
-# num_envs.
-_STACK_NCONMAX_BASE = 192
-_STACK_NCONMAX_PER_SLOT = 16
-_STACK_NCONMAX_PER_EXTRA_PART = 2
-
-
-def _contact_budget(n_slots: int, n_collision_geoms: int) -> tuple[int, int]:
-    nconmax = (
-        _STACK_NCONMAX_BASE
-        + _STACK_NCONMAX_PER_SLOT * n_slots
-        + _STACK_NCONMAX_PER_EXTRA_PART * (n_collision_geoms - n_slots)
-    )
-    return nconmax, nconmax * 2
 
 
 def _as_list(colors: ColorName | list[ColorName]) -> list[ColorName]:
     return [colors] if isinstance(colors, str) else list(colors)
 
 
-class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
+class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
     """Batched stack-cube: pick up cube A and stack it on top of cube B.
 
     Success requires cube A to rest directly on cube B (within
@@ -131,9 +99,6 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._b_pool = len(self._b_colors)
         self._n_distractors = config.n_distractors
         distractor_pool = list(config.distractors) if self._n_distractors else []
-        for obj in distractor_pool:
-            if isinstance(obj, ScannedMeshObject):
-                ensure_scanned_mesh_assets(obj)
         self._d_pool = len(distractor_pool)
         self._d_offset = self._a_pool + self._b_pool
         scene_objects: list[SceneObject] = [
@@ -152,20 +117,14 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             if isinstance(config.ground_colors, str)
             else config.ground_colors[0]
         )
-        xml_string = build_object_scene_xml(
+        mjm, slots = compile_object_scene(
             scene_objects,
             slot_names,
             COLOR_MAP[ground_name],
             option_xml=WARP_SCENE_OPTION_XML,
-            robot_xml_path=str(_SO101_XML),
             model_name="stack_cube_scene",
             overhead_camera_xml=self._world_camera_xml(config, render_mode),
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
-            f.write(xml_string)
-            f.flush()
-            mjm = mujoco.MjModel.from_xml_path(f.name)
-        slots = extract_object_slots(mjm, slot_names, scene_objects)
         default_nconmax, default_njmax = _contact_budget(
             len(slots), sum(len(slot.geom_ids) for slot in slots)
         )
@@ -185,33 +144,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         self._mjm = mjm
         self.cube_half_size = config.cube_half_size
 
-        self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
-        self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
-        # Host-side copies of the same addresses, so parking the slots at reset
-        # does not synchronize once per slot (see WarpPickLiftVectorEnv).
-        self._slot_qadr_host = [s.qpos_addr for s in slots]
-        self._slot_dadr_host = [s.dof_addr for s in slots]
-        # Free-joint component offsets, reused by every slot write at reset.
-        self._qpos_offsets = torch.arange(7, device=self.device)
-        self._dof_offsets = torch.arange(6, device=self.device)
-        self._slot_geom_masks = slot_geom_masks(slots, mjm.ngeom, self.device)
-        self._setup_slot_visibility(slots)
-        self._slot_spawn_z = torch.tensor(
-            [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
-        )
-        self._slot_bradius = torch.tensor(
-            [s.bounding_radius for s in slots], dtype=torch.float32, device=self.device
-        )
-        self._hide_xy = hidden_slot_band_xy(
-            self.device,
-            len(slots),
-            float(self._slot_bradius.max()),
-            config.spawn_max_radius,
-            config.spawn_center,
-        )
-        self._slot_rest_quat = torch.tensor(
-            np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
-        )
+        self._init_slot_tensors(slots, mjm.ngeom, config.spawn_max_radius, config.spawn_center)
 
         # Per-world slot selection (set at reset; defaults track the first
         # configured pair until then). Grasp detection always targets the
@@ -355,16 +288,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         b_sel_local = (self._rng.rand("task", idx) * self._b_pool).to(torch.long)
         b_sel = self._a_pool + b_sel_local
 
-        # Park every slot off-world with zeroed velocity (Warp contact bits are
-        # model-global, so inactive cubes cannot have collisions disabled);
-        # the two selected slots per world are overwritten below.
-        for j, qa in enumerate(self._slot_qadr_host):
-            self.qpos[idx, qa] = self._hide_xy[j, 0]
-            self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
-            self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
-            self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
-            da = self._slot_dadr_host[j]
-            self.qvel[idx, da : da + 6] = 0.0
+        self._hide_all_slots(idx)
 
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
         # Columns: 0 = cube A, 1 = cube B, 2.. = distractors.
@@ -372,7 +296,6 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         if self._n_distractors:
             d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
             sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
-        self._set_slot_visibility(idx, sel)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
             self._rng,
@@ -385,18 +308,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
             cfg.spawn_center,
         )  # (n, n_active, 2)
 
-        rows = idx[:, None]
-        for k in range(sel.shape[1]):
-            sel_k = sel[:, k]
-            base = self._slot_qadr[sel_k]  # (n,) qpos address per reset world
-            yaw = random_yaw_quat_batch(self._rng, idx)
-            quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
-            self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
-                [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
-            )
-            self.qpos[rows, base[:, None] + self._qpos_offsets[3:]] = quat
-            dadr = self._slot_dadr[sel_k]
-            self.qvel[rows, dadr[:, None] + self._dof_offsets] = 0.0
+        self._place_active_slots(idx, sel, positions)
 
         self._a_qadr[idx] = self._slot_qadr[a_sel]
         self._a_dadr[idx] = self._slot_dadr[a_sel]
@@ -449,13 +361,10 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv):
         # seeded post-settle by _refresh_reset_reference_state.
         reach_now = place_reach_potential(tcp_to_obj, is_stacked, scale=scale)
         grasp_now = place_grasp_potential(is_grasped, is_stacked)
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = grasp_now
         task_potential = self._task_potential(a_pos, b_pos, is_grasped, is_stacked)
-        task_progress = potential_shaping(task_potential, self._prev_task_potential)
-        self._prev_task_potential = task_potential
+        reach_delta, grasp_delta, task_progress = self._update_potentials(
+            reach_now, grasp_now, task_potential
+        )
         reward = self.config.reward.compute(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

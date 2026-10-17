@@ -44,7 +44,6 @@ from so101_nexus.rewards import (
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
-    potential_shaping,
 )
 from so101_nexus.warp.object_slots import sample_polar, sample_separated_polar
 from so101_nexus.warp.pick_env import WarpPickLiftVectorEnv
@@ -328,16 +327,10 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         # Baselines seeded post-settle by _refresh_reset_reference_state.
         reach_now = place_reach_potential(tcp_to_obj, is_obj_placed, scale=scale)
         grasp_now = place_grasp_potential(is_grasped, is_obj_placed)
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = grasp_now
-        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
-        # 1999; see _task_potential), not the raw potential -- dwelling at any
-        # fixed state pays ~0 per step instead of the potential's full value.
         task_potential = self._task_potential(obj_pos, target_pos, is_grasped, is_obj_placed)
-        task_progress = potential_shaping(task_potential, self._prev_task_potential)
-        self._prev_task_potential = task_potential
+        reach_delta, grasp_delta, task_progress = self._update_potentials(
+            reach_now, grasp_now, task_potential
+        )
         reward = self.config.reward.compute(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

@@ -126,3 +126,33 @@ def test_cube_stack_offset_ok_numpy_and_torch_match_scalar():
         margin=margin,
     )
     np.testing.assert_array_equal(out_t.numpy(), scalar)
+
+
+@pytest.mark.parametrize("backend", ["scalar", "numpy", "torch"])
+def test_potential_state_preserves_progress_regression_and_inputs(backend):
+    from so101_nexus.rewards import _PotentialState
+
+    current = (0.75, 0.25, 0.5)
+    previous = (0.25, 0.75, 0.5)
+    if backend == "numpy":
+        current = tuple(np.array([value], dtype=np.float32) for value in current)
+        previous = tuple(np.array([value], dtype=np.float32) for value in previous)
+    elif backend == "torch":
+        torch = pytest.importorskip("torch")
+        current = tuple(torch.tensor([value], dtype=torch.float32) for value in current)
+        previous = tuple(torch.tensor([value], dtype=torch.float32) for value in previous)
+    state = _PotentialState(*previous)
+    for actual, expected, now, before in zip(
+        state._update_potentials(*current), (0.5, -0.5, 0.0), current, previous, strict=True
+    ):
+        assert (actual if backend == "scalar" else actual.item()) == expected
+        if backend == "scalar":
+            assert isinstance(actual, float)
+        else:
+            assert actual.dtype == now.dtype
+            assert actual.shape == now.shape
+            assert now.item() + before.item() == 1.0
+    assert all(
+        (delta if backend == "scalar" else delta.item()) == 0.0
+        for delta in state._update_potentials(*current)
+    )

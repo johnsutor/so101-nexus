@@ -17,16 +17,11 @@ become the carried object.
 
 from __future__ import annotations
 
-import tempfile
 from typing import ClassVar
 
 import mujoco
 import numpy as np
 
-from so101_nexus import (
-    get_so101_mujoco_model_dir,
-    get_so101_mujoco_model_path,
-)
 from so101_nexus.config import (
     ControlMode,
     PickAndPlaceConfig,
@@ -43,11 +38,9 @@ from so101_nexus.mujoco.spawn_utils import (
 )
 from so101_nexus.object_slots import (
     ObjectSlot,
-    build_object_scene_xml,
-    ensure_scanned_mesh_assets,
-    extract_object_slots,
+    compile_object_scene,
 )
-from so101_nexus.objects import CubeObject, ScannedMeshObject, SceneObject
+from so101_nexus.objects import CubeObject, SceneObject
 from so101_nexus.placement import (
     compiled_slot_geometry,
     resolved_placement_contract,
@@ -59,12 +52,8 @@ from so101_nexus.rewards import (
     place_grasp_potential,
     place_reach_potential,
     place_task_potential,
-    potential_shaping,
 )
 from so101_nexus.scene import MUJOCO_SCENE_OPTION_XML
-
-_SO101_DIR = get_so101_mujoco_model_dir()
-_SO101_XML = get_so101_mujoco_model_path()
 
 # Object placed (not lifted) when within this vertical slack of its rest height.
 _PLACE_Z_SLACK = 0.01
@@ -114,9 +103,6 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         # single-object scene stays identical.
         distractor_pool = list(config.distractors) if config.n_distractors else []
         scene_objects += distractor_pool
-        for obj in scene_objects:
-            if isinstance(obj, ScannedMeshObject):
-                ensure_scanned_mesh_assets(obj)
         slot_names = [f"pick_slot_{i}" for i in range(n_carried)] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))
         ]
@@ -138,24 +124,18 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             if isinstance(config.ground_colors, str)
             else config.ground_colors[0]
         )
-        xml_string = build_object_scene_xml(
+        self.model, slots = compile_object_scene(
             scene_objects,
             slot_names,
             COLOR_MAP[ground_name],
             option_xml=MUJOCO_SCENE_OPTION_XML,
-            robot_xml_path=str(_SO101_XML),
             model_name="pick_and_place_scene",
             extra_bodies=_target_disc_body(
                 config.target_disc_radius, COLOR_MAP[self.target_color_name]
             ),
         )
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", dir=_SO101_DIR, delete=True) as f:
-            f.write(xml_string)
-            f.flush()
-            self.model = mujoco.MjModel.from_xml_path(f.name)
         self.data = mujoco.MjData(self.model)
 
-        slots = extract_object_slots(self.model, slot_names, scene_objects)
         # ``_slots`` stays the carried pool alone, so pool indices (and
         # ``info["target_index"]``) are unaffected by the distractor slots.
         self._slots: list[ObjectSlot] = slots[:n_carried]
@@ -327,16 +307,10 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             info["tcp_to_obj_dist"], info["is_obj_placed"], scale=scale
         )
         grasp_now = place_grasp_potential(info["is_grasped"], info["is_obj_placed"])
-        reach_delta = potential_shaping(reach_now, self._prev_reach_progress)
-        grasp_delta = potential_shaping(grasp_now, self._prev_grasp_progress)
-        self._prev_reach_progress = reach_now
-        self._prev_grasp_progress = grasp_now
-        # task_progress is a potential-based delta (Ng, Harada & Russell, ICML
-        # 1999; see _task_potential), not the raw potential -- dwelling at any
-        # fixed state pays ~0 per step instead of the potential's full value.
         task_potential = info["task_potential"]
-        task_progress = potential_shaping(task_potential, self._prev_task_potential)
-        self._prev_task_potential = task_potential
+        reach_delta, grasp_delta, task_progress = self._update_potentials(
+            reach_now, grasp_now, task_potential
+        )
         components = self.config.reward.compute_components(
             reach_progress=reach_delta,
             is_grasped=grasp_delta,

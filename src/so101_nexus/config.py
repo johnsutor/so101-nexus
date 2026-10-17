@@ -1722,20 +1722,12 @@ class StackCubeConfig(EnvironmentConfig):
             raise ValueError(f"cube_half_size must be in [0.01, 0.05], got {self.cube_half_size}")
         if self.cube_mass <= 0:
             raise ValueError(f"cube_mass must be > 0, got {self.cube_mass}")
-        if self.min_cube_separation < 0:
-            raise ValueError(f"min_cube_separation must be >= 0, got {self.min_cube_separation}")
-        if self.stack_alignment_margin < 0:
-            raise ValueError(
-                f"stack_alignment_margin must be >= 0, got {self.stack_alignment_margin}"
-            )
-        if self.cube_static_lin_threshold < 0:
-            raise ValueError(
-                f"cube_static_lin_threshold must be >= 0, got {self.cube_static_lin_threshold}"
-            )
-        if self.cube_static_ang_threshold < 0:
-            raise ValueError(
-                f"cube_static_ang_threshold must be >= 0, got {self.cube_static_ang_threshold}"
-            )
+        _require_non_negative(
+            min_cube_separation=self.min_cube_separation,
+            stack_alignment_margin=self.stack_alignment_margin,
+            cube_static_lin_threshold=self.cube_static_lin_threshold,
+            cube_static_ang_threshold=self.cube_static_ang_threshold,
+        )
         # Built after the cube checks so an invalid cube_half_size/cube_mass is
         # reported against its own field, not against the default pool's cubes.
         self.distractors = _normalize_objects(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import torch
 
 if TYPE_CHECKING:
@@ -143,3 +144,89 @@ def quat_mul_wxyz(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     out[:, 2] = aw * by - ax * bz + ay * bw + az * bx
     out[:, 3] = aw * bz + ax * by - ay * bx + az * bw
     return out
+
+
+def _contact_budget(n_slots: int, n_collision_geoms: int) -> tuple[int, int]:
+    """Reserve contacts for grasping, parked slots, and extra convex parts.
+
+    Parts of one decomposed mesh cannot contact each other, so each extra part
+    costs much less storage than an independent slot.
+    """
+    nconmax = 192 + 16 * n_slots + 2 * (n_collision_geoms - n_slots)
+    return nconmax, nconmax * 2
+
+
+class _ObjectSlotRuntime:
+    """Share tensor metadata and reset writes for compiled object slots."""
+
+    device: torch.device
+    qpos: torch.Tensor
+    qvel: torch.Tensor
+    _rng: WorldEpisodeRNG
+
+    if TYPE_CHECKING:
+
+        def _setup_slot_visibility(self, slots: Sequence[ObjectSlot]) -> None: ...
+        def _set_slot_visibility(self, idx: torch.Tensor, selected: torch.Tensor) -> None: ...
+
+    def _init_slot_tensors(
+        self,
+        slots: Sequence[ObjectSlot],
+        ngeom: int,
+        spawn_max_radius: float,
+        spawn_center: tuple[float, float],
+    ) -> None:
+        self._slot_qadr = torch.tensor([s.qpos_addr for s in slots], device=self.device)
+        self._slot_dadr = torch.tensor([s.dof_addr for s in slots], device=self.device)
+        # Host caches avoid a device synchronization for every parked slot.
+        self._slot_qadr_host = [s.qpos_addr for s in slots]
+        self._slot_dadr_host = [s.dof_addr for s in slots]
+        self._qpos_offsets = torch.arange(7, device=self.device)
+        self._slot_geom_masks = slot_geom_masks(slots, ngeom, self.device)
+        self._setup_slot_visibility(slots)
+        self._slot_spawn_z = torch.tensor(
+            [s.spawn_z for s in slots], dtype=torch.float32, device=self.device
+        )
+        self._slot_bradius = torch.tensor(
+            [s.bounding_radius for s in slots], dtype=torch.float32, device=self.device
+        )
+        self._slot_rest_quat = torch.tensor(
+            np.stack([s.rest_quat for s in slots]), dtype=torch.float32, device=self.device
+        )
+        self._hide_xy = hidden_slot_band_xy(
+            self.device,
+            len(slots),
+            float(self._slot_bradius.max()),
+            spawn_max_radius,
+            spawn_center,
+        )
+
+    def _hide_all_slots(self, idx: torch.Tensor) -> None:
+        """Park every slot at its hidden resting pose for the reset worlds.
+
+        Slot qpos columns are shared across worlds, so hiding uses fixed slices;
+        active slots are overwritten afterward by ``_place_active_slots``.
+        """
+        for j, qa in enumerate(self._slot_qadr_host):
+            self.qpos[idx, qa] = self._hide_xy[j, 0]
+            self.qpos[idx, qa + 1] = self._hide_xy[j, 1]
+            self.qpos[idx, qa + 2] = self._slot_spawn_z[j]
+            self.qpos[idx, qa + 3 : qa + 7] = self._slot_rest_quat[j]
+            da = self._slot_dadr_host[j]
+            self.qvel[idx, da : da + 6] = 0.0
+
+    def _place_active_slots(
+        self, idx: torch.Tensor, sel: torch.Tensor, positions: torch.Tensor
+    ) -> None:
+        """Place each rank's selected slot at ``positions[:, k]`` with random yaw."""
+        self._set_slot_visibility(idx, sel)
+        rows = idx[:, None]
+        for k in range(sel.shape[1]):
+            sel_k = sel[:, k]  # (n,) pool idx per reset world
+            base = self._slot_qadr[sel_k]
+            yaw = random_yaw_quat_batch(self._rng, idx)
+            quat = quat_mul_wxyz(yaw, self._slot_rest_quat[sel_k])
+            self.qpos[rows, base[:, None] + self._qpos_offsets[:3]] = torch.cat(
+                [positions[:, k], self._slot_spawn_z[sel_k][:, None]], dim=1
+            )
+            self.qpos[rows, base[:, None] + self._qpos_offsets[3:]] = quat
