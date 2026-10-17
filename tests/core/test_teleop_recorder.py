@@ -380,6 +380,64 @@ def test_recording_thread_uses_and_records_episode_seed(monkeypatch) -> None:
     assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
 
 
+def test_recording_failure_preserves_elapsed_time_and_rendering_metadata(monkeypatch) -> None:
+    import itertools
+
+    import so101_nexus.teleop.recorder as recorder_module
+
+    class InterruptedLeader(_FakeLeader):
+        reads = 0
+
+        def get_action(self):
+            self.reads += 1
+            if self.reads >= 3:
+                raise ConnectionError("missing motor status packet")
+            return super().get_action()
+
+    events = []
+    metadata = _FakeRecordingFollower.rendering_metadata
+
+    def capture_metadata(self):
+        events.append("metadata")
+        return metadata(self)
+
+    monkeypatch.setattr(_FakeRecordingFollower, "rendering_metadata", capture_metadata)
+    monkeypatch.setattr(_FakeRecordingFollower, "disconnect", lambda self: events.append("close"))
+    monkeypatch.setattr(recorder_module.time, "monotonic", lambda: next(ticks))
+    ticks = itertools.count()
+
+    state, _ = _run_fake_recording(monkeypatch, leader=InterruptedLeader())
+
+    assert "missing motor status packet" in state.error
+    assert len(state.episode_actions) == 1
+    assert state.episode_duration > 0
+    assert state.rendering_metadata == {"renderers": {"side": {"msaa_samples": 4}}}
+    assert events == ["metadata", "close"]
+    assert state.recording_finished
+
+
+def test_rendering_metadata_failure_preserves_primary_error_and_finishes_cleanup(monkeypatch):
+    def fail_metadata(self):
+        raise RuntimeError("renderer unavailable")
+
+    closed = []
+
+    def disconnect(self):
+        closed.append(self)
+
+    monkeypatch.setattr(_FakeRecordingFollower, "rendering_metadata", fail_metadata)
+    monkeypatch.setattr(_FakeRecordingFollower, "disconnect", disconnect)
+
+    state, follower = _run_fake_recording(monkeypatch, leader=_ExplodingLeader())
+
+    assert "simulated leader read failure" in state.error
+    assert "renderer unavailable" in state.error
+    assert closed == [follower]
+    assert state.recording_finished
+    assert not state.is_recording
+    assert state.initial_sim_state == {"qpos": [1.0, 2.0]}
+
+
 def test_recording_thread_drives_follower_and_records_state_from_obs(tmp_path) -> None:
     pytest.importorskip("mujoco")
     pytest.importorskip("so101_nexus.mujoco")

@@ -410,6 +410,8 @@ def recording_thread(
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
     follower_session = _follower_session or _FollowerSession()
+    follower = None
+    start_time = None
     state.clear_episode()
     try:
         if not _run_countdown(state, countdown):
@@ -430,6 +432,8 @@ def recording_thread(
             factory=env_config_factory,
             **({"align_fps": True} if intervention is not None else {}),
         )
+        if state.should_stop:
+            return
 
         state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
         env = follower._env
@@ -464,14 +468,26 @@ def recording_thread(
             sleep_time = frame_duration - (time.monotonic() - step_start)
             if sleep_time > 0:
                 time.sleep(sleep_time)
-
-        state.episode_duration = time.monotonic() - start_time
-        state.rendering_metadata = follower.rendering_metadata()
     except Exception as exc:
         state.error = f"{type(exc).__name__}: {exc}"
-        follower_session.close()
     finally:
-        _finish_recording(state, follower_session, _follower_session is None, intervention)
+        _capture_recording_metadata(state, follower, start_time)
+        _finish_recording(
+            state, follower_session, _follower_session is None or bool(state.error), intervention
+        )
+
+
+def _capture_recording_metadata(
+    state: RecordingState, follower: SimSOFollower | None, start_time: float | None
+) -> None:
+    if start_time is not None:
+        state.episode_duration = time.monotonic() - start_time
+    if follower is not None:
+        try:
+            state.rendering_metadata = follower.rendering_metadata()
+        except Exception as exc:
+            message = f"Failed to capture rendering metadata: {exc}"
+            state.error = f"{state.error}\n{message}" if state.error else message
 
 
 def _begin_intervention_episode(

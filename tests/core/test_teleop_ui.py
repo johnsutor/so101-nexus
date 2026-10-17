@@ -203,12 +203,15 @@ const event = {key: shortcutKey, target: {closest: () => null}, preventDefault: 
 handler(event);
 assert.equal(clicks, 1);
 assert.equal(prevented, 1);
-handler({...event, target: {closest: () => ({})}});
+const checkbox = {closest: () => ({matches: selector => selector.includes('checkbox')})};
+handler({...event, target: checkbox});
+assert.equal(clicks, 2);
+handler({...event, target: {closest: () => ({matches: () => false})}});
 handler({...event, repeat: true});
 handler({...event, ctrlKey: true});
 button.disabled = true;
 handler(event);
-assert.equal(clicks, 1);
+assert.equal(clicks, 2);
 """
     )
     subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
@@ -464,3 +467,19 @@ def test_alignment_pause_shows_joint_diagnostics_and_recovery_actions():
     assert takeover["interactive"] is True
     assert correct["interactive"] is False
     assert policy["interactive"] is True
+
+
+@pytest.mark.usefixtures("_require_gradio")
+@pytest.mark.parametrize("countdown", [0, 3])
+def test_pending_episode_keeps_stop_available(countdown):
+    from unittest.mock import Mock
+
+    from so101_nexus.teleop.app import _cb_poll_recording
+    from so101_nexus.teleop.recorder import RecordingState
+
+    worker = Mock()
+    worker.wait.return_value = False
+    updates = _cb_poll_recording(
+        {"state": RecordingState(countdown_value=countdown), "fps": 30, "recording_worker": worker}
+    )
+    assert updates[4]["visible"] is True

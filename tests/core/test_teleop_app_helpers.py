@@ -1111,6 +1111,52 @@ def test_poll_recording_reviews_all_buffered_cameras(fake_gradio, monkeypatch):
     assert captured["images"]["Side"] is state.episode_side_images
 
 
+@pytest.mark.parametrize("failed_preview", ["make_review_video", "make_state_plot"])
+def test_review_preview_failure_preserves_recording_and_review_controls(
+    fake_gradio, monkeypatch, failed_preview
+):
+    def fail_preview(*args, **kwargs):
+        raise OSError("preview unavailable")
+
+    monkeypatch.setattr(teleop_app, "make_review_video", lambda *args: "review.mp4")
+    monkeypatch.setattr(teleop_app, "make_state_plot", lambda *args: "state-plot")
+    monkeypatch.setattr(teleop_app, failed_preview, fail_preview)
+    state = RecordingState(recording_finished=True, error="Leader connection failed")
+    state.episode_actions.append(np.zeros(2, dtype=np.float32))
+    state.episode_states.append(np.zeros(2, dtype=np.float32))
+
+    outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ("joint_a", "joint_b")})
+
+    assert outputs[6].selected == 3
+    assert outputs[7]["value"] == (None if failed_preview == "make_review_video" else "review.mp4")
+    assert outputs[8]["value"] == (None if failed_preview == "make_state_plot" else "state-plot")
+    assert "Leader connection failed" in outputs[10]["value"]
+    assert "preview unavailable" in outputs[10]["value"]
+    assert outputs[10]["visible"] is True
+    assert outputs[11]["interactive"] is True
+    assert outputs[12]["interactive"] is True
+    assert state.error == "Leader connection failed"
+    assert not state.recording_finished
+    assert len(state.episode_actions) == len(state.episode_states) == 1
+
+
+def test_review_preview_failure_does_not_report_recording_failure(fake_gradio, monkeypatch):
+    def fail_video(*args):
+        raise OSError("encoder unavailable")
+
+    monkeypatch.setattr(teleop_app, "make_review_video", fail_video)
+    state = RecordingState(recording_finished=True)
+
+    outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ()})
+
+    assert outputs[0]["value"] == "Recording complete."
+    assert "encoder unavailable" in outputs[10]["value"]
+    assert "Recording stopped after an error" not in outputs[10]["value"]
+    assert outputs[11]["interactive"] is False
+    assert outputs[12]["interactive"] is True
+    assert state.error is None
+
+
 def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=1, terminated_at_frame=3)
     state.episode_actions.extend([np.zeros(6, dtype=np.float32) for _ in range(4)])

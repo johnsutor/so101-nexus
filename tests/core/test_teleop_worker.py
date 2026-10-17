@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import types
+from unittest.mock import Mock
 
 import pytest
 
@@ -138,6 +139,49 @@ def test_worker_close_cancels_countdown_and_rejects_new_jobs(worker_setup):
     with pytest.raises(RuntimeError, match="closed"):
         worker.submit(**kwargs)
     worker.close()
+
+
+@pytest.mark.parametrize("acquisition", ["connect", "reset"])
+def test_worker_stop_during_acquisition_does_not_begin_control(
+    worker_setup, monkeypatch, acquisition
+):
+    kwargs, follower_type, _ = worker_setup
+    intervention = Mock(intervention_id=0)
+    intervention.action.side_effect = lambda obs, task, human: human()
+    intervention.execute.side_effect = lambda action, send: send(action)
+    kwargs["intervention"] = intervention
+    entered, release = threading.Event(), threading.Event()
+    worker = RecordingWorker()
+    try:
+        if acquisition == "reset":
+            worker.submit(**kwargs)
+            assert worker.wait(5)
+            intervention.reset_mock()
+
+        original = getattr(follower_type, acquisition)
+
+        def blocked_acquire(self, **options):
+            entered.set()
+            assert release.wait(5)
+            original(self, **options)
+
+        monkeypatch.setattr(follower_type, acquisition, blocked_acquire)
+        worker.submit(**kwargs)
+        assert entered.wait(5)
+        kwargs["state"].should_stop = True
+        release.set()
+        assert worker.wait(5)
+
+        intervention.begin_episode.assert_not_called()
+        intervention.action.assert_not_called()
+        intervention.execute.assert_not_called()
+        intervention.end_episode.assert_called_once()
+        assert follower_type.instances[-1].step_calls == 0
+        assert kwargs["state"].recording_finished
+        assert kwargs["state"].error is None
+    finally:
+        release.set()
+        worker.close()
 
 
 def test_worker_rejects_overlapping_recordings_and_stops_active_episode(worker_setup):

@@ -19,7 +19,7 @@ from so101_nexus.config import SO101_JOINT_NAMES
 DEFAULT_WRIST_ROLL_OFFSET_DEG = -90.0
 DEFAULT_ALIGNMENT_TOLERANCE_DEG = 10.0
 DEFAULT_GRIPPER_TOLERANCE_PERCENT = 5.0
-_TORQUE_COMMUNICATION_RETRIES = 3
+_COMMUNICATION_RETRIES = 3
 
 ROBOT_JOINT_NAMES: dict[str, tuple[str, ...]] = {
     "so100": SO101_JOINT_NAMES,
@@ -220,6 +220,12 @@ class SOLeaderSynchronizer:
             target = {key.removesuffix(".pos"): value for key, value in target.items()}
             if not all(math.isfinite(value) for value in target.values()):
                 raise ValueError("Synchronization targets must be finite")
+            wrist = "wrist_roll"
+            if wrist in target:
+                gap = target[wrist] - self._initial[wrist]
+                if abs(gap) > 180 and abs((gap + 180) % 360 - 180) <= self.joint_tolerance_deg:
+                    # Equivalent seam poses do not need a nearly full physical turn.
+                    target[wrist] = self._initial[wrist]
             self._target = target
             self._duration = max(
                 abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
@@ -243,6 +249,7 @@ class SOLeaderSynchronizer:
                             name: self._initial[name] + fraction * (value - self._initial[name])
                             for name, value in self._target.items()
                         },
+                        num_retry=_COMMUNICATION_RETRIES,
                     )
                 positions = self._read_positions()
                 errors = {
@@ -288,13 +295,22 @@ class SOLeaderSynchronizer:
             self._target = None
             self._holding = False
             positions = self._read_positions()
-            self.bus.sync_write("Goal_Position", positions)
-            self.bus.enable_torque(num_retry=_TORQUE_COMMUNICATION_RETRIES)
+            first_error = None
+            for name, value in positions.items():
+                try:
+                    self.bus.write("Goal_Position", name, value, num_retry=_COMMUNICATION_RETRIES)
+                    self.bus.enable_torque(motors=name, num_retry=_COMMUNICATION_RETRIES)
+                except Exception as exc:
+                    # Hold the other joints even when one motor stops responding.
+                    if first_error is None:
+                        first_error = exc
+            if first_error is not None:
+                raise first_error
             self._initial = positions
             self._holding = True
 
     def _read_positions(self) -> dict[str, float]:
-        positions = self.bus.sync_read("Present_Position")
+        positions = self.bus.sync_read("Present_Position", num_retry=_COMMUNICATION_RETRIES)
         if set(positions) != set(SO101_JOINT_NAMES) or not all(
             math.isfinite(value) for value in positions.values()
         ):
@@ -306,4 +322,4 @@ class SOLeaderSynchronizer:
         with self._lock:
             self._target = None
             self._holding = False
-            self.bus.disable_torque(num_retry=_TORQUE_COMMUNICATION_RETRIES)
+            self.bus.disable_torque(num_retry=_COMMUNICATION_RETRIES)

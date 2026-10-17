@@ -111,3 +111,58 @@ def test_policy_initialization_failure_closes_serial_without_disabling_torque(mo
     assert sessions[0].synchronizer.gripper_tolerance_percent == 6
     with pytest.raises(RuntimeError, match="closed"):
         sessions[0].request("human")
+
+
+def test_duplicate_initialization_is_rejected_before_resource_changes(monkeypatch):
+    gr = pytest.importorskip("gradio")
+    close = Mock()
+    launch = Mock()
+    monkeypatch.setattr(app, "_close_recording_worker", close)
+    monkeypatch.setattr(app.threading, "Thread", launch)
+    with pytest.raises(gr.Error, match="already running"):
+        app._start_init_attempt({}, {"running": True}, "/dev/null", {})
+    close.assert_not_called()
+    launch.assert_not_called()
+
+
+@pytest.mark.parametrize("failed_attempt", [False, True])
+def test_initialization_starts_once_and_allows_retry_after_failure(monkeypatch, failed_attempt):
+    gr = pytest.importorskip("gradio")
+    close = Mock()
+    thread = Mock()
+    monkeypatch.setattr(app, "_close_recording_worker", close)
+    monkeypatch.setattr(app.threading, "Thread", thread)
+    monkeypatch.setattr(app, "check_robot_env_mismatch", lambda *_: None)
+    config = dict.fromkeys(
+        (
+            "env_id",
+            "robot_type",
+            "leader_id",
+            "fps",
+            "wrist_wh",
+            "overhead_wh",
+            "repo_id",
+            "num_episodes",
+            "action_space",
+            "max_steps",
+            "countdown",
+            "wrist_roll_offset_deg",
+            "field_selection",
+            "env_overrides",
+            "success_hold_seconds",
+        )
+    )
+    session = {}
+    state = {
+        "running": False,
+        "done": failed_attempt,
+        "error": "failure" if failed_attempt else None,
+    }
+    app._start_init_attempt(session, state, "/dev/null", config)
+    assert state["running"] is True
+    assert state["done"] is False
+    assert state["error"] is None
+    with pytest.raises(gr.Error, match="already running"):
+        app._start_init_attempt(session, state, "/dev/null", config)
+    close.assert_called_once_with(session)
+    thread.return_value.start.assert_called_once_with()

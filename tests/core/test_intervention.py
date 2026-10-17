@@ -178,15 +178,19 @@ class Bus:
         self.positions = dict.fromkeys(SO101_JOINT_NAMES, 0.0)
         self.events = []
 
-    def sync_read(self, register):
+    def sync_read(self, register, *, num_retry=0):
         return dict(self.positions)
 
-    def sync_write(self, register, values):
+    def sync_write(self, register, values, *, num_retry=0):
         self.events.append(("write", dict(values)))
         self.positions.update(values)
 
-    def enable_torque(self, *, num_retry=0):
-        self.events.append(("enable",))
+    def write(self, register, motor, value, *, num_retry=0):
+        self.events.append(("hold", motor, value))
+        self.positions[motor] = value
+
+    def enable_torque(self, *, motors=None, num_retry=0):
+        self.events.append(("enable", motors))
 
     def disable_torque(self, *, num_retry=0):
         self.events.append(("disable",))
@@ -206,6 +210,7 @@ def test_feetech_lock_acknowledgment_retries_are_bounded(monkeypatch, operation,
         bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 0.0)
     )
     monkeypatch.setattr(bus, "sync_write", lambda *args, **kwargs: None)
+    monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 0))
     lock_address = bus.model_ctrl_table["sts3215"]["Lock"][0]
     torque_address = bus.model_ctrl_table["sts3215"]["Torque_Enable"][0]
     writes = []
@@ -227,6 +232,9 @@ def test_feetech_lock_acknowledgment_retries_are_bounded(monkeypatch, operation,
             getattr(sync, operation)()
         assert attempts == 4
         assert not sync.holding
+        if operation == "cancel":
+            assert (6, torque_address, 1) in writes
+            assert (6, lock_address, 1) in writes
     else:
         getattr(sync, operation)()
         assert attempts == 2
@@ -234,7 +242,11 @@ def test_feetech_lock_acknowledgment_retries_are_bounded(monkeypatch, operation,
         for motor_id in range(1, 7):
             assert (motor_id, torque_address, value) in writes
             assert (motor_id, lock_address, value) in writes
-    assert all(written == value for _, _, written in writes)
+    assert all(
+        written == value
+        for _, address, written in writes
+        if address in (lock_address, torque_address)
+    )
 
 
 def test_leader_sync_interpolates_converts_offset_and_holds_until_explicit_release(monkeypatch):
@@ -244,7 +256,9 @@ def test_leader_sync_interpolates_converts_offset_and_holds_until_explicit_relea
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
     target = observation(10)
     sync.start(target)
-    assert bus.events[:2] == [("write", dict.fromkeys(SO101_JOINT_NAMES, 0.0)), ("enable",)]
+    assert bus.events[:12] == [
+        event for name in SO101_JOINT_NAMES for event in (("hold", name, 0.0), ("enable", name))
+    ]
     assert not sync.tick()
     now[0] = 1.0
     assert not sync.tick()
@@ -264,14 +278,14 @@ def test_leader_sync_timeout_and_cancel_hold_measured_pose(monkeypatch):
     bus = Bus()
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
     sync.start(observation(10))
-    bus.sync_write = lambda *args: None
+    bus.sync_write = lambda *args, **kwargs: None
     now[0] = 10
     with pytest.raises(TimeoutError, match="synchron"):
         sync.tick()
     assert ("disable",) not in bus.events
-    assert bus.events[-1] == ("enable",)
+    assert bus.events[-1] == ("enable", "gripper")
     sync.cancel()
-    assert bus.events[-1] == ("enable",)
+    assert bus.events[-1] == ("enable", "gripper")
     assert ("disable",) not in bus.events
 
 
@@ -625,7 +639,9 @@ def test_sync_io_failure_never_disables_torque_or_continues_trajectory(monkeypat
     sync.start(observation(10))
     bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 3.0)
     method = "sync_read" if failure == "read" else "sync_write"
-    monkeypatch.setattr(bus, method, lambda *args: (_ for _ in ()).throw(OSError("bus failed")))
+    monkeypatch.setattr(
+        bus, method, lambda *args, **kwargs: (_ for _ in ()).throw(OSError("bus failed"))
+    )
     now[0] = 0.1
     with pytest.raises((OSError, RuntimeError), match="bus failed"):
         sync.tick()
@@ -641,7 +657,9 @@ def test_cancel_holds_current_pose_instead_of_finishing_alignment(monkeypatch):
     sync.start(observation(40))
     bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 5.0)
     sync.cancel()
-    assert bus.events[-2:] == [("write", dict.fromkeys(SO101_JOINT_NAMES, 5.0)), ("enable",)]
+    assert bus.events[-12:] == [
+        event for name in SO101_JOINT_NAMES for event in (("hold", name, 5.0), ("enable", name))
+    ]
     assert ("disable",) not in bus.events
     assert sync.tick()
 
@@ -699,7 +717,9 @@ def test_recording_failure_holds_physical_pose_and_preserves_error(worker_setup)
         assert "teleoperation inference failed" in kwargs["state"].error
         assert session.synchronizer.holding
         assert ("disable",) not in bus.events
-        assert bus.events[-2:] == [("write", dict.fromkeys(SO101_JOINT_NAMES, 7.0)), ("enable",)]
+        assert bus.events[-12:] == [
+            event for name in SO101_JOINT_NAMES for event in (("hold", name, 7.0), ("enable", name))
+        ]
     finally:
         worker.close()
         session.close()
@@ -799,7 +819,11 @@ def test_alignment_timeout_reports_joint_errors_without_new_motion(monkeypatch):
         sync.tick()
     assert "gripper" in str(error.value)
     assert "percent" in str(error.value)
-    assert bus.events[-2:] == [("write", bus.positions), ("enable",)]
+    assert bus.events[-12:] == [
+        event
+        for name in SO101_JOINT_NAMES
+        for event in (("hold", name, bus.positions[name]), ("enable", name))
+    ]
     assert bus.positions["wrist_flex"] == 6.0
     assert ("disable",) not in bus.events
 
@@ -1003,7 +1027,7 @@ def test_alignment_tolerance_affects_measured_readiness(
     bus = Bus()
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0, **{field: tolerance})
     sync.start(observation(10))
-    bus.sync_write = lambda *args: None
+    bus.sync_write = lambda *args, **kwargs: None
     bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 10.0)
     bus.positions[joint] += error
     now[0] = 1.0
@@ -1058,3 +1082,160 @@ def test_failed_hold_cannot_authorize_current_pose_takeover():
         assert sync.releases == 0
     finally:
         session.close()
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_pose_read_retries_recover_transient_packets_and_bound_persistent_failures(
+    monkeypatch, persistent
+):
+    pytest.importorskip("scservo_sdk")
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
+
+    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
+    monkeypatch.setattr(bus.port_handler, "is_open", True)
+    attempts = []
+
+    def read_packet():
+        attempts.append(1)
+        return -6 if persistent or len(attempts) == 1 else 0
+
+    monkeypatch.setattr(bus.sync_reader, "txRxPacket", read_packet)
+    monkeypatch.setattr(bus.sync_reader, "isAvailable", lambda *args: True)
+    monkeypatch.setattr(bus.sync_reader, "getData", lambda *args: 2048)
+    monkeypatch.setattr(bus, "_normalize", lambda values: dict.fromkeys(values, 0.0))
+    holds = []
+    monkeypatch.setattr(bus, "write", lambda register, name, value, **kwargs: holds.append(name))
+    enables = []
+    monkeypatch.setattr(bus, "enable_torque", lambda *, motors, **kwargs: enables.append(motors))
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    if persistent:
+        with pytest.raises(ConnectionError, match="after 4 tries"):
+            sync.cancel()
+        assert len(attempts) == 4
+        assert not sync.holding
+        assert holds == enables == []
+    else:
+        sync.cancel()
+        assert len(attempts) == 2
+        assert holds == list(SO101_JOINT_NAMES)
+        assert enables == list(SO101_JOINT_NAMES)
+        assert sync.holding
+
+
+def test_hold_requires_acknowledged_targets_before_enabling_torque():
+    bus = Bus()
+    bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 15.0)
+    attempted = []
+
+    def write(register, name, value, *, num_retry=0):
+        attempted.append((register, name, value, num_retry))
+        if name == SO101_JOINT_NAMES[0]:
+            raise ConnectionError("Goal_Position acknowledgment missing")
+
+    bus.write = write
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    with pytest.raises(ConnectionError, match="acknowledgment missing"):
+        sync.cancel()
+    assert attempted == [("Goal_Position", name, 15.0, 3) for name in SO101_JOINT_NAMES]
+    assert not sync.holding
+    assert ("enable", SO101_JOINT_NAMES[0]) not in bus.events
+    assert [event for event in bus.events if event[0] == "enable"] == [
+        ("enable", name) for name in SO101_JOINT_NAMES[1:]
+    ]
+    assert ("disable",) not in bus.events
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_hold_goal_acknowledgments_retry_before_enabling_torque(monkeypatch, persistent):
+    pytest.importorskip("scservo_sdk")
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
+
+    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
+    monkeypatch.setattr(bus.port_handler, "is_open", True)
+    monkeypatch.setattr(
+        bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 15.0)
+    )
+    monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 2048))
+    goal_address = bus.model_ctrl_table["sts3215"]["Goal_Position"][0]
+    goal_attempts = []
+    torque_enabled = []
+    monkeypatch.setattr(
+        bus, "enable_torque", lambda *, motors, **kwargs: torque_enabled.append(motors)
+    )
+
+    def write_packet(_port, motor_id, address, _length, data):
+        assert address == goal_address
+        assert data == [0, 8]
+        goal_attempts.append(motor_id)
+        return (-6, 0) if motor_id == 1 and (persistent or goal_attempts.count(1) == 1) else (0, 0)
+
+    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    if persistent:
+        with pytest.raises(ConnectionError, match=r"Goal_Position.*after 4 tries"):
+            sync.cancel()
+        assert goal_attempts == [1, 1, 1, 1, 2, 3, 4, 5, 6]
+        assert torque_enabled == list(SO101_JOINT_NAMES[1:])
+        assert not sync.holding
+    else:
+        sync.cancel()
+        assert goal_attempts == [1, 1, 2, 3, 4, 5, 6]
+        assert torque_enabled == list(SO101_JOINT_NAMES)
+        assert sync.holding
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_alignment_transmission_retries_are_bounded(monkeypatch, persistent):
+    pytest.importorskip("scservo_sdk")
+    from lerobot.motors.feetech import FeetechMotorsBus
+
+    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
+
+    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
+    monkeypatch.setattr(bus.port_handler, "is_open", True)
+    monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 2048))
+    monkeypatch.setattr(
+        bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 0.0)
+    )
+    attempts = []
+
+    def write_packet():
+        attempts.append(1)
+        return -6 if persistent or len(attempts) == 1 else 0
+
+    monkeypatch.setattr(bus.sync_writer, "txPacket", write_packet)
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync._initial = dict.fromkeys(SO101_JOINT_NAMES, 0.0)
+    monkeypatch.setattr(sync, "cancel", lambda: None)
+    sync.start(observation(10))
+    if persistent:
+        with pytest.raises(ConnectionError, match=r"Goal_Position.*after 4 tries"):
+            sync.tick()
+        assert len(attempts) == 4
+    else:
+        assert not sync.tick()
+        assert len(attempts) == 2
+
+
+@pytest.mark.parametrize(
+    "initial,target,expected", [(179.0, -179.0, 179.0), (160.0, -160.0, 150.0)]
+)
+def test_wrist_alignment_keeps_equivalent_seam_pose_without_skipping_larger_errors(
+    monkeypatch, initial, target, expected
+):
+    now = [0.0]
+    monkeypatch.setattr("so101_nexus.teleop.leader.time.monotonic", lambda: now[0])
+    bus = Bus()
+    bus.positions["wrist_roll"] = initial
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start({**observation(), "shoulder_lift.pos": 40.0, "wrist_roll.pos": target})
+    now[0] = 0.5
+    assert not sync.tick()
+    assert bus.positions["wrist_roll"] == expected
+    assert -180 <= bus.positions["wrist_roll"] <= 180
+    assert 0 < bus.positions["shoulder_lift"] <= 10.0
+    assert ("disable",) not in bus.events

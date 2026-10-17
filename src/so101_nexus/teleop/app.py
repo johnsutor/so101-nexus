@@ -616,53 +616,58 @@ def _start_init_attempt(session: dict, init_state: dict, leader_port: str, confi
     """Reset init state and launch a fresh initialization attempt."""
     import gradio as gr
 
-    intervention = session.get("intervention")
-    if intervention is not None and not intervention.leader_released:
-        raise gr.Error("Support the physical leader and release its motors before reinitializing.")
-    _close_recording_worker(session)
-    if (leader := session.pop("leader", None)) is not None:
-        _disconnect_leader(session, leader)
-    init_state.update(
-        warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
-        running=True,
-        done=False,
-        processed=False,
-        error=None,
-        log_lines=[],
-        log_text="",
-        last_config=config,
-    )
+    with session.setdefault("init_lock", threading.Lock()):
+        if init_state.get("running"):
+            raise gr.Error("Initialization is already running. Wait for it to finish.")
+        intervention = session.get("intervention")
+        if intervention is not None and not intervention.leader_released:
+            raise gr.Error(
+                "Support the physical leader and release its motors before reinitializing."
+            )
+        _close_recording_worker(session)
+        if (leader := session.pop("leader", None)) is not None:
+            _disconnect_leader(session, leader)
+        init_state.update(
+            warning=check_robot_env_mismatch(config["env_id"], config["robot_type"]),
+            running=True,
+            done=False,
+            processed=False,
+            error=None,
+            log_lines=[],
+            log_text="",
+            last_config=config,
+        )
 
-    threading.Thread(
-        target=_run_init_worker,
-        args=(
-            session,
-            init_state,
-            leader_port,
-            config["env_id"],
-            config["robot_type"],
-            config["leader_id"],
-            config["fps"],
-            config["wrist_wh"],
-            config["overhead_wh"],
-            config["repo_id"],
-            config["num_episodes"],
-            config["action_space"],
-            config["max_steps"],
-            config["countdown"],
-            config["wrist_roll_offset_deg"],
-            config["field_selection"],
-            config["env_overrides"],
-            config["success_hold_seconds"],
-        ),
-        daemon=True,
-    ).start()
+        threading.Thread(
+            target=_run_init_worker,
+            args=(
+                session,
+                init_state,
+                leader_port,
+                config["env_id"],
+                config["robot_type"],
+                config["leader_id"],
+                config["fps"],
+                config["wrist_wh"],
+                config["overhead_wh"],
+                config["repo_id"],
+                config["num_episodes"],
+                config["action_space"],
+                config["max_steps"],
+                config["countdown"],
+                config["wrist_roll_offset_deg"],
+                config["field_selection"],
+                config["env_overrides"],
+                config["success_hold_seconds"],
+            ),
+            daemon=True,
+        ).start()
 
-    return (
-        gr.Walkthrough(selected=1),
-        gr.update(value="Starting..."),
-        gr.update(visible=False),
-    )
+        return (
+            gr.Walkthrough(selected=1),
+            gr.update(value="Starting..."),
+            gr.update(visible=False),
+        )
 
 
 def _cb_start_init(
@@ -896,8 +901,17 @@ def _cb_start_recording(session: dict):
     """Launch the recording thread and update UI to recording state."""
     import gradio as gr
 
-    with session.setdefault("leader_lifecycle_lock", threading.Lock()):
+    with (
+        _episode_transaction(session),
+        session.setdefault("leader_lifecycle_lock", threading.Lock()),
+    ):
         s = session["state"]
+        if s.episodes_completed >= s.num_episodes:
+            raise gr.Error(
+                "This recording session is complete. Initialize a new session to record more."
+            )
+        if s.episode_actions or s.error:
+            raise gr.Error("Save or discard the current episode before starting another.")
         worker = session.get("recording_worker")
         if worker is None:
             worker = session["recording_worker"] = RecordingWorker()
@@ -926,6 +940,7 @@ def _cb_start_recording(session: dict):
             gr.update(visible=False),
             gr.update(value=None, visible=False),
             gr.update(value=_TASK_PENDING_TEXT),
+            gr.update(visible=True),
         )
 
 
@@ -948,7 +963,7 @@ def _cb_poll_recording(session: dict):
             gr.update(visible=False),
             gr.update(visible=True, value=f"**{s.countdown_value}**\n\nGet ready..."),
             gr.update(visible=False),
-            gr.update(visible=False),
+            gr.update(visible=True),
             gr.update(value=_TASK_PENDING_TEXT),
             gr.update(),
             gr.update(),
@@ -1000,7 +1015,12 @@ def _cb_poll_recording(session: dict):
         if s.error:
             gr.Warning(f"Recording failed: {s.error}")
         return _recording_finished_updates(session, s, fps)
-    return tuple(gr.update() for _ in range(13))
+    updates = [gr.update() for _ in range(13)]
+    worker = session.get("recording_worker")
+    if worker is not None and not worker.wait(0):
+        updates[0] = gr.update(value="Preparing simulation... You can stop this episode.")
+        updates[4] = gr.update(visible=True)
+    return tuple(updates)
 
 
 def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
@@ -1008,17 +1028,24 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
     import gradio as gr
 
     jn = session["joint_names"]
-    video_path = make_review_video(
-        {
-            "Wrist": s.episode_wrist_images,
-            "Overhead": s.episode_overhead_images,
-            "Side": s.episode_side_images,
-        },
-        fps,
-    )
-    fig = (
-        make_state_plot(s.episode_states, jn, fps, s.episode_rewards) if s.episode_states else None
-    )
+    video_path = fig = None
+    preview_warnings = []
+    try:
+        video_path = make_review_video(
+            {
+                "Wrist": s.episode_wrist_images,
+                "Overhead": s.episode_overhead_images,
+                "Side": s.episode_side_images,
+            },
+            fps,
+        )
+    except Exception as exc:
+        preview_warnings.append(f"Video preview could not be generated: {exc}")
+    if s.episode_states:
+        try:
+            fig = make_state_plot(s.episode_states, jn, fps, s.episode_rewards)
+        except Exception as exc:
+            preview_warnings.append(f"State plot could not be generated: {exc}")
     n = len(s.episode_actions)
     meta = (
         f"**Episode {s.episodes_completed + 1} / {s.num_episodes}**\n\n"
@@ -1034,6 +1061,13 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         if s.error
         else ""
     )
+    if preview_warnings:
+        preview_warning = (
+            "### Review preview unavailable\n\n"
+            + "\n\n".join(preview_warnings)
+            + "\n\nThe recorded frames are unchanged. You can still save or discard this episode."
+        )
+        failure = f"{failure}\n\n{preview_warning}" if failure else preview_warning
     return (
         gr.update(value="Recording stopped after an error." if s.error else "Recording complete."),
         gr.update(visible=False),
@@ -1045,7 +1079,7 @@ def _recording_finished_updates(session: dict, s: RecordingState, fps: int):
         gr.update(value=video_path),
         gr.update(value=fig),
         gr.update(value=meta),
-        gr.update(value=failure, visible=bool(s.error)),
+        gr.update(value=failure, visible=bool(failure)),
         gr.update(interactive=n > 0),
         gr.update(interactive=True),
     )
@@ -1062,7 +1096,31 @@ def _cb_prepare_episode_approval():
     )
 
 
+@contextlib.contextmanager
+def _episode_transaction(session: dict):
+    """Prevent separate Gradio callbacks from mutating the same episode."""
+    import gradio as gr
+
+    lock = session.setdefault("episode_lock", threading.Lock())
+    if not lock.acquire(blocking=False):
+        raise gr.Error("This episode is already being saved or changed. Wait for it to finish.")
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 def _cb_approve_episode(session: dict):
+    """Save a reviewable episode, rejecting duplicate or conflicting requests."""
+    import gradio as gr
+
+    with _episode_transaction(session):
+        if not _leader_is_idle(session) or not session["state"].episode_actions:
+            return tuple(gr.update() for _ in range(9))
+        return _save_episode(session)
+
+
+def _save_episode(session: dict):
     """Save the recorded episode to the dataset and advance."""
     import gradio as gr
 
@@ -1189,6 +1247,17 @@ def _cb_approve_episode(session: dict):
 
 
 def _cb_discard_episode(session: dict):
+    """Discard a reviewable episode without interrupting recording or saving."""
+    import gradio as gr
+
+    with _episode_transaction(session):
+        state = session["state"]
+        if not _leader_is_idle(session) or state.episodes_completed >= state.num_episodes:
+            return tuple(gr.update() for _ in range(6))
+        return _discard_episode(session)
+
+
+def _discard_episode(session: dict):
     """Discard the current episode buffer without saving."""
     import gradio as gr
 
@@ -1959,8 +2028,9 @@ _INTERVENTION_SHORTCUTS = """() => {
     if (window.soNexusInterventionKeys) return;
     window.soNexusInterventionKeys = true;
     document.addEventListener('keydown', (event) => {
-        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
-            event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+        const field = event.target.closest('input, textarea, select, [contenteditable="true"]');
+        if (field && !field.matches('input[type="checkbox"], input[type="radio"]')) return;
         const ids = {
             t: 'teleop-takeover', c: 'teleop-correct', h: 'teleop-hold', p: 'teleop-resume'
         };
@@ -2105,7 +2175,7 @@ def _wire_events(
     ).success(fn=show_init_progress, outputs=[init_status], show_progress="full")
     start_btn.click(
         fn=start_recording,
-        outputs=[record_status, start_btn, preview_feed, task_status],
+        outputs=[record_status, start_btn, preview_feed, task_status, stop_btn],
     )
     stop_btn.click(fn=stop_recording)
     rec_timer.tick(

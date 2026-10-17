@@ -53,6 +53,17 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Physical leader holds acknowledge each joint target before enabling its torque,
+  continue holding healthy joints after another motor fails, and retry alignment
+  reads and transmissions. Nearly equivalent wrist poses across the angle boundary
+  no longer trigger a nearly full turn.
+- Teleop rejects overlapping initialization and episode changes, duplicate empty
+  approvals, and stale starts after completion. Keyboard shortcuts work when the
+  support checkbox has focus, and Stop is available during countdown and setup.
+- Review remains available when video or plot generation fails. Interrupted
+  recordings preserve elapsed duration and rendering metadata, and setup cancellation
+  stops before policy control begins.
+
 - Physical leader torque changes retry missing motor acknowledgments up to three
   times through LeRobot, preventing a single dropped Feetech `Lock` response from
   ending recording. Persistent failures still leave holding unconfirmed.
