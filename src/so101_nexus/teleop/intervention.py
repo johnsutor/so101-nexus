@@ -377,18 +377,23 @@ class InterventionSession:
             self._parked_released = True
             return True
 
-    def close(self) -> None:
-        """Hold the leader and reject further requests without waiting for inference."""
+    def close(self, *, wait: bool = False) -> None:
+        """Hold the leader and reject requests, optionally waiting for inference.
+
+        Set ``wait=True`` before reusing the policy in another session.
+        """
         with self._lock:
-            if self._closed:
-                return
+            already_closed = self._closed
             self._closed = True
             self._version += 1
         try:
-            if self._leader_managed and not self._parked_released:
+            if not already_closed and self._leader_managed and not self._parked_released:
                 self.synchronizer.cancel()
         finally:
-            self._worker.close()
+            if not already_closed:
+                self._worker.close()
+            if wait:
+                self._worker.thread.join()
 
 
 def intervention_chunk_mask(intervention_ids: Any, horizon: int) -> Any:

@@ -115,6 +115,42 @@ def test_takeover_and_close_do_not_wait_for_blocked_inference():
         session.close()
 
 
+def test_close_can_wait_for_inference_after_nonblocking_close():
+    entered, release, closed = threading.Event(), threading.Event(), threading.Event()
+
+    class BlockingPolicy(Policy):
+        def select_action(self, batch):
+            entered.set()
+            assert release.wait(5)
+            return super().select_action(batch)
+
+    session = InterventionSession(BlockingPolicy(), Synchronizer())
+
+    def wait_for_close():
+        try:
+            session.close(wait=True)
+        finally:
+            closed.set()
+
+    waiter = threading.Thread(target=wait_for_close)
+    try:
+        session.begin_episode()
+        session.action(observation(), "Pick", lambda: observation(3))
+        assert entered.wait(2)
+        session.close()
+        waiter.start()
+        assert not closed.wait(0.05)
+        release.set()
+        assert closed.wait(2)
+        waiter.join(2)
+        assert not session._worker.thread.is_alive()
+    finally:
+        release.set()
+        if waiter.ident is not None:
+            waiter.join(2)
+        session.close()
+
+
 def test_hold_cancels_sync_and_repeated_takeovers_get_distinct_ids():
     sync = Synchronizer()
     session = InterventionSession(Policy(), sync)

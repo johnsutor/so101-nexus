@@ -7,6 +7,91 @@ import pytest
 from so101_nexus.teleop import app
 
 
+@pytest.mark.parametrize("finalize_fails", [False, True])
+def test_finalization_finishes_inference_before_reusing_or_discarding_policy(
+    monkeypatch, finalize_fails
+):
+    gr = pytest.importorskip("gradio")
+    intervention = Mock(leader_released=True)
+    policy = object()
+    session = {
+        "intervention": intervention,
+        "collection_policy": policy,
+        "leader": Mock(),
+        "dataset": Mock(),
+    }
+    monkeypatch.setattr(app, "_write_env_config_meta", lambda _: None)
+    if finalize_fails:
+        session["dataset"].finalize.side_effect = RuntimeError("dataset failed")
+        with pytest.raises(gr.Error, match="dataset failed"):
+            app._cb_finalize_and_close(session)
+        assert session["collection_policy"] is policy
+    else:
+        app._cb_finalize_and_close(session)
+        assert "collection_policy" not in session
+    intervention.close.assert_called_once_with(wait=True)
+    assert "intervention" not in session
+
+
+@pytest.mark.parametrize("first_failure", [False, True])
+def test_reinitialization_reuses_policy_after_reconfiguration_or_failure(
+    monkeypatch, first_failure
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    policy = SimpleNamespace(reset=lambda: None, select_action=lambda batch: None, fps=30)
+    load = Mock(return_value=policy)
+    dataset = Mock(
+        side_effect=[RuntimeError("dataset failed") if first_failure else Mock(), Mock()]
+    )
+    monkeypatch.setattr(app, "import_backend_for_env_id", lambda _: None)
+    monkeypatch.setattr(app, "_connect_leader", lambda *_: Mock())
+    monkeypatch.setattr(app, "load_collection_policy", load)
+    monkeypatch.setattr(app, "_resolve_env_state_names", lambda *_, **__: [])
+    monkeypatch.setattr(app, "_create_dataset", dataset)
+    config = app.RecordingOptions(
+        env_id="MuJoCoTouch-v1",
+        robot_type="so101",
+        leader_id="leader",
+        fps=30,
+        wrist_wh=(4, 4),
+        overhead_wh=(4, 4),
+        repo_id="local/test",
+        num_episodes=1,
+        action_space="joint_pos",
+        max_steps=10,
+        countdown=0,
+        wrist_roll_offset_deg=-90,
+        field_selection=app.FieldSelection(),
+        env_overrides=None,
+    )
+    session = {"policy_options": {"factory": "example:build"}}
+    try:
+        first = {}
+        app._run_init_worker(session, first, "/dev/null", config)
+        assert first.get("error") == ("dataset failed" if first_failure else None)
+        old = session.get("intervention")
+        app._close_recording_worker(session, wait=True)
+        second = {}
+        app._run_init_worker(session, second, "/dev/null", replace(config, wrist_wh=(8, 8)))
+        assert second["done"]
+        assert not second.get("error")
+        assert session["intervention"] is not old
+        assert session["intervention"]._worker.policy is policy
+        assert session["wrist_wh"] == (8, 8)
+        load.assert_called_once_with(factory="example:build")
+
+        app._close_recording_worker(session, wait=True)
+        mismatch = {}
+        app._run_init_worker(session, mismatch, "/dev/null", replace(config, fps=15))
+        assert mismatch["error"]
+        assert dataset.call_count == 2
+        assert load.call_count == 1
+    finally:
+        app._close_recording_worker(session, wait=True)
+
+
 @pytest.mark.parametrize(
     "failure_stage", ["_resolve_env_state_names", "build_features", "_create_dataset"]
 )
@@ -167,5 +252,5 @@ def test_initialization_starts_once_and_allows_retry_after_failure(monkeypatch, 
     assert state["error"] is None
     with pytest.raises(gr.Error, match="already running"):
         app._start_init_attempt(session, state, "/dev/null", config)
-    close.assert_called_once_with(session)
+    close.assert_called_once_with(session, wait=True)
     thread.return_value.start.assert_called_once_with()

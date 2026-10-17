@@ -57,6 +57,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Teleop reconfiguration and initialization retries reuse the loaded collection
+  policy instead of allocating another model. Reconfiguration waits for previous
+  inference to finish before reusing the policy.
+
 - Teleop preserves frame alignment when a camera image is missing during an
   episode. Saving reports the missing frame before later images can be paired
   with the wrong actions or observations.

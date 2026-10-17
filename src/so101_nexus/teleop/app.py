@@ -451,10 +451,15 @@ def _run_init_worker(
         leader = _connect_leader(config.robot_type, leader_port, config.leader_id)
         policy_options = session.get("policy_options", {})
         if any(policy_options.get(key) for key in ("path", "factory")):
-            _append_init_log(init_state, "Loading model weights and saved processors...")
-            policy = load_collection_policy(**policy_options)
+            policy = session.get("collection_policy")
             if policy is None:
-                raise RuntimeError("No collection policy was loaded")
+                _append_init_log(init_state, "Loading model weights and saved processors...")
+                policy = load_collection_policy(**policy_options)
+                if policy is None:
+                    raise RuntimeError("No collection policy was loaded")
+                session["collection_policy"] = policy
+            else:
+                _append_init_log(init_state, "Reusing loaded model weights and saved processors...")
             validate_policy_fps(policy, config.fps, expected_fps=policy_options.get("fps"))
             intervention = InterventionSession(
                 policy,
@@ -506,7 +511,7 @@ def _run_init_worker(
     except Exception as exc:
         if intervention is not None:
             with contextlib.suppress(Exception):
-                intervention.close()
+                intervention.close(wait=True)
         if leader is not None:
             with contextlib.suppress(Exception):
                 _disconnect_leader(session, leader)
@@ -630,7 +635,7 @@ def _start_init_attempt(
             raise gr.Error(
                 "Support the physical leader and release its motors before reinitializing."
             )
-        _close_recording_worker(session)
+        _close_recording_worker(session, wait=True)
         if (leader := session.pop("leader", None)) is not None:
             _disconnect_leader(session, leader)
         init_state.update(
@@ -1354,14 +1359,14 @@ def _disconnect_leader(session: dict, leader=None) -> None:
         leader.disconnect()
 
 
-def _close_recording_worker(session: dict) -> None:
+def _close_recording_worker(session: dict, *, wait: bool = False) -> None:
     """Release simulator resources on their recording thread."""
     with session.setdefault("leader_lifecycle_lock", threading.Lock()):
         worker = session.pop("recording_worker", None)
         if worker is not None:
             worker.close()
         if (intervention := session.pop("intervention", None)) is not None:
-            intervention.close()
+            intervention.close(wait=wait)
 
 
 def _cb_finalize_and_close(session: dict):
@@ -1371,7 +1376,7 @@ def _cb_finalize_and_close(session: dict):
     intervention = session.get("intervention")
     if intervention is not None and not intervention.leader_released:
         raise gr.Error("Support the physical leader and release its motors before finalizing.")
-    _close_recording_worker(session)
+    _close_recording_worker(session, wait=True)
     try:
         session["dataset"].finalize()
         _write_env_config_meta(session)
@@ -1379,6 +1384,7 @@ def _cb_finalize_and_close(session: dict):
         raise gr.Error(f"Failed to finalize dataset: {exc}") from exc
     with contextlib.suppress(Exception):
         _disconnect_leader(session)
+    session.pop("collection_policy", None)
     return "Session finalized. You can close this tab."
 
 
@@ -2511,6 +2517,7 @@ def main(
         app.launch(inbrowser=True)
     finally:
         _close_recording_worker(session)
+        session.pop("collection_policy", None)
         if (leader := session.get("leader")) is not None:
             with contextlib.suppress(Exception):
                 _disconnect_leader(session, leader)
