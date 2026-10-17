@@ -6,9 +6,9 @@ every reset via ``model.geom_rgba`` -- the same per-geom recolor trick
 ``PickAndPlaceEnv`` uses for its goal disc -- so both cubes vary color
 independently and per episode without rebuilding the model.
 
-When ``StackCubeConfig.n_distractors > 0``, one freejoint slot per pool entry in
+When ``StackCubeConfig.max_distractors > 0``, one freejoint slot per pool entry in
 ``StackCubeConfig.distractors`` is compiled as well; each reset activates
-``n_distractors`` of them and parks the remainder off-world with collisions
+a sampled number of them and parks the remainder off-world with collisions
 disabled, matching ``PickEnv``'s slot machinery.
 """
 
@@ -19,7 +19,12 @@ from typing import ClassVar, cast
 import mujoco
 import numpy as np
 
-from so101_nexus.config import ControlMode, StackCubeConfig, describe_stack_target
+from so101_nexus.config import (
+    ControlMode,
+    StackCubeConfig,
+    describe_stack_target,
+    sample_distractor_count,
+)
 from so101_nexus.constants import COLOR_MAP, ColorName, sample_color_name
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 from so101_nexus.mujoco.spawn_utils import (
@@ -102,7 +107,7 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         )
         # Distractor slots are only compiled when requested, so the default
         # two-cube scene stays identical.
-        distractor_pool = list(config.distractors) if config.n_distractors else []
+        distractor_pool = list(config.distractors) if config.max_distractors else []
         scene_objects: list[SceneObject] = [cube_a_obj, cube_b_obj, *distractor_pool]
         slot_names = ["cube_a", "cube_b"] + [
             f"distractor_slot_{i}" for i in range(len(distractor_pool))
@@ -119,7 +124,6 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
 
         self._slot_a, self._slot_b = slots[0], slots[1]
         self._distractor_slots = slots[2:]
-        self._n_distractors = config.n_distractors
         # Grasp detection always targets cube A; cube B is never picked up.
         self._set_target_geoms(self._slot_a.geom_ids)
 
@@ -315,7 +319,11 @@ class StackCubeEnv(SO101NexusMuJoCoBaseEnv):
         self.model.geom_rgba[self._slot_b.geom_id] = COLOR_MAP[self.cube_b_color_name]
 
         distractors = activate_distractor_slots(
-            self.model, self.data, self._distractor_slots, self._n_distractors, rng
+            self.model,
+            self.data,
+            self._distractor_slots,
+            sample_distractor_count(self.config, rng),
+            rng,
         )
         active_slots = [self._slot_a, self._slot_b, *distractors]
         positions = sample_separated_positions(

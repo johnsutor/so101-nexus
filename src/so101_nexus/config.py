@@ -1104,24 +1104,53 @@ def _require_non_negative(**values: float) -> None:
             raise ValueError(f"{name} must be >= 0, got {value}")
 
 
+def _resolve_distractor_bounds(
+    n_distractors: int | None,
+    min_distractors: int | None,
+    max_distractors: int | None,
+) -> tuple[int, int]:
+    """Resolve inclusive bounds, retaining the fixed-count shorthand."""
+    for name, value in (
+        ("n_distractors", n_distractors),
+        ("min_distractors", min_distractors),
+        ("max_distractors", max_distractors),
+    ):
+        if value is not None and (type(value) is not int or value < 0):
+            raise ValueError(f"{name} must be >= 0 and an integer, got {value!r}")
+    upper = max_distractors if max_distractors is not None else (n_distractors or 0)
+    lower = min_distractors if min_distractors is not None else (n_distractors or 0)
+    if lower > upper:
+        raise ValueError("min_distractors must be <= max_distractors")
+    if n_distractors is not None and n_distractors != upper:
+        raise ValueError("n_distractors must match max_distractors when both are provided")
+    return lower, upper
+
+
+def sample_distractor_count(
+    config: PickConfig | PickAndPlaceConfig | StackCubeConfig, rng: np.random.Generator
+) -> int:
+    """Sample an inclusive count without advancing the RNG for fixed bounds."""
+    if config.min_distractors == config.max_distractors:
+        return config.max_distractors
+    return int(rng.integers(config.min_distractors, config.max_distractors + 1))
+
+
 def _validate_distractor_pool(
     distractors: list[SceneObject],
-    n_distractors: int,
+    max_distractors: int,
     target_colors: Collection[str],
     target_colors_field: str = "cube_a_colors/cube_b_colors",
 ) -> None:
     """Validate a distractor count against its pool and the task cube colors."""
-    if n_distractors < 0:
-        raise ValueError(f"n_distractors must be >= 0, got {n_distractors}")
-    if n_distractors > len(distractors):
+    if max_distractors > len(distractors):
         raise ValueError(
-            f"distractors pool must have at least n_distractors={n_distractors} "
+            f"distractors pool must have at least max_distractors={max_distractors} "
             f"entries, got {len(distractors)}"
         )
     # The task string names cubes by color only, so a distractor cube sharing a
     # target color makes the instruction ambiguous.
     ambiguous = {o.color for o in distractors if isinstance(o, CubeObject)} & set(target_colors)
-    if n_distractors > 0 and ambiguous:
+    if max_distractors > 0 and ambiguous:
         warnings.warn(
             f"distractor cubes share {ambiguous} with {target_colors_field}; "
             "the task description may be ambiguous in some episodes",
@@ -1164,8 +1193,8 @@ class PickConfig(EnvironmentConfig):
     """Config for the unified pick environment.
 
     The ``objects`` list defines the pool of scene objects to sample from each
-    episode. One object is chosen as the target; ``n_distractors`` additional
-    objects are sampled from the remaining pool and placed as distractors.
+    episode. One object is chosen as the target; a uniformly sampled number of
+    distractor objects are sampled from the remaining pool and placed as distractors.
     Task descriptions are auto-generated from each object's ``__repr__``.
 
     Parameters
@@ -1179,6 +1208,9 @@ class PickConfig(EnvironmentConfig):
         a single convex hull that makes several models ungraspable regardless of
         the policy. Read ``YCBObject``'s docstring before putting a scanned-mesh
         object in a grasping task's pool.
+    min_distractors, max_distractors : int, optional
+        Inclusive bounds sampled uniformly on each reset. The maximum must fit
+        the pool. Omitted bounds default to ``n_distractors`` (otherwise zero).
     n_distractors : int
         Number of distractor objects to place. 0 means single-object scene.
     lift_threshold : float
@@ -1194,26 +1226,30 @@ class PickConfig(EnvironmentConfig):
     def __init__(
         self,
         objects: list[SceneObject] | SceneObject | None = None,
-        n_distractors: int = 0,
+        n_distractors: int | None = None,
         lift_threshold: float = 0.05,
         max_goal_height: float = 0.08,
         min_object_separation: float = 0.04,
+        *,
+        min_distractors: int | None = None,
+        max_distractors: int | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         if not isinstance(self, PickReturnConfig):
             _warn_inert_velocity_scale(self.reward, type(self).__name__)
         self.objects = _normalize_objects(objects, CubeObject())
-        self.n_distractors = n_distractors
+        self.min_distractors, self.max_distractors = _resolve_distractor_bounds(
+            n_distractors, min_distractors, max_distractors
+        )
+        self.n_distractors = self.max_distractors
         self.lift_threshold = lift_threshold
         self.max_goal_height = max_goal_height
         self.min_object_separation = min_object_separation
-        if self.n_distractors < 0:
-            raise ValueError(f"n_distractors must be >= 0, got {self.n_distractors}")
-        if self.n_distractors > 0 and len(self.objects) < self.n_distractors + 1:
+        if len(self.objects) < self.max_distractors + 1:
             raise ValueError(
-                f"objects pool must have at least n_distractors+1={self.n_distractors + 1} "
-                f"entries to support {self.n_distractors} distractors, got {len(self.objects)}"
+                f"objects pool must have at least max_distractors+1={self.max_distractors + 1} "
+                f"entries to support {self.max_distractors} distractors, got {len(self.objects)}"
             )
         if self.min_object_separation < 0:
             raise ValueError(
@@ -1232,7 +1268,8 @@ class PickConfig(EnvironmentConfig):
 
     def __repr__(self) -> str:  # noqa: D105
         return (
-            f"PickConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
+            f"PickConfig(objects={self.objects!r}, min_distractors={self.min_distractors}, "
+            f"max_distractors={self.max_distractors}, "
             f"lift_threshold={self.lift_threshold}, max_goal_height={self.max_goal_height})"
         )
 
@@ -1286,7 +1323,8 @@ class PickReturnConfig(PickConfig):
 
     def __repr__(self) -> str:  # noqa: D105
         return (
-            f"PickReturnConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
+            f"PickReturnConfig(objects={self.objects!r}, min_distractors={self.min_distractors}, "
+            f"max_distractors={self.max_distractors}, "
             f"lift_threshold={self.lift_threshold}, "
             f"return_threshold_deg={self.return_threshold_deg})"
         )
@@ -1338,7 +1376,10 @@ class PickAndPlaceConfig(EnvironmentConfig):
         Pool of non-target objects to sample distractors from. Defaults to
         green, yellow, and purple cubes sharing ``cube_half_size`` /
         ``cube_mass`` (colors disjoint from the default carried cube and goal
-        disc). Only compiled into the scene when ``n_distractors > 0``.
+        disc). Only compiled into the scene when ``max_distractors > 0``.
+    min_distractors, max_distractors : int, optional
+        Inclusive bounds sampled uniformly on each reset. The maximum must fit
+        the pool. Omitted bounds default to ``n_distractors`` (otherwise zero).
     n_distractors : int
         Number of distractor objects placed alongside the carried object each
         episode, drawn without replacement from ``distractors``. 0 means the
@@ -1367,7 +1408,9 @@ class PickAndPlaceConfig(EnvironmentConfig):
         object_static_lin_threshold: float = 0.01,
         object_static_ang_threshold: float = 0.5,
         distractors: list[SceneObject] | SceneObject | None = None,
-        n_distractors: int = 0,
+        n_distractors: int | None = None,
+        min_distractors: int | None = None,
+        max_distractors: int | None = None,
         min_object_separation: float = 0.04,
         **kwargs,
     ) -> None:
@@ -1442,13 +1485,16 @@ class PickAndPlaceConfig(EnvironmentConfig):
             _default_distractor_cubes(cube_half_size, cube_mass),
             field_name="distractors",
         )
-        self.n_distractors = n_distractors
+        self.min_distractors, self.max_distractors = _resolve_distractor_bounds(
+            n_distractors, min_distractors, max_distractors
+        )
+        self.n_distractors = self.max_distractors
         # The instruction names the carried object by color, so only the carried
         # pool's cube colors can make an episode ambiguous; the goal disc is
         # named as a circle and never confusable with a cube.
         _validate_distractor_pool(
             self.distractors,
-            self.n_distractors,
+            self.max_distractors,
             {o.color for o in self.object_pool() if isinstance(o, CubeObject)},
             target_colors_field="the carried-object pool colors",
         )
@@ -1500,7 +1546,8 @@ class PickAndPlaceConfig(EnvironmentConfig):
         return (
             f"{type(self).__name__}(objects={self.objects!r}, "
             f"target_colors={self.target_colors!r}, cube_half_size={self.cube_half_size}, "
-            f"n_distractors={self.n_distractors})"
+            f"min_distractors={self.min_distractors}, "
+            f"max_distractors={self.max_distractors})"
         )
 
     @property
@@ -1666,7 +1713,10 @@ class StackCubeConfig(EnvironmentConfig):
         Pool of non-target objects to sample distractors from. Defaults to
         green, yellow, and purple cubes sharing ``cube_half_size`` /
         ``cube_mass`` (colors disjoint from the default cube A/B colors). Only
-        compiled into the scene when ``n_distractors > 0``.
+        compiled into the scene when ``max_distractors > 0``.
+    min_distractors, max_distractors : int, optional
+        Inclusive bounds sampled uniformly on each reset. The maximum must fit
+        the pool. Omitted bounds default to ``n_distractors`` (otherwise zero).
     n_distractors : int
         Number of distractor objects placed alongside cubes A and B each
         episode, drawn without replacement from ``distractors``. 0 means the
@@ -1686,8 +1736,10 @@ class StackCubeConfig(EnvironmentConfig):
         cube_static_lin_threshold: float = 0.01,
         cube_static_ang_threshold: float = 0.5,
         distractors: list[SceneObject] | SceneObject | None = None,
-        n_distractors: int = 0,
+        n_distractors: int | None = None,
         *,
+        min_distractors: int | None = None,
+        max_distractors: int | None = None,
         cube_side_length_mm: float | None = None,
         **kwargs,
     ) -> None:
@@ -1735,8 +1787,11 @@ class StackCubeConfig(EnvironmentConfig):
             _default_distractor_cubes(cube_half_size, cube_mass),
             field_name="distractors",
         )
-        self.n_distractors = n_distractors
-        _validate_distractor_pool(self.distractors, self.n_distractors, a_set | b_set)
+        self.min_distractors, self.max_distractors = _resolve_distractor_bounds(
+            n_distractors, min_distractors, max_distractors
+        )
+        self.n_distractors = self.max_distractors
+        _validate_distractor_pool(self.distractors, self.max_distractors, a_set | b_set)
         if self.observations is None:
             self.observations = [
                 JointPositions(),
@@ -1755,7 +1810,8 @@ class StackCubeConfig(EnvironmentConfig):
         return (
             f"StackCubeConfig(cube_a_colors={self.cube_a_colors!r}, "
             f"cube_b_colors={self.cube_b_colors!r}, cube_half_size={self.cube_half_size}, "
-            f"n_distractors={self.n_distractors})"
+            f"min_distractors={self.min_distractors}, "
+            f"max_distractors={self.max_distractors})"
         )
 
     @property
@@ -1799,7 +1855,8 @@ class TouchConfig(PickConfig):
 
     def __repr__(self) -> str:  # noqa: D105
         return (
-            f"TouchConfig(objects={self.objects!r}, n_distractors={self.n_distractors}, "
+            f"TouchConfig(objects={self.objects!r}, min_distractors={self.min_distractors}, "
+            f"max_distractors={self.max_distractors}, "
             f"touch_margin={self.touch_margin})"
         )
 

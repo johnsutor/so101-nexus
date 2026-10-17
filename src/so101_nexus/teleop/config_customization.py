@@ -36,6 +36,8 @@ class TeleopConfigOverrides:
     objects: tuple[SceneObject, ...] | None = None
     object_specs: tuple[str, ...] | None = None
     n_distractors: int | None = None
+    min_distractors: int | None = None
+    max_distractors: int | None = None
     ground_colors: tuple[ColorName, ...] | None = None
     robot_colors: tuple[ColorName, ...] | None = None
     spawn_min_radius: float | None = None
@@ -51,6 +53,16 @@ class TeleopConfigOverrides:
         """Validate override combinations that dataclass types cannot express."""
         if self.n_distractors is not None and self.n_distractors < 0:
             raise ValueError(f"n_distractors must be >= 0, got {self.n_distractors}")
+        for name in ("min_distractors", "max_distractors"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{name} must be a nonnegative integer")
+        if (
+            self.min_distractors is not None
+            and self.max_distractors is not None
+            and self.min_distractors > self.max_distractors
+        ):
+            raise ValueError("min_distractors must be <= max_distractors")
         if self.reset_settle_frames is not None and self.reset_settle_frames < 0:
             raise ValueError(f"reset_settle_frames must be >= 0, got {self.reset_settle_frames}")
         if self.objects is not None and self.object_specs is not None:
@@ -182,8 +194,7 @@ def apply_config_overrides[ConfigT](
     elif is_pick_like and overrides.object_specs is not None:
         attrs["objects"] = [object_from_spec(spec) for spec in overrides.object_specs]
 
-    if overrides.n_distractors is not None and "n_distractors" in attrs:
-        attrs["n_distractors"] = overrides.n_distractors
+    _apply_distractor_overrides(attrs, overrides)
 
     for name in ("cube_colors", "target_colors", "cube_a_colors", "cube_b_colors"):
         value = _as_color_config(getattr(overrides, name))
@@ -191,6 +202,18 @@ def apply_config_overrides[ConfigT](
             attrs[name] = value
 
     return config.__class__(**attrs)
+
+
+def _apply_distractor_overrides(attrs: dict[str, Any], overrides: TeleopConfigOverrides) -> None:
+    if overrides.n_distractors is not None and "n_distractors" in attrs:
+        attrs["n_distractors"] = overrides.n_distractors
+        attrs["min_distractors"] = overrides.n_distractors
+        attrs["max_distractors"] = overrides.n_distractors
+    for name in ("min_distractors", "max_distractors"):
+        value = getattr(overrides, name)
+        if value is not None and name in attrs:
+            attrs[name] = value
+            attrs["n_distractors"] = None
 
 
 def load_profile_overrides(
@@ -232,8 +255,9 @@ def overrides_from_mapping(raw: Mapping[str, Any]) -> TeleopConfigOverrides:
         kwargs["objects"] = tuple(_objects_from_profile(raw["objects"]))
     if "object_specs" in raw:
         kwargs["object_specs"] = tuple(str(spec) for spec in _as_sequence(raw["object_specs"]))
-    if "n_distractors" in raw:
-        kwargs["n_distractors"] = _as_nonnegative_int(raw["n_distractors"], "n_distractors")
+    for key in ("n_distractors", "min_distractors", "max_distractors"):
+        if key in raw:
+            kwargs[key] = _as_nonnegative_int(raw[key], key)
     for key in (
         "ground_colors",
         "robot_colors",
@@ -286,6 +310,8 @@ def overrides_to_mapping(overrides: TeleopConfigOverrides) -> dict[str, Any]:
         mapping["object_specs"] = list(overrides.object_specs)
     for key in (
         "n_distractors",
+        "min_distractors",
+        "max_distractors",
         "ground_colors",
         "robot_colors",
         "cube_colors",

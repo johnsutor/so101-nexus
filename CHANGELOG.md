@@ -11,6 +11,10 @@ for the public-API and deprecation policy.
 
 ### Added
 
+- Inclusive `min_distractors` and `max_distractors` settings for seeded uniform
+  per-episode sampling across MuJoCo and Warp tasks, with teleop controls and
+  profile support. Existing `n_distractors` fixed-count settings remain supported.
+
 - Direct MolmoAct2 SO100/101 checkpoint loading for policy correction collection,
   with checkpoint normalization, legacy joint-frame conversion, configurable
   camera mappings, and explicit

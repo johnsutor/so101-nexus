@@ -6,9 +6,9 @@ per-world position lives in ``data.mocap_pos``. The disc colour is fixed at
 model-build time to the first configured target colour (``geom_rgba`` is global), a
 documented divergence from the MuJoCo backend, which randomizes it per episode.
 
-``PickAndPlaceConfig.n_distractors > 0`` additionally compiles one slot per entry
+``PickAndPlaceConfig.max_distractors > 0`` additionally compiles one slot per entry
 in ``PickAndPlaceConfig.distractors`` after the carried pool; each world activates
-``n_distractors`` of them per reset and the remainder stay parked in the hidden
+a sampled number of them per reset and the remainder stay parked in the hidden
 band. Target selection stays inside the carried pool.
 """
 
@@ -98,8 +98,7 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         n_carried = len(scene_objects)
         # Distractor slots are only compiled when requested, so the default
         # single-object scene (and its contact budget) stays unchanged.
-        self._n_distractors = config.n_distractors
-        distractor_pool = list(config.distractors) if self._n_distractors else []
+        distractor_pool = list(config.distractors) if config.max_distractors else []
         self._d_pool = len(distractor_pool)
         self._d_offset = n_carried
         scene_objects = scene_objects + distractor_pool
@@ -226,16 +225,18 @@ class WarpPickAndPlaceVectorEnv(WarpPickLiftVectorEnv):
         self._prev_grasp_progress[idx] = place_grasp_potential(is_grasped, is_obj_placed)[idx]
 
     def _task_reset(self, mask: torch.Tensor) -> None:
-        idx = mask.nonzero(as_tuple=True)[0]
-        n = int(idx.numel())
-        if n == 0:
-            return
+        for idx, count in self._distractor_reset_groups(
+            mask, self.config.min_distractors, self.config.max_distractors
+        ):
+            self._reset_slots(idx, count)
+
+    def _reset_slots(self, idx: torch.Tensor, n_distractors: int) -> None:
         sel, target = self._select_active_slots(idx)  # (n, 1), (n,)
         dev = self.device
-        if self._n_distractors:
+        if n_distractors:
             # Distinct distractor slots per world, as in WarpStackCubeVectorEnv.
             d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
-            sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
+            sel = torch.cat([sel, self._d_offset + d_rank[:, :n_distractors]], dim=1)
         self._hide_all_slots(idx)
 
         cfg = self.config

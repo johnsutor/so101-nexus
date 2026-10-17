@@ -382,7 +382,7 @@ enable them; leave it off to use the default config unchanged.
 | Option | Effect |
 | --- | --- |
 | `Pick Object Pool` | Built-in cube and YCB objects for pick tasks |
-| `Distractors` | Number of distractors to place, on every task that supports them |
+| `Minimum Distractors`, `Maximum Distractors` | Inclusive count bounds for tasks that support distractors. Equal values give a fixed count; see [sampling and pool limits](/docs/api/configs#pickconfig) |
 | `Ground Colors`, `Robot Colors` | Sampled per reset when multiple colors are selected |
 | `Spawn Min Radius`, `Spawn Max Radius`, `Spawn Angle Half Range (deg)` | Spawn-region controls shared by supported tasks |
 | `Reset Settle Frames` | No-op frames after reset before the first recorded frame (default 5), applied before cameras are wired |
@@ -411,7 +411,8 @@ spawn_max_radius = 0.25
 reset_settle_frames = 5
 
 [pick]
-n_distractors = 1
+min_distractors = 0
+max_distractors = 2
 objects = [
   { type = "cube", color = "green" },
   { type = "ycb", model_id = "009_gelatin_box" },

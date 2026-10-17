@@ -9,8 +9,8 @@ MuJoCo backend's per-episode resampling distribution (uniform over each
 configured list, sampled independently per role) -- the divergence documented
 here previously (compile-time-fixed colours) is removed.
 
-``StackCubeConfig.n_distractors > 0`` additionally compiles one slot per entry in
-``StackCubeConfig.distractors``; each world activates ``n_distractors`` of them
+``StackCubeConfig.max_distractors > 0`` additionally compiles one slot per entry in
+``StackCubeConfig.distractors``; each world activates a sampled number of them
 per reset and the remainder stay parked in the hidden band.
 """
 
@@ -97,8 +97,7 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         self._b_colors = _as_list(config.cube_b_colors)
         self._a_pool = len(self._a_colors)
         self._b_pool = len(self._b_colors)
-        self._n_distractors = config.n_distractors
-        distractor_pool = list(config.distractors) if self._n_distractors else []
+        distractor_pool = list(config.distractors) if config.max_distractors else []
         self._d_pool = len(distractor_pool)
         self._d_offset = self._a_pool + self._b_pool
         scene_objects: list[SceneObject] = [
@@ -277,10 +276,12 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         self._prev_grasp_progress[idx] = place_grasp_potential(is_grasped, is_stacked)[idx]
 
     def _task_reset(self, mask: torch.Tensor) -> None:
-        idx = mask.nonzero(as_tuple=True)[0]
-        n = int(idx.numel())
-        if n == 0:
-            return
+        for idx, count in self._distractor_reset_groups(
+            mask, self.config.min_distractors, self.config.max_distractors
+        ):
+            self._reset_slots(idx, count)
+
+    def _reset_slots(self, idx: torch.Tensor, n_distractors: int) -> None:
         cfg = self.config
         # One slot per configured colour entry; sample one slot per role per
         # world, matching the MuJoCo backend's per-episode colour resampling.
@@ -293,9 +294,9 @@ class WarpStackCubeVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         angle = float(np.radians(cfg.spawn_angle_half_range_deg))
         # Columns: 0 = cube A, 1 = cube B, 2.. = distractors.
         sel = torch.stack([a_sel, b_sel], dim=1)
-        if self._n_distractors:
+        if n_distractors:
             d_rank = self._rng.rand("task", idx, self._d_pool).argsort(dim=1)
-            sel = torch.cat([sel, self._d_offset + d_rank[:, : self._n_distractors]], dim=1)
+            sel = torch.cat([sel, self._d_offset + d_rank[:, :n_distractors]], dim=1)
         radii = self._slot_bradius[sel]  # (n, n_active)
         positions = sample_separated_polar(
             self._rng,

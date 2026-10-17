@@ -87,27 +87,29 @@ def test_inactive_slots_match_removed_geometry_without_mutating_physics(
 
 
 @pytest.mark.parametrize("task", ["PickLift", "PickAndPlace", "StackCube"])
-def test_visibility_tracks_active_distractors_and_partial_resets(env_factory, task):
+@pytest.mark.parametrize("bounds", [(1, 1), (0, 2)])
+def test_visibility_tracks_active_distractors_and_partial_resets(env_factory, task, bounds):
     objects = [CubeObject(color=color) for color in ("red", "green", "blue")]
     distractors = [CubeObject(color=color) for color in ("orange", "purple", "white")]
-    common = {"render": RenderConfig(width=32, height=24, camera="side")}
+    common = {
+        "render": RenderConfig(width=32, height=24, camera="side"),
+        "min_distractors": bounds[0],
+        "max_distractors": bounds[1],
+    }
     if task == "StackCube":
         config = StackCubeConfig(
             cube_a_colors=["red", "green"],
             cube_b_colors=["blue", "yellow"],
             distractors=distractors,
-            n_distractors=1,
             **common,
         )
-        count = 3
+        targets = 2
     elif task == "PickAndPlace":
-        config = PickAndPlaceV2Config(
-            objects=objects, distractors=distractors, n_distractors=1, **common
-        )
-        count = 2
+        config = PickAndPlaceV2Config(objects=objects, distractors=distractors, **common)
+        targets = 1
     else:
-        config = PickConfig(objects=objects, n_distractors=1, **common)
-        count = 2
+        config = PickConfig(objects=objects, **common)
+        targets = 1
     env = env_factory(
         backend="warp",
         task=task,
@@ -124,7 +126,7 @@ def test_visibility_tracks_active_distractors_and_partial_resets(env_factory, ta
                 active = env.qpos[world, address] > -0.1
                 active_count += int(active)
                 assert torch.all(env._hidden_render_geoms[world, geom_mask] == ~active)
-            assert active_count == count
+            assert targets + bounds[0] <= active_count <= targets + bounds[1]
 
     assert_visibility()
     untouched = env._hidden_render_geoms[1].clone()
