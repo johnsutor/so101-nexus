@@ -63,17 +63,17 @@ def test_worker_reuses_native_simulator_and_preserves_seeded_resets(monkeypatch,
         assert worker.wait(30)
         assert state.error is None, state.error
         initial = state.initial_sim_state.copy()
-        cameras = [image.copy() for image in state.episode_wrist_images]
-        states = np.stack(state.episode_states)
-        env_states = np.stack(state.episode_env_states)
+        cameras = [t.wrist_image.copy() for t in state.transitions]
+        states = np.stack([t.state for t in state.transitions])
+        env_states = np.stack([t.env_state for t in state.transitions])
         worker.submit(**kwargs)
         assert worker.wait(30)
         assert state.error is None, state.error
         assert state.episode_seed == 80
         assert state.initial_sim_state == initial
-        np.testing.assert_array_equal(state.episode_states, states)
-        np.testing.assert_array_equal(state.episode_env_states, env_states)
-        np.testing.assert_array_equal(state.episode_wrist_images, cameras)
+        np.testing.assert_array_equal([t.state for t in state.transitions], states)
+        np.testing.assert_array_equal([t.env_state for t in state.transitions], env_states)
+        np.testing.assert_array_equal([t.wrist_image for t in state.transitions], cameras)
         state.episodes_completed = 1
         worker.submit(**kwargs)
         assert worker.wait(30)

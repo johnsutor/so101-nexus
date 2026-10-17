@@ -31,20 +31,22 @@ def test_init_failure_disconnects_connected_leader(
         session,
         init_state,
         "/dev/ttyACM0",
-        "MuJoCoTouch-v1",
-        "so101",
-        "leader",
-        30,
-        (320, 240),
-        (640, 360),
-        "local/test",
-        1,
-        "joint_pos",
-        10,
-        0,
-        -90.0,
-        app.FieldSelection(),
-        None,
+        app.RecordingOptions(
+            env_id="MuJoCoTouch-v1",
+            robot_type="so101",
+            leader_id="leader",
+            fps=30,
+            wrist_wh=(320, 240),
+            overhead_wh=(640, 360),
+            repo_id="local/test",
+            num_episodes=1,
+            action_space="joint_pos",
+            max_steps=10,
+            countdown=0,
+            wrist_roll_offset_deg=-90.0,
+            field_selection=app.FieldSelection(),
+            env_overrides=None,
+        ),
     )
 
     assert init_state["done"] is True
@@ -87,20 +89,22 @@ def test_policy_initialization_failure_closes_serial_without_disabling_torque(mo
         session,
         init,
         "/dev/null",
-        "MuJoCoTouch-v1",
-        "so101",
-        "leader",
-        30,
-        (4, 4),
-        (4, 4),
-        "local/correction",
-        1,
-        "joint_pos",
-        10,
-        0,
-        -90,
-        app.FieldSelection(),
-        None,
+        app.RecordingOptions(
+            env_id="MuJoCoTouch-v1",
+            robot_type="so101",
+            leader_id="leader",
+            fps=30,
+            wrist_wh=(4, 4),
+            overhead_wh=(4, 4),
+            repo_id="local/correction",
+            num_episodes=1,
+            action_space="joint_pos",
+            max_steps=10,
+            countdown=0,
+            wrist_roll_offset_deg=-90,
+            field_selection=app.FieldSelection(),
+            env_overrides=None,
+        ),
     )
     assert init["error"] == "dataset creation failed"
     assert {"is_intervention", "intervention_id"} <= set(features[0])
@@ -133,24 +137,21 @@ def test_initialization_starts_once_and_allows_retry_after_failure(monkeypatch, 
     monkeypatch.setattr(app, "_close_recording_worker", close)
     monkeypatch.setattr(app.threading, "Thread", thread)
     monkeypatch.setattr(app, "check_robot_env_mismatch", lambda *_: None)
-    config = dict.fromkeys(
-        (
-            "env_id",
-            "robot_type",
-            "leader_id",
-            "fps",
-            "wrist_wh",
-            "overhead_wh",
-            "repo_id",
-            "num_episodes",
-            "action_space",
-            "max_steps",
-            "countdown",
-            "wrist_roll_offset_deg",
-            "field_selection",
-            "env_overrides",
-            "success_hold_seconds",
-        )
+    config = app.RecordingOptions(
+        env_id="MuJoCoTouch-v1",
+        robot_type="so101",
+        leader_id="leader",
+        fps=30,
+        wrist_wh=(320, 240),
+        overhead_wh=(640, 360),
+        repo_id="local/test",
+        num_episodes=1,
+        action_space="joint_pos",
+        max_steps=10,
+        countdown=0,
+        wrist_roll_offset_deg=-90,
+        field_selection=app.FieldSelection(),
+        env_overrides=None,
     )
     session = {}
     state = {
@@ -159,6 +160,8 @@ def test_initialization_starts_once_and_allows_retry_after_failure(monkeypatch, 
         "error": "failure" if failed_attempt else None,
     }
     app._start_init_attempt(session, state, "/dev/null", config)
+    assert thread.call_args.kwargs["args"] == (session, state, "/dev/null", config)
+    assert state["last_config"] is config
     assert state["running"] is True
     assert state["done"] is False
     assert state["error"] is None

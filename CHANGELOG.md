@@ -53,6 +53,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Teleop preserves frame alignment when a camera image is missing during an
+  episode. Saving reports the missing frame before later images can be paired
+  with the wrong actions or observations.
+
 - MolmoAct2 dependencies require patched Transformers releases, avoiding the
   vulnerable version selected by LeRobot's aggregate policy extra. Installation
   documentation formats version constraints as code so MDX builds successfully.

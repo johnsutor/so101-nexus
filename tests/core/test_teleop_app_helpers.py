@@ -38,7 +38,7 @@ from so101_nexus.teleop.app import (
 )
 from so101_nexus.teleop.config_customization import TeleopConfigOverrides
 from so101_nexus.teleop.dataset import ENV_STATE_KEY, OVERHEAD_KEY, WRIST_KEY
-from so101_nexus.teleop.recorder import RecordingState
+from so101_nexus.teleop.recorder import RecordedTransition, RecordingState
 
 
 @pytest.fixture
@@ -288,20 +288,22 @@ def test_run_init_worker_creates_canonical_lerobot_features(monkeypatch) -> None
         session,
         init_state,
         "/dev/ttyACM0",
-        "MuJoCoTouch-v1",
-        "so101",
-        "leader",
-        30,
-        (320, 240),
-        (640, 360),
-        "local/test",
-        1,
-        "joint_pos",
-        10,
-        0,
-        -90.0,
-        teleop_app.FieldSelection(),
-        None,
+        teleop_app.RecordingOptions(
+            env_id="MuJoCoTouch-v1",
+            robot_type="so101",
+            leader_id="leader",
+            fps=30,
+            wrist_wh=(320, 240),
+            overhead_wh=(640, 360),
+            repo_id="local/test",
+            num_episodes=1,
+            action_space="joint_pos",
+            max_steps=10,
+            countdown=0,
+            wrist_roll_offset_deg=-90.0,
+            field_selection=teleop_app.FieldSelection(),
+            env_overrides=None,
+        ),
     )
 
     features = seen["features"]
@@ -497,7 +499,7 @@ def test_normalized_init_config_includes_env_overrides() -> None:
         ["purple"],
     )
 
-    overrides = config["env_overrides"]
+    overrides = config.env_overrides
     assert overrides.object_specs == ("cube:green", "ycb:009_gelatin_box")
     assert overrides.n_distractors == 1
     assert overrides.ground_colors == ("white",)
@@ -545,7 +547,7 @@ def test_normalized_init_config_rounds_reset_settle_frames_from_ui_float() -> No
         ["blue"],
     )
 
-    assert config["env_overrides"].reset_settle_frames == 3
+    assert config.env_overrides.reset_settle_frames == 3
 
 
 def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> None:
@@ -581,7 +583,7 @@ def test_normalized_init_config_leaves_env_overrides_disabled_by_default() -> No
         ["blue"],
     )
 
-    assert config["env_overrides"] is None
+    assert config.env_overrides is None
 
 
 def test_normalized_init_config_includes_success_hold_seconds() -> None:
@@ -618,7 +620,7 @@ def test_normalized_init_config_includes_success_hold_seconds() -> None:
         success_hold_seconds=0.8,
     )
 
-    assert config["success_hold_seconds"] == 0.8
+    assert config.success_hold_seconds == 0.8
 
 
 def test_customization_ui_state_for_pick_config_uses_base_config_defaults() -> None:
@@ -1024,7 +1026,9 @@ def test_poll_recording_countdown_uses_dedicated_countdown_area(fake_gradio) -> 
 def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=5, episodes_completed=1)
     state.live_preview = np.full((90, 160, 3), 200, dtype=np.uint8)
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    state.transitions.append(
+        RecordedTransition(action=np.zeros(6, dtype=np.float32), state=np.zeros(6))
+    )
     session = {
         "state": state,
         "fps": 30,
@@ -1044,7 +1048,9 @@ def test_poll_recording_emits_single_preview_during_recording(fake_gradio) -> No
 def test_poll_recording_shows_current_task_during_recording(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=3, episodes_completed=0)
     state.task_description = "Pick up the red cube."
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
+    state.transitions.append(
+        RecordedTransition(action=np.zeros(6, dtype=np.float32), state=np.zeros(6))
+    )
     session = {
         "state": state,
         "fps": 30,
@@ -1072,9 +1078,13 @@ def test_poll_recording_passes_step_rewards_to_review_plot(fake_gradio, monkeypa
     monkeypatch.setattr(app_mod, "make_review_video", lambda _images, _fps: None)
 
     state = RecordingState(recording_finished=True, num_episodes=1)
-    state.episode_actions.append(np.zeros(2, dtype=np.float32))
-    state.episode_states.append(np.array([1.0, 2.0], dtype=np.float32))
-    state.episode_rewards.append(0.25)
+    state.transitions.append(
+        RecordedTransition(
+            action=np.zeros(2, dtype=np.float32),
+            state=np.array([1.0, 2.0], dtype=np.float32),
+            reward=0.25,
+        )
+    )
     session = {
         "state": state,
         "fps": 30,
@@ -1097,18 +1107,22 @@ def test_poll_recording_reviews_all_buffered_cameras(fake_gradio, monkeypatch):
 
     monkeypatch.setattr(teleop_app, "make_review_video", capture_video)
     state = RecordingState(recording_finished=True)
-    for images in (
-        state.episode_wrist_images,
-        state.episode_overhead_images,
-        state.episode_side_images,
-    ):
-        images.append(np.zeros((8, 10, 3), dtype=np.uint8))
+    image = np.zeros((8, 10, 3), dtype=np.uint8)
+    state.transitions.append(
+        RecordedTransition(
+            state=np.zeros(6),
+            action=np.zeros(6),
+            wrist_image=image,
+            overhead_image=image,
+            side_image=image,
+        )
+    )
     outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ()})
     assert outputs[7]["value"] == "all-cameras.mp4"
     assert list(captured["images"]) == ["Wrist", "Overhead", "Side"]
-    assert captured["images"]["Wrist"] is state.episode_wrist_images
-    assert captured["images"]["Overhead"] is state.episode_overhead_images
-    assert captured["images"]["Side"] is state.episode_side_images
+    assert captured["images"]["Wrist"][0] is image
+    assert captured["images"]["Overhead"][0] is image
+    assert captured["images"]["Side"][0] is image
 
 
 @pytest.mark.parametrize("failed_preview", ["make_review_video", "make_state_plot"])
@@ -1122,8 +1136,11 @@ def test_review_preview_failure_preserves_recording_and_review_controls(
     monkeypatch.setattr(teleop_app, "make_state_plot", lambda *args: "state-plot")
     monkeypatch.setattr(teleop_app, failed_preview, fail_preview)
     state = RecordingState(recording_finished=True, error="Leader connection failed")
-    state.episode_actions.append(np.zeros(2, dtype=np.float32))
-    state.episode_states.append(np.zeros(2, dtype=np.float32))
+    state.transitions.append(
+        RecordedTransition(
+            action=np.zeros(2, dtype=np.float32), state=np.zeros(2, dtype=np.float32)
+        )
+    )
 
     outputs = _cb_poll_recording({"state": state, "fps": 30, "joint_names": ("joint_a", "joint_b")})
 
@@ -1137,7 +1154,7 @@ def test_review_preview_failure_preserves_recording_and_review_controls(
     assert outputs[12]["interactive"] is True
     assert state.error == "Leader connection failed"
     assert not state.recording_finished
-    assert len(state.episode_actions) == len(state.episode_states) == 1
+    assert len(state.transitions) == 1
 
 
 def test_review_preview_failure_does_not_report_recording_failure(fake_gradio, monkeypatch):
@@ -1159,7 +1176,9 @@ def test_review_preview_failure_does_not_report_recording_failure(fake_gradio, m
 
 def test_poll_recording_shows_success_badge_during_hold(fake_gradio) -> None:
     state = RecordingState(is_recording=True, num_episodes=1, terminated_at_frame=3)
-    state.episode_actions.extend([np.zeros(6, dtype=np.float32) for _ in range(4)])
+    state.transitions.extend(
+        RecordedTransition(state=np.zeros(6), action=np.zeros(6)) for _ in range(4)
+    )
     state.live_preview = np.zeros((4, 4, 3), dtype=np.uint8)
     session = {
         "state": state,
@@ -1275,9 +1294,11 @@ def test_approve_episode_restores_record_controls_for_next_episode(fake_gradio, 
     from so101_nexus.teleop.dataset import FieldSelection
 
     state = RecordingState(num_episodes=2, episodes_completed=0)
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
-    state.episode_states.append(np.zeros(6, dtype=np.float32))
-    state.episode_rewards.append(0.75)
+    state.transitions.append(
+        RecordedTransition(
+            action=np.zeros(6, dtype=np.float32), state=np.zeros(6, dtype=np.float32), reward=0.75
+        )
+    )
     state.initial_sim_state = {"qpos": [0.0]}
     state.rendering_metadata = {"renderers": {"side": {"msaa_samples": 4}}}
     dataset = _Dataset()
@@ -1333,10 +1354,14 @@ def test_approve_episode_forwards_reward_components_to_frames(fake_gradio, tmp_p
     from so101_nexus.teleop.dataset import FieldSelection
 
     state = RecordingState(num_episodes=1, episodes_completed=0)
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
-    state.episode_states.append(np.zeros(6, dtype=np.float32))
-    state.episode_rewards.append(0.75)
-    state.episode_reward_components.append({"reaching": 0.5, "grasping": 0.25})
+    state.transitions.append(
+        RecordedTransition(
+            action=np.zeros(6, dtype=np.float32),
+            state=np.zeros(6, dtype=np.float32),
+            reward=0.75,
+            reward_components={"reaching": 0.5, "grasping": 0.25},
+        )
+    )
     dataset = _Dataset()
     session = {
         "state": state,
@@ -1373,8 +1398,11 @@ def test_approve_episode_failure_reenables_review_controls(fake_gradio) -> None:
     from so101_nexus.teleop.dataset import FieldSelection
 
     state = RecordingState(num_episodes=1, episodes_completed=0)
-    state.episode_actions.append(np.zeros(6, dtype=np.float32))
-    state.episode_states.append(np.zeros(6, dtype=np.float32))
+    state.transitions.append(
+        RecordedTransition(
+            action=np.zeros(6, dtype=np.float32), state=np.zeros(6, dtype=np.float32)
+        )
+    )
     dataset = _Dataset()
     session = {
         "state": state,
@@ -1680,9 +1708,10 @@ def test_approve_correction_preserves_provenance_and_action_semantics(
 
     frames = []
     state = RecordingState(num_episodes=2)
-    state.episode_actions = [np.full(6, 20.0), np.full(6, 21.0)]
-    state.episode_states = [np.full(6, 15.0), np.full(6, 19.0)]
-    state.episode_intervention_ids = [0, 1]
+    state.transitions = [
+        RecordedTransition(action=np.full(6, 20.0), state=np.full(6, 15.0), intervention_id=0),
+        RecordedTransition(action=np.full(6, 21.0), state=np.full(6, 19.0), intervention_id=1),
+    ]
     dataset = types.SimpleNamespace(
         root=tmp_path,
         num_episodes=0,

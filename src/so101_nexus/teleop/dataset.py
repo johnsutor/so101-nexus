@@ -21,6 +21,11 @@ from so101_nexus.config import REWARD_COMPONENT_KEYS
 WRIST_KEY = "observation.images.wrist"
 OVERHEAD_KEY = "observation.images.overhead"
 SIDE_KEY = "observation.images.side"
+_CAMERA_FIELDS = (
+    ("wrist", WRIST_KEY, "check that the env exposes a wrist camera."),
+    ("overhead", OVERHEAD_KEY, "check that the env exposes an overhead camera."),
+    ("side", SIDE_KEY, "check that the env renders with render_mode='rgb_array'."),
+)
 ENV_STATE_KEY = "observation.environment_state"
 REWARD_KEY = "reward"
 SUCCESS_KEY = "success"
@@ -108,18 +113,11 @@ def _with_selected_cameras(
 ) -> dict[str, Any]:
     """Return follower observation features with deselected cameras removed."""
     features = {key: value for key, value in follower_features.items() if value is float}
-    if selection.wrist_image:
-        if "wrist" not in follower_features:
-            raise ValueError("wrist image selected but follower exposes no 'wrist' camera.")
-        features["wrist"] = follower_features["wrist"]
-    if selection.overhead_image:
-        if "overhead" not in follower_features:
-            raise ValueError("overhead image selected but follower exposes no 'overhead' camera.")
-        features["overhead"] = follower_features["overhead"]
-    if selection.side_image:
-        if "side" not in follower_features:
-            raise ValueError("side image selected but follower exposes no 'side' camera.")
-        features["side"] = follower_features["side"]
+    for name, _, _ in _CAMERA_FIELDS:
+        if getattr(selection, f"{name}_image"):
+            if name not in follower_features:
+                raise ValueError(f"{name} image selected but follower exposes no '{name}' camera.")
+            features[name] = follower_features[name]
     return features
 
 
@@ -216,27 +214,13 @@ def build_frame(
     # LeRobot v3 stores task text outside the regular feature schema, but
     # `LeRobotDataset.add_frame` requires it on every frame.
     frame["task"] = task
-    if selection.wrist_image:
-        if wrist_image is None:
-            raise ValueError(
-                "wrist_image selected but no wrist frame was recorded; "
-                "check that the env exposes a wrist camera."
-            )
-        frame[WRIST_KEY] = wrist_image
-    if selection.overhead_image:
-        if overhead_image is None:
-            raise ValueError(
-                "overhead_image selected but no overhead frame was recorded; "
-                "check that the env exposes an overhead camera."
-            )
-        frame[OVERHEAD_KEY] = overhead_image
-    if selection.side_image:
-        if side_image is None:
-            raise ValueError(
-                "side_image selected but no side frame was recorded; "
-                "check that the env renders with render_mode='rgb_array'."
-            )
-        frame[SIDE_KEY] = side_image
+    images = {"wrist": wrist_image, "overhead": overhead_image, "side": side_image}
+    for name, key, hint in _CAMERA_FIELDS:
+        if getattr(selection, f"{name}_image"):
+            image = images[name]
+            if image is None:
+                raise ValueError(f"{name}_image selected but no {name} frame was recorded; {hint}")
+            frame[key] = image
     if selection.environment_state:
         if env_state is None:
             raise ValueError(

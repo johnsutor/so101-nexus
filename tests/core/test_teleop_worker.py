@@ -73,8 +73,8 @@ def test_worker_reuses_follower_and_resets_episode_state(worker_setup):
         assert state.error is None
         assert state.episode_seed == 11
         assert state.task_description == "Task 11"
-        assert len(state.episode_actions) == 1
-        assert state.episode_states[0][0] == 0.0
+        assert len(state.transitions) == 1
+        assert state.transitions[0].state[0] == 0.0
         assert first.initial_leader_action["shoulder_pan.pos"] == 25.0
         worker.submit(**kwargs)
         assert worker.wait(5)
@@ -210,7 +210,7 @@ def test_worker_rejects_overlapping_recordings_and_stops_active_episode(worker_s
         kwargs["state"].should_stop = True
         release.set()
         assert worker.wait(5)
-        assert len(kwargs["state"].episode_actions) == 1
+        assert len(kwargs["state"].transitions) == 1
     finally:
         release.set()
         worker.close()

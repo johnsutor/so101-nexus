@@ -374,8 +374,8 @@ def test_recording_worker_records_executed_policy_actions(worker_setup):  # noqa
         assert worker.wait(3)
         state = kwargs["state"]
         assert state.error is None
-        np.testing.assert_array_equal(state.episode_actions[0], np.full(6, 10))
-        assert state.episode_intervention_ids == [0]
+        np.testing.assert_array_equal(state.transitions[0].action, np.full(6, 10))
+        assert [t.intervention_id for t in state.transitions] == [0]
         assert session.status == "hold"
     finally:
         worker.close()
@@ -484,9 +484,15 @@ def test_worker_handoffs_preserve_continuous_episode_and_camera_alignment(worker
         assert worker.wait(3)
         state = kwargs["state"]
         assert state.error is None
-        assert state.episode_intervention_ids == [0, 1, 0]
-        assert len(state.episode_wrist_images) == len(state.episode_actions) == 3
-        np.testing.assert_array_equal(state.episode_states, [np.full(6, i) for i in range(3)])
+        assert [t.intervention_id for t in state.transitions] == [
+            0,
+            1,
+            0,
+        ]
+        assert len([t.wrist_image for t in state.transitions]) == len(state.transitions) == 3
+        np.testing.assert_array_equal(
+            [t.state for t in state.transitions], [np.full(6, i) for i in range(3)]
+        )
         assert sync.targets == [observation(1)]
         assert policy.resets == 2
         np.testing.assert_array_equal(policy.batches[-1]["observation.state"], np.full(6, 2))
@@ -567,8 +573,8 @@ def test_paused_takeover_does_not_record_or_step_simulation():
         session.request("human", pause_after_sync=True)
         for _ in range(5):
             assert not _record_step(state, follower, None, session, SO101_JOINT_NAMES, 0)
-        assert state.episode_actions == []
-        assert state.episode_intervention_ids == []
+        assert [t.action for t in state.transitions] == []
+        assert [t.intervention_id for t in state.transitions] == []
     finally:
         session.close()
 
@@ -937,13 +943,13 @@ def test_worker_preserves_episode_after_alignment_timeout(worker_setup):  # noqa
         assert state.is_recording
         assert not state.recording_finished
         assert state.error is None
-        assert state.episode_actions == []
-        assert state.episode_intervention_ids == []
+        assert [t.action for t in state.transitions] == []
+        assert [t.intervention_id for t in state.transitions] == []
         session.request("policy")
         assert worker.wait(3)
         assert state.error is None
-        assert len(state.episode_actions) == 1
-        assert state.episode_intervention_ids == [0]
+        assert len(state.transitions) == 1
+        assert [t.intervention_id for t in state.transitions] == [0]
     finally:
         worker.close()
         session.close()

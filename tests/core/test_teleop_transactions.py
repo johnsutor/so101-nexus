@@ -8,7 +8,7 @@ import pytest
 
 from so101_nexus.teleop import app
 from so101_nexus.teleop.dataset import FieldSelection
-from so101_nexus.teleop.recorder import RecordingState
+from so101_nexus.teleop.recorder import RecordedTransition, RecordingState
 from tests.core.test_teleop_app_helpers import fake_gradio  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("fake_gradio")
@@ -17,8 +17,7 @@ pytestmark = pytest.mark.usefixtures("fake_gradio")
 @pytest.fixture
 def review_session(tmp_path):
     state = RecordingState(num_episodes=2)
-    state.episode_actions.append(np.zeros(6))
-    state.episode_states.append(np.zeros(6))
+    state.transitions.append(RecordedTransition(action=np.zeros(6), state=np.zeros(6)))
     dataset = Mock(root=tmp_path, num_episodes=0)
 
     def save():
@@ -60,7 +59,7 @@ def test_review_callbacks_cannot_modify_a_recording_episode(review_session, oper
     review_session["recording_worker"] = Mock()
     review_session["recording_worker"].wait.return_value = False
     result = operation(review_session)
-    assert len(review_session["state"].episode_actions) == 1
+    assert len(review_session["state"].transitions) == 1
     review_session["dataset"].add_frame.assert_not_called()
     review_session["dataset"].clear_episode_buffer.assert_not_called()
     assert all(update == {} for update in result)
@@ -89,7 +88,7 @@ def test_episode_mutations_cannot_interrupt_saving(review_session, operation):
         assert entered.wait(3)
         with pytest.raises(RuntimeError, match="already being"):
             operation(review_session)
-        assert len(review_session["state"].episode_actions) == 1
+        assert len(review_session["state"].transitions) == 1
         review_session["dataset"].clear_episode_buffer.assert_not_called()
     finally:
         release.set()
@@ -97,3 +96,36 @@ def test_episode_mutations_cannot_interrupt_saving(review_session, operation):
     assert not worker.is_alive()
     assert not errors
     review_session["dataset"].save_episode.assert_called_once()
+
+
+@pytest.mark.parametrize("camera", ["wrist", "overhead", "side"])
+def test_missing_middle_camera_does_not_shift_later_frames(review_session, camera):
+    from so101_nexus.config import SO101_JOINT_NAMES
+    from so101_nexus.teleop.recorder import _append_transition
+
+    state = review_session["state"]
+    state.clear_episode()
+    review_session["field_selection"] = FieldSelection(
+        wrist_image=camera == "wrist",
+        overhead_image=camera == "overhead",
+        side_image=camera == "side",
+        environment_state=False,
+    )
+    for index in range(3):
+        observation = dict.fromkeys((f"{name}.pos" for name in SO101_JOINT_NAMES), float(index))
+        if index != 1:
+            observation[camera] = np.full((2, 2, 3), index, dtype=np.uint8)
+        _append_transition(state, observation, observation, None, SO101_JOINT_NAMES)
+
+    result = app._cb_approve_episode(review_session)
+
+    assert f"no {camera} frame" in result[6]["value"]
+    assert len(state.transitions) == 3
+    assert state.episodes_completed == 0
+    assert getattr(state.transitions[1], f"{camera}_image") is None
+    np.testing.assert_array_equal(
+        getattr(state.transitions[2], f"{camera}_image"), np.full((2, 2, 3), 2, dtype=np.uint8)
+    )
+    assert review_session["dataset"].add_frame.call_count == 1
+    review_session["dataset"].save_episode.assert_not_called()
+    review_session["dataset"].clear_episode_buffer.assert_called_once()
