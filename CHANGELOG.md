@@ -9,6 +9,12 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Policy collection saves the leader pose at initialization and gradually returns
+  to it before each episode's countdown and simulator reset. Stopping the return
+  holds the measured pose; return failures prevent policy inference from starting.
+
 ## [0.10.0] - 2026-10-17
 
 ### Added

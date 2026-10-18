@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from so101_nexus.teleop import app
+from tests.core.test_teleop_recorder import _FakeLeader
 
 
 @pytest.mark.parametrize("finalize_fails", [False, True])
@@ -46,7 +47,10 @@ def test_reinitialization_reuses_policy_after_reconfiguration_or_failure(
         side_effect=[RuntimeError("dataset failed") if first_failure else Mock(), Mock()]
     )
     monkeypatch.setattr(app, "import_backend_for_env_id", lambda _: None)
-    monkeypatch.setattr(app, "_connect_leader", lambda *_: Mock())
+    leader = Mock()
+    rest = _FakeLeader().get_action()
+    leader.get_action.return_value = rest
+    monkeypatch.setattr(app, "_connect_leader", lambda *_: leader)
     monkeypatch.setattr(app, "load_collection_policy", load)
     monkeypatch.setattr(app, "_resolve_env_state_names", lambda *_, **__: [])
     monkeypatch.setattr(app, "_create_dataset", dataset)
@@ -79,6 +83,8 @@ def test_reinitialization_reuses_policy_after_reconfiguration_or_failure(
         assert not second.get("error")
         assert session["intervention"] is not old
         assert session["intervention"]._worker.policy is policy
+        assert session["leader_rest_action"] == rest
+        assert session["leader_rest_action"] is not rest
         assert session["wrist_wh"] == (8, 8)
         load.assert_called_once_with(factory="example:build")
 
@@ -144,6 +150,7 @@ def test_policy_initialization_failure_closes_serial_without_disabling_torque(mo
     from types import SimpleNamespace
 
     leader = Mock()
+    leader.get_action.return_value = _FakeLeader().get_action()
     policy = SimpleNamespace(reset=lambda: None, select_action=lambda batch: None, fps=30)
     sessions = []
     original = app.InterventionSession

@@ -443,6 +443,7 @@ def _run_init_worker(
     joint_names = ROBOT_JOINT_NAMES[config.robot_type]
     leader = None
     intervention = None
+    leader_rest_action = None
     try:
         _append_init_log(
             init_state, f"Connecting leader arm on {leader_port} (id={config.leader_id})..."
@@ -451,6 +452,7 @@ def _run_init_worker(
         leader = _connect_leader(config.robot_type, leader_port, config.leader_id)
         policy_options = session.get("policy_options", {})
         if any(policy_options.get(key) for key in ("path", "factory")):
+            leader_rest_action = dict(leader.get_action())
             policy = session.get("collection_policy")
             if policy is None:
                 _append_init_log(init_state, "Loading model weights and saved processors...")
@@ -502,6 +504,7 @@ def _run_init_worker(
             leader=leader,
             intervention=intervention,
             dataset=dataset,
+            leader_rest_action=leader_rest_action,
             state=RecordingState(num_episodes=config.num_episodes),
             joint_names=joint_names,
             field_selection=field_selection,
@@ -929,6 +932,7 @@ def _cb_start_recording(session: dict):
             success_hold_seconds=session.get("success_hold_seconds", 0.5),
             seed=session.get("seed", 0),
             intervention=session.get("intervention"),
+            leader_rest_action=session.get("leader_rest_action"),
         )
         return (
             gr.update(value="Starting..."),
@@ -1013,7 +1017,13 @@ def _cb_poll_recording(session: dict):
     updates = [gr.update() for _ in range(13)]
     worker = session.get("recording_worker")
     if worker is not None and not worker.wait(0):
-        updates[0] = gr.update(value="Preparing simulation... You can stop this episode.")
+        intervention = session.get("intervention")
+        preparing = (
+            "Returning the leader to its saved resting pose. Keep the arm clear."
+            if intervention is not None and intervention.status == "returning to rest"
+            else "Preparing simulation..."
+        )
+        updates[0] = gr.update(value=f"{preparing} You can stop this episode.")
         updates[4] = gr.update(visible=True)
     return tuple(updates)
 
@@ -1618,6 +1628,10 @@ def _build_setup_screen(
             )
         )
 
+    gr.Markdown(
+        "For policy collection, place the leader in your preferred resting pose "
+        "before initializing. It returns to this pose before every episode."
+    )
     init_btn = gr.Button("Initialize Session", variant="primary")
 
     return (
@@ -1680,7 +1694,8 @@ def _build_init_step(gr):
 def _build_record_step(gr, *, policy_collection: bool = False):
     """Build the Record step contents."""
     record_status = gr.Markdown(
-        "Ready. The policy drives the simulated arm after the countdown. "
+        "Ready. The leader returns to its initialization pose before the countdown. "
+        "Keep the arm clear. The policy drives the simulated arm after the countdown. "
         "Press T to pause and prepare a correction."
         if policy_collection
         else "Ready to record. Start recording, then move the leader to drive the simulated arm."
@@ -1819,7 +1834,7 @@ def _cb_poll_leader_support(session: dict, leader_supported: bool = False):
         )
     elif intervention.leader_released:
         message = "**Physical leader: motors released.** Keep the arm supported or parked."
-    elif intervention.status == "synchronizing":
+    elif intervention.status in ("synchronizing", "returning to rest"):
         message = "**Physical leader: aligning.** Motors are engaged. Keep the arm clear."
     elif intervention.synchronizer.holding:
         message = "**Physical leader: motors holding.** Support the arm and gripper before release."

@@ -377,6 +377,31 @@ def _run_countdown(state: RecordingState, countdown: int) -> bool:
     return not state.should_stop
 
 
+def _return_leader_to_rest(
+    state: RecordingState,
+    intervention: InterventionSession | None,
+    rest_action: dict[str, float] | None,
+    wrist_roll_offset_deg: float,
+) -> bool:
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    if intervention is None or rest_action is None:
+        return not state.should_stop
+    keys = {f"{name}.pos" for name in intervention.joint_names}
+    if set(rest_action) != keys or not all(np.isfinite(value) for value in rest_action.values()):
+        raise ValueError("Leader resting pose requires complete, finite joint readings")
+    if state.should_stop:
+        return False
+    # Synchronization consumes follower coordinates and inverts this offset.
+    intervention.start_parking(apply_wrist_roll_offset_deg(rest_action, wrist_roll_offset_deg))
+    while not state.should_stop:
+        if intervention.synchronizer.tick():
+            intervention.status = "hold"
+            return True
+        time.sleep(0.02)
+    return False
+
+
 def recording_thread(
     state: RecordingState,
     env_id: str,
@@ -397,6 +422,7 @@ def recording_thread(
     seed: int = 0,
     _follower_session: _FollowerSession | None = None,
     intervention: InterventionSession | None = None,
+    leader_rest_action: dict[str, float] | None = None,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
     follower_session = _follower_session or _FollowerSession()
@@ -404,7 +430,9 @@ def recording_thread(
     start_time = None
     state.clear_episode()
     try:
-        if not _run_countdown(state, countdown):
+        if not _return_leader_to_rest(
+            state, intervention, leader_rest_action, wrist_roll_offset_deg
+        ) or not _run_countdown(state, countdown):
             return
         episode_seed = seed + state.episodes_completed
         follower = follower_session.acquire(

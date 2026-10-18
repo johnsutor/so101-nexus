@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -415,6 +416,106 @@ def test_recording_worker_records_executed_policy_actions(worker_setup):  # noqa
         assert session.status == "hold"
     finally:
         worker.close()
+        session.close()
+
+
+@pytest.mark.parametrize("outcome", ["ready", "stop", "timeout"])
+@pytest.mark.parametrize("released", [False, True])
+def test_worker_returns_leader_before_reset_and_policy(worker_setup, outcome, released):  # noqa: F811
+    from so101_nexus.teleop.recorder import RecordingWorker
+
+    kwargs, follower_type, events = worker_setup
+    sync = Synchronizer()
+    rest = observation(12)
+    ticks = []
+
+    def tick():
+        assert not follower_type.instances
+        assert session.status == "returning to rest"
+        assert not kwargs["state"].transitions
+        ticks.append(1)
+        if outcome == "timeout":
+            raise TimeoutError("rest position unreachable")
+        if outcome == "stop":
+            kwargs["state"].should_stop = True
+            return False
+        return len(ticks) == 2
+
+    sync.tick = tick
+    policy = Policy()
+    session = InterventionSession(policy, sync)
+    if released:
+        assert session.release_leader()
+    prior_cancels = sync.cancels
+    worker = RecordingWorker()
+    try:
+        worker.submit(**kwargs, intervention=session, leader_rest_action=rest)
+        assert worker.wait(3)
+        state = kwargs["state"]
+        assert sync.targets == [observation(12)]
+        assert sync.releases == int(released)
+        assert sync.cancels > prior_cancels
+        assert not session.leader_released
+        assert sync.holding
+        assert session.status == "hold"
+        if outcome == "ready":
+            assert state.error is None
+            assert len(state.transitions) == 1
+            assert policy.batches
+        else:
+            assert not events
+            assert not policy.batches
+            assert not state.transitions
+            assert (state.error is None) == (outcome == "stop")
+            if outcome == "timeout":
+                assert "rest position unreachable" in state.error
+    finally:
+        worker.close()
+        session.close()
+
+
+def test_rest_return_ramps_physical_pose_and_preserves_wrist_offset(monkeypatch):
+    from so101_nexus.teleop.recorder import RecordingState, _return_leader_to_rest
+
+    clock = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    bus = Bus()
+    rest = observation(30)
+    rest["wrist_roll.pos"] = -107
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
+    session = InterventionSession(Policy(), sync)
+    try:
+        for _ in range(2):
+            bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 0.0)
+            bus.events.clear()
+            assert _return_leader_to_rest(RecordingState(), session, rest, -90)
+            assert bus.positions == pytest.approx(
+                {name.removesuffix(".pos"): value for name, value in rest.items()}
+            )
+            writes = [event[1] for event in bus.events if event[0] == "write"]
+            assert len(writes) > 2
+            for previous, current in pairwise(writes):
+                for name in SO101_JOINT_NAMES:
+                    speed = 40 if name == "gripper" else 20
+                    assert abs(current[name] - previous[name]) <= speed * 0.02 + 1e-6
+            assert sync.holding
+            assert ("disable",) not in bus.events
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("rest", [{}, observation(float("nan"))])
+def test_rest_return_rejects_invalid_pose_before_moving(rest):
+    from so101_nexus.teleop.recorder import RecordingState, _return_leader_to_rest
+
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    try:
+        with pytest.raises(ValueError, match="complete, finite"):
+            _return_leader_to_rest(RecordingState(), session, rest, 0)
+        assert not sync.targets
+    finally:
         session.close()
 
 

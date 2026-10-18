@@ -363,6 +363,23 @@ class InterventionSession:
             self._leader_managed = True
             self.synchronizer.cancel()
 
+    def start_parking(self, target: dict[str, float]) -> None:
+        """Begin a gradual return to follower-coordinate joint targets.
+
+        Advance with ``synchronizer.tick()``. Call ``end_episode()`` on
+        completion or cancellation to hold the measured pose.
+        """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("intervention session is closed")
+            self._version += 1
+            self._requested = "hold"
+            self._parked_released = False
+            self._leader_managed = True
+            self.source = "hold"
+            self.status = "returning to rest"
+        self.synchronizer.start(target)
+
     def release_leader(self, *, support_token: tuple[int, int] | None = None) -> bool:
         """Explicitly release an idle leader, preserving release through shutdown."""
         with self._lock:

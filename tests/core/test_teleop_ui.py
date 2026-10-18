@@ -314,6 +314,7 @@ def test_policy_record_step_explains_autonomous_start_and_review():
     with gr.Blocks():
         status, start, _, _, stop, *_ = _build_record_step(gr, policy_collection=True)
     assert "policy drives the simulated arm after the countdown" in status.value
+    assert "leader returns to its initialization pose before the countdown" in status.value
     assert start.value == "Start policy episode"
     assert stop.value == "Stop and review episode"
 
