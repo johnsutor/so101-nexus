@@ -9,6 +9,14 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Changed
+
+- Teleop setup shows essential inputs first, with recording settings and enabled
+  environment customization disclosed through native Gradio controls. Readable
+  action and camera labels preserve the existing dataset values. Review emphasizes
+  replay and explicit save or retry actions, with joint diagnostics collapsed.
+  Completion prioritizes local finalization and makes Hub upload optional.
+
 ### Added
 
 - Policy collection returns the leader to the configured resting tool pose using

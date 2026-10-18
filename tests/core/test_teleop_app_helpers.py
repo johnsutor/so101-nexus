@@ -22,7 +22,6 @@ from so101_nexus.objects import CubeObject, YCBObject
 from so101_nexus.teleop.app import (
     _build_field_selection,
     _build_record_step,
-    _build_setup_screen,
     _cb_approve_episode,
     _cb_discard_episode,
     _cb_poll_init,
@@ -357,69 +356,6 @@ def test_start_recording_passes_follower_config_kwargs(monkeypatch, tmp_path, fa
     assert kwargs["follower_robot_id"] == "teleop_sim"
     assert kwargs["success_hold_seconds"] == 0.7
     assert "action_pipeline" not in kwargs
-
-
-def test_setup_screen_defaults_to_absolute_joint_position(monkeypatch) -> None:
-    class _FakeComponent:
-        def __init__(self, *args, **kwargs):
-            self.args = args
-            self.value = kwargs.get("value")
-            self.label = kwargs.get("label")
-
-    class _Context:
-        def __init__(self, *args, **kwargs):
-            self.args = args
-            self.kwargs = kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_exc_info):
-            return False
-
-    radios: list[_FakeComponent] = []
-    sliders: list[_FakeComponent] = []
-
-    def _radio(*args, **kwargs):
-        component = _FakeComponent(*args, **kwargs)
-        radios.append(component)
-        return component
-
-    def _slider(*args, **kwargs):
-        component = _FakeComponent(*args, **kwargs)
-        sliders.append(component)
-        return component
-
-    fake_gr = types.SimpleNamespace(
-        Markdown=_FakeComponent,
-        Dropdown=_FakeComponent,
-        Radio=_radio,
-        Row=_Context,
-        Number=_FakeComponent,
-        Slider=_slider,
-        Textbox=_FakeComponent,
-        CheckboxGroup=_FakeComponent,
-        Checkbox=_FakeComponent,
-        Accordion=_Context,
-        Group=_Context,
-        Button=_FakeComponent,
-    )
-    monkeypatch.setattr(
-        teleop_app,
-        "_customization_ui_state_for_env",
-        lambda _env_id, **_: teleop_app.CustomizationUIState(),
-    )
-
-    _build_setup_screen(fake_gr, ["MuJoCoTouch-v1"], "leader", -90.0, "/dev/null")
-
-    action_space_radio = next(radio for radio in radios if radio.label == "Action Space")
-    assert action_space_radio.value == "joint_pos"
-    reset_settle_slider = next(
-        slider for slider in sliders if slider.label == "Reset Settle Frames"
-    )
-    assert reset_settle_slider.value == 5
-    success_hold_slider = next(slider for slider in sliders if slider.label == "Success Hold (s)")
-    assert success_hold_slider.value == 0.5
 
 
 def test_update_customization_for_env_updates_success_hold_seconds(

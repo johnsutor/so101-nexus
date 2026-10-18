@@ -1430,6 +1430,25 @@ def _build_cube_pair_color_group(
     return group, first_input, second_input
 
 
+def _build_camera_settings(gr):
+    """Build resolution controls for the recorded camera views."""
+    with gr.Row():
+        wrist_width = gr.Slider(
+            minimum=64, maximum=1024, value=640, step=32, label="Wrist Camera Width"
+        )
+        wrist_height = gr.Slider(
+            minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Height"
+        )
+    with gr.Row():
+        overhead_width = gr.Slider(
+            minimum=64, maximum=1024, value=640, step=32, label="Overhead and Side Camera Width"
+        )
+        overhead_height = gr.Slider(
+            minimum=64, maximum=1024, value=480, step=32, label="Overhead and Side Camera Height"
+        )
+    return wrist_width, wrist_height, overhead_width, overhead_height
+
+
 def _build_setup_screen(
     gr,
     all_env_ids: list[str],
@@ -1440,49 +1459,65 @@ def _build_setup_screen(
     profile_path: str | None = None,
 ):
     """Build the Configure step contents and return all input components."""
-    gr.Markdown("### Leader Arm")
-    port_status = gr.Markdown(_format_port_status(leader_port))
-    recheck_port_btn = gr.Button("Recheck Port", variant="secondary")
-    gr.Markdown("### Environment & Robot")
+    gr.Markdown("## Configure session")
+    with gr.Row():
+        with gr.Column(min_width=280):
+            port_status = gr.Markdown(_format_port_status(leader_port))
+        recheck_port_btn = gr.Button("Recheck Port", variant="secondary", scale=0, min_width=150)
     default_robot_type = "so101"
     default_env = _default_env_id(all_env_ids, default_robot_type)
     customization_state = _customization_ui_state_for_env(default_env, profile_path=profile_path)
-    env_id_input = gr.Dropdown(
-        choices=all_env_ids,
-        value=default_env,
-        label="Environment",
-    )
     with gr.Row():
-        robot_type_input = gr.Radio(
-            choices=["so100", "so101"], value=default_robot_type, label="Robot Type"
+        env_id_input = gr.Dropdown(
+            choices=all_env_ids,
+            value=default_env,
+            label="Environment",
+            scale=3,
         )
+        robot_type_input = gr.Radio(
+            choices=[("SO-100", "so100"), ("SO-101", "so101")],
+            value=default_robot_type,
+            label="Robot Type",
+            scale=1,
+        )
+    with gr.Row():
+        num_episodes_input = gr.Number(
+            value=5, minimum=1, precision=0, label="Number of Episodes", scale=1
+        )
+        repo_id_input = gr.Textbox(
+            label="HuggingFace Repo ID (optional)",
+            placeholder="username/dataset-name",
+            info="Leave blank to use an automatic local name. Upload is optional after recording.",
+            scale=3,
+        )
+    repo_id_warning = gr.Markdown("", visible=False)
+
+    with gr.Accordion("Recording settings", open=False):
+        with gr.Row():
+            fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS")
+            countdown_input = gr.Slider(
+                minimum=0, maximum=10, value=3, step=1, label="Countdown (s)"
+            )
         action_space_input = gr.Radio(
-            choices=["joint_pos", "joint_pos_delta"],
+            choices=[
+                ("Joint positions", "joint_pos"),
+                ("Changes in joint position", "joint_pos_delta"),
+            ],
             value="joint_pos",
             label="Action Space",
+            info="How actions are stored in the dataset. Match the policy you plan to train.",
         )
-
-    gr.Markdown("### Recording")
-    with gr.Row():
-        num_episodes_input = gr.Number(value=5, precision=0, label="Number of Episodes")
-        fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS")
-        countdown_input = gr.Slider(minimum=0, maximum=10, value=3, step=1, label="Countdown (s)")
-
-    gr.Markdown("### Dataset & Storage")
-    repo_id_input = gr.Textbox(
-        label="HuggingFace Repo ID (optional)",
-        placeholder="username/dataset-name",
-        info="Leave blank for local-only recording",
-    )
-    repo_id_warning = gr.Markdown("", visible=False)
-    field_selection_input = gr.CheckboxGroup(
-        choices=_OPTIONAL_FIELD_CHOICES,
-        value=list(_OPTIONAL_FIELD_CHOICES),
-        label="Dataset fields",
-        info="observation.state, action, task, reward, success, and done are always saved",
-    )
-
-    with gr.Accordion("Advanced Settings", open=False):
+        field_selection_input = gr.CheckboxGroup(
+            choices=[
+                ("Wrist camera", WRIST_KEY),
+                ("Overhead camera", OVERHEAD_KEY),
+                ("Side camera", SIDE_KEY),
+                ("Environment state", ENV_STATE_KEY),
+            ],
+            value=list(_OPTIONAL_FIELD_CHOICES),
+            label="Dataset fields",
+            info="Joint state, actions, task, rewards, success, and done are always saved.",
+        )
         leader_id_input = gr.Textbox(label="Leader Arm ID", value=default_leader_id)
         wrist_roll_offset_deg_input = gr.Slider(
             minimum=-180,
@@ -1491,24 +1526,12 @@ def _build_setup_screen(
             step=1,
             label="Wrist Roll Offset (deg)",
         )
-        with gr.Row():
-            wrist_camera_width_input = gr.Slider(
-                minimum=64, maximum=1024, value=640, step=32, label="Wrist Camera Width"
-            )
-            wrist_camera_height_input = gr.Slider(
-                minimum=64, maximum=1024, value=480, step=32, label="Wrist Camera Height"
-            )
-        with gr.Row():
-            overhead_camera_width_input = gr.Slider(
-                minimum=64, maximum=1024, value=640, step=32, label="Overhead and Side Camera Width"
-            )
-            overhead_camera_height_input = gr.Slider(
-                minimum=64,
-                maximum=1024,
-                value=480,
-                step=32,
-                label="Overhead and Side Camera Height",
-            )
+        (
+            wrist_camera_width_input,
+            wrist_camera_height_input,
+            overhead_camera_width_input,
+            overhead_camera_height_input,
+        ) = _build_camera_settings(gr)
         max_steps_input = gr.Number(
             value=1024,
             minimum=1,
@@ -1530,6 +1553,8 @@ def _build_setup_screen(
                 "before auto-stopping. Set 0 to stop immediately."
             ),
         )
+    with gr.Accordion("Environment customization", open=False):
+        gr.Markdown("Enable customization to change the options supported by this environment.")
         customize_env_input = gr.Checkbox(
             value=customization_state.customize_value,
             label="Apply Environment Customization",
@@ -1540,90 +1565,97 @@ def _build_setup_screen(
                 "fields below are ignored."
             ),
         )
-        with gr.Group(
-            visible=customization_state.pick_group_visible
-        ) as objects_customization_group:
-            object_pool_input = gr.CheckboxGroup(
-                choices=default_object_choices(),
-                value=customization_state.object_specs,
-                label="Pick Object Pool",
-                visible=customization_state.pick_visible,
-            )
-            min_distractors_input = gr.Number(
-                value=customization_state.min_distractors,
-                minimum=0,
-                precision=0,
-                label="Minimum Distractors",
-                visible=customization_state.distractors_visible,
-            )
-            max_distractors_input = gr.Number(
-                value=customization_state.max_distractors,
-                minimum=0,
-                precision=0,
-                label="Maximum Distractors",
-                visible=customization_state.distractors_visible,
-            )
-        with gr.Group(visible=customization_state.common_visible) as common_customization_group:
-            with gr.Row():
-                ground_colors_input = gr.CheckboxGroup(
-                    choices=default_color_choices(),
-                    value=customization_state.ground_colors,
-                    label="Ground Colors",
+        with gr.Column(visible=customization_state.customize_value) as customization_fields:
+            with gr.Group(
+                visible=customization_state.pick_group_visible
+            ) as objects_customization_group:
+                object_pool_input = gr.CheckboxGroup(
+                    choices=default_object_choices(),
+                    value=customization_state.object_specs,
+                    label="Pick Object Pool",
+                    visible=customization_state.pick_visible,
                 )
-                robot_colors_input = gr.CheckboxGroup(
-                    choices=default_color_choices(),
-                    value=customization_state.robot_colors,
-                    label="Robot Colors",
-                )
-            with gr.Row():
-                spawn_min_radius_input = gr.Slider(
-                    minimum=0.0,
-                    maximum=0.5,
-                    value=customization_state.spawn_min_radius,
-                    step=0.01,
-                    label="Spawn Min Radius",
-                )
-                spawn_max_radius_input = gr.Slider(
-                    minimum=0.01,
-                    maximum=0.8,
-                    value=customization_state.spawn_max_radius,
-                    step=0.01,
-                    label="Spawn Max Radius",
-                )
-                spawn_angle_half_range_input = gr.Slider(
+                min_distractors_input = gr.Number(
+                    value=customization_state.min_distractors,
                     minimum=0,
-                    maximum=180,
-                    value=customization_state.spawn_angle_half_range_deg,
-                    step=1,
-                    label="Spawn Angle Half Range (deg)",
+                    precision=0,
+                    label="Minimum Distractors",
+                    visible=customization_state.distractors_visible,
                 )
-                reset_settle_frames_input = gr.Slider(
+                max_distractors_input = gr.Number(
+                    value=customization_state.max_distractors,
                     minimum=0,
-                    maximum=60,
-                    value=customization_state.reset_settle_frames,
-                    step=1,
-                    label="Reset Settle Frames",
+                    precision=0,
+                    label="Maximum Distractors",
+                    visible=customization_state.distractors_visible,
                 )
-        pick_and_place_customization_group, cube_colors_input, target_colors_input = (
-            _build_cube_pair_color_group(
-                gr,
-                visible=customization_state.pick_and_place_visible,
-                first_value=customization_state.cube_colors,
-                first_label="Pick-and-Place Cube Colors",
-                second_value=customization_state.target_colors,
-                second_label="Pick-and-Place Target Colors",
+            with gr.Group(visible=customization_state.common_visible) as common_customization_group:
+                with gr.Row():
+                    ground_colors_input = gr.CheckboxGroup(
+                        choices=default_color_choices(),
+                        value=customization_state.ground_colors,
+                        label="Ground Colors",
+                    )
+                    robot_colors_input = gr.CheckboxGroup(
+                        choices=default_color_choices(),
+                        value=customization_state.robot_colors,
+                        label="Robot Colors",
+                    )
+                with gr.Row():
+                    spawn_min_radius_input = gr.Slider(
+                        minimum=0.0,
+                        maximum=0.5,
+                        value=customization_state.spawn_min_radius,
+                        step=0.01,
+                        label="Spawn Min Radius",
+                    )
+                    spawn_max_radius_input = gr.Slider(
+                        minimum=0.01,
+                        maximum=0.8,
+                        value=customization_state.spawn_max_radius,
+                        step=0.01,
+                        label="Spawn Max Radius",
+                    )
+                    spawn_angle_half_range_input = gr.Slider(
+                        minimum=0,
+                        maximum=180,
+                        value=customization_state.spawn_angle_half_range_deg,
+                        step=1,
+                        label="Spawn Angle Half Range (deg)",
+                    )
+                    reset_settle_frames_input = gr.Slider(
+                        minimum=0,
+                        maximum=60,
+                        value=customization_state.reset_settle_frames,
+                        step=1,
+                        label="Reset Settle Frames",
+                    )
+            pick_and_place_customization_group, cube_colors_input, target_colors_input = (
+                _build_cube_pair_color_group(
+                    gr,
+                    visible=customization_state.pick_and_place_visible,
+                    first_value=customization_state.cube_colors,
+                    first_label="Pick-and-Place Cube Colors",
+                    second_value=customization_state.target_colors,
+                    second_label="Pick-and-Place Target Colors",
+                )
             )
-        )
-        stack_customization_group, cube_a_colors_input, cube_b_colors_input = (
-            _build_cube_pair_color_group(
-                gr,
-                visible=customization_state.stack_visible,
-                first_value=customization_state.cube_a_colors,
-                first_label="Stack Cube A Colors",
-                second_value=customization_state.cube_b_colors,
-                second_label="Stack Cube B Colors",
+            stack_customization_group, cube_a_colors_input, cube_b_colors_input = (
+                _build_cube_pair_color_group(
+                    gr,
+                    visible=customization_state.stack_visible,
+                    first_value=customization_state.cube_a_colors,
+                    first_label="Stack Cube A Colors",
+                    second_value=customization_state.cube_b_colors,
+                    second_label="Stack Cube B Colors",
+                )
             )
-        )
+
+    customize_env_input.change(
+        fn=lambda enabled: gr.update(visible=enabled),
+        inputs=[customize_env_input],
+        outputs=[customization_fields],
+    )
 
     init_btn = gr.Button("Initialize Session", variant="primary")
 
@@ -1692,8 +1724,10 @@ def _build_record_step(gr, *, policy_collection: bool = False):
         "The policy then drives the simulated arm. "
         "Press T to pause and prepare a correction."
         if policy_collection
-        else "Ready to record. Start recording, then move the leader to drive the simulated arm."
+        else "Ready to record. Start recording, then move the leader to drive the simulated arm. "
+        "Recording stops after task success or the episode limit. Stop early to review at any time."
     )
+    task_status = gr.Markdown(_TASK_PENDING_TEXT)
     start_btn = gr.Button(
         "Start policy episode" if policy_collection else "Start Recording", variant="primary"
     )
@@ -1706,7 +1740,6 @@ def _build_record_step(gr, *, policy_collection: bool = False):
         interactive=False,
     )
     stop_btn = gr.Button("Stop and review episode", variant="stop", visible=False)
-    task_status = gr.Markdown(_TASK_PENDING_TEXT)
     rec_timer = gr.Timer(value=PREVIEW_INTERVAL_SECONDS)
     return record_status, start_btn, countdown_area, preview_feed, stop_btn, task_status, rec_timer
 
@@ -2071,34 +2104,44 @@ _INTERVENTION_SHORTCUTS = """() => {
 
 def _build_review_step(gr):
     """Build the Review step contents."""
-    gr.Markdown("### Review Episode")
+    gr.Markdown("## Review episode")
+    gr.Markdown("Save this episode to your local dataset, or discard it and try again.")
     with gr.Row():
         with gr.Column(scale=2):
-            review_video = gr.Video(label="Episode Replay (available cameras)")
+            review_video = gr.Video(label="Episode Replay (available cameras)", interactive=False)
         with gr.Column(scale=1):
-            state_plot = gr.Plot(label="Joint States and Step Reward")
             episode_metadata = gr.Markdown()
     review_status = gr.Markdown("", visible=False)
     with gr.Row():
-        approve_btn = gr.Button("Approve", variant="primary")
-        discard_btn = gr.Button("Discard", variant="stop")
+        approve_btn = gr.Button("Save episode", variant="primary")
+        discard_btn = gr.Button("Discard and retry", variant="stop")
+    with gr.Accordion("Joint states and rewards", open=False):
+        state_plot = gr.Plot(label="Joint States and Step Reward")
     return review_video, state_plot, episode_metadata, review_status, approve_btn, discard_btn
 
 
-def _build_complete_step(gr):
+def _build_complete_step(gr, *, policy_collection: bool = False):
     """Build the Complete step contents."""
-    gr.Markdown("### All episodes recorded!")
+    gr.Markdown("## All episodes saved")
     done_info = gr.Markdown("")
-    hub_repo_id_input = gr.Textbox(
-        label="Hub Repo ID",
-        placeholder="username/dataset-name",
-        info="Edit the upload destination before pushing or retrying. "
-        "Your local recording stays in its original directory.",
+    if policy_collection:
+        gr.Markdown(
+            "Before finishing, support the arm and gripper. Open **Leader motors** in "
+            "**Policy correction** above, confirm support, then click **Release motors**."
+        )
+    gr.Markdown(
+        "Finish to finalize the local dataset and disconnect the leader. Upload is optional."
     )
     done_status = gr.Markdown("")
-    with gr.Row():
-        push_btn = gr.Button("Push to Hub", variant="primary")
-        finalize_btn = gr.Button("Finalize & Close")
+    finalize_btn = gr.Button("Finish session", variant="primary")
+    with gr.Accordion("Upload to Hugging Face (optional)", open=False):
+        hub_repo_id_input = gr.Textbox(
+            label="Hub Repo ID",
+            placeholder="username/dataset-name",
+            info="Edit the upload destination before pushing or retrying. "
+            "Your local recording stays in its original directory.",
+        )
+        push_btn = gr.Button("Push to Hub", variant="secondary")
     return done_info, done_status, hub_repo_id_input, push_btn, finalize_btn
 
 
@@ -2445,7 +2488,9 @@ def main(
                     hub_repo_id_input,
                     push_btn,
                     finalize_btn,
-                ) = _build_complete_step(gr)
+                ) = _build_complete_step(
+                    gr, policy_collection=bool(args.policy_path or args.policy_factory)
+                )
 
         rec_timer.tick(
             fn=lambda: gr.update(
