@@ -163,6 +163,7 @@ def test_intervention_controls_request_handoffs_without_queueing(monkeypatch):
     ]
     assert len(handlers) == 4
     assert all(fn.queue is False for fn in handlers)
+    assert all(len(fn.inputs) == 1 and isinstance(fn.inputs[0], gr.State) for fn in handlers)
 
 
 @pytest.mark.parametrize("key", ["t", "c", "h", "p"])
@@ -243,7 +244,7 @@ def test_intervention_status_explains_simulation_and_available_actions(status, e
         "state": SimpleNamespace(is_recording=status != "ready"),
     }
     _cb_poll_intervention(session)
-    text, *updates = _cb_poll_intervention(session, leader_supported=True)
+    text, *updates = _cb_poll_intervention(session)
     assert message in text
     assert tuple(update["interactive"] for update in updates[:4]) == enabled
     assert updates[0]["variant"] == ("primary" if enabled[0] else "secondary")
@@ -297,7 +298,6 @@ def test_correction_callback_uses_guarded_start(aligned):
     message = _cb_request_intervention(
         {"intervention": intervention, "state": SimpleNamespace(is_recording=True)},
         "human",
-        leader_supported=True,
         support_token=intervention.support_token,
     )
     intervention.start_correction.assert_called_once_with(support_token=intervention.support_token)
@@ -320,18 +320,21 @@ def test_policy_record_step_explains_autonomous_start_and_review():
 
 
 @pytest.mark.usefixtures("_require_gradio")
-def test_start_correction_requires_support_acknowledgment():
+@pytest.mark.parametrize("token", [None, (1, 0)])
+def test_start_correction_rejects_missing_or_stale_token(token):
     from types import SimpleNamespace
     from unittest.mock import Mock
 
     from so101_nexus.teleop.app import _cb_request_intervention
 
-    intervention = Mock()
+    intervention = Mock(support_token=(1, 1))
     message = _cb_request_intervention(
-        {"intervention": intervention, "state": SimpleNamespace(is_recording=True)}, "human"
+        {"intervention": intervention, "state": SimpleNamespace(is_recording=True)},
+        "human",
+        support_token=token,
     )
     intervention.start_correction.assert_not_called()
-    assert "support" in message.lower()
+    assert "changed" in message.lower()
 
 
 @pytest.mark.usefixtures("_require_gradio")
@@ -406,28 +409,22 @@ def test_uninitialized_support_panel_resets_confirmation():
 
 
 @pytest.mark.usefixtures("_require_gradio")
-def test_automatic_episode_end_expires_support_confirmation():
+def test_automatic_episode_end_expires_correction_token():
     from types import SimpleNamespace
 
     from so101_nexus.teleop.app import _cb_poll_intervention
 
-    intervention = SimpleNamespace(
-        status="human paused",
-        support_token=(1, 1),
-        synchronization_error=None,
-    )
+    intervention = SimpleNamespace(status="human paused", support_token=(1, 1))
     state = SimpleNamespace(is_recording=True)
     session = {"intervention": intervention, "state": state}
-    _cb_poll_intervention(session)
-    _, _, _, _, _, support, token, _ = _cb_poll_intervention(session, True)
-    assert "value" not in support
+    _, _, correction, _, _, token, _ = _cb_poll_intervention(session)
+    assert correction["interactive"] is True
     assert token == (1, 1)
     intervention.support_token = (1, 2)
     intervention.status = "hold"
     state.is_recording = False
-    _, _, correction, _, _, support, token, _ = _cb_poll_intervention(session, True)
+    _, _, correction, _, _, token, _ = _cb_poll_intervention(session)
     assert correction["interactive"] is False
-    assert support["value"] is False
     assert token is None
 
 
@@ -466,7 +463,7 @@ def test_alignment_pause_shows_joint_diagnostics_and_recovery_actions():
     assert "10.0 deg" in message
     assert "retries" in message.lower()
     assert takeover["interactive"] is True
-    assert correct["interactive"] is False
+    assert correct["interactive"] is True
     assert policy["interactive"] is True
 
 
@@ -537,7 +534,7 @@ def test_preparing_episode_disables_policy_handoff(status, countdown, recording)
     message, *updates = _cb_poll_intervention(session)
     expected = "returning" if status == "returning to rest" else "preparing"
     assert expected in message.lower()
-    assert all(update["interactive"] is False for update in updates[:5])
+    assert all(update["interactive"] is False for update in updates[:4])
     assert updates[-1]["visible"] is False
 
 
@@ -579,3 +576,20 @@ def test_policy_handoff_controls_visible_only_during_active_recording():
     session["state"].is_recording = False
     *_, group = _cb_poll_intervention(session)
     assert group["visible"] is False
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_correction_disclaimer_replaces_takeover_checkbox():
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_intervention_controls
+
+    with gr.Blocks():
+        _, _, correct, _, _, token, handoff = _build_intervention_controls(gr, enabled=True)
+    assert isinstance(token, gr.State)
+    assert not any(isinstance(child, gr.Checkbox) for child in handoff.children)
+    disclaimer = handoff.children[handoff.children.index(correct) + 1]
+    assert isinstance(disclaimer, gr.Markdown)
+    assert disclaimer.value == (
+        "Support the arm and gripper before taking control. This releases the motors."
+    )

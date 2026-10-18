@@ -18,6 +18,12 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Policy collection automatically returns the leader to rest with LeRobot IK
+  after each completed or manually stopped episode, before review. Recorded
+  frames and simulator state are preserved; errors and shutdown hold the leader.
+- Human takeover uses a support notice below Start correction instead of a
+  confirmation checkbox. Stale takeover requests remain rejected.
+
 - Leader resting IK now uses the physical leader's joint frame, so the
   teleoperation wrist offset no longer turns a neutral leader wrist rest into
   an unintended 90-degree target.

@@ -450,6 +450,92 @@ def test_recording_worker_records_executed_policy_actions(worker_setup):  # noqa
         session.close()
 
 
+@pytest.mark.parametrize("outcome", ["complete", "stop", "timeout", "cancel"])
+def test_worker_returns_leader_after_episode_without_resetting_recorded_simulator(
+    worker_setup,  # noqa: F811
+    outcome,
+):
+    from so101_nexus.teleop.recorder import RecordingWorker
+
+    kwargs, follower_type, events = worker_setup
+    state = kwargs["state"]
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    original_send = follower_type.send_action
+
+    def send(follower, action):
+        result = original_send(follower, action)
+        if outcome == "stop":
+            state.should_stop = True
+        return result
+
+    def tick():
+        if len(sync.targets) == 2:
+            assert not state.is_recording
+            assert not state.recording_finished
+            assert len(state.transitions) == 1
+            if outcome == "timeout":
+                raise TimeoutError("post-episode return stalled")
+            if outcome == "cancel":
+                state.should_stop = True
+                return False
+        return True
+
+    follower_type.send_action = send
+    sync.tick = tick
+    worker = RecordingWorker()
+    try:
+        worker.submit(**kwargs, intervention=session)
+        assert worker.wait(3)
+        assert len(sync.targets) == 2
+        assert [event[0] for event in events].count("reset") == 1
+        assert len(state.transitions) == follower_type.instances[0].step_calls == 1
+        assert state.recording_finished
+        assert (state.error is None) == (outcome != "timeout")
+        if outcome == "timeout":
+            assert "post-episode return stalled" in state.error
+        assert session.status == "hold"
+        assert sync.holding
+    finally:
+        worker.close()
+        session.close()
+
+
+def test_worker_shutdown_does_not_start_another_leader_return(worker_setup):  # noqa: F811
+    from so101_nexus.teleop.recorder import RecordingWorker
+
+    kwargs, follower_type, _ = worker_setup
+    entered, finish = threading.Event(), threading.Event()
+    sync = Synchronizer()
+    session = InterventionSession(Policy(), sync)
+    original_send = follower_type.send_action
+
+    def send(follower, action):
+        result = original_send(follower, action)
+        entered.set()
+        assert finish.wait(3)
+        return result
+
+    follower_type.send_action = send
+    worker = RecordingWorker()
+    closer = threading.Thread(target=worker.close)
+    try:
+        worker.submit(**kwargs, intervention=session)
+        assert entered.wait(3)
+        closer.start()
+        assert worker._shutdown.wait(3)
+        finish.set()
+        closer.join(3)
+        assert not closer.is_alive()
+        assert len(sync.targets) == 1
+        assert kwargs["state"].error is None
+        assert sync.holding
+    finally:
+        finish.set()
+        worker.close()
+        session.close()
+
+
 @pytest.mark.parametrize("outcome", ["ready", "stop", "timeout"])
 @pytest.mark.parametrize("released", [False, True])
 def test_worker_returns_leader_before_reset_and_policy(
@@ -485,7 +571,7 @@ def test_worker_returns_leader_before_reset_and_policy(
             return False
         return len(ticks) == 2
 
-    sync.tick = tick
+    sync.tick = lambda: len(sync.targets) == 2 or tick()
     policy = Policy()
     session = InterventionSession(policy, sync)
     if released:
@@ -496,7 +582,7 @@ def test_worker_returns_leader_before_reset_and_policy(
         worker.submit(**kwargs, intervention=session)
         assert worker.wait(3)
         state = kwargs["state"]
-        assert sync.targets == [observation(12)]
+        assert sync.targets == [observation(12)] * (2 if outcome == "ready" else 1)
         assert (sync.releases, sync.holding, session.leader_released, session.status) == (
             int(released),
             True,
@@ -722,7 +808,8 @@ def test_worker_handoffs_preserve_continuous_episode_and_camera_alignment(worker
         np.testing.assert_array_equal(
             [t.state for t in state.transitions], [np.full(6, i) for i in range(3)]
         )
-        assert sync.targets == [kwargs["leader"].get_action(), observation(1)]
+        rest = kwargs["leader"].get_action()
+        assert sync.targets == [rest, observation(1), rest]
         assert policy.resets == 2
         np.testing.assert_array_equal(policy.batches[-1]["observation.state"], np.full(6, 2))
     finally:

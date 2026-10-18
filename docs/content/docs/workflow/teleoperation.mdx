@@ -147,7 +147,8 @@ a custom adapter rather than being accepted based on their action dimension alon
    The leader moves gradually to the follower's current pose, including the inverse wrist roll offset.
    Keep the leader clear while **Paused: aligning leader** is shown.
 3. When alignment finishes or pauses, hold the physical arm and gripper.
-   Check the support confirmation directly above C, then click **Start correction (C)**.
+   Click **Start correction (C)** to release the motors and begin correction.
+   The reminder below the button replaces a separate confirmation checkbox.
    If alignment needs attention, the button reads **Take control from this pose (C)**.
    The first correction action preserves the current simulated pose. Your movements
    from this point drive the follower, with pose differences compensated for every joint
@@ -178,7 +179,12 @@ the leader's resting pose. The gripper uses its configured resting angle, clampe
 to the simulator's joint limits. You do not need to position the leader before
 initializing. Motors ramp to the target over four seconds with a gentle start
 and stop. Keep the arm clear during the return.
-**Stop and review episode** cancels the return and holds the measured pose.
+At episode completion, including **Stop and review episode**, the leader
+automatically returns to rest before Review becomes ready. This return preserves
+the recorded frames and simulator state. Starting another episode checks the
+resting pose again before its countdown. Pressing Stop while the arm is already
+returning cancels that return and holds the measured pose. Recording errors and
+process shutdown hold the leader without starting an automatic return.
 A failed IK solve, return timeout, or motor error stops preparation before the
 countdown or policy inference. **Policy correction** shows the failure and joint
 readings. A return timeout means a measured joint did not reach its target within
@@ -207,7 +213,7 @@ single-turn range. During correction, wrist targets use the equivalent angle nea
 follower readback so crossing the angle boundary does not flip the simulated target.
 An alignment timeout holds the measured physical pose and keeps the episode paused.
 The controller panel lists the joints that did not reach their targets, including measured
-and target positions. Hold the arm, confirm support beside C, and take control from
+and target positions. Hold the arm and gripper, press C, and take control from
 this pose. You can also press T to retry alignment or P to resume the policy.
 Torque changes and synchronization reads and transmissions retry communication failures
 up to three times through LeRobot.
