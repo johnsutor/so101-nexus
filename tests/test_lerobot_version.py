@@ -28,10 +28,10 @@ def test_dm05_extra_pins_native_lerobot_and_secure_transformers():
 def test_lerobot_061_includes_dataset_dependencies_and_opt_in_molmoact2():
     project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
     extras = project["project"]["optional-dependencies"]
-    requirement = "lerobot[dataset,feetech]>=0.6.1,<0.7"
+    requirement = "lerobot[dataset,feetech,placo-dep]>=0.6.1,<0.7"
     assert requirement in extras["teleop"]
     assert (
-        "lerobot[dataset,feetech,peft-dep,scipy-dep]>=0.6.1,<0.7"
+        "lerobot[dataset,feetech,peft-dep,placo-dep,scipy-dep]>=0.6.1,<0.7"
         in project["dependency-groups"]["test"]
     )
     assert "lerobot[peft-dep,scipy-dep]>=0.6.1,<0.7" in extras["molmoact2"]
