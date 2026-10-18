@@ -501,6 +501,8 @@ def test_policy_correction_contains_optional_motor_controls():
             yield from descendants(child)
 
     children = list(descendants(panel))
+    assert panel.variant == "default"
+    assert not any(isinstance(child, gr.Group) for child in children)
     motor_controls = next(
         c for c in children if isinstance(c, gr.Accordion) and c.label == "Leader motors"
     )

@@ -398,12 +398,11 @@ def _return_leader_to_rest(
         raise ValueError("Leader return requires complete, finite joint readings")
     if state.should_stop:
         return False
-    target = follower.get_rest_action(
-        apply_wrist_roll_offset_deg(current_action, wrist_roll_offset_deg)
-    )
+    target = follower.get_rest_action(current_action)
     if state.should_stop:
         return False
-    intervention.start_parking(target)
+    # The synchronizer consumes follower coordinates; resting IK uses the leader frame.
+    intervention.start_parking(apply_wrist_roll_offset_deg(target, wrist_roll_offset_deg))
     while not state.should_stop:
         if intervention.synchronizer.tick():
             intervention.status = "hold"

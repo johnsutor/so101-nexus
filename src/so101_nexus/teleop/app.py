@@ -1748,10 +1748,10 @@ _INTERVENTION_STATUS = {
 
 
 def _build_intervention_controls(gr, *, enabled: bool):
-    with gr.Group(visible=enabled):
+    with gr.Column(visible=enabled):
         gr.Markdown("## Policy correction")
         status = gr.Markdown(_INTERVENTION_STATUS["ready"])
-        with gr.Group(visible=False) as handoff:
+        with gr.Column(visible=False) as handoff:
             takeover = gr.Button(
                 "Pause and take control (T)",
                 elem_id="teleop-takeover",
@@ -1788,7 +1788,7 @@ def _build_intervention_controls(gr, *, enabled: bool):
 
 def _build_leader_support_controls(gr, *, enabled: bool):
     """Offer optional motor release within policy correction."""
-    with gr.Group(visible=enabled):
+    with gr.Column(visible=enabled):
         warning = gr.Markdown("", visible=False)
         with gr.Accordion("Leader motors", open=False):
             status = gr.Markdown("Initialize the session to see motor status.")
@@ -1891,7 +1891,7 @@ def _cb_release_leader(
 
 def _build_policy_correction(gr, *, enabled: bool):
     """Keep correction and optional motor release together across episode review."""
-    with gr.Column(visible=False, variant="panel") as panel:
+    with gr.Column(visible=False) as panel:
         intervention = _build_intervention_controls(gr, enabled=enabled)
         support = _build_leader_support_controls(gr, enabled=enabled)
     return panel, intervention, support

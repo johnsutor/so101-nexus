@@ -533,10 +533,9 @@ def test_rest_return_ramps_physical_pose_and_preserves_wrist_offset(monkeypatch)
     bus = Bus()
     rest = observation(30)
     rest["wrist_roll.pos"] = -107
-    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
 
     follower = SimpleNamespace(
-        get_rest_action=lambda current: apply_wrist_roll_offset_deg(rest, -90),
+        get_rest_action=lambda current: dict(rest),
         set_initial_leader_action=Mock(),
         reset=Mock(),
     )
@@ -563,6 +562,35 @@ def test_rest_return_ramps_physical_pose_and_preserves_wrist_offset(monkeypatch)
                     assert abs(current[name] - previous[name]) <= peak_speed * 0.02 + 1e-6
             assert sync.holding
             assert ("disable",) not in bus.events
+    finally:
+        session.close()
+
+
+def test_rest_return_uses_leader_rest_frame_instead_of_takeover_offset(monkeypatch):
+    from so101_nexus.teleop.recorder import RecordingState, _return_leader_to_rest
+
+    clock = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    bus = Bus()
+    bus.positions["wrist_roll"] = 50
+    current = {f"{key}.pos": value for key, value in bus.positions.items()}
+    follower = SimpleNamespace(
+        get_rest_action=Mock(return_value=observation()),
+        set_initial_leader_action=Mock(),
+        reset=Mock(),
+    )
+    leader = SimpleNamespace(
+        get_action=lambda: {f"{key}.pos": value for key, value in bus.positions.items()}
+    )
+    session = InterventionSession(Policy(), SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90))
+    try:
+        assert _return_leader_to_rest(RecordingState(), follower, leader, session, -90)
+        follower.get_rest_action.assert_called_once_with(current)
+        assert bus.positions["wrist_roll"] == pytest.approx(0)
+        assert follower.set_initial_leader_action.call_args.args[0][
+            "wrist_roll.pos"
+        ] == pytest.approx(-90)
     finally:
         session.close()
 
@@ -1549,4 +1577,59 @@ def test_timed_return_stalled_motor_reports_error_and_holds_measured_pose(monkey
         sync.tick()
     assert len(goals) == 1
     assert bus.positions == dict.fromkeys(SO101_JOINT_NAMES, 0)
+    assert sync.holding
+
+
+def test_timed_return_uses_real_feetech_normalization_and_packet_serialization(monkeypatch):
+    template, _, _ = _calibrated_bus(monkeypatch)
+    bus = type(template)(port="/dev/null", motors=template.motors, calibration=template.calibration)
+    monkeypatch.setattr(bus.port_handler, "is_open", True)
+    positions = {
+        cal.id: int((cal.range_min + cal.range_max) / 2) for cal in bus.calibration.values()
+    }
+    registers = {}
+    goal_address = bus.model_ctrl_table["sts3215"]["Goal_Position"][0]
+    torque_address = bus.model_ctrl_table["sts3215"]["Torque_Enable"][0]
+    now = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+
+    def write_packet(port, motor_id, address, length, data):
+        value = sum(byte << (8 * index) for index, byte in enumerate(data))
+        registers[motor_id, address] = value
+        if address == goal_address:
+            positions[motor_id] = value
+        return 0, 0
+
+    def sync_packet():
+        assert bus.sync_writer.start_address == goal_address
+        assert bus.sync_writer.data_length == 2
+        for motor_id, data in bus.sync_writer.data_dict.items():
+            assert registers[motor_id, torque_address] == 1
+            positions[motor_id] = sum(byte << (8 * index) for index, byte in enumerate(data))
+        return 0
+
+    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
+    monkeypatch.setattr(bus.sync_writer, "txPacket", sync_packet)
+    monkeypatch.setattr(bus.sync_reader, "txRxPacket", lambda: 0)
+    monkeypatch.setattr(
+        bus.sync_reader, "getData", lambda motor_id, address, length: positions[motor_id]
+    )
+    target = dict(
+        zip(
+            (f"{name}.pos" for name in SO101_JOINT_NAMES),
+            (0, -80, 80, 37.8, 0, 0),
+            strict=True,
+        )
+    )
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
+    sync.start(target, duration_s=4)
+    for elapsed in (0, 1, 2, 3):
+        now[0] = elapsed
+        assert not sync.tick()
+    now[0] = 4
+    assert sync.tick()
+    measured = bus.sync_read("Present_Position")
+    expected = {name.removesuffix(".pos"): value for name, value in target.items()}
+    expected["wrist_roll"] = 90
+    assert measured == pytest.approx(expected, abs=360 / 4095)
     assert sync.holding

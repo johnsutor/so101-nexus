@@ -18,6 +18,11 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Leader resting IK now uses the physical leader's joint frame, so the
+  teleoperation wrist offset no longer turns a neutral leader wrist rest into
+  an unintended 90-degree target.
+- Policy correction uses plain page containers without gray panel backgrounds.
+
 - Policy episodes return the leader to rest before the countdown. Return failures
   show joint diagnostics in Policy correction, and unreachable calibrated motor
   targets are rejected before movement. Optional motor release is grouped inside

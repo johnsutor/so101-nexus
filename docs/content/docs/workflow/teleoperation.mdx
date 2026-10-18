@@ -171,7 +171,10 @@ This collector currently supports the simulated follower, not real-robot deploym
 Each **Start policy episode** returns the leader to the configured resting tool
 pose before the countdown. LeRobot's `RobotKinematics` solves the five arm joint
 targets from the measured leader pose using `RobotConfig.rest_qpos_deg` as the
-resting tool reference. The gripper uses its configured resting angle, clamped
+resting tool reference in the leader's joint frame. A zero-degree wrist rest
+target keeps the physical leader wrist at zero; the teleoperation wrist offset
+is applied when aligning with or resetting the follower, not when selecting
+the leader's resting pose. The gripper uses its configured resting angle, clamped
 to the simulator's joint limits. You do not need to position the leader before
 initializing. Motors ramp to the target over four seconds with a gentle start
 and stop. Keep the arm clear during the return.

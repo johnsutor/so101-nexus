@@ -244,12 +244,12 @@ class SimSOFollower(Robot):
 
     @check_if_not_connected
     def get_rest_action(self, current_action: dict[str, float]) -> dict[str, float]:
-        """Solve the configured resting tool pose in follower motor coordinates.
+        """Solve the configured resting tool pose in leader motor coordinates.
 
         Parameters
         ----------
         current_action
-            Measured body degrees and gripper percent, with the teleop wrist offset.
+            Measured leader body degrees and gripper percent, without a wrist offset.
         """
         env = self._env
         if env is None:
