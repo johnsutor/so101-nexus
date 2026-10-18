@@ -383,11 +383,13 @@ def _return_leader_to_rest(
     leader: LeaderProtocol,
     intervention: InterventionSession | None,
     wrist_roll_offset_deg: float,
+    countdown: int = 0,
 ) -> bool:
     from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
 
     if intervention is None:
         return not state.should_stop
+    intervention.status = "returning to rest"
     current_action = leader.get_action()
     keys = {f"{name}.pos" for name in intervention.joint_names}
     if set(current_action) != keys or not all(
@@ -407,7 +409,7 @@ def _return_leader_to_rest(
             intervention.status = "hold"
             _seed_follower_from_leader(follower, leader, wrist_roll_offset_deg)
             follower.reset(seed=state.episode_seed)
-            return True
+            return _run_countdown(state, countdown)
         time.sleep(0.02)
     return False
 
@@ -439,7 +441,7 @@ def recording_thread(
     start_time = None
     state.clear_episode()
     try:
-        if not _run_countdown(state, countdown):
+        if intervention is None and not _run_countdown(state, countdown):
             return
         episode_seed = seed + state.episodes_completed
         state.episode_seed = episode_seed
@@ -459,7 +461,7 @@ def recording_thread(
             **({"align_fps": True} if intervention is not None else {}),
         )
         if state.should_stop or not _return_leader_to_rest(
-            state, follower, leader, intervention, wrist_roll_offset_deg
+            state, follower, leader, intervention, wrist_roll_offset_deg, countdown
         ):
             return
 
@@ -497,7 +499,12 @@ def recording_thread(
             if sleep_time > 0:
                 time.sleep(sleep_time)
     except Exception as exc:
-        state.error = f"{type(exc).__name__}: {exc}"
+        phase = (
+            "Leader return failed before the episode started. "
+            if intervention is not None and intervention.status == "returning to rest"
+            else ""
+        )
+        state.error = f"{phase}{type(exc).__name__}: {exc}"
     finally:
         _capture_recording_metadata(state, follower, start_time)
         _finish_recording(

@@ -16,6 +16,13 @@ for the public-API and deprecation policy.
   Stopping the return holds the measured pose; IK or motor failures prevent policy
   inference from starting. The simulator resets from leader readback after return.
 
+### Fixed
+
+- Policy episodes return the leader to rest before the countdown. Return failures
+  show joint diagnostics in Policy correction, and unreachable calibrated motor
+  targets are rejected before movement. Optional motor release is grouped inside
+  Policy correction and remains available during review and completion.
+
 ## [0.10.0] - 2026-10-17
 
 ### Added

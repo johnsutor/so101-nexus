@@ -1688,7 +1688,7 @@ def _build_record_step(gr, *, policy_collection: bool = False):
     """Build the Record step contents."""
     record_status = gr.Markdown(
         "Ready. The leader returns to the default resting pose over four seconds "
-        "after the countdown. Keep the arm clear. The policy then drives the simulated arm. "
+        "before the countdown. Keep the arm clear. The policy then drives the simulated arm. "
         "Press T to pause and prepare a correction."
         if policy_collection
         else "Ready to record. Start recording, then move the leader to drive the simulated arm."
@@ -1712,6 +1712,14 @@ def _build_record_step(gr, *, policy_collection: bool = False):
 
 _INTERVENTION_STATUS = {
     "ready": "### Ready\nStart a policy episode to run the simulated arm after the countdown.",
+    "returning to rest": (
+        "### Returning leader to rest\nKeep the arm clear while it moves over four seconds. "
+        "The countdown starts when the leader is ready. Use Stop and review episode to cancel."
+    ),
+    "preparing": (
+        "### Preparing episode\nThe policy starts after the leader returns "
+        "and the countdown finishes."
+    ),
     "policy": "### Running: policy\nPress T to pause and prepare a correction.",
     "synchronizing": (
         "### Paused: aligning leader\nThe motors are moving the physical arm. "
@@ -1740,63 +1748,60 @@ _INTERVENTION_STATUS = {
 
 
 def _build_intervention_controls(gr, *, enabled: bool):
-    with gr.Column(visible=enabled, variant="panel"):
+    with gr.Group(visible=enabled):
         gr.Markdown("## Policy correction")
         status = gr.Markdown(_INTERVENTION_STATUS["ready"])
-        takeover = gr.Button(
-            "Pause and take control (T)",
-            elem_id="teleop-takeover",
-            variant="primary",
-            interactive=False,
-        )
-        supported = gr.Checkbox(
-            label="I am holding the arm and gripper. Release the motors when I press C.",
-            value=False,
-            interactive=False,
-        )
-        support_token = gr.State(value=None)
-        correct = gr.Button("Start correction (C)", elem_id="teleop-correct", interactive=False)
-        with gr.Row():
-            hold = gr.Button("Pause (H)", elem_id="teleop-hold", interactive=False)
-            resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
-        gr.Markdown(
-            "Press each shortcut once; you do not need to hold it. "
-            "Pausing stops simulation time and uses no episode steps."
-        )
-        with gr.Accordion("How takeover works", open=False):
-            gr.Markdown(
-                "The **leader** is the arm you move. The **follower** is the simulated arm.\n\n"
-                "1. **T: pause and align.** Keep the leader clear while it moves.\n"
-                "2. **C: release and correct.** Support the leader and confirm "
-                "before releasing its motors.\n"
-                "3. **P: resume policy.** Continue from the corrected pose.\n\n"
-                "**H: pause at any time.** This also cancels alignment. "
-                "Use T to align again before starting another correction. "
-                "Shortcuts work when you are not typing in a field."
+        with gr.Group(visible=False) as handoff:
+            takeover = gr.Button(
+                "Pause and take control (T)",
+                elem_id="teleop-takeover",
+                variant="primary",
+                interactive=False,
             )
-    return status, takeover, correct, hold, resume, supported, support_token
-
-
-def _build_leader_support_controls(gr, *, enabled: bool):
-    """Keep parking controls available without distracting from correction."""
-    with gr.Group(visible=enabled):
-        warning = gr.Markdown("", visible=False)
-        with gr.Accordion("Park or release the leader arm", open=False):
-            status = gr.Markdown("Initialize the session to see motor status.")
             supported = gr.Checkbox(
-                label="I am supporting or have parked the arm and gripper.",
+                label="I am holding the arm and gripper. Release the motors when I press C.",
                 value=False,
                 interactive=False,
             )
             support_token = gr.State(value=None)
-            release = gr.Button("Release motors for parking", interactive=False)
+            correct = gr.Button("Start correction (C)", elem_id="teleop-correct", interactive=False)
+            with gr.Row():
+                hold = gr.Button("Pause (H)", elem_id="teleop-hold", interactive=False)
+                resume = gr.Button("Resume policy (P)", elem_id="teleop-resume", interactive=False)
             gr.Markdown(
-                "Use these controls after an episode to park the physical arm. "
-                "Normal takeover uses the confirmation beside C. "
-                "Pause, episode completion, and errors command a pose hold. "
-                "Closing the process preserves torque; support and park the arm "
-                "before disconnecting power. Holding cannot be guaranteed if motor "
-                "communication or power fails."
+                "Press each shortcut once; you do not need to hold it. "
+                "Pausing stops simulation time and uses no episode steps."
+            )
+            with gr.Accordion("How takeover works", open=False):
+                gr.Markdown(
+                    "The **leader** is the arm you move. The **follower** is the simulated arm.\n\n"
+                    "1. **T: pause and align.** Keep the leader clear while it moves.\n"
+                    "2. **C: release and correct.** Support the leader and confirm "
+                    "before releasing its motors.\n"
+                    "3. **P: resume policy.** Continue from the corrected pose.\n\n"
+                    "**H: pause at any time.** This also cancels alignment. "
+                    "Use T to align again before starting another correction. "
+                    "Shortcuts work when you are not typing in a field."
+                )
+    return status, takeover, correct, hold, resume, supported, support_token, handoff
+
+
+def _build_leader_support_controls(gr, *, enabled: bool):
+    """Offer optional motor release within policy correction."""
+    with gr.Group(visible=enabled):
+        warning = gr.Markdown("", visible=False)
+        with gr.Accordion("Leader motors", open=False):
+            status = gr.Markdown("Initialize the session to see motor status.")
+            supported = gr.Checkbox(
+                label="I am supporting the arm and gripper.",
+                value=False,
+                interactive=False,
+            )
+            support_token = gr.State(value=None)
+            release = gr.Button("Release motors", interactive=False)
+            gr.Markdown(
+                "After an episode, support the arm and gripper before releasing the motors. "
+                "Release them before closing the session or disconnecting power."
             )
     return status, supported, release, support_token, warning
 
@@ -1884,20 +1889,18 @@ def _cb_release_leader(
         return "**Physical leader: motors released.** Keep the arm supported or parked.", False
 
 
-def _build_record_workspace(gr, *, policy_collection: bool):
-    """Keep handoff controls beside the live view, stacking on narrow screens."""
-    with gr.Row():
-        with gr.Column(scale=2, min_width=300, visible=policy_collection):
-            intervention = _build_intervention_controls(gr, enabled=policy_collection)
-        with gr.Column(scale=3):
-            recording = _build_record_step(gr, policy_collection=policy_collection)
-    return (*recording, intervention)
+def _build_policy_correction(gr, *, enabled: bool):
+    """Keep correction and optional motor release together across episode review."""
+    with gr.Column(visible=False, variant="panel") as panel:
+        intervention = _build_intervention_controls(gr, enabled=enabled)
+        support = _build_leader_support_controls(gr, enabled=enabled)
+    return panel, intervention, support
 
 
 def _wire_intervention_controls(app, timer, session: dict, controls, support_controls) -> None:
     import functools
 
-    status, takeover, correct, hold, resume, supported, support_token = controls
+    status, takeover, correct, hold, resume, supported, support_token, _ = controls
     parking_status, parking_supported, release, parking_token, warning = support_controls
     for button, source in (
         (takeover, "human"),
@@ -1948,6 +1951,10 @@ def _cb_request_intervention(
     state = session.get("state")
     if intervention is None or state is None or not state.is_recording:
         return _INTERVENTION_STATUS["ready"]
+    if intervention.status == "returning to rest":
+        return _INTERVENTION_STATUS["returning to rest"]
+    if getattr(state, "countdown_value", 0) > 0:
+        return _INTERVENTION_STATUS["preparing"]
     if source == "human" and not pause_after_sync:
         if not leader_supported or support_token != intervention.support_token:
             return (
@@ -1976,16 +1983,42 @@ def _cb_poll_intervention(session: dict, leader_supported: bool = False):
 
     intervention = session.get("intervention")
     state = session.get("state")
-    active = intervention is not None and state is not None and state.is_recording
-    status = intervention.status if active else "ready"
+    active = (
+        intervention is not None
+        and state is not None
+        and state.is_recording
+        and getattr(state, "countdown_value", 0) == 0
+    )
+    if intervention is not None and intervention.status == "returning to rest":
+        active = False
+    worker = session.get("recording_worker")
+    preparing = (
+        intervention is not None
+        and not active
+        and (
+            intervention.status == "returning to rest"
+            or getattr(state, "countdown_value", 0) > 0
+            or (worker is not None and not worker.wait(0))
+        )
+    )
+    status = intervention.status if intervention is not None and (active or preparing) else "ready"
+    if preparing and status != "returning to rest":
+        status = "preparing"
     message = _INTERVENTION_STATUS[status]
+    error = getattr(state, "error", None)
+    if not active and not preparing and error:
+        message = (
+            f"### Episode stopped\n{error}\n\n"
+            "Check that the arm can move freely. Open Leader motors to check motor status "
+            "or release a supported arm. Review and discard the episode before trying again."
+        )
     if (
         intervention is not None
         and status == "alignment paused"
         and intervention.synchronization_error
     ):
         message += f"\n\n**Alignment details:** {intervention.synchronization_error}"
-    if active and "max_steps" in session:
+    if active and state is not None and "max_steps" in session:
         remaining = max(0, session["max_steps"] - len(state.transitions))
         message += (
             f"\n\n**{remaining / session['fps']:.1f}s of simulation remaining** "
@@ -1994,7 +2027,7 @@ def _cb_poll_intervention(session: dict, leader_supported: bool = False):
             "Stop and review episode ends recording and opens review."
         )
     can_takeover = active and status not in ("human", "human paused", "synchronizing")
-    token = intervention.support_token if active else None
+    token = intervention.support_token if active and intervention is not None else None
     ready = active and status in ("human paused", "alignment paused")
     context = (token, ready)
     reset = session.get("correction_support_context") != context
@@ -2021,6 +2054,7 @@ def _cb_poll_intervention(session: dict, leader_supported: bool = False):
         gr.update(interactive=active and status not in ("policy", "waiting for policy")),
         confirmation,
         token,
+        gr.update(visible=active),
     )
 
 
@@ -2332,7 +2366,8 @@ def main(
             )
         session_header = gr.Markdown(visible=False)
         progress_status = gr.Markdown(visible=False)
-        support_controls = _build_leader_support_controls(
+
+        correction_panel, intervention_controls, support_controls = _build_policy_correction(
             gr, enabled=bool(args.policy_path or args.policy_factory)
         )
 
@@ -2398,8 +2433,7 @@ def main(
                     stop_btn,
                     task_status,
                     rec_timer,
-                    intervention_controls,
-                ) = _build_record_workspace(
+                ) = _build_record_step(
                     gr, policy_collection=bool(args.policy_path or args.policy_factory)
                 )
 
@@ -2421,6 +2455,14 @@ def main(
                     push_btn,
                     finalize_btn,
                 ) = _build_complete_step(gr)
+
+        rec_timer.tick(
+            fn=lambda: gr.update(
+                visible=session.get("intervention") is not None and not init_state["running"]
+            ),
+            outputs=[correction_panel],
+            queue=False,
+        )
 
         init_inputs = [
             env_id_input,

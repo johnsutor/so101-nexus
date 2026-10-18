@@ -226,17 +226,19 @@ class SOLeaderSynchronizer:
         if duration_s is not None and (not math.isfinite(duration_s) or duration_s <= 0):
             raise ValueError("Alignment duration must be positive and finite")
         with self._lock:
-            self.cancel()
             target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
             target = {key.removesuffix(".pos"): value for key, value in target.items()}
             if not all(math.isfinite(value) for value in target.values()):
                 raise ValueError("Synchronization targets must be finite")
+            initial = self._read_positions()
             wrist = "wrist_roll"
             if wrist in target:
-                gap = target[wrist] - self._initial[wrist]
+                gap = target[wrist] - initial[wrist]
                 if abs(gap) > 180 and abs((gap + 180) % 360 - 180) <= self.joint_tolerance_deg:
                     # Equivalent seam poses do not need a nearly full physical turn.
-                    target[wrist] = self._initial[wrist]
+                    target[wrist] = initial[wrist]
+            self._validate_target_ranges(target)
+            self.cancel()
             self._target = target
             self._smooth = duration_s is not None
             self._duration = (
@@ -248,6 +250,24 @@ class SOLeaderSynchronizer:
                 )
             )
             self._started = time.monotonic()
+
+    def _validate_target_ranges(self, target: dict[str, float]) -> None:
+        calibration = getattr(self.bus, "calibration", None)
+        normalize = getattr(self.bus, "_normalize", None)
+        if not calibration or not callable(normalize):
+            return
+        endpoints = [
+            normalize({cal.id: getattr(cal, endpoint) for cal in calibration.values()})
+            for endpoint in ("range_min", "range_max")
+        ]
+        for name, value in target.items():
+            motor_id = calibration[name].id
+            low, high = sorted(endpoint[motor_id] for endpoint in endpoints)
+            if not low <= value <= high:
+                raise ValueError(
+                    f"Leader {name} target {value:.1f} is outside its calibrated range "
+                    f"[{low:.1f}, {high:.1f}]; motion canceled"
+                )
 
     def tick(self) -> bool:
         """Advance alignment and keep torque enabled after convergence."""
@@ -276,15 +296,14 @@ class SOLeaderSynchronizer:
                     else abs(positions[name] - value)
                     for name, value in self._target.items()
                 }
+                tolerances = {
+                    name: self.gripper_tolerance_percent
+                    if name == "gripper"
+                    else self.joint_tolerance_deg
+                    for name in self._target
+                }
                 outside = {
-                    name: error
-                    for name, error in errors.items()
-                    if error
-                    > (
-                        self.gripper_tolerance_percent
-                        if name == "gripper"
-                        else self.joint_tolerance_deg
-                    )
+                    name: error for name, error in errors.items() if error > tolerances[name]
                 }
                 if fraction == 1.0 and not outside:
                     self._target = None
@@ -292,7 +311,8 @@ class SOLeaderSynchronizer:
                 if expired:
                     details = "; ".join(
                         f"{name}: measured {positions[name]:.1f}, target {value:.1f} "
-                        f"{'percent' if name == 'gripper' else 'deg'}"
+                        f"{'percent' if name == 'gripper' else 'deg'}, "
+                        f"error {errors[name]:.1f}, tolerance {tolerances[name]:.1f}"
                         for name, value in self._target.items()
                         if name in outside
                     )

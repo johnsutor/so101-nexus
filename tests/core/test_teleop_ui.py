@@ -419,13 +419,13 @@ def test_automatic_episode_end_expires_support_confirmation():
     state = SimpleNamespace(is_recording=True)
     session = {"intervention": intervention, "state": state}
     _cb_poll_intervention(session)
-    _, _, _, _, _, support, token = _cb_poll_intervention(session, True)
+    _, _, _, _, _, support, token, _ = _cb_poll_intervention(session, True)
     assert "value" not in support
     assert token == (1, 1)
     intervention.support_token = (1, 2)
     intervention.status = "hold"
     state.is_recording = False
-    _, _, correction, _, _, support, token = _cb_poll_intervention(session, True)
+    _, _, correction, _, _, support, token, _ = _cb_poll_intervention(session, True)
     assert correction["interactive"] is False
     assert support["value"] is False
     assert token is None
@@ -484,3 +484,96 @@ def test_pending_episode_keeps_stop_available(countdown):
         {"state": RecordingState(countdown_value=countdown), "fps": 30, "recording_worker": worker}
     )
     assert updates[4]["visible"] is True
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_policy_correction_contains_optional_motor_controls():
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_policy_correction
+
+    with gr.Blocks():
+        panel, _, support = _build_policy_correction(gr, enabled=True)
+
+    def descendants(component):
+        for child in getattr(component, "children", []):
+            yield child
+            yield from descendants(child)
+
+    children = list(descendants(panel))
+    motor_controls = next(
+        c for c in children if isinstance(c, gr.Accordion) and c.label == "Leader motors"
+    )
+    assert motor_controls.open is False
+    assert support[2] in list(descendants(motor_controls))
+    assert panel.visible is False
+    assert (
+        sum(isinstance(c, gr.Markdown) and c.value == "## Policy correction" for c in children) == 1
+    )
+
+
+@pytest.mark.usefixtures("_require_gradio")
+@pytest.mark.parametrize(
+    ("status", "countdown", "recording"),
+    [("returning to rest", 0, False), ("ready", 0, False), ("policy", 3, True)],
+)
+def test_preparing_episode_disables_policy_handoff(status, countdown, recording):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from so101_nexus.teleop.app import _cb_poll_intervention
+
+    worker = Mock()
+    worker.wait.return_value = False
+    session = {
+        "intervention": SimpleNamespace(
+            status=status, synchronization_error=None, support_token=(1, 1)
+        ),
+        "state": SimpleNamespace(is_recording=recording, countdown_value=countdown, error=None),
+        "recording_worker": worker,
+    }
+    message, *updates = _cb_poll_intervention(session)
+    expected = "returning" if status == "returning to rest" else "preparing"
+    assert expected in message.lower()
+    assert all(update["interactive"] is False for update in updates[:5])
+    assert updates[-1]["visible"] is False
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_rest_return_failure_shows_recovery_and_motor_diagnostics():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.app import _cb_poll_intervention
+
+    session = {
+        "intervention": SimpleNamespace(
+            status="hold", synchronization_error=None, support_token=(1, 1)
+        ),
+        "state": SimpleNamespace(
+            is_recording=False, error="Leader return timed out: elbow: measured 6, target 10 deg"
+        ),
+    }
+    message, *updates = _cb_poll_intervention(session)
+    assert updates[-1]["visible"] is False
+    assert "elbow" in message
+    assert "6" in message
+    assert "10 deg" in message
+    assert "discard" in message.lower()
+    assert "Leader motors" in message
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_policy_handoff_controls_visible_only_during_active_recording():
+    from types import SimpleNamespace
+
+    from so101_nexus.teleop.app import _cb_poll_intervention
+
+    session = {
+        "intervention": SimpleNamespace(status="policy", support_token=(1, 1)),
+        "state": SimpleNamespace(is_recording=True),
+    }
+    *_, group = _cb_poll_intervention(session)
+    assert group["visible"] is True
+    session["state"].is_recording = False
+    *_, group = _cb_poll_intervention(session)
+    assert group["visible"] is False

@@ -169,14 +169,19 @@ these waits add no dataset frames.
 This collector currently supports the simulated follower, not real-robot deployment.
 
 Each **Start policy episode** returns the leader to the configured resting tool
-pose after the countdown. LeRobot's `RobotKinematics` solves the five arm joint
+pose before the countdown. LeRobot's `RobotKinematics` solves the five arm joint
 targets from the measured leader pose using `RobotConfig.rest_qpos_deg` as the
 resting tool reference. The gripper uses its configured resting angle, clamped
 to the simulator's joint limits. You do not need to position the leader before
 initializing. Motors ramp to the target over four seconds with a gentle start
 and stop. Keep the arm clear during the return.
 **Stop and review episode** cancels the return and holds the measured pose.
-A failed IK solve, return timeout, or motor error stops preparation before policy inference.
+A failed IK solve, return timeout, or motor error stops preparation before the
+countdown or policy inference. **Policy correction** shows the failure and joint
+readings. A return timeout means a measured joint did not reach its target within
+the four-second ramp plus three seconds for settling. Check the listed joint
+readings before retrying. Commands outside the leader's calibrated motor ranges
+are rejected before movement.
 The simulator resets from the measured leader pose after the return, so manual
 repositioning between episodes is unnecessary. Ordinary teleoperation keeps its
 current-pose reset behavior.
@@ -210,10 +215,10 @@ If holding is unconfirmed, support the arm and gripper immediately.
 These are target-command bounds, not guarantees of physical motor speed or successful holding
 when motor communication or power fails.
 
-To park the leader after recording stops, expand **Park or release the leader arm**.
-Support or park the arm and gripper, check the parking confirmation, and click
-**Release motors for parking**. This panel is not needed for normal takeover and
-stays available in Review and Complete. Finalization and reinitialization require
+To release the leader after recording stops, expand **Leader motors** inside
+**Policy correction**. Support the arm and gripper, check the confirmation, and
+click **Release motors**. Policy correction stays available in Review and Complete.
+Finalization and reinitialization require
 this explicit release. The confirmation resets
 after each handoff or release. Closing the process without releasing the leader preserves
 motor torque; support and park the arm before disconnecting power.
