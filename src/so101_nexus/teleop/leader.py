@@ -204,6 +204,7 @@ class SOLeaderSynchronizer:
         self._initial: dict[str, float] = {}
         self._started = 0.0
         self._duration = 0.0
+        self._smooth = False
         self._holding = False
         self._lock = threading.RLock()
 
@@ -212,8 +213,18 @@ class SOLeaderSynchronizer:
         """Whether the last pose-hold command completed successfully."""
         return self._holding
 
-    def start(self, target: dict[str, float]) -> None:
-        """Hold the measured pose, then begin interpolated alignment."""
+    def start(self, target: dict[str, float], *, duration_s: float | None = None) -> None:
+        """Begin alignment, optionally using a timed ramp with gentle endpoints.
+
+        Parameters
+        ----------
+        target
+            Follower-coordinate body degrees and gripper percent.
+        duration_s
+            Positive duration in seconds. Omit for speed-limited takeover alignment.
+        """
+        if duration_s is not None and (not math.isfinite(duration_s) or duration_s <= 0):
+            raise ValueError("Alignment duration must be positive and finite")
         with self._lock:
             self.cancel()
             target = apply_wrist_roll_offset_deg(target, -self.wrist_roll_offset_deg)
@@ -227,9 +238,14 @@ class SOLeaderSynchronizer:
                     # Equivalent seam poses do not need a nearly full physical turn.
                     target[wrist] = self._initial[wrist]
             self._target = target
-            self._duration = max(
-                abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
-                for name, value in target.items()
+            self._smooth = duration_s is not None
+            self._duration = (
+                duration_s
+                if duration_s is not None
+                else max(
+                    abs(value - self._initial[name]) / (40.0 if name == "gripper" else 20.0)
+                    for name, value in target.items()
+                )
             )
             self._started = time.monotonic()
 
@@ -242,6 +258,8 @@ class SOLeaderSynchronizer:
                 elapsed = time.monotonic() - self._started
                 expired = elapsed > self._duration + 3.0
                 fraction = min(1.0, elapsed / self._duration) if self._duration else 1.0
+                if self._smooth:
+                    fraction = fraction * fraction * (3 - 2 * fraction)
                 if not expired:
                     self.bus.sync_write(
                         "Goal_Position",

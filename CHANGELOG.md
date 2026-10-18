@@ -11,9 +11,10 @@ for the public-API and deprecation policy.
 
 ### Added
 
-- Policy collection saves the leader pose at initialization and gradually returns
-  to it before each episode's countdown and simulator reset. Stopping the return
-  holds the measured pose; return failures prevent policy inference from starting.
+- Policy collection returns the leader to the configured resting tool pose using
+  LeRobot's URDF inverse kinematics and a four-second motor ramp with gentle endpoints.
+  Stopping the return holds the measured pose; IK or motor failures prevent policy
+  inference from starting. The simulator resets from leader readback after return.
 
 ## [0.10.0] - 2026-10-17
 

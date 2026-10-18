@@ -23,7 +23,7 @@ ControlSource = Literal["policy", "human", "hold"]
 class LeaderSynchronizer(Protocol):
     """Align and hold a leader until the operator explicitly releases it."""
 
-    def start(self, target: dict[str, float]) -> None:
+    def start(self, target: dict[str, float], *, duration_s: float | None = None) -> None:
         """Start alignment to follower joint targets in LeRobot units."""
 
     def tick(self) -> bool:
@@ -378,7 +378,7 @@ class InterventionSession:
             self._leader_managed = True
             self.source = "hold"
             self.status = "returning to rest"
-        self.synchronizer.start(target)
+        self.synchronizer.start(target, duration_s=4.0)
 
     def release_leader(self, *, support_token: tuple[int, int] | None = None) -> bool:
         """Explicitly release an idle leader, preserving release through shutdown."""

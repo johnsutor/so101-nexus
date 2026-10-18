@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 import time
 from itertools import pairwise
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -39,16 +41,19 @@ class Synchronizer:
         self.releases = 0
         self.ready = False
         self.holding = True
+        self.parking = False
 
-    def start(self, target):
+    def start(self, target, *, duration_s=None):
         self.targets.append(target)
+        self.parking = duration_s is not None
 
     def tick(self):
-        return self.ready
+        return self.parking or self.ready
 
     def cancel(self):
         self.cancels += 1
         self.holding = True
+        self.parking = False
 
     def release(self):
         self.releases += 1
@@ -231,6 +236,32 @@ class Bus:
 
     def disable_torque(self, *, num_retry=0):
         self.events.append(("disable",))
+
+
+def test_timed_return_takes_four_seconds_with_gentle_endpoints(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    sync.start(observation(80), duration_s=4.0)
+    assert not sync.tick()
+    for elapsed, expected in [(0.1, 0.145), (2.0, 40.0), (3.9, 79.855)]:
+        clock[0] = elapsed
+        assert not sync.tick()
+        assert bus.positions["shoulder_pan"] == pytest.approx(expected, abs=0.01)
+    clock[0] = 4.0
+    assert sync.tick()
+    assert bus.positions == dict.fromkeys(SO101_JOINT_NAMES, 80)
+    assert sync.holding
+
+
+@pytest.mark.parametrize("duration_s", [0, -1, float("nan"), float("inf")])
+def test_timed_return_rejects_invalid_duration_before_motor_commands(duration_s):
+    bus = Bus()
+    sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
+    with pytest.raises(ValueError, match="duration must be positive and finite"):
+        sync.start(observation(), duration_s=duration_s)
+    assert not bus.events
 
 
 @pytest.mark.parametrize("operation,value", [("cancel", 1), ("release", 0)])
@@ -427,10 +458,12 @@ def test_worker_returns_leader_before_reset_and_policy(worker_setup, outcome, re
     kwargs, follower_type, events = worker_setup
     sync = Synchronizer()
     rest = observation(12)
+    follower_type.get_rest_action = lambda self, current: dict(rest)
     ticks = []
 
     def tick():
-        assert not follower_type.instances
+        assert len(follower_type.instances) == 1
+        assert follower_type.instances[0].step_calls == 0
         assert session.status == "returning to rest"
         assert not kwargs["state"].transitions
         ticks.append(1)
@@ -449,7 +482,7 @@ def test_worker_returns_leader_before_reset_and_policy(worker_setup, outcome, re
     prior_cancels = sync.cancels
     worker = RecordingWorker()
     try:
-        worker.submit(**kwargs, intervention=session, leader_rest_action=rest)
+        worker.submit(**kwargs, intervention=session)
         assert worker.wait(3)
         state = kwargs["state"]
         assert sync.targets == [observation(12)]
@@ -463,7 +496,7 @@ def test_worker_returns_leader_before_reset_and_policy(worker_setup, outcome, re
             assert len(state.transitions) == 1
             assert policy.batches
         else:
-            assert not events
+            assert all(event[0] != "reset" for event in events)
             assert not policy.batches
             assert not state.transitions
             assert (state.error is None) == (outcome == "stop")
@@ -483,13 +516,25 @@ def test_rest_return_ramps_physical_pose_and_preserves_wrist_offset(monkeypatch)
     bus = Bus()
     rest = observation(30)
     rest["wrist_roll.pos"] = -107
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    follower = SimpleNamespace(
+        get_rest_action=lambda current: apply_wrist_roll_offset_deg(rest, -90),
+        set_initial_leader_action=Mock(),
+        reset=Mock(),
+    )
+    leader = SimpleNamespace(
+        get_action=lambda: {f"{key}.pos": value for key, value in bus.positions.items()}
+    )
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=-90)
     session = InterventionSession(Policy(), sync)
     try:
         for _ in range(2):
             bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 0.0)
             bus.events.clear()
-            assert _return_leader_to_rest(RecordingState(), session, rest, -90)
+            started = clock[0]
+            assert _return_leader_to_rest(RecordingState(), follower, leader, session, -90)
+            assert clock[0] - started == pytest.approx(4.0, abs=0.02)
             assert bus.positions == pytest.approx(
                 {name.removesuffix(".pos"): value for name, value in rest.items()}
             )
@@ -497,8 +542,8 @@ def test_rest_return_ramps_physical_pose_and_preserves_wrist_offset(monkeypatch)
             assert len(writes) > 2
             for previous, current in pairwise(writes):
                 for name in SO101_JOINT_NAMES:
-                    speed = 40 if name == "gripper" else 20
-                    assert abs(current[name] - previous[name]) <= speed * 0.02 + 1e-6
+                    peak_speed = 1.5 * abs(rest[f"{name}.pos"]) / 4
+                    assert abs(current[name] - previous[name]) <= peak_speed * 0.02 + 1e-6
             assert sync.holding
             assert ("disable",) not in bus.events
     finally:
@@ -513,7 +558,9 @@ def test_rest_return_rejects_invalid_pose_before_moving(rest):
     session = InterventionSession(Policy(), sync)
     try:
         with pytest.raises(ValueError, match="complete, finite"):
-            _return_leader_to_rest(RecordingState(), session, rest, 0)
+            _return_leader_to_rest(
+                RecordingState(), Mock(), SimpleNamespace(get_action=lambda: rest), session, 0
+            )
         assert not sync.targets
     finally:
         session.close()
@@ -630,7 +677,7 @@ def test_worker_handoffs_preserve_continuous_episode_and_camera_alignment(worker
         np.testing.assert_array_equal(
             [t.state for t in state.transitions], [np.full(6, i) for i in range(3)]
         )
-        assert sync.targets == [observation(1)]
+        assert sync.targets == [kwargs["leader"].get_action(), observation(1)]
         assert policy.resets == 2
         np.testing.assert_array_equal(policy.batches[-1]["observation.state"], np.full(6, 2))
     finally:
@@ -840,12 +887,15 @@ def test_explicit_idle_release_survives_repeated_cleanup_without_reengaging():
     assert session.leader_released
 
 
-def test_recording_failure_holds_physical_pose_and_preserves_error(worker_setup):  # noqa: F811
+def test_recording_failure_holds_physical_pose_and_preserves_error(worker_setup, monkeypatch):  # noqa: F811
     from so101_nexus.teleop.recorder import RecordingWorker
 
     kwargs, _, _ = worker_setup
     bus = Bus()
     bus.positions = dict.fromkeys(SO101_JOINT_NAMES, 7.0)
+    kwargs["leader"].get_action = lambda: {
+        f"{key}.pos": value for key, value in bus.positions.items()
+    }
     policy = Policy()
 
     def fail(batch):
@@ -853,6 +903,10 @@ def test_recording_failure_holds_physical_pose_and_preserves_error(worker_setup)
 
     policy.select_action = fail
     session = InterventionSession(policy, SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0))
+    start = session.synchronizer.start
+    monkeypatch.setattr(
+        session.synchronizer, "start", lambda target, **kwargs: start(target, duration_s=0.001)
+    )
     worker = RecordingWorker()
     try:
         worker.submit(**kwargs, intervention=session)
@@ -1055,6 +1109,8 @@ def test_worker_preserves_episode_after_alignment_timeout(worker_setup):  # noqa
     sync = Synchronizer()
 
     def tick():
+        if sync.parking:
+            return True
         timed_out.set()
         raise TimeoutError("wrist_flex is 4 deg away")
 

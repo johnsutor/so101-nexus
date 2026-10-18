@@ -76,6 +76,9 @@ class _FakeRecordingFollower:
     def set_initial_leader_action(self, action: dict[str, float]) -> None:
         self.initial_leader_action = dict(action)
 
+    def get_rest_action(self, current_action: dict[str, float]) -> dict[str, float]:
+        return dict(current_action)
+
     def connect(self) -> None:
         pass
 

@@ -14,7 +14,13 @@ from lerobot.robots.robot import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
-from so101_nexus.config import ABSOLUTE_CONTROL_MODES, DELTA_CONTROL_MODES, EE_CONTROL_MODES
+from so101_nexus.config import (
+    ABSOLUTE_CONTROL_MODES,
+    DELTA_CONTROL_MODES,
+    EE_CONTROL_MODES,
+    SO101_JOINT_NAMES,
+    SO101_TCP_FRAME_NAME,
+)
 from so101_nexus.lerobot_adapter.normalization import (
     GRIPPER_NAME,
     GripperLimitsRad,
@@ -36,6 +42,7 @@ from so101_nexus.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
 from so101_nexus.teleop.leader import import_backend_for_env_id
 
 if TYPE_CHECKING:
+    from lerobot.model.kinematics import RobotKinematics
     from lerobot.processor import RobotAction, RobotObservation
 
 logger = logging.getLogger(__name__)
@@ -234,6 +241,96 @@ class SimSOFollower(Robot):
     def set_initial_leader_action(self, action: dict[str, Any] | None) -> None:
         """Set a leader action to seed ``env.reset(options={'init_qpos': ...})``."""
         self._pending_leader_init_action = None if action is None else dict(action)
+
+    @check_if_not_connected
+    def get_rest_action(self, current_action: dict[str, float]) -> dict[str, float]:
+        """Solve the configured resting tool pose in follower motor coordinates.
+
+        Parameters
+        ----------
+        current_action
+            Measured body degrees and gripper percent, with the teleop wrist offset.
+        """
+        env = self._env
+        if env is None:
+            raise RuntimeError("follower environment is not connected")
+        robot_config = getattr(getattr(env.unwrapped, "config", None), "robot", None)
+        bounds = _control_bounds(env)
+        if robot_config is None or bounds is None:
+            raise ValueError(
+                "Policy episode return requires a configured resting posture and joint bounds"
+            )
+        limits = self._require_gripper_limits()
+        current_qpos_rad = leader_action_to_sim_qpos(
+            current_action,
+            motors=self.motors,
+            calibration=self.calibration,
+            gripper_limits_rad=limits,
+        )
+        rest_deg = np.array(robot_config.rest_qpos_deg, dtype=np.float64, copy=True)
+        low_deg, high_deg = (np.degrees(bound) for bound in bounds)
+        if rest_deg.shape != (6,) or not np.isfinite(rest_deg).all():
+            raise ValueError("Resting pose requires six finite joint angles in degrees")
+        rest_deg[-1] = np.clip(rest_deg[-1], low_deg[-1], high_deg[-1])
+        target_deg = self._solve_rest_joints_deg(
+            np.degrees(current_qpos_rad), rest_deg, low_deg, high_deg
+        )
+        target_qpos_rad = np.radians(target_deg)
+        ticks = sim_rad_to_motor_ticks(
+            target_qpos_rad, calibration=self.calibration, gripper_limits_rad=limits
+        )
+        values = normalize_ticks(ticks, motors=self.motors, calibration=self.calibration)
+        return {f"{name}.pos": value for name, value in values.items()}
+
+    @cached_property
+    def _rest_kinematics(self) -> RobotKinematics:
+        from lerobot.model.kinematics import RobotKinematics
+
+        from so101_nexus import get_so101_urdf_path
+
+        return RobotKinematics(
+            str(get_so101_urdf_path()),
+            target_frame_name=SO101_TCP_FRAME_NAME,
+            joint_names=list(SO101_JOINT_NAMES[:-1]),
+        )
+
+    def _solve_rest_joints_deg(
+        self,
+        current_deg: np.ndarray,
+        rest_deg: np.ndarray,
+        low_deg: np.ndarray,
+        high_deg: np.ndarray,
+    ) -> np.ndarray:
+        from scipy.spatial.transform import Rotation
+
+        current_deg = np.asarray(current_deg, dtype=np.float64)
+        if current_deg.shape != (6,) or not np.isfinite(current_deg).all():
+            raise ValueError("Rest IK requires six finite current joint angles in degrees")
+        if np.any(rest_deg < low_deg) or np.any(rest_deg > high_deg):
+            raise ValueError("Configured resting posture is outside joint bounds")
+        kinematics = self._rest_kinematics
+        desired = kinematics.forward_kinematics(rest_deg).copy()
+        # The configured posture selects the resting branch after a local minimum.
+        for seed in (current_deg, rest_deg):
+            # LeRobot's first solver iteration uses cached forward kinematics.
+            kinematics.forward_kinematics(seed)
+            target_deg = kinematics.inverse_kinematics(
+                seed, desired, orientation_weight=1.0, max_iters=100
+            )
+            target_deg[-1] = rest_deg[-1]
+            if (
+                not np.isfinite(target_deg).all()
+                or np.any(target_deg < low_deg)
+                or np.any(target_deg > high_deg)
+            ):
+                continue
+            actual = kinematics.forward_kinematics(target_deg)
+            angle_rad = Rotation.from_matrix(actual[:3, :3] @ desired[:3, :3].T).magnitude()
+            if np.linalg.norm(actual[:3, 3] - desired[:3, 3]) <= 0.001 and angle_rad <= 0.01:
+                return target_deg
+        raise ValueError(
+            "Resting pose IK did not converge within joint bounds; leader return canceled"
+        )
 
     @check_if_not_connected
     def reset(self, seed: int | None = None) -> None:

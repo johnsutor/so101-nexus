@@ -146,7 +146,7 @@ def test_worker_stop_during_acquisition_does_not_begin_control(
     worker_setup, monkeypatch, acquisition
 ):
     kwargs, follower_type, _ = worker_setup
-    intervention = Mock(intervention_id=0)
+    intervention = Mock(intervention_id=0, joint_names=SO101_JOINT_NAMES)
     intervention.action.side_effect = lambda obs, task, human: human()
     intervention.execute.side_effect = lambda action, send: send(action)
     kwargs["intervention"] = intervention
