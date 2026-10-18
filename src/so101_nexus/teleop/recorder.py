@@ -13,8 +13,9 @@ import logging
 import queue
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
@@ -320,6 +321,7 @@ class RecordingWorker:
         self._requests: queue.Queue[dict[str, Any] | None] = queue.Queue()
         self._lock = threading.Lock()
         self._closed = False
+        self._shutdown = threading.Event()
         self._state: RecordingState | None = None
         self._done = threading.Event()
         self._done.set()
@@ -348,6 +350,7 @@ class RecordingWorker:
         with self._lock:
             if not self._closed:
                 self._closed = True
+                self._shutdown.set()
                 if self._state is not None:
                     self._state.should_stop = True
                 self._requests.put(None)
@@ -358,7 +361,9 @@ class RecordingWorker:
         try:
             while (kwargs := self._requests.get()) is not None:
                 try:
-                    recording_thread(**kwargs, _follower_session=follower_session)
+                    recording_thread(
+                        **kwargs, _follower_session=follower_session, _shutdown=self._shutdown
+                    )
                 finally:
                     self._done.set()
         finally:
@@ -375,6 +380,60 @@ def _run_countdown(state: RecordingState, countdown: int) -> bool:
             time.sleep(0.1)
     state.countdown_value = 0
     return not state.should_stop
+
+
+def _park_leader_at_rest(
+    state: RecordingState,
+    follower: SimSOFollower,
+    leader: LeaderProtocol,
+    intervention: InterventionSession | None,
+    wrist_roll_offset_deg: float,
+    shutdown: threading.Event | None = None,
+) -> bool:
+    from so101_nexus.teleop.leader import apply_wrist_roll_offset_deg
+
+    def stopped() -> bool:
+        return state.should_stop or (shutdown is not None and shutdown.is_set())
+
+    if intervention is None or stopped():
+        return not stopped()
+    intervention.status = "returning to rest"
+    current_action = leader.get_action()
+    keys = {f"{name}.pos" for name in intervention.joint_names}
+    if set(current_action) != keys or not all(
+        np.isfinite(value) for value in current_action.values()
+    ):
+        raise ValueError("Leader return requires complete, finite joint readings")
+    if stopped():
+        return False
+    target = follower.get_rest_action(current_action)
+    if stopped():
+        return False
+    # The synchronizer consumes follower coordinates; resting IK uses the leader frame.
+    intervention.start_parking(apply_wrist_roll_offset_deg(target, wrist_roll_offset_deg))
+    while not stopped():
+        if intervention.synchronizer.tick():
+            intervention.status = "hold"
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def _return_leader_to_rest(
+    state: RecordingState,
+    follower: SimSOFollower,
+    leader: LeaderProtocol,
+    intervention: InterventionSession | None,
+    wrist_roll_offset_deg: float,
+    countdown: int = 0,
+) -> bool:
+    if not _park_leader_at_rest(state, follower, leader, intervention, wrist_roll_offset_deg):
+        return False
+    if intervention is not None:
+        _seed_follower_from_leader(follower, leader, wrist_roll_offset_deg)
+        follower.reset(seed=state.episode_seed)
+        return _run_countdown(state, countdown)
+    return True
 
 
 def recording_thread(
@@ -397,6 +456,7 @@ def recording_thread(
     seed: int = 0,
     _follower_session: _FollowerSession | None = None,
     intervention: InterventionSession | None = None,
+    _shutdown: threading.Event | None = None,
 ) -> None:
     """Run a countdown, then record by driving a ``SimSOFollower``."""
     follower_session = _follower_session or _FollowerSession()
@@ -404,9 +464,10 @@ def recording_thread(
     start_time = None
     state.clear_episode()
     try:
-        if not _run_countdown(state, countdown):
+        if intervention is None and not _run_countdown(state, countdown):
             return
         episode_seed = seed + state.episodes_completed
+        state.episode_seed = episode_seed
         follower = follower_session.acquire(
             leader,
             wrist_roll_offset_deg,
@@ -422,7 +483,9 @@ def recording_thread(
             factory=env_config_factory,
             **({"align_fps": True} if intervention is not None else {}),
         )
-        if state.should_stop:
+        if state.should_stop or not _return_leader_to_rest(
+            state, follower, leader, intervention, wrist_roll_offset_deg, countdown
+        ):
             return
 
         state.set_initial_provenance(episode_seed, follower.initial_state_provenance())
@@ -459,11 +522,32 @@ def recording_thread(
             if sleep_time > 0:
                 time.sleep(sleep_time)
     except Exception as exc:
-        state.error = f"{type(exc).__name__}: {exc}"
+        phase = (
+            "Leader return failed before the episode started. "
+            if intervention is not None and intervention.status == "returning to rest"
+            else ""
+        )
+        state.error = f"{phase}{type(exc).__name__}: {exc}"
     finally:
         _capture_recording_metadata(state, follower, start_time)
         _finish_recording(
-            state, follower_session, _follower_session is None or bool(state.error), intervention
+            state,
+            follower_session,
+            _follower_session is None or bool(state.error),
+            intervention,
+            return_leader=(
+                partial(
+                    _park_leader_at_rest,
+                    state,
+                    follower,
+                    leader,
+                    intervention,
+                    wrist_roll_offset_deg,
+                    _shutdown,
+                )
+                if start_time is not None and follower is not None
+                else None
+            ),
         )
 
 
@@ -497,14 +581,27 @@ def _finish_recording(
     follower_session: _FollowerSession,
     close_follower: bool,
     intervention: InterventionSession | None,
+    *,
+    return_leader: Callable[[], bool] | None = None,
 ) -> None:
     if intervention is not None:
         try:
             intervention.end_episode()
+            state.is_recording = False
+            if return_leader is not None and not state.error:
+                state.should_stop = False
+                try:
+                    return_leader()
+                except Exception as exc:
+                    state.error = (
+                        f"Leader return failed after the episode ended. {type(exc).__name__}: {exc}"
+                    )
+                finally:
+                    intervention.end_episode()
         except Exception as exc:
             message = f"Leader pose hold failed: {exc}. Support the physical arm now."
             state.error = f"{state.error}\n{message}" if state.error else message
-    if close_follower:
+    if close_follower or state.error:
         follower_session.close()
     state.countdown_value = 0
     state.is_recording = False

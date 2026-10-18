@@ -9,6 +9,31 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Policy collection returns the leader to the configured resting tool pose using
+  LeRobot's URDF inverse kinematics and a four-second motor ramp with gentle endpoints.
+  Stopping the return holds the measured pose; IK or motor failures prevent policy
+  inference from starting. The simulator resets from leader readback after return.
+
+### Fixed
+
+- Policy collection automatically returns the leader to rest with LeRobot IK
+  after each completed or manually stopped episode, before review. Recorded
+  frames and simulator state are preserved; errors and shutdown hold the leader.
+- Human takeover uses a support notice below Start correction instead of a
+  confirmation checkbox. Stale takeover requests remain rejected.
+
+- Leader resting IK now uses the physical leader's joint frame, so the
+  teleoperation wrist offset no longer turns a neutral leader wrist rest into
+  an unintended 90-degree target.
+- Policy correction uses plain page containers without gray panel backgrounds.
+
+- Policy episodes return the leader to rest before the countdown. Return failures
+  show joint diagnostics in Policy correction, and unreachable calibrated motor
+  targets are rejected before movement. Optional motor release is grouped inside
+  Policy correction and remains available during review and completion.
+
 ## [0.10.0] - 2026-10-17
 
 ### Added

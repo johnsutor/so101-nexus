@@ -41,7 +41,7 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 
 | Extra | Adds | Install |
 | --- | --- | --- |
-| `teleop` | Gradio demonstration recorder: `lerobot[dataset,feetech]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
+| `teleop` | Gradio demonstration recorder and leader return IK: `lerobot[dataset,feetech,placo-dep]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
 | `molmoact2` | LeRobot 0.6.1 MolmoAct2 model dependencies; combine with `teleop` for correction collection | `pip install "so101-nexus[teleop,molmoact2]"` |
 | `dm05` | Native DM0.5 model and LoRA dependencies; requires LeRobot's source integration | See [Native DM0.5](#native-dm05) |
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |

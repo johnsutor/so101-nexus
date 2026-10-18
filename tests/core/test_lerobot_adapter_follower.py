@@ -384,6 +384,82 @@ def test_get_observation_reads_normalized_qpos_and_camera(tmp_path: Path, fake_e
         robot.disconnect()
 
 
+@pytest.mark.parametrize("supported", [True, False])
+def test_rest_action_uses_lerobot_ik_and_motor_units(tmp_path: Path, fake_env_id: str, supported):
+    from so101_nexus import RobotConfig
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}))
+    try:
+        robot.connect()
+        env = robot._env.unwrapped
+        before = env.qpos.copy()
+        current = dict.fromkeys((f"{name}.pos" for name in SO101_JOINT_NAMES), 20.0)
+        current["gripper.pos"] = 75
+
+        if supported:
+            env.config = types.SimpleNamespace(
+                robot=RobotConfig(rest_qpos_deg=(30, -60, 70, 20, 30, float(np.degrees(0.85))))
+            )
+            target = robot.get_rest_action(current)
+            assert target["shoulder_pan.pos"] == pytest.approx(30, abs=0.2)
+            assert target["gripper.pos"] == pytest.approx(75, abs=0.1)
+            assert set(target) == set(current)
+        else:
+            with pytest.raises(ValueError, match="configured resting posture"):
+                robot.get_rest_action(current)
+        np.testing.assert_array_equal(env.qpos, before)
+        assert env.step_calls == 0
+    finally:
+        robot.disconnect()
+
+
+@pytest.mark.parametrize(
+    "current_deg",
+    [
+        (0, -30, 20, 10, 0, 0),
+        (70, -60, 90, 50, 120, 40),
+        (-80, 0, 30, -30, -120, 20),
+        (75.9, -67.8, 11.2, -25.1, -89.6, 32.4),
+    ],
+)
+def test_lerobot_rest_ik_reaches_default_without_changing_simulator(
+    tmp_path, fake_env_id, env_factory, current_deg
+):
+    from lerobot.model.kinematics import RobotKinematics
+
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    env = env_factory().unwrapped
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}))
+    low_deg, high_deg = np.degrees(env._target_low), np.degrees(env._target_high)
+    rest_deg = np.asarray(env.config.robot.rest_qpos_deg)
+    rest_deg[-1] = low_deg[-1]
+    before = env.data.qpos.copy()
+    result = robot._solve_rest_joints_deg(np.array(current_deg), rest_deg, low_deg, high_deg)
+    assert isinstance(robot._rest_kinematics, RobotKinematics)
+    np.testing.assert_allclose(result, rest_deg, atol=0.5)
+    np.testing.assert_array_equal(env.data.qpos, before)
+
+
+@pytest.mark.parametrize("result", [np.zeros(6), np.full(6, np.nan), np.full(6, 500.0)])
+def test_lerobot_rest_ik_rejects_invalid_solutions(
+    tmp_path, fake_env_id, env_factory, monkeypatch, result
+):
+    from so101_nexus.lerobot_adapter import SimSOFollower
+
+    env = env_factory().unwrapped
+    robot = SimSOFollower(_make_config(tmp_path, fake_env_id, cameras={}))
+    low_deg, high_deg = np.degrees(env._target_low), np.degrees(env._target_high)
+    rest_deg = np.array(env.config.robot.rest_qpos_deg)
+    rest_deg[-1] = low_deg[-1]
+    monkeypatch.setattr(
+        robot._rest_kinematics, "inverse_kinematics", lambda *args, **kwargs: result.copy()
+    )
+    with pytest.raises(ValueError, match="did not converge within joint bounds"):
+        robot._solve_rest_joints_deg(np.zeros(6), rest_deg, low_deg, high_deg)
+
+
 @pytest.mark.parametrize("include_render", [False, True])
 def test_get_observation_renders_camera_sources_once(
     tmp_path: Path, fake_env_id: str, monkeypatch: pytest.MonkeyPatch, include_render: bool

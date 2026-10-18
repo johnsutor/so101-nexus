@@ -46,7 +46,8 @@ def test_reinitialization_reuses_policy_after_reconfiguration_or_failure(
         side_effect=[RuntimeError("dataset failed") if first_failure else Mock(), Mock()]
     )
     monkeypatch.setattr(app, "import_backend_for_env_id", lambda _: None)
-    monkeypatch.setattr(app, "_connect_leader", lambda *_: Mock())
+    leader = Mock()
+    monkeypatch.setattr(app, "_connect_leader", lambda *_: leader)
     monkeypatch.setattr(app, "load_collection_policy", load)
     monkeypatch.setattr(app, "_resolve_env_state_names", lambda *_, **__: [])
     monkeypatch.setattr(app, "_create_dataset", dataset)
@@ -79,6 +80,7 @@ def test_reinitialization_reuses_policy_after_reconfiguration_or_failure(
         assert not second.get("error")
         assert session["intervention"] is not old
         assert session["intervention"]._worker.policy is policy
+        leader.get_action.assert_not_called()
         assert session["wrist_wh"] == (8, 8)
         load.assert_called_once_with(factory="example:build")
 
