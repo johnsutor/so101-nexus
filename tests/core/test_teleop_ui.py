@@ -5,6 +5,117 @@ from __future__ import annotations
 import pytest
 
 
+def _descendants(component):
+    for child in getattr(component, "children", []):
+        yield child
+        yield from _descendants(child)
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_setup_discloses_optional_recording_settings():
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_setup_screen
+    from so101_nexus.teleop.dataset import ENV_STATE_KEY, OVERHEAD_KEY, SIDE_KEY, WRIST_KEY
+
+    with gr.Blocks() as app:
+        controls = _build_setup_screen(gr, ["MuJoCoTouch-v1"], "leader", -90, "/dev/null")
+
+    options = next(
+        c
+        for c in app.blocks.values()
+        if isinstance(c, gr.Accordion) and c.label == "Recording settings"
+    )
+    optional = list(_descendants(options))
+    assert options.open is False
+    assert all(controls[i] in optional for i in (4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 27))
+    assert all(controls[i] not in optional for i in (1, 2, 3, 5))
+    assert controls[3].minimum == 1
+    assert controls[7].value == "joint_pos"
+    assert controls[24].value == 5
+    assert controls[27].value == 0.5
+    assert controls[7].choices == [
+        ("Joint positions", "joint_pos"),
+        ("Changes in joint position", "joint_pos_delta"),
+    ]
+    assert controls[15].choices == [
+        ("Wrist camera", WRIST_KEY),
+        ("Overhead camera", OVERHEAD_KEY),
+        ("Side camera", SIDE_KEY),
+        ("Environment state", ENV_STATE_KEY),
+    ]
+    assert controls[15].value == [WRIST_KEY, OVERHEAD_KEY, SIDE_KEY, ENV_STATE_KEY]
+
+
+@pytest.mark.usefixtures("_require_gradio")
+@pytest.mark.parametrize("enabled", [False, True])
+def test_customization_disclosure_tracks_enablement(monkeypatch, enabled):
+    import gradio as gr
+
+    from so101_nexus.teleop import app as teleop_app
+
+    monkeypatch.setattr(
+        teleop_app,
+        "_customization_ui_state_for_env",
+        lambda *args, **kwargs: teleop_app.CustomizationUIState(
+            customize_visible=True, customize_value=enabled, common_visible=True
+        ),
+    )
+    with gr.Blocks() as app:
+        controls = teleop_app._build_setup_screen(gr, ["custom-v1"], "leader", -90, "/dev/null")
+
+    handler = next(fn for fn in app.fns.values() if fn.inputs == [controls[16]])
+    panel = handler.outputs[0]
+    assert panel.visible is enabled
+    assert controls[19] in list(_descendants(panel))
+    assert handler.fn(not enabled)["visible"] is not enabled
+    assert handler.fn(enabled)["visible"] is enabled
+    assert controls[29].visible is True
+    assert controls[30].visible is False
+
+
+@pytest.mark.usefixtures("_require_gradio")
+def test_review_prioritizes_replay_and_explicit_save():
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_review_step
+
+    with gr.Blocks() as app:
+        video, plot, _, _, save, discard = _build_review_step(gr)
+
+    diagnostics = next(c for c in app.blocks.values() if isinstance(c, gr.Accordion))
+    assert diagnostics.open is False
+    assert plot in list(_descendants(diagnostics))
+    assert video not in list(_descendants(diagnostics))
+    assert video.interactive is False
+    assert save.value == "Save episode"
+    assert discard.value == "Discard and retry"
+
+
+@pytest.mark.usefixtures("_require_gradio")
+@pytest.mark.parametrize("policy_collection", [False, True])
+def test_completion_prioritizes_local_finish(policy_collection):
+    import gradio as gr
+
+    from so101_nexus.teleop.app import _build_complete_step
+
+    with gr.Blocks() as app:
+        _, _, destination, upload, finish = _build_complete_step(
+            gr, policy_collection=policy_collection
+        )
+
+    optional = next(c for c in app.blocks.values() if isinstance(c, gr.Accordion))
+    assert optional.label == "Upload to Hugging Face (optional)"
+    assert optional.open is False
+    assert destination in list(_descendants(optional))
+    assert upload in list(_descendants(optional))
+    assert finish not in list(_descendants(optional))
+    assert finish.variant == "primary"
+    assert finish.value == "Finish session"
+    guidance = [c.value for c in app.blocks.values() if isinstance(c, gr.Markdown)]
+    assert any("Leader motors" in text for text in guidance) is policy_collection
+
+
 @pytest.fixture
 def _require_gradio():
     """Skip if gradio is not (functionally) installed.
@@ -492,19 +603,14 @@ def test_policy_correction_contains_optional_motor_controls():
     with gr.Blocks():
         panel, _, support = _build_policy_correction(gr, enabled=True)
 
-    def descendants(component):
-        for child in getattr(component, "children", []):
-            yield child
-            yield from descendants(child)
-
-    children = list(descendants(panel))
+    children = list(_descendants(panel))
     assert panel.variant == "default"
     assert not any(isinstance(child, gr.Group) for child in children)
     motor_controls = next(
         c for c in children if isinstance(c, gr.Accordion) and c.label == "Leader motors"
     )
     assert motor_controls.open is False
-    assert support[2] in list(descendants(motor_controls))
+    assert support[2] in list(_descendants(motor_controls))
     assert panel.visible is False
     assert (
         sum(isinstance(c, gr.Markdown) and c.value == "## Policy correction" for c in children) == 1

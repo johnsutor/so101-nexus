@@ -321,21 +321,26 @@ you can fix the port in another terminal and click `Retry Initialization`.
 
 ## Session flow
 
-1. **Configure.** Pick the environment, robot type, episode count, FPS, camera resolutions,
-   action space, countdown, dataset fields, Max Steps, and Success Hold.
+1. **Configure.** Pick the environment, robot type, and episode count. Leave the dataset
+   destination blank for local recording. Open **Recording settings** to change FPS,
+   camera resolutions, action space, countdown, dataset fields, Max Steps, or Success Hold.
 2. **Initialize.** The app connects to the leader arm and creates the dataset.
 3. **Record.** A countdown plays, then the simulation mirrors the leader arm. The live wrist,
    overhead, and side feeds render together in the UI.
 4. **Review.** After each episode, the UI shows a synchronized replay of the available
-   wrist, overhead, and side views, with camera labels and a joint-state plot.
-5. **Approve or discard.** Accept to write the episode into the dataset, or re-record.
-6. **Push.** When all episodes are done, check **Hub Repo ID** and push to the Hugging Face Hub.
+   wrist, overhead, and side views. Expand **Joint states and rewards** for diagnostics.
+5. **Save or retry.** Click **Save episode** to write it to the local dataset, or
+   **Discard and retry** to record another attempt. Start the next episode when ready.
+6. **Finish.** Click **Finish session** to finalize the local dataset and disconnect the leader.
+   For policy collection, first support the arm and release its motors under **Leader motors**.
+   To upload, open **Upload to Hugging Face (optional)**, check **Hub Repo ID**, and click **Push to Hub**.
 
 The simulator stays loaded between episodes and resets with the current leader pose
 and episode seed. Sessions with a config profile or factory rebuild the simulator
 each episode so configuration changes still take effect.
 
-The Complete step shows the original local recording directory and an editable **Hub Repo ID**.
+The Complete step shows the original local recording directory. The upload section contains
+an editable **Hub Repo ID**.
 You can change the upload destination to `your-username/dataset-name`, including after an upload failure.
 The local recording stays in its original directory.
 
@@ -376,7 +381,7 @@ these ranges through `RenderConfig`, including equal bounds for a fixed view.
 The default side distance adapts to the sampled angles and spawn region.
 See [automatic side framing](/docs/api/configs#renderconfig) for distance overrides.
 
-Under **Advanced Settings, Dataset fields**, a checkbox group selects which fields are
+Under **Recording settings**, the **Dataset fields** checkbox group selects which fields are
 persisted; deselecting an optional field drops it from the declared feature schema and from
 every recorded frame. `observation.state`, `action`, `reward`, `success`, `done`, and `task`
 stay forced on because LeRobot datasets require them for policy training and task indexing.
@@ -447,8 +452,9 @@ Teleop uses the same typed config objects as the regular Gymnasium API. The reco
 from the selected environment's default config, applies UI, profile, and factory overrides,
 then wires the camera observations required for recording.
 
-**Advanced Settings** exposes the common options. Turn on `Apply Environment Customization` to
-enable them; leave it off to use the default config unchanged.
+Open **Environment customization** and turn on **Apply Environment Customization** to reveal
+the supported options. Leave it off to use the default config unchanged.
+**Max Steps** and **Success Hold (s)** are under **Recording settings**.
 
 | Option | Effect |
 | --- | --- |
