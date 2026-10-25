@@ -3,6 +3,7 @@
 import importlib
 import subprocess
 import sys
+from functools import partial
 
 import gymnasium as gym
 import pytest
@@ -19,9 +20,7 @@ _TASKS = {
 }
 
 
-@pytest.mark.parametrize(
-    "backend,prefix", [("mujoco", "MuJoCo"), ("warp", "Warp"), ("mjbatch", "MJBatch")]
-)
+@pytest.mark.parametrize("backend,prefix", [("mujoco", "MuJoCo"), ("warp", "Warp")])
 def test_backend_registration_contract(backend, prefix):
     importlib.import_module(f"so101_nexus.{backend}")
     specs = {key: value for key, value in gym.envs.registry.items() if key.startswith(prefix)}
@@ -34,20 +33,19 @@ def test_backend_registration_contract(backend, prefix):
         assert spec.max_episode_steps == limit
         if backend == "mujoco":
             assert spec.entry_point == f"so101_nexus.mujoco.{entry}"
-            assert spec.vector_entry_point is None
+            assert isinstance(spec.vector_entry_point, partial)
+            assert spec.vector_entry_point.keywords == {
+                "task_entry_point": f"so101_nexus.mujoco.{entry}"
+            }
             assert spec.kwargs == {}
         elif backend == "warp":
             module, cls = entry.split(":")
             assert spec.vector_entry_point == f"so101_nexus.warp.{module}:Warp{cls[:-3]}VectorEnv"
             assert spec.entry_point is None
             assert spec.kwargs == {}
-        else:
-            assert spec.vector_entry_point == "so101_nexus.mjbatch.vector_env:MJBatchVectorEnv"
-            assert spec.entry_point is None
-            assert spec.kwargs == {"task_entry_point": f"so101_nexus.mujoco.{entry}"}
 
 
-@pytest.mark.parametrize("backend", ["mujoco", "warp", "mjbatch"])
+@pytest.mark.parametrize("backend", ["mujoco", "warp"])
 def test_registration_import_is_lazy(backend):
     subprocess.run(
         [

@@ -11,6 +11,9 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- MuJoCo environments now use native `mujoco.batch.Batch` CPU stepping through
+  `gym.make_vec("MuJoCo...", ...)`, including LeRobot EnvHub. Requires MuJoCo 3.17
+  or newer. `gym.make` and explicit sync/async vectorization remain available.
 - Teleop setup shows essential inputs first, with recording settings and enabled
   environment customization disclosed through native Gradio controls. Readable
   action and camera labels preserve the existing dataset values. Review emphasizes
@@ -41,6 +44,11 @@ for the public-API and deprecation policy.
   show joint diagnostics in Policy correction, and unreachable calibrated motor
   targets are rejected before movement. Optional motor release is grouped inside
   Policy correction and remains available during review and completion.
+
+### Removed
+
+- Removed the optional `mjbatch` dependency, extra, backend module, `MJBatch*`
+  environment IDs, and EnvHub entries. Use the corresponding `MuJoCo*` IDs.
 
 ## [0.10.0] - 2026-10-17
 

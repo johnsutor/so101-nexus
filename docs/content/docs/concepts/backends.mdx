@@ -1,31 +1,35 @@
 ---
 title: Backends
-description: Choosing between MuJoCo, mjbatch, and MuJoCo Warp, and the vectorization, rendering, and physics differences between them.
+description: Choosing between MuJoCo and MuJoCo Warp, and the vectorization, rendering, and physics differences between them.
 ---
 
-SO101-Nexus uses MuJoCo as its default simulation backend. Optional mjbatch and MuJoCo Warp backends add CPU and GPU batching for reinforcement learning. All three cover the same SO-101 tasks, with env IDs distinguished by the `MuJoCo`, `MJBatch`, and `Warp` prefixes. See [Environments](/docs/environments) for the ID list.
+SO101-Nexus uses MuJoCo for scalar simulation and native CPU batching. The optional MuJoCo Warp backend adds GPU batching.
+Both backends cover the same SO-101 tasks, with the `MuJoCo` and `Warp` ID prefixes.
+See [Environments](/docs/environments) for the ID list.
 
-The MuJoCo backend is stable. The mjbatch and MuJoCo Warp backends are experimental: its API and physics may change between minor releases. See [Stability and versioning](/docs/api/stability).
+The MuJoCo backend is stable. Native CPU batching and MuJoCo Warp are experimental and can change between minor releases.
+See [Stability and versioning](/docs/api/stability).
 
 ## Vectorization
 
-MuJoCo environments are vectorized through Gymnasium's standard `gym.vector.SyncVectorEnv` wrapper, which runs multiple environment instances on CPU.
+`gym.make` constructs one MuJoCo environment. `gym.make_vec` uses MuJoCo's native CPU batch API by default.
+For Gymnasium's standard wrappers, pass `vectorization_mode="sync"` or `"async"` explicitly.
 
 The MuJoCo Warp backend instead batches simulation natively on the GPU. Construct any task with `gym.make_vec("WarpPickLift-v1", num_envs=N, device="cuda", vectorization_mode="vector_entry_point")`; reset and step return torch CUDA tensors of shape `(num_envs, ...)`.
 
 Warp envs route the same composable state observation components as MuJoCo (see the [component table](/docs/concepts/observations) for the full list, which the two backends share). They also support `WristCamera` and `OverheadCamera` observation components, rendered in one batched ray-tracing pass on the simulation device. Cameras support RGB and depth, with per-world wrist-camera domain randomization. See [Depth observations](/docs/concepts/observations#depth-observations) for the output contract.
 
-## CPU batching with mjbatch
+## Native CPU batching
 
-Install the optional backend as described in [Installation](/docs/getting-started/installation#cpu-batch-backend-mjbatch), then construct a native vector environment:
+The default [installation](/docs/getting-started/installation) includes native CPU batching. Construct a vector environment with an existing MuJoCo ID:
 
 ```python
 import gymnasium as gym
-import so101_nexus.mjbatch
+import so101_nexus.mujoco
 from so101_nexus import TouchConfig
 
 env = gym.make_vec(
-    "MJBatchTouch-v1",
+    "MuJoCoTouch-v1",
     num_envs=16,
     num_threads=4,
     config=TouchConfig(),
@@ -36,9 +40,9 @@ obs, rewards, terminated, truncated, info = env.step(env.action_space.sample())
 env.close()
 ```
 
-`num_threads=0` lets mjbatch choose its native worker count automatically.
+`num_threads=0` uses all logical CPUs.
 Reset and step return NumPy observations and arrays of rewards, terminations, and truncations.
-Use `gym.make_vec`; these IDs have only a vector entry point.
+The same IDs support scalar environments through `gym.make`.
 The default autoreset mode is Gymnasium's `NEXT_STEP`. Pass `autoreset_mode="SameStep"`
 for immediate resets with `final_obs` and `final_info`, or `"Disabled"` for explicit resets.
 `max_episode_steps` overrides the registered episode limit; a negative value disables it.
@@ -47,9 +51,9 @@ The LeRobot EnvHub factory also accepts these IDs and uses same-step autoreset.
 Each world uses an independent copy of the task configuration and model parameters,
 including object selection, colors, wrist cameras, controls, and observation components.
 `env.task_descriptions` returns the current instruction for each world.
-The backend uses the CPU MuJoCo physics preset and honors `PhysicsConfig`.
+Native CPU batching uses the MuJoCo physics preset and honors `PhysicsConfig`.
 
-mjbatch steps all but the final physics substep on its C++ thread pool.
+`mujoco.batch.Batch` steps all but the final physics substep on its native thread pool.
 The final substep runs on each task's MuJoCo data to preserve contact-force queries and
 observation timing. Integration state and mutable model fields are synchronized each step.
 Resets, rewards, observation assembly, inverse kinematics, and rendering run per world in Python.
@@ -60,7 +64,7 @@ Throughput depends on the task and batch size; this adapter does not claim a mea
 Camera components support the same RGB and metric depth observations as CPU MuJoCo.
 `env.render()` returns a tuple of per-world images using MuJoCo's rendering modes,
 including `human` when a display is available. Rendering is per world and requires a
-working OpenGL context. It is separate from mjbatch's physics thread pool.
+working OpenGL context. It is separate from the physics thread pool.
 
 ## Render Modes
 

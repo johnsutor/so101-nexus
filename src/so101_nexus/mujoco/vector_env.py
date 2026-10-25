@@ -1,4 +1,4 @@
-"""MuJoCo task semantics with optional native CPU batch stepping."""
+"""MuJoCo task semantics with native CPU batch stepping."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import mujoco
 import numpy as np
 from gymnasium.envs.registration import load_env_creator
 from gymnasium.vector import AutoresetMode, SyncVectorEnv
+from mujoco.batch import Batch
 
 from so101_nexus.mujoco.base_env import SO101NexusMuJoCoBaseEnv
 
@@ -35,13 +36,12 @@ _MODEL_FIELDS = (
 class _CompletedTask(gym.Wrapper):
     """Preserve Gymnasium wrappers while evaluating physics advanced by the batch."""
 
-    env: SO101NexusMuJoCoBaseEnv
-
     def step(self, action: np.ndarray) -> tuple[Any, float, bool, bool, dict]:
+        assert isinstance(self.env, SO101NexusMuJoCoBaseEnv)
         return self.env._finish_step(action)
 
 
-class MJBatchVectorEnv(SyncVectorEnv):
+class MuJoCoVectorEnv(SyncVectorEnv):
     """Batch CPU physics while reusing MuJoCo tasks, controls, and observations.
 
     Parameters
@@ -58,6 +58,8 @@ class MJBatchVectorEnv(SyncVectorEnv):
         Gymnasium reset timing, including masked explicit resets.
     config : EnvironmentConfig, optional
         Task configuration copied independently for each simulation.
+    disable_env_checker : bool
+        Disable Gymnasium checks on each task's reset and step results.
     **kwargs
         MuJoCo task constructor options, including controls and rendering.
 
@@ -78,24 +80,21 @@ class MJBatchVectorEnv(SyncVectorEnv):
         max_episode_steps: int = 1024,
         autoreset_mode: AutoresetMode | str = AutoresetMode.NEXT_STEP,
         config: EnvironmentConfig | None = None,
+        disable_env_checker: bool = False,
         _task_wrapper: Callable[[gym.Env], gym.Env] | None = None,
         **kwargs: Any,
     ) -> None:
         if num_envs < 1 or num_threads < 0:
             raise ValueError("num_envs must be positive and num_threads must be nonnegative")
-        try:
-            from mjbatch import Batch
-        except ImportError as exc:
-            raise ImportError(
-                'Install the CPU batch backend with pip install "so101-nexus[mjbatch]"'
-            ) from exc
         creator = load_env_creator(task_entry_point)
 
         def make_task() -> gym.Env:
             raw_task = creator(config=deepcopy(config), **kwargs)
             if not isinstance(raw_task, SO101NexusMuJoCoBaseEnv):
-                raise TypeError("mjbatch requires a MuJoCo task entry point")
+                raise TypeError("Native batching requires a MuJoCo task entry point")
             task: gym.Env = _CompletedTask(raw_task)
+            if not disable_env_checker:
+                task = gym.wrappers.PassiveEnvChecker(task)
             if max_episode_steps > 0:
                 task = gym.wrappers.TimeLimit(task, max_episode_steps)
             return task if _task_wrapper is None else _task_wrapper(task)
@@ -107,8 +106,8 @@ class MJBatchVectorEnv(SyncVectorEnv):
             assert isinstance(raw_task, SO101NexusMuJoCoBaseEnv)
             self._tasks.append(raw_task)
         try:
-            self.batch = Batch(self._tasks[0].model, num_sims=num_envs, num_threads=num_threads)
-            self._states = self.batch.bind("state")
+            self.batch = Batch(self._tasks[0].model, nsim=num_envs, nthread=num_threads)
+            self._states = self.batch.state
             self._model_fields = {name: self.batch.expand(name) for name in _MODEL_FIELDS}
         except Exception:
             self.close()
