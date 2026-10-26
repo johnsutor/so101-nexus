@@ -9,12 +9,12 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "fumadocs-core": "^16.17.2",
-    "fumadocs-mdx": "^15.4.7",
-    "fumadocs-ui": "^16.17.2",
-    "next": "^16.4.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "fumadocs-core": "^16.17.8",
+    "fumadocs-mdx": "^15.4.10",
+    "fumadocs-ui": "^16.17.8",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
