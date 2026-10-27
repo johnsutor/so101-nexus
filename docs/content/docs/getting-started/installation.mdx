@@ -47,7 +47,6 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |
 | `viz` | Pillow image labels and high-quality resizing in visualization helpers | `pip install "so101-nexus[viz]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
-| `mjbatch` | Native CPU batch stepping with mjbatch, no GPU required | `pip install "so101-nexus[mjbatch]"` |
 | `warp` | GPU-parallel MuJoCo Warp backend. Needs an NVIDIA GPU and CUDA >= 12.8 | `pip install "so101-nexus[warp]"` |
 | `rocm` | PyTorch from AMD's ROCm 7.2 wheel index. See below | `uv sync --extra train --extra rocm --no-default-groups` |
 
@@ -81,12 +80,10 @@ runtime. The model runs in the teleop process. Weights download through the Hugg
 cache on first use; ensure your account has access to the model and its license.
 See [Teleoperation](/docs/workflow/teleoperation#dm05-so101-pick-cube) for the launch command.
 
-## CPU batch backend (mjbatch)
+## Native CPU batching
 
-Install the `mjbatch` extra from the table above, or run `uv sync --extra mjbatch` from source.
-It installs [mjbatch](https://github.com/kevinzakka/mjbatch), which pins its compatible MuJoCo version.
-Registration stays available without the extra; constructing a batch requires it.
-See [Backends](/docs/concepts/backends#cpu-batching-with-mjbatch) for a runnable example and batching limits.
+The default installation requires MuJoCo 3.17 or newer, which includes `mujoco.batch.Batch`.
+No extra is required. See [Backends](/docs/concepts/backends#native-cpu-batching) for a runnable example and batching limits.
 
 ## Try without installing
 
@@ -116,7 +113,8 @@ The optional patch in `patches/mujoco-warp-3.13.0/` replaces box-pair collision 
 It preserves other collision dispatch and uses double-precision intermediates with float32 inputs and outputs.
 The normal `warp` extra does not include this patch. The [grasp retention profile](/docs/api/configs#grasp-retention-profile) requires a separate physics configuration.
 
-From a SO101-Nexus source checkout, build the patched dependency and install it in a separate environment:
+The patch tests require MuJoCo 3.13, which predates native CPU batching and cannot satisfy this library's current dependency requirement.
+From a source checkout, build and test the patch in a separate environment without the library:
 
 ```bash
 nexus_root="$PWD"
@@ -132,7 +130,7 @@ git apply "$nexus_root/patches/mujoco-warp-3.13.0/box_box_cpu_sat_port_double.pa
 uv build --wheel --out-dir "$engine_build/wheels"
 uv venv --python 3.12 "$engine_build/venv"
 uv pip install --python "$engine_build/venv/bin/python" \
-  -e "${nexus_root}[warp]" pytest \
+  pytest \
   "mujoco==3.13.0" "warp-lang==1.15.0" "torch==2.9.1" \
   "$engine_build/wheels/mujoco_warp-3.13.0-py3-none-any.whl"
 "$engine_build/venv/bin/python" -m pytest -q \
@@ -144,9 +142,7 @@ BOX_TEST_DEVICE=cuda:0 "$engine_build/venv/bin/python" -m pytest -q \
 The standalone tests compare contact geometry and normal force against CPU MuJoCo for thin fingers, aligned faces, and edge contact.
 CUDA tests also exercise captured graphs. The stock dependency fails the thin-finger and edge cases.
 
-Use this environment's Python executable for runs with the patched engine.
-A normal project `uv sync` or `uv run` can restore the stock dependency from the lockfile.
-Restart the process after installation to rebuild models and CUDA graphs.
+This environment validates the standalone patch. It does not support the current SO101-Nexus library.
 The patch targets only `mujoco-warp==3.13.0`. Identical collision algorithms do not imply identical trajectories or measured hardware behavior.
 
 ## Next steps

@@ -225,7 +225,8 @@ def test_gripper_contact_force_points_away_from_what_the_fingers_push():
     )
     try:
         env.reset(seed=0)
-        _straddle_the_target(env)
+        # Isolate the near face; deeper overlap also loads the top face.
+        _straddle_the_target(env, penetration=0.02)
         force = env._get_gripper_contact_force()
         assert force[0] < -1.0, force
     finally:

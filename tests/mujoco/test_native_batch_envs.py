@@ -6,8 +6,6 @@ import pytest
 
 from so101_nexus import ControlMode, JointPositions, PhysicsConfig, TouchConfig
 
-pytest.importorskip("mjbatch")
-
 _TASKS = [
     ("Touch", 1),
     ("LookAt", 1),
@@ -32,7 +30,9 @@ _TASKS = [
     ],
 )
 def test_seeded_rollout_matches_mujoco(env_factory, task, version, control_mode: ControlMode):
-    batch = env_factory(backend="mjbatch", task=task, version=version, control_mode=control_mode)
+    batch = env_factory(
+        backend="mujoco", vector=True, task=task, version=version, control_mode=control_mode
+    )
     reference = env_factory(task=task, version=version, control_mode=control_mode)
     obs, info = batch.reset(seed=[17, 23])
     expected, expected_info = reference.reset(seed=17)
@@ -52,7 +52,7 @@ def test_seeded_rollout_matches_mujoco(env_factory, task, version, control_mode:
 
 @pytest.mark.parametrize("mode", list(gym.vector.AutoresetMode))
 def test_episode_limit_and_partial_reset(env_factory, mode):
-    env = env_factory(backend="mjbatch", max_episode_steps=1, autoreset_mode=mode)
+    env = env_factory(backend="mujoco", vector=True, max_episode_steps=1, autoreset_mode=mode)
     env.reset(seed=[11, 22])
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     _, _, _, truncated, info = env.step(action)
@@ -73,21 +73,24 @@ def test_episode_limit_and_partial_reset(env_factory, mode):
 
 def test_physics_and_observation_config(env_factory):
     config = TouchConfig(observations=[JointPositions()], physics=PhysicsConfig(timestep_s=0.0025))
-    env = env_factory(backend="mjbatch", config=config, num_threads=1)
+    env = env_factory(backend="mujoco", vector=True, config=config, num_threads=1)
     obs, _ = env.reset(seed=8)
     assert obs.shape == (2, 6)
     before = env.envs[0].unwrapped.data.time
     env.step(np.zeros(env.action_space.shape, dtype=np.float32))
     assert env.envs[0].unwrapped.data.time - before == pytest.approx(0.02)
-    assert env.batch.num_threads == 1
+    from mujoco.batch import Batch
+
+    assert isinstance(env.batch, Batch)
+    assert env.batch.nthread == 1
 
 
 @pytest.mark.parametrize("kwargs", [{"num_envs": 0}, {"num_threads": -1}])
 def test_invalid_batch_size_or_threads(kwargs):
-    import so101_nexus.mjbatch  # noqa: F401
+    import so101_nexus.mujoco  # noqa: F401
 
     with pytest.raises(ValueError, match="num_envs must be positive"):
-        gym.make_vec("MJBatchTouch-v1", **kwargs)
+        gym.make_vec("MuJoCoTouch-v1", **kwargs)
 
 
 def test_object_pool_reset_and_native_execution(env_factory, monkeypatch):
@@ -97,7 +100,7 @@ def test_object_pool_reset_and_native_execution(env_factory, monkeypatch):
         objects=[CubeObject(color="red"), CubeObject(color="blue")],
         robot_colors=["yellow", "blue"],
     )
-    env = env_factory(backend="mjbatch", config=config)
+    env = env_factory(backend="mujoco", vector=True, config=config)
     reference = env_factory(config=config)
     for target in (0, 1, 0):
         obs, _ = env.reset(seed=[17, 23], options={"target_index": target})
@@ -127,7 +130,7 @@ def test_camera_observations_and_render(env_factory):
     from so101_nexus import WristCamera
 
     config = TouchConfig(observations=[JointPositions(), WristCamera(width=32, height=32)])
-    env = env_factory(backend="mjbatch", config=config, render_mode="rgb_array")
+    env = env_factory(backend="mujoco", vector=True, config=config, render_mode="rgb_array")
     obs, _ = env.reset(seed=4)
     assert obs["state"].shape == (2, 6)
     assert obs["wrist_camera"].shape == (2, 32, 32, 3)
@@ -140,11 +143,11 @@ def test_camera_observations_and_render(env_factory):
 def test_envhub_preserves_native_batch_and_lerobot_contract():
     from so101_nexus.envhub import make_env
 
-    env = make_env(env_id="MJBatchTouch-v1", n_envs=2, episode_length=1)["MJBatchTouch-v1"][0]
+    env = make_env(env_id="MuJoCoTouch-v1", n_envs=2, episode_length=1)["MuJoCoTouch-v1"][0]
     try:
         obs, _ = env.reset(seed=8)
         assert obs["agent_pos"].shape == (2, 6)
-        assert env.batch.num_sims == 2
+        assert env.batch.nsim == 2
         _, _, _, truncated, info = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
         assert truncated.all()
         assert info["_final_info"].all()
@@ -154,7 +157,7 @@ def test_envhub_preserves_native_batch_and_lerobot_contract():
 
 
 def test_next_step_autoreset_does_not_advance_finished_world(env_factory):
-    env = env_factory(backend="mjbatch", max_episode_steps=2)
+    env = env_factory(backend="mujoco", vector=True, max_episode_steps=2)
     env.reset(seed=[3, 9])
     actions = np.zeros(env.action_space.shape, dtype=np.float32)
     env.step(actions)
@@ -170,7 +173,7 @@ def test_next_step_autoreset_does_not_advance_finished_world(env_factory):
 
 def test_one_substep_and_disabled_time_limit(env_factory):
     config = TouchConfig(physics=PhysicsConfig(timestep_s=0.02))
-    env = env_factory(backend="mjbatch", config=config, max_episode_steps=-1)
+    env = env_factory(backend="mujoco", vector=True, config=config, max_episode_steps=-1)
     env.reset(seed=6)
     before = env.envs[0].unwrapped.data.time
     _, _, _, truncated, _ = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
@@ -179,3 +182,21 @@ def test_one_substep_and_disabled_time_limit(env_factory):
     env.close()
     env.close()
     assert not hasattr(env, "batch")
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_native_batch_honors_env_checker(env_factory, disabled):
+    env = env_factory(vector=True, disable_env_checker=disabled)
+    task = env.envs[0].env
+    assert isinstance(task, gym.wrappers.PassiveEnvChecker) is not disabled
+    env.reset(seed=1)
+    env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+
+
+def test_explicit_sync_vectorization_uses_scalar_tasks(env_factory):
+    env = env_factory(vector=True, vectorization_mode="sync")
+    assert type(env) is gym.vector.SyncVectorEnv
+    assert not hasattr(env, "batch")
+    env.reset(seed=1)
+    obs, *_ = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+    assert obs.shape == env.observation_space.shape

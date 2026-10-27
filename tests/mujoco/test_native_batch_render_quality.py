@@ -6,15 +6,15 @@ import pytest
 
 from so101_nexus import OverheadCamera, RenderConfig, RenderingQuality, TouchConfig, WristCamera
 
-pytest.importorskip("mjbatch")
-
 
 def test_reproducible_quality_and_images_in_every_world(env_factory):
     config = TouchConfig(
         render=RenderConfig(width=64, height=48, quality=RenderingQuality(profile="reproducible")),
         observations=[WristCamera(width=64, height=48), OverheadCamera(width=64, height=48)],
     )
-    batch = env_factory(backend="mjbatch", config=config, render_mode="rgb_array", num_threads=1)
+    batch = env_factory(
+        backend="mujoco", vector=True, config=config, render_mode="rgb_array", num_threads=1
+    )
     reference = env_factory(config=config, render_mode="rgb_array")
     expected, _ = reference.reset(seed=17)
     actual, _ = batch.reset(seed=[17, 17])

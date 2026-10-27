@@ -47,6 +47,15 @@ def test_dm05_docs_use_native_hub_loading_and_the_pinned_dependency():
     assert "hf download" not in section
 
 
+def test_docs_and_envhub_use_native_mujoco_batching():
+    for path in TEXT_DOCS:
+        text = _read(path)
+        assert "mjbatch" not in text.lower(), str(path.relative_to(ROOT))
+    assert not list((ROOT / "envhub" / "envs").glob("MJBatch*.py"))
+    project = tomllib.loads(_read(ROOT / "pyproject.toml"))
+    assert "mjbatch" not in project["project"]["optional-dependencies"]
+
+
 def test_no_em_dashes_or_emoji_in_user_docs() -> None:
     """User-facing docs must not contain em dashes, en dashes, or emoji."""
     emoji = re.compile(r"[\U0001f300-\U0001faff]")
@@ -219,7 +228,7 @@ def test_core_overview_lists_only_real_public_symbols() -> None:
 
 
 def test_docs_reference_only_registered_env_ids() -> None:
-    """Every ``MuJoCo*``/``Warp*``/``MJBatch*`` env id in docs must be a registered id."""
+    """Every ``MuJoCo*``/``Warp*`` env id in docs must be a registered id."""
     registered = _registered_env_ids()
 
     offenders: list[tuple[str, str]] = []
@@ -241,17 +250,17 @@ def test_environment_table_state_dimensions_match_public_configs() -> None:
     import so101_nexus
 
     rows = re.findall(
-        r"\| `(MuJoCo[\w-]+)` \| `(Warp[\w-]+)` \| `(MJBatch[\w-]+)` "
+        r"\| `(MuJoCo[\w-]+)` \| `(Warp[\w-]+)` "
         r"\| `(\w+Config)` \| (\d+) \| (\d+) \|",
         _read(DOCS / "environments" / "index.mdx"),
     )
     assert rows
     documented = set()
-    for mujoco_id, warp_id, mjbatch_id, config_name, _, dimensions in rows:
+    for mujoco_id, warp_id, config_name, _, dimensions in rows:
         config = getattr(so101_nexus, config_name)()
         actual = sum(component.size for component in config.observations)
         assert actual == int(dimensions), config_name
-        documented.update((mujoco_id, warp_id, mjbatch_id))
+        documented.update((mujoco_id, warp_id))
     assert documented == _registered_env_ids()
 
 

@@ -128,7 +128,7 @@ Endpoints must be finite and ordered. Equal endpoints select a fixed value. Omit
 
 ## RenderingQuality
 
-MuJoCo and mjbatch apply this configuration before they allocate camera framebuffers.
+Scalar and batched MuJoCo environments apply this configuration before they allocate camera framebuffers.
 To select the opt-in reproducibility profile, pass it through `RenderConfig`:
 
 ```python
