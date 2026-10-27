@@ -233,3 +233,16 @@ markers = [
     "visual: LLM-powered visual verification tests (require ANTHROPIC_API_KEY or VISUAL_TEST_MODEL)",
     "warp: GPU/Warp backend tests (require mujoco_warp; run on the Warp CPU device)",
 ]
+
+[tool.mutmut]
+source_paths = ["src/so101_nexus"]
+only_mutate = ["src/so101_nexus/rewards.py", "src/so101_nexus/objects.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/core/test_rewards.py",
+    "tests/core/test_rewards_tensor.py",
+    "tests/core/test_pick_return.py",
+    "tests/core/test_place_v2_config.py",
+    "tests/core/test_place_rewards.py",
+    "tests/core/test_objects.py",
+]
+on_dependency_change = "rerun"

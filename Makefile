@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test test-warp test-visual test-visual-qwen coverage docs-check rocm-sync rocm-verify
+.PHONY: format lint typecheck test test-warp mutation test-visual test-visual-qwen coverage docs-check rocm-sync rocm-verify
 
 COV_FAIL_UNDER ?= 84
 export COV_FAIL_UNDER
@@ -15,6 +15,9 @@ typecheck:
 
 test:
 	uv run pytest --cov=so101_nexus --cov-report=term-missing --cov-fail-under=$(COV_FAIL_UNDER)
+
+mutation:
+	uv run --with "mutmut==3.8.0" mutmut run --max-children 4
 
 test-warp:
 	uv run --extra warp pytest tests/warp tests/core/test_rewards_tensor.py -q

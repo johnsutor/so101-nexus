@@ -38,7 +38,7 @@ def test_reach_progress_numpy_batch_matches_scalar():
 
 def test_reach_progress_torch_matches_scalar_and_preserves_dtype():
     torch = pytest.importorskip("torch")
-    distances = [0.0, 0.05, 0.3, 1.7]
+    distances = [-0.5, 0.0, 0.05, 0.3, 1.7]
     out = reach_progress(torch.tensor(distances, dtype=torch.float32), scale=5.0)
     assert isinstance(out, torch.Tensor)
     assert out.dtype == torch.float32
@@ -56,15 +56,6 @@ def test_simple_reward_torch_batch_with_bool_success():
     assert isinstance(out, torch.Tensor)
     assert out[0].item() == pytest.approx(0.9 * 0.5)
     assert out[1].item() == pytest.approx(0.9 * 1.0 + 0.1)
-
-
-def test_scalar_paths_still_return_plain_float():
-    assert isinstance(reach_progress(0.5, scale=5.0), float)
-    assert isinstance(simple_reward(progress=0.5, completion_bonus=0.1, success=True), float)
-    assert reach_progress(0.0, scale=5.0) == pytest.approx(1.0)
-    assert simple_reward(progress=0.4, completion_bonus=0.1, success=False) == pytest.approx(
-        0.9 * 0.4
-    )
 
 
 def test_orientation_progress_numpy_and_torch_match_scalar():
@@ -156,3 +147,62 @@ def test_potential_state_preserves_progress_regression_and_inputs(backend):
         (delta if backend == "scalar" else delta.item()) == 0.0
         for delta in state._update_potentials(*current)
     )
+
+
+@pytest.mark.parametrize("backend", ["scalar", "numpy", "torch"])
+def test_pick_return_potentials_and_success_boundaries(backend):
+    import math
+
+    from so101_nexus.rewards import (
+        pick_return_reach_potential,
+        pick_return_success,
+        pick_return_task_potential,
+    )
+
+    def value(scalar):
+        if backend == "numpy":
+            return np.array([scalar])
+        if backend == "torch":
+            torch = pytest.importorskip("torch")
+            return torch.tensor([scalar], dtype=torch.float64)
+        return scalar
+
+    for grasped, expected in ((0.0, 1.0 - math.tanh(1.0)), (0.5, 1.0 - math.tanh(1.0)), (0.6, 1.0)):
+        actual = pick_return_reach_potential(value(0.2), value(grasped), scale=5.0)
+        assert (actual if backend == "scalar" else actual.item()) == pytest.approx(expected)
+
+    for height, error, speed, grasped, expected in (
+        (0.025, 90.0, 1.0, 1.0, math.tanh(0.025 / 0.08) / math.tanh(0.05 / 0.08) / 3.0),
+        (0.05, 5.0, 0.0, 1.0, 1.0 / 3.0),
+        (0.06, 5.0, 0.1, 1.0, (3.0 - math.tanh(1.5)) / 3.0),
+        (0.06, 185.0, 0.0, 1.0, (2.0 - math.tanh(5.0)) / 3.0),
+        (0.06, 0.0, 0.0, 0.5, 0.0),
+    ):
+        actual = pick_return_task_potential(
+            value(height),
+            value(error),
+            value(speed),
+            value(grasped),
+            lift_threshold=0.05,
+            return_threshold_deg=5.0,
+            scale=5.0,
+            velocity_scale=15.0,
+        )
+        assert (actual if backend == "scalar" else actual.item()) == pytest.approx(expected)
+
+    for height, error, grasped, static, expected in (
+        (0.06, 5.0, 1.0, True, True),
+        (0.05, 0.0, 1.0, True, False),
+        (0.06, 5.01, 1.0, True, False),
+        (0.06, 0.0, 0.5, True, False),
+        (0.06, 0.0, 1.0, False, False),
+    ):
+        actual = pick_return_success(
+            value(height),
+            value(error),
+            value(grasped),
+            static if backend == "scalar" else value(static) > 0.5,
+            lift_threshold=0.05,
+            return_threshold_deg=5.0,
+        )
+        assert bool(actual) == expected
