@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-07
+
 ### Changed
 
 - Upgrade Gradio to 6.31.0, MuJoCo Warp to 3.17.0, pytest to 9.2.0,
@@ -931,7 +933,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/johnsutor/so101-nexus/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/johnsutor/so101-nexus/compare/0.8.1...0.9.0
