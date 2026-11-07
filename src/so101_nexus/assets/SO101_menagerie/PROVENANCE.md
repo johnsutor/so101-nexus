@@ -23,6 +23,9 @@ Studio, developed by I2RT Robotics.
   fingertips); TCP-orientation observations depend on it. (The look-at task
   uses the wrist camera optical axis, not this site.)
   The site position is unchanged from upstream.
+- `so101.xml`: set `solimp="0.99 0.999 0.001 0.5 2"` on both gripper
+  collision classes to reduce finger penetration under actuator load. Geometry,
+  friction, contact time constants, and actuator limits are unchanged.
 
 The vendored `scene.xml` / `scene_box.xml` are kept for provenance only; the
 runtime synthesizes its own scene wrappers and does not load them.

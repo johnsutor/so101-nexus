@@ -46,6 +46,12 @@ See [Physics divergence](/docs/concepts/backends#physics-divergence) for backend
 It preserves material friction, `solref`, geometry, collision masks, mass, actuator limits, and task thresholds.
 The tuple requires `1e-4 <= dmin <= dmax <= 0.9999`, positive width, midpoint strictly between zero and one, and power at least one.
 Width uses meters. An omitted tuple preserves the native contact impedance.
+Both backends use `solimp=(0.99, 0.999, 0.001, 0.5, 2.0)` for the model's gripper
+collision classes. These stiffer contacts reduce finger penetration under load.
+MuJoCo uses soft contacts, so this does not guarantee zero overlap.
+`tests/mujoco/test_grasp_and_targeting.py` checks penetration below 1.5 mm while
+lifting 10 g cubes with side lengths of 19.05, 24, and 40 mm, plus a rotated 24 mm cube.
+These bounds apply to the tested MuJoCo grasps, not arbitrary loads or Warp trajectories.
 
 ### Grasp retention profile
 

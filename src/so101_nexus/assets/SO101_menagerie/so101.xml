@@ -8,6 +8,7 @@
       points along the gripper "forward" direction (the library convention used
       by TCP-orientation observations). The look-at task uses the wrist camera
       optical axis instead. See PROVENANCE.md.
+   3. Gripper contact impedance increased to reduce penetration under load.
     See PROVENANCE.md.
   -->
   <option integrator="implicitfast" timestep="0.005" cone="elliptic" iterations="10" ls_iterations="20" impratio="10"/>
@@ -32,10 +33,10 @@
         <geom group="3" condim="3"/>
       </default>
       <default class="collision_gripper">
-        <geom group="3" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
+        <geom group="3" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" solimp="0.99 0.999 0.001 0.5 2" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
       </default>
       <default class="collision_gripper_mesh">
-        <geom group="4" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
+        <geom group="4" condim="6" friction="1 5e-3 5e-4" solref="0.01 1" solimp="0.99 0.999 0.001 0.5 2" priority="1" rgba="1.0 0 0 1.0" mass="0"/>
       </default>
     </default>
 

@@ -29,6 +29,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Stiffer gripper contacts reduce claw penetration into objects under load on
+  both backends. MuJoCo regression tests check cube retention and penetration
+  below 1.5 mm during lifting; Warp trajectories can differ.
+
 - Policy collection automatically returns the leader to rest with LeRobot IK
   after each completed or manually stopped episode, before review. Recorded
   frames and simulator state are preserved; errors and shutdown hold the leader.
