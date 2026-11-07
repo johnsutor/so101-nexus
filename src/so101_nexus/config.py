@@ -830,20 +830,20 @@ def _warn_inert_velocity_scale(reward: RewardConfig, task_name: str) -> None:
 class PhysicsConfig:
     """Explicit numerical options shared by CPU and Warp.
 
-    Omit ``EnvironmentConfig.physics`` to preserve the native backend presets.
+    Omit ``EnvironmentConfig.physics`` to use these shared numerical defaults.
     Physics steps must divide the control period exactly. ``gripper_solimp`` is
     an optional contact-compliance override, separate from numerical options.
     Geometry, material friction, mass, actuators, and task thresholds stay unchanged.
     """
 
-    timestep_s: float = 0.005
+    timestep_s: float = 0.0025
     control_period_s: float = 0.02
     integrator: Literal["implicit", "implicitfast"] = "implicit"
     solver: Literal["Newton"] = "Newton"
     cone: Literal["elliptic"] = "elliptic"
-    impratio: float = 10.0
-    iterations: int = 10
-    ls_iterations: int = 20
+    impratio: float = 100.0
+    iterations: int = 20
+    ls_iterations: int = 100
     tolerance: float = 1e-6
     noslip_iterations: int = 0
     gripper_solimp: tuple[float, float, float, float, float] | None = None
@@ -917,7 +917,7 @@ class EnvironmentConfig:
     Parameters
     ----------
     physics : PhysicsConfig, optional
-        Explicit numerical options; None preserves each backend's native preset.
+        Explicit numerical options; None uses the shared backend defaults.
     render : RenderConfig, optional
         Render camera resolution settings (visualization only).
     reward : RewardConfig, optional

@@ -38,7 +38,7 @@ def test_invalid_physics_rejected(kwargs):
 
 def test_physics_config_is_immutable():
     physics = PhysicsConfig()
-    assert physics.substeps == 4
+    assert physics.substeps == 8
     with pytest.raises(FrozenInstanceError):
         physics.timestep_s = 0.001
 
@@ -53,7 +53,7 @@ def test_environment_rejects_untyped_physics():
 def test_config_reaches_runtime_and_preserves_control_clock(
     env_factory, backend, timestep, substeps
 ):
-    physics = PhysicsConfig(timestep_s=timestep, impratio=1000, iterations=100, ls_iterations=100)
+    physics = PhysicsConfig(timestep_s=timestep, impratio=1000, iterations=100, ls_iterations=80)
     env = env_factory(
         backend=backend,
         task="Move",
@@ -68,7 +68,8 @@ def test_config_reaches_runtime_and_preserves_control_clock(
     assert env.control_dt == pytest.approx(0.02)
     assert model.opt.timestep == timestep
     assert model.opt.impratio == 1000
-    assert model.opt.iterations == model.opt.ls_iterations == 100
+    assert model.opt.iterations == 100
+    assert model.opt.ls_iterations == 80
     assert model.opt.noslip_iterations == 0
     assert model.opt.tolerance == physics.tolerance
     assert model.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON
@@ -101,16 +102,19 @@ def test_warp_rejects_unsupported_noslip_before_transfer(env_factory):
         )
 
 
-@pytest.mark.parametrize("backend,noslip", [("mujoco", 3), ("warp", 0)])
-def test_omitted_config_preserves_native_options(env_factory, backend, noslip):
+@pytest.mark.parametrize("backend", ["mujoco", "warp"])
+def test_omitted_config_uses_shared_options(env_factory, backend):
     env = env_factory(
         backend=backend, task="Move", config=MoveConfig(reset_settle_frames=0)
     ).unwrapped
     model = env.model if backend == "mujoco" else env.mjm
-    assert model.opt.timestep == 0.005
-    assert model.opt.impratio == 10
-    assert model.opt.noslip_iterations == noslip
-    assert env._N_SUBSTEPS == 4
+    assert model.opt.timestep == 0.0025
+    assert model.opt.impratio == 100
+    assert model.opt.iterations == 20
+    assert model.opt.ls_iterations == 100
+    assert model.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICIT
+    assert model.opt.noslip_iterations == 0
+    assert env._N_SUBSTEPS == 8
     assert env.control_dt == 0.02
 
 

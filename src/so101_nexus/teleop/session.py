@@ -318,9 +318,7 @@ def build_sim_follower_config(
         if config is None or not hasattr(config, "physics"):
             raise ValueError("Policy collection requires an environment with PhysicsConfig")
         # Timing changes should retain the native MuJoCo numerical preset.
-        physics = config.physics or PhysicsConfig(
-            integrator="implicitfast", tolerance=1e-8, noslip_iterations=3
-        )
+        physics = config.physics or PhysicsConfig()
         period = 1 / fps
         substeps = max(1, math.ceil(period / physics.timestep_s))
         env_kwargs["config"] = config.__class__(

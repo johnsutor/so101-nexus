@@ -70,7 +70,7 @@ def _pinch_the_target(env, steps=60, quat=(1.0, 0.0, 0.0, 0.0)):
 _OVER_WIDE_HALF_SIZE = 0.05
 
 
-def _straddle_the_target(env, penetration=0.04):
+def _straddle_the_target(env, penetration=0.045):
     """Press both finger sets into the same face of an over-wide target.
 
     Reproduces the reported defect geometry: an object the jaw cannot close on
@@ -80,7 +80,7 @@ def _straddle_the_target(env, penetration=0.04):
     dominates that side's mean, which is still nowhere near opposing the
     gripper's.) The penetration is deep because MuJoCo's solve concentrates the
     reaction on a single contact until both finger sets are firmly loaded; below
-    about 0.03 m only one side carries force and the predicate is uninteresting.
+    about 0.04 m only one side carries force and the predicate is uninteresting.
     """
     half = _OVER_WIDE_HALF_SIZE
     fingers = list(env._gripper_geom_ids) + list(env._jaw_geom_ids)
@@ -167,6 +167,47 @@ def test_a_real_pinch_still_grasps_and_carries_the_object():
         assert float(env._get_target_pose()[2]) - z0 > env.config.lift_threshold
     finally:
         env.close()
+
+
+@pytest.mark.parametrize("half_size,angle_deg", [(0.009525, 0), (0.012, 0), (0.02, 0), (0.012, 45)])
+def test_lifting_a_cube_limits_finger_penetration(env_factory, half_size, angle_deg):
+    """A loaded pinch must carry the cube with less than 1.5 mm penetration."""
+    env = env_factory(
+        task="PickLift",
+        config=PickConfig(objects=[CubeObject(half_size=half_size, color="red")]),
+        control_mode="pd_ee_delta_pose",
+    ).unwrapped
+    env.reset(seed=3)
+    angle_rad = np.deg2rad(angle_deg)
+    _pinch_the_target(env, quat=(np.cos(angle_rad / 2), 0, 0, np.sin(angle_rad / 2)))
+    # Let the released cube settle into a pinch after the imposed placement.
+    for _ in range(10):
+        env.step(_CLOSE)
+    assert env._is_grasping() == 1.0
+    fingers = env._gripper_geom_ids | env._jaw_geom_ids
+    target = set(env._obj_geom_ids)
+    z0 = float(env._get_target_pose()[2])
+    for _ in range(80):
+        env.step(_LIFT)
+        distances = [
+            contact.dist
+            for contact in env.data.contact
+            if (contact.geom1 in target and contact.geom2 in fingers)
+            or (contact.geom2 in target and contact.geom1 in fingers)
+        ]
+        assert distances, "the cube lost contact during lifting"
+        assert min(distances) > -0.0015, "finger penetration exceeded 1.5 mm"
+    assert env._is_grasping() == 1.0
+    assert float(env._get_target_pose()[2]) - z0 > env.config.lift_threshold
+    held_z = float(env._get_target_pose()[2])
+    for _ in range(60):
+        env.step(_OPEN)
+    # An open fixed jaw can still support the cube, so withdraw after opening.
+    lower_open = np.array([0, 0, -0.4, 0, 0, 0, 1], dtype=np.float32)
+    for _ in range(40):
+        env.step(lower_open)
+    assert env._is_grasping() == 0.0
+    assert held_z - float(env._get_target_pose()[2]) > env.config.lift_threshold
 
 
 @pytest.mark.slow
