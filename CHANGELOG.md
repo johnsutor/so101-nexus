@@ -11,6 +11,10 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Upgrade Gradio to 6.31.0, MuJoCo Warp to 3.17.0, pytest to 9.2.0,
+  Hypothesis to 6.170.15, Ruff to 0.17.4, and ty to 0.0.95. Retain
+  LiteLLM 1.103.10 for compatibility with LeRobot 0.7's FileLock requirement.
+
 - Upgrade LeRobot to released 0.7.0 and Transformers to 5.22. Native DM0.5 no
   longer needs a source archive. Simulator motor normalization uses
   `SerialMotorsBus`. EnvHub setup uses `use_native_batch` and `make_env_kwargs`.
