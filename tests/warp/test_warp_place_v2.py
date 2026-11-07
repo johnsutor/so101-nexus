@@ -193,7 +193,7 @@ def test_substep_support_loss_restarts_dwell(env, monkeypatch):
     env._placement_dwell.fill_(env.config.placement_dwell_time)
     # The second substep loses support only in world 0. A final-frame-only
     # evaluator incorrectly retains the full dwell duration.
-    qualified = iter([[True, True], [False, True], [True, True], [True, True]])
+    qualified = iter([[True, True], [False, True]] + [[True, True]] * (env._N_SUBSTEPS - 2))
     original = env._support_info
 
     def support():
@@ -206,7 +206,7 @@ def test_substep_support_loss_restarts_dwell(env, monkeypatch):
     # step() normally supplies the device context for this internal method.
     with wp.ScopedDevice(env._wp_device):
         env._advance_physics()
-    assert env._placement_dwell[0] == pytest.approx(2 * env._mjm.opt.timestep)
+    assert env._placement_dwell[0] == pytest.approx((env._N_SUBSTEPS - 2) * env._mjm.opt.timestep)
     assert env._placement_dwell[1] >= env.config.placement_dwell_time
 
 
@@ -426,7 +426,7 @@ def test_contract_uses_active_device_timestep_and_independent_snapshots(env):
     current = env._placement_info()["placement_contract"]
     assert current["physics_timestep"] == pytest.approx([0.01])
     assert current["target_index"] == env._target_slot.tolist()
-    assert old["physics_timestep"] == pytest.approx([0.005])
+    assert old["physics_timestep"] == pytest.approx([0.0025])
     assert old["support_min_weight_fraction"] == 0.9
     current["objects"][0]["weight_N"] = -1
     assert env._placement_info()["placement_contract"]["objects"][0]["weight_N"] > 0

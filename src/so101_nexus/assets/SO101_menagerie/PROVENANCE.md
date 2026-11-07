@@ -23,9 +23,19 @@ Studio, developed by I2RT Robotics.
   fingertips); TCP-orientation observations depend on it. (The look-at task
   uses the wrist camera optical axis, not this site.)
   The site position is unchanged from upstream.
-- `so101.xml`: set `solimp="0.99 0.999 0.001 0.5 2"` on both gripper
-  collision classes to reduce finger penetration under actuator load. Geometry,
-  friction, contact time constants, and actuator limits are unchanged.
+- `so101.xml`: set `solref="0.005 1"` and `solimp="0.95 0.999 0.001 0.5 2"`
+  on both gripper collision classes to reduce penetration while retaining
+  tangential compliance. Numerical defaults match the shared `PhysicsConfig`
+  preset. Material friction and actuator limits are unchanged.
+- `so101.xml`: added six convex pad-edge meshes derived from the existing visual
+  jaw triangles in body coordinates, with 64 vertices per hull. Fixed-jaw
+  side strips cover `z <= -0.080 m` and `y <= -0.003 m` or `y >= 0.003 m`;
+  its tip covers `z <= -0.101 m`. Moving-jaw side strips cover `y <= -0.060 m`
+  and `z <= 0.01575 m` or `z >= 0.02175 m`; its tip covers `y <= -0.079 m`.
+  These convex strips cover visible edges omitted by the primitive approximation
+  while retaining the original central contact surfaces and open grasp aperture.
+  `tests/core/test_jaw_collision_geometry.py` checks visible distal surfaces
+  against the compiled collider union with `mj_geomDistance` on a 0.5 mm ray grid.
 
 The vendored `scene.xml` / `scene_box.xml` are kept for provenance only; the
 runtime synthesizes its own scene wrappers and does not load them.

@@ -252,7 +252,7 @@ class TestSlotExtraction:
         assert [int(model.geom_bodyid[slot.geom_id]) for slot in slots] == [
             model.body(name).id for name in names
         ]
-        assert model.opt.noslip_iterations == (3 if option == "mujoco" else 0)
+        assert model.opt.noslip_iterations == 0
         assert model.body("goal").mocapid == 0
         assert model.camera("overhead").pos[2] == 1
         assert model.body("carried").mass == pytest.approx(0.03)

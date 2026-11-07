@@ -8,6 +8,7 @@ alone.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import tomllib
@@ -471,6 +472,9 @@ def test_physics_reference_covers_fields_and_runs_profile() -> None:
     section = match.group(1)
     documented = set(re.findall(r"^\| `([^`]+)` \|", section, re.MULTILINE))
     assert documented == {field.name for field in fields(PhysicsConfig)}
+    defaults = dict(re.findall(r"^\| `([^`]+)` \| `([^`]+)` \|", section, re.MULTILINE))
+    for field in fields(PhysicsConfig):
+        assert ast.literal_eval(defaults[field.name]) == field.default, field.name
     examples = re.findall(r"```python\n(.*?)```", section, re.DOTALL)
     assert examples
     namespace = {}
@@ -480,7 +484,7 @@ def test_physics_reference_covers_fields_and_runs_profile() -> None:
     assert isinstance(physics, PhysicsConfig)
     assert physics.substeps == 8
     assert physics.noslip_iterations == 0
-    assert physics.gripper_solimp == (0.99, 0.999, 0.001, 0.5, 2.0)
+    assert physics == PhysicsConfig()
 
 
 def test_policy_adapter_example_configures_default_cameras() -> None:

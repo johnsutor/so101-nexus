@@ -14,9 +14,9 @@ from so101_nexus.scene import (
 )
 
 
-def test_mujoco_option_unchanged():
-    assert 'integrator="implicitfast"' in MUJOCO_SCENE_OPTION_XML
-    assert "noslip_iterations" in MUJOCO_SCENE_OPTION_XML
+def test_backends_share_numerical_defaults():
+    assert MUJOCO_SCENE_OPTION_XML == WARP_SCENE_OPTION_XML
+    assert 'integrator="implicit"' in MUJOCO_SCENE_OPTION_XML
 
 
 def test_warp_option_drops_unsupported_features():
@@ -24,11 +24,11 @@ def test_warp_option_drops_unsupported_features():
     assert "noslip" not in WARP_SCENE_OPTION_XML
     assert 'integrator="implicit"' in WARP_SCENE_OPTION_XML
     for token in (
-        'timestep="0.005"',
+        'timestep="0.0025"',
         'cone="elliptic"',
-        'impratio="10"',
-        'iterations="10"',
-        'ls_iterations="20"',
+        'impratio="100.0"',
+        'iterations="20"',
+        'ls_iterations="100"',
     ):
         assert token in WARP_SCENE_OPTION_XML
 
@@ -37,7 +37,7 @@ def test_robot_floor_builder_compiles_with_both_options():
     from so101_nexus.scene import build_robot_floor_scene_xml
 
     for option, expected_noslip_iterations in (
-        (MUJOCO_SCENE_OPTION_XML, 3),
+        (MUJOCO_SCENE_OPTION_XML, 0),
         (WARP_SCENE_OPTION_XML, 0),
     ):
         xml = build_robot_floor_scene_xml(

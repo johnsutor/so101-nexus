@@ -85,10 +85,11 @@ Vectorized worlds may carry different tasks, so `env.task_descriptions` holds on
 
 ## Physics Divergence
 
-The historical CPU preset uses `implicitfast` and three NoSlip iterations. The Warp preset uses `implicit` and zero NoSlip iterations.
-MuJoCo Warp 3.13 supports both integrators but does not implement NoSlip. Its device conversion also raises the native solver tolerance to `1e-6`.
-
-[PhysicsConfig](/docs/api/configs#physicsconfig) selects supported physics configuration on both backends and preserves command timing when the timestep changes.
+Both backends use the same native numerical configuration and shared jaw collision model.
+The [PhysicsConfig reference](/docs/api/configs#physicsconfig) defines the defaults and the [grasp retention tests](/docs/api/configs#grasp-retention-profile).
+An explicit configuration preserves command timing when the physics timestep changes.
+MuJoCo Warp 3.13 supports `implicit` and `implicitfast` but does not implement NoSlip.
+Warp rejects nonzero `noslip_iterations` and solver tolerances smaller than the float32 representation of `1e-6`.
 Matching configuration does not guarantee identical contacts or trajectories. The backends use different floating-point arithmetic and collision algorithms.
 The optional [Warp box collision patch](/docs/getting-started/installation#warp-box-collision-patch) addresses the measured box contact mismatch in version 3.13.0.
 Validate transferred policies on the target backend.

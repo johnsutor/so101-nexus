@@ -101,11 +101,10 @@ def test_env_builds_and_binds_menagerie(env_id, cfg_cls):
 def test_control_step_invariant():
     env = gym.make("MuJoCoTouch-v1", config=TouchConfig()).unwrapped
     try:
-        # Wrapper option (after include) wins: timestep is the menagerie 0.005.
-        assert abs(env.model.opt.timestep - 0.005) < 1e-9
+        assert abs(env.model.opt.timestep - 0.0025) < 1e-9
         assert abs(env.model.opt.timestep * SO101NexusMuJoCoBaseEnv._N_SUBSTEPS - 0.02) < 1e-9
         # Tuned physics adopted.
-        assert env.model.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        assert env.model.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICIT
         assert env.model.opt.cone == mujoco.mjtCone.mjCONE_ELLIPTIC
     finally:
         env.close()
@@ -152,20 +151,15 @@ def test_grasp_geom_sets_select_condim6_fingers():
         env.close()
 
 
-def test_rest_tcp_pose_matches_menagerie():
-    env = gym.make("MuJoCoTouch-v1", config=TouchConfig(), robot_init_qpos_noise=0.0).unwrapped
-    try:
-        env.reset(seed=0, options={"init_qpos": np.zeros(6)})
-        tcp = env._get_tcp_pose()
-        # Pinned compiled menagerie TCP at zero qpos (differs from the old model's
-        # ~[0.39136, -0.00001, 0.22647], a deliberate ~2 cm Z shift).
-        assert np.allclose(tcp[:3], [0.3914432501, -0.0009794699, 0.2460073072], atol=1e-6)
-        # Orientation reflects the library-convention gripperframe quat (0 0 1 0).
-        assert np.allclose(
-            tcp[3:], [0.7064841888, 0.0172191552, 0.7073102466, 0.0171990353], atol=1e-6
-        )
-    finally:
-        env.close()
+def test_rest_tcp_pose_matches_menagerie(env_factory):
+    # Pin forward kinematics independently of gravity settling.
+    env = env_factory(task="Touch", config=TouchConfig(reset_settle_frames=0)).unwrapped
+    env.reset(seed=0, options={"init_qpos": np.zeros(6)})
+    tcp = env._get_tcp_pose()
+    assert np.allclose(tcp[:3], [0.3913615, -0.000979465249, 0.246345176693], atol=1e-6)
+    assert np.allclose(
+        tcp[3:], [0.706897338087, 0.017209108231, 0.706897338087, 0.017209108231], atol=1e-6
+    )
 
 
 def test_wrist_camera_pose_tracks_component():

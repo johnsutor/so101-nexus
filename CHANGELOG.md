@@ -11,6 +11,9 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- MuJoCo and Warp share grasp-oriented numerical defaults: 2.5 ms physics steps,
+  implicit integration, and matched solver settings. The 50 Hz command clock
+  stays unchanged, with eight physics steps per command instead of four.
 - MuJoCo environments now use native `mujoco.batch.Batch` CPU stepping through
   `gym.make_vec("MuJoCo...", ...)`, including LeRobot EnvHub. Requires MuJoCo 3.17
   or newer. `gym.make` and explicit sync/async vectorization remain available.
@@ -29,6 +32,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Fitted jaw-edge colliders cover visible pad surfaces previously outside the
+  collision boundary. Jaw contact response and cross-backend motion tests now
+  cover supported pickup, holding, direction changes, and release.
 - Stiffer gripper contacts reduce claw penetration into objects under load on
   both backends. MuJoCo regression tests check cube retention and penetration
   below 1.5 mm during lifting; Warp trajectories can differ.

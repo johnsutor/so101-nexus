@@ -16,11 +16,9 @@ task semantics, observation schemas, and camera intrinsics do not establish
 identical trajectories or pixels.
 
 **Physics** (see ``so101_nexus.scene``): supported mujoco_warp versions accept
-both ``implicit`` and ``implicitfast``, but do not implement NoSlip. The native
-Warp preset retains ``implicit`` with NoSlip disabled; the CPU preset uses
-``implicitfast`` with three NoSlip iterations. Warp conversion also raises the
-default solver tolerance from 1e-8 to 1e-6. These differences can affect grasp
-retention as well as placement. Matching supported solver options is necessary
+both ``implicit`` and ``implicitfast``, but do not implement NoSlip. Both native
+presets use the same ``PhysicsConfig`` defaults, with NoSlip disabled and a
+solver tolerance supported by Warp. Matching supported solver options is necessary
 for a controlled backend comparison, but does not guarantee matching collision
 contacts, floating-point arithmetic, or trajectories. Validate transferred
 policies on the target backend.
@@ -69,6 +67,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
     LookAtConfig,
+    PhysicsConfig,
 )
 from so101_nexus.constants import COLOR_MAP
 from so101_nexus.gaze import (
@@ -268,7 +267,7 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
         "render_modes": ["rgb_array", "depth_array"],
         "autoreset_mode": AutoresetMode.SAME_STEP,
     }
-    _N_SUBSTEPS = 4
+    _N_SUBSTEPS = PhysicsConfig().substeps
     _VALID_CONTROL_MODES = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
 
     def __init__(  # noqa: PLR0915

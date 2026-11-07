@@ -2,16 +2,17 @@
 
 The scene wrapper emits a robot ``<include>`` followed by an ``<option>`` that
 overrides the vendored menagerie model's option (MuJoCo: the last top-level
-option wins). The historical CPU preset uses ``implicitfast`` and NoSlip;
-the Warp preset uses ``implicit`` without NoSlip. MuJoCo Warp supports both
-integrators but not NoSlip. An explicit ``PhysicsConfig`` overrides these
-presets before simulation or device conversion. Matching configuration does
+option wins). Both backends use the numerical defaults from ``PhysicsConfig``.
+An explicit ``PhysicsConfig`` overrides these defaults before simulation or
+device conversion. Matching configuration does
 not guarantee identical contacts or trajectories across backends.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
+from so101_nexus.config import PhysicsConfig
 
 if TYPE_CHECKING:
     import mujoco
@@ -26,16 +27,14 @@ def robot_material_ids(model: mujoco.MjModel) -> list[int]:
     ]
 
 
+_PHYSICS = PhysicsConfig()
 MUJOCO_SCENE_OPTION_XML = (
-    '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
-    'integrator="implicitfast" impratio="10" iterations="10" '
-    'ls_iterations="20" noslip_iterations="3"/>'
+    f'<option timestep="{_PHYSICS.timestep_s}" gravity="0 0 -9.81" cone="{_PHYSICS.cone}" '
+    f'integrator="{_PHYSICS.integrator}" impratio="{_PHYSICS.impratio}" '
+    f'iterations="{_PHYSICS.iterations}" ls_iterations="{_PHYSICS.ls_iterations}" '
+    f'tolerance="{_PHYSICS.tolerance}"/>'
 )
-
-WARP_SCENE_OPTION_XML = (
-    '<option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" '
-    'integrator="implicit" impratio="10" iterations="10" ls_iterations="20"/>'
-)
+WARP_SCENE_OPTION_XML = MUJOCO_SCENE_OPTION_XML
 
 # Shared ``<visual>`` block for every backend scene. ``offsamples`` raises the
 # offscreen multisample count above the MuJoCo default (4) to anti-alias geometry

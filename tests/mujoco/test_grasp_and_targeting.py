@@ -70,7 +70,7 @@ def _pinch_the_target(env, steps=60, quat=(1.0, 0.0, 0.0, 0.0)):
 _OVER_WIDE_HALF_SIZE = 0.05
 
 
-def _straddle_the_target(env, penetration=0.04):
+def _straddle_the_target(env, penetration=0.045):
     """Press both finger sets into the same face of an over-wide target.
 
     Reproduces the reported defect geometry: an object the jaw cannot close on
@@ -80,7 +80,7 @@ def _straddle_the_target(env, penetration=0.04):
     dominates that side's mean, which is still nowhere near opposing the
     gripper's.) The penetration is deep because MuJoCo's solve concentrates the
     reaction on a single contact until both finger sets are firmly loaded; below
-    about 0.03 m only one side carries force and the predicate is uninteresting.
+    about 0.04 m only one side carries force and the predicate is uninteresting.
     """
     half = _OVER_WIDE_HALF_SIZE
     fingers = list(env._gripper_geom_ids) + list(env._jaw_geom_ids)
