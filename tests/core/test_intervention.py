@@ -264,57 +264,33 @@ def test_timed_return_rejects_invalid_duration_before_motor_commands(duration_s)
     assert not bus.events
 
 
-@pytest.mark.parametrize("operation,value", [("cancel", 1), ("release", 0)])
+@pytest.mark.parametrize("operation,enabled", [("cancel", True), ("release", False)])
 @pytest.mark.parametrize("persistent", [False, True])
-def test_feetech_lock_acknowledgment_retries_are_bounded(monkeypatch, operation, value, persistent):
-    pytest.importorskip("scservo_sdk")
-    from lerobot.motors.feetech import FeetechMotorsBus
-
-    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
-
-    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
-    monkeypatch.setattr(bus.port_handler, "is_open", True)
+def test_serial_torque_requests_bounded_retries(
+    monkeypatch, serial_bus, operation, enabled, persistent
+):
+    bus, transport = serial_bus
     monkeypatch.setattr(
         bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 0.0)
     )
-    monkeypatch.setattr(bus, "sync_write", lambda *args, **kwargs: None)
-    monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 0))
-    lock_address = bus.model_ctrl_table["sts3215"]["Lock"][0]
-    torque_address = bus.model_ctrl_table["sts3215"]["Torque_Enable"][0]
-    writes = []
-    attempts = 0
+    monkeypatch.setattr(bus, "write", lambda *args, **kwargs: None)
+    calls = []
 
-    def write_packet(_port, motor_id, address, _length, data):
-        nonlocal attempts
-        writes.append((motor_id, address, data[0]))
-        if motor_id == 1 and address == lock_address:
-            attempts += 1
-            if persistent or attempts == 1:
-                return -6, 0
-        return 0, 0
+    def set_torque(ids, value, *, retries):
+        calls.append((ids, value, retries))
+        return {1: "Lock acknowledgment missing"} if persistent and 1 in ids else {}
 
-    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
+    transport.set_torque = set_torque
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
     if persistent:
-        with pytest.raises(ConnectionError, match=r"Lock.*after 4 tries"):
+        with pytest.raises(ConnectionError, match=r"after 4 tries.*Lock"):
             getattr(sync, operation)()
-        assert attempts == 4
         assert not sync.holding
-        if operation == "cancel":
-            assert (6, torque_address, 1) in writes
-            assert (6, lock_address, 1) in writes
     else:
         getattr(sync, operation)()
-        assert attempts == 2
-        assert sync.holding is (operation == "cancel")
-        for motor_id in range(1, 7):
-            assert (motor_id, torque_address, value) in writes
-            assert (motor_id, lock_address, value) in writes
-    assert all(
-        written == value
-        for _, address, written in writes
-        if address in (lock_address, torque_address)
-    )
+        assert sync.holding is enabled
+    expected_ids = [[index] for index in range(1, 7)] if enabled else [list(range(1, 7))]
+    assert calls == [(ids, enabled, 3) for ids in expected_ids]
 
 
 def test_leader_sync_interpolates_converts_offset_and_holds_until_explicit_release(monkeypatch):
@@ -1415,26 +1391,30 @@ def test_failed_hold_cannot_authorize_current_pose_takeover():
         session.close()
 
 
-@pytest.mark.parametrize("persistent", [False, True])
-def test_pose_read_retries_recover_transient_packets_and_bound_persistent_failures(
-    monkeypatch, persistent
-):
-    pytest.importorskip("scservo_sdk")
-    from lerobot.motors.feetech import FeetechMotorsBus
+@pytest.fixture
+def serial_bus():
+    from lerobot.motors import SerialMotorsBus
 
     from so101_nexus.lerobot_adapter.normalization import build_so101_motors
 
-    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
-    monkeypatch.setattr(bus.port_handler, "is_open", True)
-    attempts = []
+    bus = SerialMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
+    transport = SimpleNamespace()
+    bus._bus = transport
+    return bus, transport
 
-    def read_packet():
-        attempts.append(1)
-        return -6 if persistent or len(attempts) == 1 else 0
 
-    monkeypatch.setattr(bus.sync_reader, "txRxPacket", read_packet)
-    monkeypatch.setattr(bus.sync_reader, "isAvailable", lambda *args: True)
-    monkeypatch.setattr(bus.sync_reader, "getData", lambda *args: 2048)
+@pytest.mark.parametrize("persistent", [False, True])
+def test_pose_read_requests_bounded_retries(monkeypatch, serial_bus, persistent):
+    bus, transport = serial_bus
+    calls = []
+
+    def read(ids, register, *, retries):
+        calls.append((ids, register, retries))
+        if persistent:
+            raise OSError("read timeout")
+        return [(2048, 0)] * len(ids)
+
+    transport.sync_read_register_with_error = read
     monkeypatch.setattr(bus, "_normalize", lambda values: dict.fromkeys(values, 0.0))
     holds = []
     monkeypatch.setattr(bus, "write", lambda register, name, value, **kwargs: holds.append(name))
@@ -1444,15 +1424,14 @@ def test_pose_read_retries_recover_transient_packets_and_bound_persistent_failur
     if persistent:
         with pytest.raises(ConnectionError, match="after 4 tries"):
             sync.cancel()
-        assert len(attempts) == 4
         assert not sync.holding
         assert holds == enables == []
     else:
         sync.cancel()
-        assert len(attempts) == 2
         assert holds == list(SO101_JOINT_NAMES)
         assert enables == list(SO101_JOINT_NAMES)
         assert sync.holding
+    assert calls == [(list(range(1, 7)), "present_position", 3)]
 
 
 def test_hold_requires_acknowledged_targets_before_enabling_torque():
@@ -1479,66 +1458,53 @@ def test_hold_requires_acknowledged_targets_before_enabling_torque():
 
 
 @pytest.mark.parametrize("persistent", [False, True])
-def test_hold_goal_acknowledgments_retry_before_enabling_torque(monkeypatch, persistent):
-    pytest.importorskip("scservo_sdk")
-    from lerobot.motors.feetech import FeetechMotorsBus
-
-    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
-
-    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
-    monkeypatch.setattr(bus.port_handler, "is_open", True)
+def test_hold_goal_requests_bounded_retries_before_torque(monkeypatch, serial_bus, persistent):
+    bus, transport = serial_bus
     monkeypatch.setattr(
         bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 15.0)
     )
     monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 2048))
-    goal_address = bus.model_ctrl_table["sts3215"]["Goal_Position"][0]
-    goal_attempts = []
+    goals = []
     torque_enabled = []
     monkeypatch.setattr(
         bus, "enable_torque", lambda *, motors, **kwargs: torque_enabled.append(motors)
     )
 
-    def write_packet(_port, motor_id, address, _length, data):
-        assert address == goal_address
-        assert data == [0, 8]
-        goal_attempts.append(motor_id)
-        return (-6, 0) if motor_id == 1 and (persistent or goal_attempts.count(1) == 1) else (0, 0)
+    def write(motor_id, register, value, *, retries):
+        goals.append((motor_id, register, value, retries))
+        if persistent and motor_id == 1:
+            raise OSError("write timeout")
+        return 0
 
-    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
+    transport.write_register_with_error = write
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
     if persistent:
         with pytest.raises(ConnectionError, match=r"Goal_Position.*after 4 tries"):
             sync.cancel()
-        assert goal_attempts == [1, 1, 1, 1, 2, 3, 4, 5, 6]
         assert torque_enabled == list(SO101_JOINT_NAMES[1:])
         assert not sync.holding
     else:
         sync.cancel()
-        assert goal_attempts == [1, 1, 2, 3, 4, 5, 6]
         assert torque_enabled == list(SO101_JOINT_NAMES)
         assert sync.holding
+    assert goals == [(index, "goal_position", 2048, 3) for index in range(1, 7)]
 
 
 @pytest.mark.parametrize("persistent", [False, True])
-def test_alignment_transmission_retries_are_bounded(monkeypatch, persistent):
-    pytest.importorskip("scservo_sdk")
-    from lerobot.motors.feetech import FeetechMotorsBus
-
-    from so101_nexus.lerobot_adapter.normalization import build_so101_motors
-
-    bus = FeetechMotorsBus(port="/dev/null", motors=build_so101_motors(use_degrees=True))
-    monkeypatch.setattr(bus.port_handler, "is_open", True)
+def test_alignment_transmission_requests_bounded_retries(monkeypatch, serial_bus, persistent):
+    bus, transport = serial_bus
     monkeypatch.setattr(bus, "_unnormalize", lambda values: dict.fromkeys(values, 2048))
     monkeypatch.setattr(
         bus, "sync_read", lambda *args, **kwargs: dict.fromkeys(SO101_JOINT_NAMES, 0.0)
     )
-    attempts = []
+    calls = []
 
-    def write_packet():
-        attempts.append(1)
-        return -6 if persistent or len(attempts) == 1 else 0
+    def write(ids, register, values, *, retries):
+        calls.append((ids, register, values, retries))
+        if persistent:
+            raise OSError("write timeout")
 
-    monkeypatch.setattr(bus.sync_writer, "txPacket", write_packet)
+    transport.sync_write_register = write
     sync = SOLeaderSynchronizer(bus, wrist_roll_offset_deg=0)
     sync._initial = dict.fromkeys(SO101_JOINT_NAMES, 0.0)
     monkeypatch.setattr(sync, "cancel", lambda: None)
@@ -1546,10 +1512,9 @@ def test_alignment_transmission_retries_are_bounded(monkeypatch, persistent):
     if persistent:
         with pytest.raises(ConnectionError, match=r"Goal_Position.*after 4 tries"):
             sync.tick()
-        assert len(attempts) == 4
     else:
         assert not sync.tick()
-        assert len(attempts) == 2
+    assert calls == [(list(range(1, 7)), "goal_position", [2048] * 6, 3)]
 
 
 @pytest.mark.parametrize(
@@ -1573,9 +1538,7 @@ def test_wrist_alignment_keeps_equivalent_seam_pose_without_skipping_larger_erro
 
 
 def _calibrated_bus(monkeypatch):
-    pytest.importorskip("scservo_sdk")
-    from lerobot.motors import MotorCalibration
-    from lerobot.motors.feetech import FeetechMotorsBus
+    from lerobot.motors import MotorCalibration, SerialMotorsBus
 
     from so101_nexus.lerobot_adapter.normalization import build_so101_motors
 
@@ -1587,7 +1550,7 @@ def _calibrated_bus(monkeypatch):
     }
     calibration["wrist_roll"].range_min = 0
     calibration["wrist_roll"].range_max = 4095
-    bus = FeetechMotorsBus(
+    bus = SerialMotorsBus(
         port="/dev/null", motors=build_so101_motors(use_degrees=True), calibration=calibration
     )
     events = []
@@ -1667,39 +1630,41 @@ def test_timed_return_stalled_motor_reports_error_and_holds_measured_pose(monkey
     assert sync.holding
 
 
-def test_timed_return_uses_real_feetech_normalization_and_packet_serialization(monkeypatch):
+def test_timed_return_uses_real_serial_bus_normalization(monkeypatch):
     template, _, _ = _calibrated_bus(monkeypatch)
     bus = type(template)(port="/dev/null", motors=template.motors, calibration=template.calibration)
-    monkeypatch.setattr(bus.port_handler, "is_open", True)
     positions = {
         cal.id: int((cal.range_min + cal.range_max) / 2) for cal in bus.calibration.values()
     }
-    registers = {}
-    goal_address = bus.model_ctrl_table["sts3215"]["Goal_Position"][0]
-    torque_address = bus.model_ctrl_table["sts3215"]["Torque_Enable"][0]
+    torque_enabled = set()
     now = [0.0]
     monkeypatch.setattr(time, "monotonic", lambda: now[0])
 
-    def write_packet(port, motor_id, address, length, data):
-        value = sum(byte << (8 * index) for index, byte in enumerate(data))
-        registers[motor_id, address] = value
-        if address == goal_address:
-            positions[motor_id] = value
-        return 0, 0
-
-    def sync_packet():
-        assert bus.sync_writer.start_address == goal_address
-        assert bus.sync_writer.data_length == 2
-        for motor_id, data in bus.sync_writer.data_dict.items():
-            assert registers[motor_id, torque_address] == 1
-            positions[motor_id] = sum(byte << (8 * index) for index, byte in enumerate(data))
+    def write(motor_id, register, value, *, retries):
+        assert register == "goal_position"
+        assert retries == 3
+        positions[motor_id] = value
         return 0
 
-    monkeypatch.setattr(bus.packet_handler, "writeTxRx", write_packet)
-    monkeypatch.setattr(bus.sync_writer, "txPacket", sync_packet)
-    monkeypatch.setattr(bus.sync_reader, "txRxPacket", lambda: 0)
-    monkeypatch.setattr(
-        bus.sync_reader, "getData", lambda motor_id, address, length: positions[motor_id]
+    def sync_write(ids, register, values, *, retries):
+        assert register == "goal_position"
+        assert retries == 3
+        assert set(ids) <= torque_enabled
+        positions.update(zip(ids, values, strict=True))
+
+    def set_torque(ids, enabled, *, retries):
+        assert enabled
+        assert retries == 3
+        torque_enabled.update(ids)
+        return {}
+
+    bus._bus = SimpleNamespace(
+        write_register_with_error=write,
+        sync_write_register=sync_write,
+        sync_read_register_with_error=lambda ids, register, **kwargs: [
+            (positions[id_], 0) for id_ in ids
+        ],
+        set_torque=set_torque,
     )
     target = dict(
         zip(

@@ -17,15 +17,23 @@ SO101-Nexus treats the [LeRobot](https://github.com/huggingface/lerobot) ecosyst
 Every registered environment is published as a [LeRobot EnvHub](https://huggingface.co/docs/lerobot/en/envhub) package at [johnsutor/so101-nexus-envs](https://huggingface.co/johnsutor/so101-nexus-envs), so a LeRobot user reaches them with one call and no import of their own. The Hub files are shims over this library, so `pip install so101-nexus` remains the prerequisite:
 
 ```python
+from lerobot.envs.configs import HubEnvConfig
 from lerobot.envs.factory import make_env
 
-envs = make_env(
-    "johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
-    n_envs=4,
+config = HubEnvConfig(
+    hub_path="johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
     trust_remote_code=True,
+    use_native_batch=True,
+    make_env_kwargs={"episode_length": 300},
 )
+envs = make_env(config, n_envs=4)
 env = envs["MuJoCoPickLift-v1"][0]
 ```
+
+Set `use_native_batch=True` for SO101-Nexus CPU and Warp batches.
+LeRobot 0.7 otherwise requires an unwrapped Gymnasium sync or async vector environment.
+Pass environment settings through `make_env_kwargs`. LeRobot no longer forwards `HubEnvConfig` to the provider.
+For the root `env.py`, select a task with `make_env_kwargs={"env_id": "MuJoCoTouch-v1"}`.
 
 The Hub repository holds entry points only: one file per environment id under `envs/`, plus a root `env.py` serving `MuJoCoPickLift-v1`. Each file is a shim over `so101_nexus.envhub.make_env`, so the physics and reward code is whichever release you have installed rather than a copy living on the Hub. `requirements.txt` records the minimum version those shims need; LeRobot downloads only the named `.py` and does not install it for you. Publish an update with `python scripts/publish_envhub.py`.
 

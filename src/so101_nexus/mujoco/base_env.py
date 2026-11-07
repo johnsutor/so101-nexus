@@ -23,6 +23,7 @@ from so101_nexus.config import (
     ControlMode,
     EnvironmentConfig,
     LookAtConfig,
+    PhysicsConfig,
 )
 from so101_nexus.constants import sample_color
 from so101_nexus.gaze import (
@@ -190,7 +191,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
     _viewer: Any | None
     _VALID_CONTROL_MODES: frozenset[str] = frozenset(JOINT_CONTROL_MODES + EE_CONTROL_MODES)
     # Native 50 Hz control clock; explicit physics config overrides this per instance.
-    _N_SUBSTEPS = 4
+    _N_SUBSTEPS = PhysicsConfig().substeps
     # Memo for the @_observation_scoped readers, non-None only inside _observe.
     # A plain class-level None is safe here (unlike a mutable default): _observe
     # rebinds it per instance for the window and clears it back to None.

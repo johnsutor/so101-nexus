@@ -11,6 +11,18 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Upgrade Gradio to 6.31.0, MuJoCo Warp to 3.17.0, pytest to 9.2.0,
+  Hypothesis to 6.170.15, Ruff to 0.17.4, and ty to 0.0.95. Retain
+  LiteLLM 1.103.10 for compatibility with LeRobot 0.7's FileLock requirement.
+
+- Upgrade LeRobot to released 0.7.0 and Transformers to 5.22. Native DM0.5 no
+  longer needs a source archive. Simulator motor normalization uses
+  `SerialMotorsBus`. EnvHub setup uses `use_native_batch` and `make_env_kwargs`.
+  MolmoAct2 collection adapts the renamed Transformers cache-length method.
+
+- MuJoCo and Warp share grasp-oriented numerical defaults: 2.5 ms physics steps,
+  implicit integration, and matched solver settings. The 50 Hz command clock
+  stays unchanged, with eight physics steps per command instead of four.
 - MuJoCo environments now use native `mujoco.batch.Batch` CPU stepping through
   `gym.make_vec("MuJoCo...", ...)`, including LeRobot EnvHub. Requires MuJoCo 3.17
   or newer. `gym.make` and explicit sync/async vectorization remain available.
@@ -28,6 +40,13 @@ for the public-API and deprecation policy.
   inference from starting. The simulator resets from leader readback after return.
 
 ### Fixed
+
+- Fitted jaw-edge colliders cover visible pad surfaces previously outside the
+  collision boundary. Jaw contact response and cross-backend motion tests now
+  cover supported pickup, holding, direction changes, and release.
+- Stiffer gripper contacts reduce claw penetration into objects under load on
+  both backends. MuJoCo regression tests check cube retention and penetration
+  below 1.5 mm during lifting; Warp trajectories can differ.
 
 - Policy collection automatically returns the leader to rest with LeRobot IK
   after each completed or manually stopped episode, before review. Recorded

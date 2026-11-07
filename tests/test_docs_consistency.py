@@ -8,6 +8,7 @@ alone.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import tomllib
@@ -33,10 +34,12 @@ def _registered_env_ids() -> set[str]:
     return {prefix + task[0] for prefix in _BACKEND_PREFIXES.values() for task in _TASKS}
 
 
-def test_dm05_docs_use_native_hub_loading_and_the_pinned_dependency():
+def test_dm05_docs_use_native_hub_loading_and_released_dependencies():
     project = tomllib.loads(_read(ROOT / "pyproject.toml"))
-    source = project["tool"]["uv"]["sources"]["lerobot"][0]["url"]
-    assert source in _read(DOCS / "getting-started" / "installation.mdx")
+    assert "lerobot" not in project["tool"]["uv"]["sources"]
+    installation = _read(DOCS / "getting-started" / "installation.mdx")
+    assert 'pip install "so101-nexus[teleop,dm05]"' in installation
+    assert "huggingface/lerobot/archive/" not in installation
     teleop = _read(DOCS / "workflow" / "teleoperation.mdx")
     section = teleop.split("### DM0.5 SO101 Pick Cube", 1)[1].split("### Other SO101", 1)[0]
     command = re.search(r"```bash\n(.*?)```", section, re.DOTALL)
@@ -471,6 +474,9 @@ def test_physics_reference_covers_fields_and_runs_profile() -> None:
     section = match.group(1)
     documented = set(re.findall(r"^\| `([^`]+)` \|", section, re.MULTILINE))
     assert documented == {field.name for field in fields(PhysicsConfig)}
+    defaults = dict(re.findall(r"^\| `([^`]+)` \| `([^`]+)` \|", section, re.MULTILINE))
+    for field in fields(PhysicsConfig):
+        assert ast.literal_eval(defaults[field.name]) == field.default, field.name
     examples = re.findall(r"```python\n(.*?)```", section, re.DOTALL)
     assert examples
     namespace = {}
@@ -480,7 +486,7 @@ def test_physics_reference_covers_fields_and_runs_profile() -> None:
     assert isinstance(physics, PhysicsConfig)
     assert physics.substeps == 8
     assert physics.noslip_iterations == 0
-    assert physics.gripper_solimp == (0.99, 0.999, 0.001, 0.5, 2.0)
+    assert physics == PhysicsConfig()
 
 
 def test_policy_adapter_example_configures_default_cameras() -> None:
@@ -533,3 +539,20 @@ def test_entry_pages_link_to_canonical_references() -> None:
     assert "https://so101-nexus.com/docs/workflow/training" in examples
     assert "https://so101-nexus.com/docs/workflow/teleoperation" in examples
     assert not re.search(r"^#+ (?:Baseline hyperparameters|Results)", examples, re.MULTILINE)
+
+
+def test_documented_lerobot_release_matches_dependency_range():
+    from packaging.requirements import Requirement
+
+    project = tomllib.loads(_read(ROOT / "pyproject.toml"))
+    requirement = next(
+        Requirement(item)
+        for item in project["project"]["optional-dependencies"]["teleop"]
+        if Requirement(item).name == "lerobot"
+    )
+    for page in ("getting-started/installation.mdx", "workflow/teleoperation.mdx"):
+        text = _read(DOCS / page)
+        releases = re.findall(r"LeRobot (\d+\.\d+(?:\.\d+)?)", text)
+        releases += re.findall(r"lerobot\[[^\]]+\]==(\d+\.\d+\.\d+)", text)
+        assert releases, page
+        assert all(version in requirement.specifier for version in releases), page

@@ -31,6 +31,7 @@ from so101_nexus.env_ids import all_registered_env_ids
 from so101_nexus.envhub import DEFAULT_ENV_ID, EnvHubAdapter, make_env
 
 lerobot_utils = pytest.importorskip("lerobot.envs.utils")
+lerobot_envhub = pytest.importorskip("lerobot.sim.integrations.envhub")
 HubEnvConfig = pytest.importorskip("lerobot.envs.configs").HubEnvConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -325,17 +326,17 @@ def test_hub_package_ships_one_entry_point_per_registered_environment():
 
 @pytest.mark.parametrize("env_id", sorted(all_registered_env_ids()))
 def test_every_hub_entry_point_binds_its_environment_id(env_id):
-    module = lerobot_utils._load_module_from_path(str(ENVHUB_DIR / "envs" / f"{env_id}.py"))
+    module = lerobot_envhub._load_module_from_path(str(ENVHUB_DIR / "envs" / f"{env_id}.py"))
 
     assert module.make_env.keywords == {"env_id": env_id}
 
 
 def test_hub_entry_point_runs_through_the_lerobot_loader():
     """The published file, loaded and called exactly as LeRobot's EnvHub does."""
-    module = lerobot_utils._load_module_from_path(str(ENVHUB_DIR / "envs" / "MuJoCoTouch-v1.py"))
+    module = lerobot_envhub._load_module_from_path(str(ENVHUB_DIR / "envs" / "MuJoCoTouch-v1.py"))
 
-    result = lerobot_utils._call_make_env(module, n_envs=2, use_async_envs=False, cfg=None)
-    envs = lerobot_utils._normalize_hub_result(result)
+    result = lerobot_envhub._call_make_env(module, n_envs=2, use_async_envs=False, cfg=None)
+    envs = lerobot_envhub._normalize_hub_result(result)
 
     env = envs["MuJoCoTouch-v1"][0]
     try:
@@ -346,10 +347,10 @@ def test_hub_entry_point_runs_through_the_lerobot_loader():
 
 
 def test_root_hub_entry_point_serves_the_default_environment():
-    module = lerobot_utils._load_module_from_path(str(ENVHUB_DIR / "env.py"))
+    module = lerobot_envhub._load_module_from_path(str(ENVHUB_DIR / "env.py"))
 
-    envs = lerobot_utils._normalize_hub_result(
-        lerobot_utils._call_make_env(module, n_envs=1, use_async_envs=False, cfg=None)
+    envs = lerobot_envhub._normalize_hub_result(
+        lerobot_envhub._call_make_env(module, n_envs=1, use_async_envs=False, cfg=None)
     )
 
     try:
@@ -358,16 +359,39 @@ def test_root_hub_entry_point_serves_the_default_environment():
         lerobot_utils.close_envs(envs)
 
 
-def test_root_hub_entry_point_honors_a_config_task():
-    """The documented flow: root ``env.py`` plus a config whose ``task`` picks the env."""
-    module = lerobot_utils._load_module_from_path(str(ENVHUB_DIR / "env.py"))
-    cfg = HubEnvConfig(hub_path="johnsutor/so101-nexus-envs", task="MuJoCoMove-v1")
+def test_root_hub_entry_point_honors_make_env_kwargs():
+    """LeRobot 0.7 passes make_env_kwargs instead of forwarding its config."""
+    module = lerobot_envhub._load_module_from_path(str(ENVHUB_DIR / "env.py"))
 
-    envs = lerobot_utils._normalize_hub_result(
-        lerobot_utils._call_make_env(module, n_envs=1, use_async_envs=False, cfg=cfg)
+    envs = lerobot_envhub._normalize_hub_result(
+        lerobot_envhub._call_make_env(
+            module, n_envs=1, use_async_envs=False, cfg=None, env_id="MuJoCoMove-v1"
+        )
     )
 
     try:
         assert set(envs) == {"MuJoCoMove-v1"}
+    finally:
+        lerobot_utils.close_envs(envs)
+
+
+@pytest.mark.parametrize("n_envs", [1, 2])
+def test_lerobot_native_batch_config_preserves_options(monkeypatch, n_envs):
+    module = lerobot_envhub._load_module_from_path(str(ENVHUB_DIR / "env.py"))
+    monkeypatch.setattr(lerobot_envhub, "_load_hub_module", lambda *args: ("local", module))
+    config = HubEnvConfig(
+        hub_path="johnsutor/so101-nexus-envs",
+        trust_remote_code=True,
+        use_native_batch=True,
+        make_env_kwargs={"env_id": "MuJoCoTouch-v1", "episode_length": 2},
+    )
+    envs = config.create_envs(n_envs=n_envs)
+    try:
+        env = envs["MuJoCoTouch-v1"][0]
+        assert env.num_envs == n_envs
+        assert env.reset(seed=0)[0]["agent_pos"].shape == (n_envs, 6)
+        action = np.zeros((n_envs, 6), dtype=np.float32)
+        assert not env.step(action)[3].any()
+        assert env.step(action)[3].all()
     finally:
         lerobot_utils.close_envs(envs)

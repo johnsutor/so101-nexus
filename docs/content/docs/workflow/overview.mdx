@@ -69,9 +69,9 @@ consequences are handled for you, but you should know they exist.
 joint states, normalized by the environment's `_DELTA_ACTION_SCALE`. Do not switch control
 modes between record and train. See [Control Modes](/docs/concepts/control-modes).
 
-**Physics divergence.** Warp uses an implicit integrator with no noslip constraint, so a
-policy moved between backends may need light re-tuning. See
-[Backends](/docs/concepts/backends).
+**Physics transfer.** The backends share native physics defaults, but their contacts and trajectories can differ.
+Validate the transferred policy on the target backend.
+See [Backends](/docs/concepts/backends#physics-divergence) for the remaining differences and the grasp retention tests.
 
 ## Next
 
