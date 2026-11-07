@@ -11,7 +11,10 @@ No production physics defaults changed in this investigation. Three parallel inv
 Run from the repository root with the development dependencies installed:
 
 ```bash
-uv run python scripts/grasp_fidelity_experiment.py --hold-s 30 --output reports/grasp_fidelity_results.json
+uv run python scripts/grasp_fidelity_experiment.py --hold-s 30 \
+  --profiles baseline impratio_1000 noslip_3 half_timestep tight_solver \
+  impedance_099 condim_3 condim_4 half_torque friction_03 object_friction_01 \
+  --output reports/grasp_fidelity_results.json
 ```
 
 This script reuses the existing supported-pick fixture and movement helpers. Each case starts with a fresh environment and seed 3. Cubes are supported during 100 control frames of closure, then lifted 10 cm, held for 30 simulated seconds, moved through x/y reversals, and released by opening followed by an 8 cm downward retreat. The 20 ms control period remains fixed when halving the physics timestep. Profiles are applied before reset. Finger IDs are captured before contact-dimension ablations, preserving the original grasp masks.
@@ -48,6 +51,48 @@ The stationary-hold endpoint metric changes the ranking. The following displacem
 | Timestep 1.25 ms | 0.175 mm | 0.075 mm | 1.007 mm | 0.364 mm |
 
 NoSlip is strongest for this hold endpoint metric, despite mixed maximum-translation results. Higher `impratio` improves hold drift in all four cases and remains a candidate for shared-backend validation. Half timestep reduces maximum relative translation in these four trajectories but does not consistently improve stationary drift. These endpoint distances include continued settling and do not bound excursions within the hold. Neither observable replaces contact-frame tangential velocity or object orientation traces.
+
+## Follow-up: individual and combined settings
+
+At the user's request, `scripts/grasp_fidelity_experiment.py` now includes the combined profile. A fresh 16-case experiment reran baseline and each individual change before testing the combination. The four scenarios, seed, 30-second hold, control period, movement, and release protocol are identical to the original study. Production defaults remain unchanged.
+
+```bash
+uv run python scripts/grasp_fidelity_experiment.py --hold-s 30 \
+  --profiles baseline impratio_1000 half_timestep impratio_1000_half_timestep \
+  --output reports/grasp_fidelity_factorial_results.json
+```
+
+The tables below come from that script and `grasp_fidelity_factorial_results.json`. Each cell lists maximum relative translation / stationary-hold endpoint drift, in millimeters. The baseline and individual-setting physical metrics reproduced the earlier run exactly.
+
+| Settings | 19.05 mm / 10 g | 24 mm / 100 g | 40 mm / 100 g | Rotated 24 mm / 100 g |
+|---|---:|---:|---:|---:|
+| Baseline: ratio 100, timestep 2.5 ms | 1.614 / 1.667 | 2.010 / 0.065 | 2.677 / 0.976 | 1.957 / 0.291 |
+| Ratio 1000 only | 1.191 / 0.580 | 1.974 / 0.052 | 2.001 / 0.162 | 1.950 / 0.160 |
+| Timestep 1.25 ms only | 1.349 / 0.175 | 1.185 / 0.075 | 2.065 / 1.007 | 1.173 / 0.364 |
+| Ratio 1000 and timestep 1.25 ms | 1.348 / 0.261 | 1.235 / 0.016 | 1.326 / 0.198 | 1.073 / 0.243 |
+
+| Settings | Worst maximum translation | Worst hold drift | Worst sampled penetration | Total trajectory wall time |
+|---|---:|---:|---:|---:|
+| Baseline | 2.677 mm | 1.667 mm | 0.849 mm | 4.76 s |
+| Ratio 1000 only | 2.001 mm | 0.580 mm | 0.908 mm | 4.83 s |
+| Timestep 1.25 ms only | 2.065 mm | 1.007 mm | 0.657 mm | 6.11 s |
+| Both | 1.348 mm | 0.261 mm | 0.696 mm | 6.51 s |
+
+All 16 cases acquired, had zero lost-grasp samples during loaded movement, and released after opening and retreat. All MuJoCo warning counters remained zero. The minimum post-lift height gain was at least 88 mm in every case. Relative to baseline, the combination reduced maximum translation by 16-50% and hold endpoint drift by 17-84%. Its worst maximum translation and worst hold drift across these scenarios were approximately 50% and 84% lower, respectively.
+
+The combination is the strongest candidate here for reducing worst-case translation and hold drift together. It is not uniformly better than either setting alone: ratio 1000 alone has less translation for the smallest cube and less hold drift for the largest and rotated cubes. Half timestep alone has less translation for the axis-aligned 24 mm cube and less drift for the smallest cube. Nonlinear contacts make the effects non-additive. Maximum translation also includes the hold, so these aggregates do not isolate movement transients.
+
+For a low-cost first change, ratio 1000 alone remains attractive. For the best worst-case values in this small study, use the combined settings as an opt-in candidate:
+
+```python
+from so101_nexus import PhysicsConfig, PickConfig
+
+config = PickConfig(physics=PhysicsConfig(impratio=1000, timestep_s=0.00125))
+```
+
+The combined run took approximately 37% more trajectory wall time than baseline in this single sequential desktop measurement. This includes control and diagnostic overhead, excludes scene construction/reset, and is not a repeated physics-only benchmark. These are deterministic CPU MuJoCo results, not hardware or Warp validation. Retain the current defaults until the combination is checked on the target backend and a broader set of acquisition and load scenarios.
+
+Validation for this follow-up: the existing MuJoCo loaded-grasp and shared physics-config suites passed 77 tests. `make format lint typecheck` passed formatting and lint, then reported the same 24 errors in unchanged library files. Scoped type checking passed for the modified experiment runner. No public API or production behavior changed.
 
 ## Physical fidelity gaps
 

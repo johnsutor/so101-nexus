@@ -29,6 +29,7 @@ PROFILES = {
     "impratio_1000": PhysicsConfig(impratio=1000),
     "noslip_3": PhysicsConfig(noslip_iterations=3),
     "half_timestep": PhysicsConfig(timestep_s=0.00125),
+    "impratio_1000_half_timestep": PhysicsConfig(impratio=1000, timestep_s=0.00125),
     "tight_solver": PhysicsConfig(iterations=100, tolerance=1e-10),
     "impedance_099": PhysicsConfig(gripper_solimp=(0.99, 0.999, 0.001, 0.5, 2)),
     **dict.fromkeys(

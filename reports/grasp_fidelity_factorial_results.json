@@ -1,0 +1,536 @@
+{
+  "mujoco": "3.17.0",
+  "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+  "hold_s": 30.0,
+  "seed": 3,
+  "results": [
+    {
+      "profile": "baseline",
+      "half_size_m": 0.009525,
+      "angle_deg": 0,
+      "mass_kg": 0.01,
+      "hold_drift_m": 0.0016669133452806937,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0005128323996130515,
+        "normal_force_sum_n": 83.84544326562568,
+        "contact_count": 20,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0016136691378728176,
+      "hold_slip_end_m": 0.001073076342116246,
+      "max_penetration_m": 0.000848784330422071,
+      "min_lift_m": 0.08907416896330209,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 424.15085883472415,
+      "wall_s": 1.372321628005011,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "baseline",
+      "half_size_m": 0.012,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 6.484325363574345e-05,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00020243017095980293,
+        "normal_force_sum_n": 79.33041130151054,
+        "contact_count": 10,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0020102812524371407,
+      "hold_slip_end_m": 0.001024966550365984,
+      "max_penetration_m": 0.00023782578084974586,
+      "min_lift_m": 0.09033515908846507,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 80.4985831897244,
+      "wall_s": 1.1181933560001198,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "baseline",
+      "half_size_m": 0.02,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.0009755186561034027,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00037558693969627773,
+        "normal_force_sum_n": 118.09821900694276,
+        "contact_count": 5,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.002677404789633299,
+      "hold_slip_end_m": 0.0019195965136604852,
+      "max_penetration_m": 0.0004123228812569685,
+      "min_lift_m": 0.09553964589462748,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 138.00720908101607,
+      "wall_s": 1.2101100099971518,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "baseline",
+      "half_size_m": 0.012,
+      "angle_deg": 45,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.0002911372202244499,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0003190377247754093,
+        "normal_force_sum_n": 96.55353434741257,
+        "contact_count": 8,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0019572026256360294,
+      "hold_slip_end_m": 0.0009128879913287178,
+      "max_penetration_m": 0.0004139104388691293,
+      "min_lift_m": 0.09366601050403758,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 113.64801520226993,
+      "wall_s": 1.062467645999277,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000",
+      "half_size_m": 0.009525,
+      "angle_deg": 0,
+      "mass_kg": 0.01,
+      "hold_drift_m": 0.0005798508231817138,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0006145330780739308,
+        "normal_force_sum_n": 116.98866094462751,
+        "contact_count": 15,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0011911182322496305,
+      "hold_slip_end_m": 0.000441846437771643,
+      "max_penetration_m": 0.0009083407579652269,
+      "min_lift_m": 0.08905323540252584,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 534.5135503406266,
+      "wall_s": 1.4578815519926138,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000",
+      "half_size_m": 0.012,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 5.195095916819995e-05,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00021978131896924842,
+        "normal_force_sum_n": 78.64641117450665,
+        "contact_count": 11,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.001974409965203838,
+      "hold_slip_end_m": 0.0009663364594473167,
+      "max_penetration_m": 0.0002867615299576847,
+      "min_lift_m": 0.0904780353521388,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 80.7552594357948,
+      "wall_s": 1.2083685790130403,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000",
+      "half_size_m": 0.02,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.00016194923701068914,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0003792468575247103,
+        "normal_force_sum_n": 117.78830856208509,
+        "contact_count": 5,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.002000514336210761,
+      "hold_slip_end_m": 0.001081980904071051,
+      "max_penetration_m": 0.00039655911042043966,
+      "min_lift_m": 0.09633872774527252,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 120.85070667389331,
+      "wall_s": 0.9853145689994562,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000",
+      "half_size_m": 0.012,
+      "angle_deg": 45,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.0001596707902496274,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0003304194399201149,
+        "normal_force_sum_n": 90.7040722913589,
+        "contact_count": 8,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0019497541912981916,
+      "hold_slip_end_m": 0.0008826451454351757,
+      "max_penetration_m": 0.00038058824576442445,
+      "min_lift_m": 0.0938524285295691,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 112.5174232319241,
+      "wall_s": 1.1752049780043308,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "half_timestep",
+      "half_size_m": 0.009525,
+      "angle_deg": 0,
+      "mass_kg": 0.01,
+      "hold_drift_m": 0.000174527509579633,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0006364995217519661,
+        "normal_force_sum_n": 79.66669034079534,
+        "contact_count": 22,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0013485709699297133,
+      "hold_slip_end_m": 0.0007865551056766166,
+      "max_penetration_m": 0.00065709867641441,
+      "min_lift_m": 0.08816280621450281,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 81.13265092792386,
+      "wall_s": 1.8000692960049491,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "half_timestep",
+      "half_size_m": 0.012,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 7.534203225239353e-05,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00020148981567817974,
+        "normal_force_sum_n": 79.36256575286835,
+        "contact_count": 10,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0011850024318783444,
+      "hold_slip_end_m": 0.0006874522345897152,
+      "max_penetration_m": 0.0002360564643696134,
+      "min_lift_m": 0.09050691472993413,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 80.32599186400648,
+      "wall_s": 1.4225169279961847,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "half_timestep",
+      "half_size_m": 0.02,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.001006842924193895,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00037491967613271875,
+        "normal_force_sum_n": 118.57705396747892,
+        "contact_count": 5,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0020649551177030915,
+      "hold_slip_end_m": 0.0016855284166003414,
+      "max_penetration_m": 0.00039787606610301,
+      "min_lift_m": 0.09567208873184571,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 136.52323139040206,
+      "wall_s": 1.592801518010674,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "half_timestep",
+      "half_size_m": 0.012,
+      "angle_deg": 45,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.00036387268959673936,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.00033834543747066043,
+        "normal_force_sum_n": 101.32455965319303,
+        "contact_count": 7,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0011729633908656564,
+      "hold_slip_end_m": 0.0007076373446422752,
+      "max_penetration_m": 0.0004093603774508213,
+      "min_lift_m": 0.09368645694027268,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 115.75949230037686,
+      "wall_s": 1.2995691550022457,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000_half_timestep",
+      "half_size_m": 0.009525,
+      "angle_deg": 0,
+      "mass_kg": 0.01,
+      "hold_drift_m": 0.00026098152925904563,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0006524370696344127,
+        "normal_force_sum_n": 79.67794964083129,
+        "contact_count": 20,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0013476585505819497,
+      "hold_slip_end_m": 0.0007077262857238119,
+      "max_penetration_m": 0.0006960360094890674,
+      "min_lift_m": 0.08840678437301121,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 81.62788345983178,
+      "wall_s": 2.205060806008987,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000_half_timestep",
+      "half_size_m": 0.012,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 1.6104784793109896e-05,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.000202344139040964,
+        "normal_force_sum_n": 79.73051053563997,
+        "contact_count": 10,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0012352065594136508,
+      "hold_slip_end_m": 0.0006761732848675855,
+      "max_penetration_m": 0.00023055096730621662,
+      "min_lift_m": 0.09057410709925502,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 80.83667809419009,
+      "wall_s": 1.502060464990791,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000_half_timestep",
+      "half_size_m": 0.02,
+      "angle_deg": 0,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.0001976576257990968,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0003791547044060354,
+        "normal_force_sum_n": 118.06364467940115,
+        "contact_count": 5,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.001325982833997534,
+      "hold_slip_end_m": 0.0008340111094087912,
+      "max_penetration_m": 0.0003879761132931051,
+      "min_lift_m": 0.09647769176406065,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 119.8989438132823,
+      "wall_s": 1.2323771459923591,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "profile": "impratio_1000_half_timestep",
+      "half_size_m": 0.012,
+      "angle_deg": 45,
+      "mass_kg": 0.1,
+      "hold_drift_m": 0.0002428858270021209,
+      "acquired": true,
+      "acquisition": {
+        "penetration_m": 0.0003541986030144833,
+        "normal_force_sum_n": 100.98636360720045,
+        "contact_count": 7,
+        "effective_mu": [
+          1.0
+        ]
+      },
+      "max_slip_m": 0.0010728878544537508,
+      "hold_slip_end_m": 0.0005248046333184238,
+      "max_penetration_m": 0.00037100486252059485,
+      "min_lift_m": 0.09401995629152018,
+      "lost_samples": 0,
+      "released": true,
+      "max_normal_force_sum_n": 116.51361785384424,
+      "wall_s": 1.571083990012994,
+      "warnings": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}
