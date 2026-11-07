@@ -256,7 +256,7 @@ def test_native_molmoact2_replays_one_action_per_tick_and_resets_chunks(monkeypa
     generations = []
     monkeypatch.setattr(MolmoAct2Policy, "_load_hf_model", lambda self: None)
 
-    def predict(self, batch):
+    def predict(self, batch, *, noise=None):
         generations.append(batch)
         return torch.arange(30).reshape(1, 30, 1).expand(1, 30, 6) + 100 * len(generations)
 

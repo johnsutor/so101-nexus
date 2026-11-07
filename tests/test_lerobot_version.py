@@ -2,47 +2,45 @@
 
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from packaging.requirements import Requirement
 
 
-def test_dm05_extra_pins_native_lerobot_and_secure_transformers():
+def test_lerobot_07_extras_use_released_policy_dependencies():
     root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((root / "pyproject.toml").read_text())
-    dependencies = project["project"]["optional-dependencies"]["dm05"]
-    requirements = {Requirement(item).name: Requirement(item) for item in dependencies}
-    assert project["tool"]["uv"]["sources"]["lerobot"] == [
-        {
-            "url": (
-                "https://github.com/huggingface/lerobot/archive/"
-                "2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz"
-            ),
-            "extra": "dm05",
-        }
-    ]
-    assert requirements["lerobot"].extras == {"peft-dep"}
-    assert "5.10.0" in requirements["transformers"].specifier
-    assert "5.5.4" not in requirements["transformers"].specifier
-
-
-def test_lerobot_061_includes_dataset_dependencies_and_opt_in_molmoact2():
-    project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
     extras = project["project"]["optional-dependencies"]
-    requirement = "lerobot[dataset,feetech,placo-dep]>=0.6.1,<0.7"
-    assert requirement in extras["teleop"]
-    assert (
-        "lerobot[dataset,feetech,peft-dep,placo-dep,scipy-dep]>=0.6.1,<0.7"
-        in project["dependency-groups"]["test"]
-    )
-    assert "lerobot[peft-dep,scipy-dep]>=0.6.1,<0.7" in extras["molmoact2"]
-    assert not any("git+" in dependency for dependency in extras["molmoact2"])
+    expected = {
+        "teleop": {"dataset", "feetech", "placo-dep"},
+        "molmoact2": {"molmoact2"},
+        "dm05": {"dm05", "peft-dep"},
+        "test": {"dataset", "feetech", "molmoact2", "dm05", "placo-dep"},
+    }
+    for name, lerobot_extras in expected.items():
+        dependencies = project["dependency-groups"]["test"] if name == "test" else extras[name]
+        requirement = next(
+            Requirement(item) for item in dependencies if Requirement(item).name == "lerobot"
+        )
+        assert requirement.extras == lerobot_extras
+        assert "0.7.0" in requirement.specifier
+        assert "0.6.1" not in requirement.specifier
+        assert "0.8.0" not in requirement.specifier
+    assert "lerobot" not in project["tool"]["uv"]["sources"]
+    lock = tomllib.loads((root / "uv.lock").read_text())
+    packages = [package for package in lock["package"] if package["name"] == "lerobot"]
+    assert len(packages) == 1
+    assert packages[0]["version"] == "0.7.0"
+    assert "registry" in packages[0]["source"]
 
 
-def test_molmoact2_transformers_requirements_exclude_vulnerable_releases():
+def test_transformers_requirements_match_lerobot_07():
     root = Path(__file__).resolve().parents[1]
     project = tomllib.loads((root / "pyproject.toml").read_text())
     for dependencies in (
         project["project"]["optional-dependencies"]["molmoact2"],
+        project["project"]["optional-dependencies"]["dm05"],
         project["dependency-groups"]["test"],
     ):
         requirement = next(
@@ -50,10 +48,9 @@ def test_molmoact2_transformers_requirements_exclude_vulnerable_releases():
             for dependency in dependencies
             if Requirement(dependency).name == "transformers"
         )
-        assert "5.5.4" not in requirement.specifier
-        assert "5.8.1" not in requirement.specifier
-        assert "5.10.0" in requirement.specifier
-        assert "5.11.0" not in requirement.specifier
+        assert "5.22.0" in requirement.specifier
+        assert "5.10.0" not in requirement.specifier
+        assert "5.23.0" not in requirement.specifier
     lock = tomllib.loads((root / "uv.lock").read_text())
     transformers = next(package for package in lock["package"] if package["name"] == "transformers")
     assert transformers["version"] in requirement.specifier
@@ -68,6 +65,9 @@ def test_secure_transformers_runs_molmoact2_visual_cached_and_continuous_inferen
         MolmoAct2ForConditionalGeneration,
     )
 
+    from so101_nexus.policy_adapters.collection import _configure_molmoact2_cache
+
+    _configure_molmoact2_cache()
     config = MolmoAct2Config(
         text_config={
             "hidden_size": 16,
@@ -136,3 +136,16 @@ def test_secure_transformers_runs_molmoact2_visual_cached_and_continuous_inferen
     assert cached.logits.shape == (1, 1, 32)
     assert actions.shape == (1, 2, 6)
     assert all(torch.isfinite(value).all() for value in (result.logits, cached.logits, actions))
+
+
+@pytest.mark.parametrize("length", [-1, 16])
+@pytest.mark.parametrize("method", ["get_max_cache_shape", "get_max_length"])
+def test_molmoact2_cache_supports_legacy_and_current_lengths(length, method):
+    from lerobot.policies.molmoact2.molmoact2_hf_model import modeling_molmoact2
+
+    from so101_nexus.policy_adapters.collection import _configure_molmoact2_cache
+
+    _configure_molmoact2_cache()
+    cache = SimpleNamespace(**{method: lambda: length})
+    assert modeling_molmoact2._cache_max_len_int(cache) == length
+    assert modeling_molmoact2._cache_max_len_int(None) == -1
