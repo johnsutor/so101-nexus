@@ -1,0 +1,32 @@
+{
+  "script": "scripts/grasp_geometry_audit.py",
+  "revision": "880608d^",
+  "mujoco_version": "3.17.0",
+  "grid_m": 0.0005,
+  "probe_radius_m": 1e-07,
+  "metric": "signed visible-surface depth in collider union, not aperture error",
+  "surfaces": {
+    "gripper": {
+      "samples": 1116,
+      "maximum_uncovered_gap_mm": 1.6629756196126344,
+      "surface_depth_mm": {
+        "minimum": -1.6629756196126344,
+        "median": 0.029055530800452527,
+        "p95": 0.2201020843104553,
+        "maximum": 3.7108262720683607
+      },
+      "fraction_surface_depth_over_0_3_mm": 0.02867383512544803
+    },
+    "moving_jaw_so101_v1": {
+      "samples": 993,
+      "maximum_uncovered_gap_mm": 1.6512845137228949,
+      "surface_depth_mm": {
+        "minimum": -1.6512845137228949,
+        "median": -1.896030858358766e-09,
+        "p95": 0.1910064104166163,
+        "maximum": 3.037874767111882
+      },
+      "fraction_surface_depth_over_0_3_mm": 0.012084592145015106
+    }
+  }
+}
