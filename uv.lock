@@ -369,30 +369,30 @@ wheels = [
 
 [[package]]
 name = "boto3"
-version = "1.43.93"
+version = "1.43.126"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "botocore" },
     { name = "jmespath" },
     { name = "s3transfer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/37/7a09d8320685b3b8c8a014e392e7595025d00965c46c5f410797905fab7a/boto3-1.43.93.tar.gz", hash = "sha256:196bfc8b4c9cd5505f9f7b963e30956db3a00fd47e20dd0ee3574a243c1fb212", size = 112752, upload-time = "2026-09-11T19:23:03.484Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/0a/e4f8bc0cfa5822cacfd01d7be0e991faa3405440248d7db338efe11b6daa/boto3-1.43.126.tar.gz", hash = "sha256:5fda4a3dd2782c134a01d1678911962c2860dd8de8cd10bef168ba1507b371a9", size = 112664, upload-time = "2026-11-06T20:48:14.366Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/68/f8f661b9e68daba4f775bfa1e750732ec52fc89b32d55f300aef530e1d62/boto3-1.43.93-py3-none-any.whl", hash = "sha256:3c948fe231490d446bf90bf3322d1452632107329d3683b37d88b7399bf481a0", size = 140022, upload-time = "2026-09-11T19:23:01.995Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/e8/52f797a9cb81773c828de5508353a16405666d18f522db08291ca92ecc37/boto3-1.43.126-py3-none-any.whl", hash = "sha256:dd701a973b02a73930e546a6a15d13edbfbedc3180bb3d55b0a88678c284ccd6", size = 140043, upload-time = "2026-11-06T20:48:11.846Z" },
 ]
 
 [[package]]
 name = "botocore"
-version = "1.43.93"
+version = "1.43.126"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jmespath" },
     { name = "python-dateutil" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/a0/2ce10897323d67dd85de6190fdee159013a75741d1dc48b74d4815ec0592/botocore-1.43.93.tar.gz", hash = "sha256:82da355d18a7f784347b00444be33942834651f31b6c5ffef49999cd47364c5e", size = 16103276, upload-time = "2026-09-11T19:22:58.933Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/3d/c76e2be7d71ed9e47d5b27f735443fca7bdbb330bae3c8da88fd19846495/botocore-1.43.126.tar.gz", hash = "sha256:96996af07d8b703c3cdf44863f69c0b4b8b2d1cb6976c641986ced3e38c072f3", size = 16533421, upload-time = "2026-11-06T20:48:08.5Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/7e/f858c401f32d980f924c8f8328b62fab463313834a9ad2326f44613b97ec/botocore-1.43.93-py3-none-any.whl", hash = "sha256:3ca57bb5d26d88b554a74de708a5c991f45306436c91aacca931252d1d4d54ff", size = 15794156, upload-time = "2026-09-11T19:22:55.964Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/e2/c51360cea33895b187f50603f1abcababe76a68f05de273d47f0293c6f42/botocore-1.43.126-py3-none-any.whl", hash = "sha256:2f2239a47025a2fa173cd145ab8803ac02b76114864bf5b66475ff1cb88e6b0a", size = 16235818, upload-time = "2026-11-06T20:48:04.454Z" },
 ]
 
 [[package]]
@@ -435,11 +435,11 @@ wheels = [
 
 [[package]]
 name = "certifi"
-version = "2026.7.22"
+version = "2026.10.23"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz", hash = "sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55", size = 138112, upload-time = "2026-07-22T03:35:12.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/11/b524cbd9bbdaca58608e4cf4053fd463417549e1959fa8d3aa18319f9555/certifi-2026.10.23.tar.gz", hash = "sha256:a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd", size = 136225, upload-time = "2026-10-23T11:36:16.478Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl", hash = "sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775", size = 136983, upload-time = "2026-07-22T03:35:11.276Z" },
+    { url = "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", hash = "sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", size = 135082, upload-time = "2026-10-23T11:36:14.763Z" },
 ]
 
 [[package]]
@@ -1109,7 +1109,7 @@ version = "4.8.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dill" },
-    { name = "filelock" },
+    { name = "filelock", version = "4.2.9", source = { registry = "https://pypi.org/simple" } },
     { name = "fsspec", extra = ["http"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -1135,18 +1135,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/da/93/84fa12f2dc341f8cf5f022ee09e109961055749df2d0c75c5f98746cfe6c/decorator-4.4.2.tar.gz", hash = "sha256:e3a62f0520172440ca0dcc823749319382e377f37f140a0b99ef45fecb84bfe7", size = 33629, upload-time = "2020-02-29T05:24:43.312Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/1b/72a1821152d07cf1d8b6fce298aeb06a7eb90f4d6d41acec9861e7cc6df0/decorator-4.4.2-py2.py3-none-any.whl", hash = "sha256:41fa54c2a0cc4ba648be4fd43cff00aedf5b9465c9bf18d64325bc225f08f760", size = 9239, upload-time = "2020-02-29T05:24:45.993Z" },
-]
-
-[[package]]
-name = "deepdiff"
-version = "8.6.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "orderly-set" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/89/50/767448e792d41bfb6094ee317a355c1cb221dca24b2e178e2203bbea2a77/deepdiff-8.6.2.tar.gz", hash = "sha256:186dcbd181e4d76cef11ab05f802d0056c5d6083c5a6748c1473e9d7481e183e", size = 634860, upload-time = "2026-03-18T17:16:33.785Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/5f/c52bd1255db763d0cdcb7084d2e90c42119cb229302c56bdf1d0aa78abd2/deepdiff-8.6.2-py3-none-any.whl", hash = "sha256:4d22034a866c3928303a9332c279362f714192d9305bac17c498720d095fd1b4", size = 91979, upload-time = "2026-03-18T17:16:32.171Z" },
 ]
 
 [[package]]
@@ -1330,21 +1318,59 @@ wheels = [
 ]
 
 [[package]]
-name = "feetech-servo-sdk"
-version = "1.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyserial" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/8e/c53d6f9a8bf3a86a635b58eeb675723f1b040f1665a0681467756c8989aa/feetech-servo-sdk-1.0.0.tar.gz", hash = "sha256:d4d3832e4b1b22a8222133a414db9f868224c2fb639426a1b11d96ddfe84e69c", size = 8392, upload-time = "2022-11-08T03:44:45.269Z" }
-
-[[package]]
 name = "filelock"
 version = "3.32.6"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux'",
+    "python_full_version < '3.14' and sys_platform == 'linux'",
+    "python_full_version >= '3.14' and sys_platform != 'linux'",
+    "python_full_version < '3.14' and sys_platform != 'linux'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/38/46/126b1831dca12060d4a8296bf9c4fe5c93c4f22197fa239cb0cc82042bba/filelock-3.32.6.tar.gz", hash = "sha256:a3f55a18af3652a94d8f47d6055df434f254ca1d02ef2524850c6d249ca2512c", size = 225172, upload-time = "2026-09-08T22:57:11.528Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/06/4f138f618dbea66803291274f228f01daf29f306fe8b96bc30dab765df75/filelock-3.32.6-py3-none-any.whl", hash = "sha256:3f16ecd0117feae0dfc147e8c62eb5daeccd8bd800378c3ddf416de9b4feb6b1", size = 100189, upload-time = "2026-09-08T22:57:10.182Z" },
+]
+
+[[package]]
+name = "filelock"
+version = "4.2.9"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.13' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version < '3.13' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version < '3.13' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/1d/d730c664fcb4f1d264a722722a3134cf0881854f73c1fd58abf87572f232/filelock-4.2.9.tar.gz", hash = "sha256:96530b7c538d4ea08493ab067247aab7948c54d8cd622cce711c97cccc5d9896", size = 663116, upload-time = "2026-11-04T18:37:10.014Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/05/76184fe08339723d643ab47887a8e4de8f2921ca4e008617ab7490af7857/filelock-4.2.9-py3-none-any.whl", hash = "sha256:a379c50a729e5b68c8519a4d26489f755d9769960a236ecd838190e2a78db2e9", size = 164734, upload-time = "2026-11-04T18:37:08.273Z" },
 ]
 
 [[package]]
@@ -1717,7 +1743,8 @@ version = "1.33.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "filelock" },
+    { name = "filelock", version = "3.32.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "filelock", version = "4.2.9", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "fsspec" },
     { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "httpx" },
@@ -2090,12 +2117,14 @@ wheels = [
 
 [[package]]
 name = "lerobot"
-version = "0.6.2"
-source = { url = "https://github.com/huggingface/lerobot/archive/2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz" }
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cmake" },
     { name = "draccus" },
     { name = "einops" },
+    { name = "filelock", version = "4.2.9", source = { registry = "https://pypi.org/simple" } },
+    { name = "fsspec" },
     { name = "gymnasium" },
     { name = "huggingface-hub" },
     { name = "numpy" },
@@ -2112,7 +2141,10 @@ dependencies = [
     { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "tqdm" },
 ]
-sdist = { hash = "sha256:6fec5a5e11713a85738a5a2d74b9c6c721a2a5a54b6239e42cec4ad4120e7368" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/75/8a71facc037271c10d3da257ae8d4cf4c907ed495846f4d142215a5403fc/lerobot-0.7.0.tar.gz", hash = "sha256:1fe5613ee2e336e76902348b85b3f691c7e9a0f27b9da2fa703291280a610fb2", size = 2151905, upload-time = "2026-11-05T17:13:36.098Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/4e/0734cf66040c30861931ad849b2d1e52f4bf0ad6a2d04499e7aa800e355c/lerobot-0.7.0-py3-none-any.whl", hash = "sha256:9610020fc4710db19d549233459a30625362b02c65f7e7d81a19d7ef2ca7eb76", size = 2603217, upload-time = "2026-11-05T17:13:33.471Z" },
+]
 
 [package.optional-dependencies]
 dataset = [
@@ -2124,10 +2156,17 @@ dataset = [
     { name = "torchcodec", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-dm05') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-molmoact2') or (sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'darwin' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform == 'win32' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "torchcodec", version = "0.11.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
 ]
+dm05 = [
+    { name = "transformers" },
+]
 feetech = [
-    { name = "deepdiff" },
-    { name = "feetech-servo-sdk" },
     { name = "pyserial" },
+    { name = "rustypot" },
+]
+molmoact2 = [
+    { name = "peft" },
+    { name = "scipy" },
+    { name = "transformers" },
 ]
 peft-dep = [
     { name = "peft" },
@@ -2137,280 +2176,100 @@ placo-dep = [
     { name = "cmeel-urdfdom" },
     { name = "placo" },
 ]
-scipy-dep = [
-    { name = "scipy" },
-]
 
-[package.metadata]
-requires-dist = [
-    { name = "accelerate", marker = "extra == 'accelerate-dep'", specifier = ">=1.14.0,<2.0.0" },
-    { name = "av", marker = "extra == 'av-dep'", specifier = ">=15.0.0,<16.0.0" },
-    { name = "cmake", specifier = ">=3.29.0.1,<4.2.0" },
-    { name = "cmeel-tinyxml2", marker = "extra == 'placo-dep'", specifier = "<11" },
-    { name = "cmeel-urdfdom", marker = "extra == 'placo-dep'", specifier = ">=4,<5" },
-    { name = "contourpy", marker = "extra == 'matplotlib-dep'", specifier = ">=1.3.0,<2.0.0" },
-    { name = "datasets", marker = "extra == 'dataset'", specifier = ">=4.8.0,<5.0.0" },
-    { name = "debugpy", marker = "extra == 'dev'", specifier = ">=1.8.1,<1.9.0" },
-    { name = "decord", marker = "(platform_machine == 'AMD64' and extra == 'groot') or (platform_machine == 'x86_64' and extra == 'groot')", specifier = ">=0.6.0,<1.0.0" },
-    { name = "deepdiff", marker = "extra == 'deepdiff-dep'", specifier = ">=7.0.1,<9.0.0" },
-    { name = "diffusers", marker = "extra == 'diffusers-dep'", specifier = ">=0.38.0,<0.40.0" },
-    { name = "dm-tree", marker = "extra == 'groot'", specifier = ">=0.1.8,<1.0.0" },
-    { name = "draccus", specifier = ">=0.11.6,<0.12.0" },
-    { name = "dynamixel-sdk", marker = "extra == 'dynamixel'", specifier = ">=3.7.31,<3.9.0" },
-    { name = "einops", specifier = ">=0.8.0,<0.9.0" },
-    { name = "faker", marker = "extra == 'sarm'", specifier = ">=33.0.0,<35.0.0" },
-    { name = "fastapi", marker = "extra == 'phone'", specifier = "<1.0" },
-    { name = "feetech-servo-sdk", marker = "extra == 'feetech'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "foxglove-sdk", marker = "extra == 'viz'", specifier = ">=0.25.1,<0.26.0" },
-    { name = "grpcio", marker = "extra == 'grpcio-dep'", specifier = ">=1.73.1,<2.0.0" },
-    { name = "grpcio", marker = "extra == 'reachy2'", specifier = "<=1.73.1" },
-    { name = "grpcio-tools", marker = "extra == 'dev'", specifier = ">=1.73.1,<2.0.0" },
-    { name = "gym-aloha", marker = "extra == 'aloha'", specifier = ">=0.1.4,<0.2.0" },
-    { name = "gym-hil", marker = "extra == 'hilserl'", specifier = ">=0.1.14,<0.2.0" },
-    { name = "gym-pusht", marker = "extra == 'pusht'", specifier = ">=0.1.5,<0.2.0" },
-    { name = "gymnasium", specifier = ">=1.1.1,<2.0.0" },
-    { name = "hebi-py", marker = "extra == 'phone'", specifier = ">=2.8.0,<2.12.0" },
-    { name = "hf-libero", marker = "sys_platform == 'linux' and extra == 'libero'", specifier = ">=0.1.4,<0.2.0" },
-    { name = "hidapi", marker = "extra == 'gamepad'", specifier = ">=0.14.0,<0.15.0" },
-    { name = "huggingface-hub", specifier = ">=1.6.0,<2.0.0" },
-    { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.0.0,<7.0.0" },
-    { name = "jsonlines", marker = "extra == 'dataset'", specifier = ">=4.0.0,<5.0.0" },
-    { name = "jupyter", marker = "extra == 'notebook'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "kernels", marker = "extra == 'fineart-vla-kernels'", specifier = ">=0.14.1,<0.15.0" },
-    { name = "lancedb", marker = "extra == 'lancedb'", specifier = ">=0.37.1,<0.40.0" },
-    { name = "lerobot", extras = ["accelerate-dep"], marker = "extra == 'lingbot-va'" },
-    { name = "lerobot", extras = ["accelerate-dep"], marker = "extra == 'smolvla'" },
-    { name = "lerobot", extras = ["accelerate-dep"], marker = "extra == 'training'" },
-    { name = "lerobot", extras = ["aloha"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["async"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["av-dep"], marker = "extra == 'dataset'" },
-    { name = "lerobot", extras = ["av-dep"], marker = "extra == 'evaluation'" },
-    { name = "lerobot", extras = ["can-dep"], marker = "extra == 'damiao'" },
-    { name = "lerobot", extras = ["can-dep"], marker = "extra == 'robstride'" },
-    { name = "lerobot", extras = ["damiao"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["damiao"], marker = "extra == 'openarms'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'aloha'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'annotations'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'core-scripts'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'dataset-viz'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'groot'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'hilserl'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'lancedb'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'libero'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'metaworld'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'pusht'" },
-    { name = "lerobot", extras = ["dataset"], marker = "extra == 'training'" },
-    { name = "lerobot", extras = ["deepdiff-dep"], marker = "extra == 'dynamixel'" },
-    { name = "lerobot", extras = ["deepdiff-dep"], marker = "extra == 'feetech'" },
-    { name = "lerobot", extras = ["deepdiff-dep"], marker = "extra == 'hardware'" },
-    { name = "lerobot", extras = ["dev"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'diffusion'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'fastwam'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'groot'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'lawam'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'lingbot-va'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'multi-task-dit'" },
-    { name = "lerobot", extras = ["diffusers-dep"], marker = "extra == 'vla-jepa'" },
-    { name = "lerobot", extras = ["diffusion"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["dm05"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["dynamixel"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["evo1"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["fastwam"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["feetech"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["feetech"], marker = "extra == 'hopejr'" },
-    { name = "lerobot", extras = ["feetech"], marker = "extra == 'lekiwi'" },
-    { name = "lerobot", extras = ["fineart-vla"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["fineart-vla"], marker = "extra == 'fineart-vla-kernels'" },
-    { name = "lerobot", extras = ["flux3"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["gamepad"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["groot"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["grpcio-dep"], marker = "extra == 'async'" },
-    { name = "lerobot", extras = ["grpcio-dep"], marker = "extra == 'dev'" },
-    { name = "lerobot", extras = ["grpcio-dep"], marker = "extra == 'hilserl'" },
-    { name = "lerobot", extras = ["hardware"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["hardware"], marker = "extra == 'core-scripts'" },
-    { name = "lerobot", extras = ["hilserl"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["hopejr"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["intelrealsense"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["kinematics"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["lancedb"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["lancedb"], marker = "extra == 'lancedb-convert'" },
-    { name = "lerobot", extras = ["lawam"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["lekiwi"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["libero"], marker = "sys_platform == 'linux' and extra == 'all'" },
-    { name = "lerobot", extras = ["lingbot-va"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["matplotlib-dep"], marker = "extra == 'async'" },
-    { name = "lerobot", extras = ["matplotlib-dep"], marker = "extra == 'sarm'" },
-    { name = "lerobot", extras = ["matplotlib-dep"], marker = "extra == 'unitree-g1'" },
-    { name = "lerobot", extras = ["metaworld"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["molmoact2"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["motorbridge-dep"], marker = "extra == 'rebot'" },
-    { name = "lerobot", extras = ["motorbridge-smart-servo-dep"], marker = "extra == 'rebot'" },
-    { name = "lerobot", extras = ["multi-task-dit"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["notebook"], marker = "extra == 'dev'" },
-    { name = "lerobot", extras = ["openarms"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["peft"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'groot'" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'molmoact2'" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'peft'" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'robometer'" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'wallx'" },
-    { name = "lerobot", extras = ["phone"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["pi"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["pi"], marker = "extra == 'fineart-vla'" },
-    { name = "lerobot", extras = ["placo-dep"], marker = "extra == 'hilserl'" },
-    { name = "lerobot", extras = ["placo-dep"], marker = "extra == 'kinematics'" },
-    { name = "lerobot", extras = ["pusht"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["pygame-dep"], marker = "extra == 'gamepad'" },
-    { name = "lerobot", extras = ["pygame-dep"], marker = "extra == 'hopejr'" },
-    { name = "lerobot", extras = ["pygame-dep"], marker = "extra == 'unitree-g1'" },
-    { name = "lerobot", extras = ["pynput-dep"], marker = "extra == 'hardware'" },
-    { name = "lerobot", extras = ["pyserial-dep"], marker = "extra == 'dynamixel'" },
-    { name = "lerobot", extras = ["pyserial-dep"], marker = "extra == 'feetech'" },
-    { name = "lerobot", extras = ["pyserial-dep"], marker = "extra == 'hardware'" },
-    { name = "lerobot", extras = ["pyserial-dep"], marker = "extra == 'unitree-g1'" },
-    { name = "lerobot", extras = ["pyzmq-dep"], marker = "extra == 'lekiwi'" },
-    { name = "lerobot", extras = ["pyzmq-dep"], marker = "extra == 'unitree-g1'" },
-    { name = "lerobot", extras = ["qwen-vl-utils-dep"], marker = "extra == 'eo1'" },
-    { name = "lerobot", extras = ["qwen-vl-utils-dep"], marker = "extra == 'robometer'" },
-    { name = "lerobot", extras = ["qwen-vl-utils-dep"], marker = "extra == 'sarm'" },
-    { name = "lerobot", extras = ["qwen-vl-utils-dep"], marker = "extra == 'vla-jepa'" },
-    { name = "lerobot", extras = ["qwen-vl-utils-dep"], marker = "extra == 'wallx'" },
-    { name = "lerobot", extras = ["reachy2"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["rebot"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["robometer"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["robstride"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["sarm"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'aloha'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'libero'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'metaworld'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'molmoact2'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'phone'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'pi'" },
-    { name = "lerobot", extras = ["scipy-dep"], marker = "extra == 'wallx'" },
-    { name = "lerobot", extras = ["sentencepiece-dep"], marker = "extra == 'pi'" },
-    { name = "lerobot", extras = ["smolvla"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["test"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["timm-dep"], marker = "extra == 'groot'" },
-    { name = "lerobot", extras = ["topreward"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["training"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'annotations'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'dm05'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'eo1'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'evo1'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'fastwam'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'flux3'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'groot'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'hilserl'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'lawam'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'libero'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'lingbot-va'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'molmoact2'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'multi-task-dit'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'peft'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'pi'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'robometer'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'sarm'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'smolvla'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'topreward'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'vla-jepa'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'wallx'" },
-    { name = "lerobot", extras = ["transformers-dep"], marker = "extra == 'xvla'" },
-    { name = "lerobot", extras = ["video-benchmark"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["viz"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["viz"], marker = "extra == 'core-scripts'" },
-    { name = "lerobot", extras = ["viz"], marker = "extra == 'dataset-viz'" },
-    { name = "lerobot", extras = ["vla-jepa"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["wallx"], marker = "extra == 'all'" },
-    { name = "lerobot", extras = ["xvla"], marker = "extra == 'all'" },
-    { name = "lerobot-lancedb", marker = "extra == 'lancedb-convert'", specifier = ">=0.3.1,<0.4.0" },
-    { name = "liger-kernel", marker = "sys_platform == 'linux' and extra == 'fineart-vla-kernels'", specifier = ">=0.8.0,<0.9.0" },
-    { name = "matplotlib", marker = "extra == 'matplotlib-dep'", specifier = ">=3.10.3,<4.0.0" },
-    { name = "meshcat", marker = "extra == 'unitree-g1'", specifier = ">=0.3.0,<0.4.0" },
-    { name = "metaworld", marker = "extra == 'metaworld'", specifier = "==3.0.0" },
-    { name = "mock-serial", marker = "sys_platform != 'win32' and extra == 'test'", specifier = ">=0.0.1,<0.1.0" },
-    { name = "motorbridge", marker = "extra == 'motorbridge-dep'", specifier = ">=0.5,<0.6" },
-    { name = "motorbridge-smart-servo", marker = "extra == 'motorbridge-smart-servo-dep'", specifier = ">=0.0.4,<0.1.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.0.0,<3.0.0" },
-    { name = "num2words", marker = "extra == 'smolvla'", specifier = ">=0.5.14,<0.6.0" },
-    { name = "numpy", specifier = ">=2.0.0,<2.3.0" },
-    { name = "onnx", marker = "extra == 'unitree-g1'", specifier = ">=1.16.0,<2.0.0" },
-    { name = "onnxruntime", marker = "extra == 'unitree-g1'", specifier = ">=1.16.0,<2.0.0" },
-    { name = "openai", marker = "extra == 'annotations'", specifier = ">=1.40,<2.0" },
-    { name = "opencv-python-headless", specifier = ">=4.9.0,<4.14.0" },
-    { name = "packaging", specifier = ">=24.2,<26.0" },
-    { name = "pandas", marker = "extra == 'dataset'", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pandas", marker = "extra == 'video-benchmark'", specifier = ">=2.2.2,<2.4.0" },
-    { name = "peft", marker = "extra == 'peft-dep'", specifier = ">=0.18.0,<1.0.0" },
-    { name = "pillow", specifier = ">=10.0.0,<13.0.0" },
-    { name = "placo", marker = "extra == 'placo-dep'", specifier = ">=0.9.6,<0.9.16" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7.0,<5.0.0" },
-    { name = "protobuf", marker = "extra == 'grpcio-dep'", specifier = ">=6.31.1,<8.0.0" },
-    { name = "protobuf", marker = "extra == 'reachy2'", specifier = "<=6.32.0" },
-    { name = "pyarrow", marker = "extra == 'dataset'", specifier = ">=21.0.0,<30.0.0" },
-    { name = "pydantic", marker = "extra == 'sarm'", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pygame", marker = "extra == 'pygame-dep'", specifier = ">=2.5.1,<2.7.0" },
-    { name = "pymunk", marker = "extra == 'pusht'", specifier = ">=6.6.0,<7.0.0" },
-    { name = "pynput", marker = "extra == 'pynput-dep'", specifier = ">=1.7.8,<1.9.0" },
-    { name = "pyrealsense2", marker = "sys_platform != 'darwin' and extra == 'intelrealsense'", specifier = ">=2.55.1.6486,<2.57.0" },
-    { name = "pyrealsense2-macosx", marker = "sys_platform == 'darwin' and extra == 'intelrealsense'", specifier = ">=2.54,<2.57.0" },
-    { name = "pyserial", marker = "extra == 'pyserial-dep'", specifier = ">=3.5,<4.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.1.0,<10.0.0" },
-    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5.0.0,<8.0.0" },
-    { name = "pytest-timeout", marker = "extra == 'test'", specifier = ">=2.4.0,<3.0.0" },
-    { name = "python-can", marker = "extra == 'can-dep'", specifier = ">=4.2.0,<5.0.0" },
-    { name = "pyzmq", marker = "extra == 'pyzmq-dep'", specifier = ">=26.2.1,<28.0.0" },
-    { name = "qwen-vl-utils", marker = "extra == 'qwen-vl-utils-dep'", specifier = ">=0.0.11,<0.1.0" },
-    { name = "reachy2-sdk", marker = "extra == 'reachy2'", specifier = ">=1.0.15,<1.1.0" },
-    { name = "requests", specifier = ">=2.32.0,<3.0.0" },
-    { name = "rerun-sdk", marker = "extra == 'viz'", specifier = ">=0.24.0,<0.34.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.1" },
-    { name = "safetensors", specifier = ">=0.4.3,<1.0.0" },
-    { name = "scikit-image", marker = "extra == 'video-benchmark'", specifier = ">=0.23.2,<0.26.0" },
-    { name = "scipy", marker = "extra == 'all'", specifier = ">=1.14.0,<2.0.0" },
-    { name = "scipy", marker = "extra == 'scipy-dep'", specifier = ">=1.14.0,<2.0.0" },
-    { name = "sentencepiece", marker = "extra == 'sentencepiece-dep'", specifier = ">=0.2.0,<0.3.0" },
-    { name = "setuptools", specifier = ">=71.0.0,<82.0.0" },
-    { name = "teleop", marker = "extra == 'phone'", specifier = ">=0.1.0,<0.2.0" },
-    { name = "termcolor", specifier = ">=2.4.0,<4.0.0" },
-    { name = "timm", marker = "extra == 'timm-dep'", specifier = ">=1.0.0,<1.1.0" },
-    { name = "torch", specifier = ">=2.7,<2.12.0" },
-    { name = "torchcodec", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'dataset') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra == 'dataset') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'dataset')", specifier = ">=0.3.0,<0.12.0" },
-    { name = "torchcodec", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'dataset') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'dataset')", specifier = ">=0.11.0,<0.12.0" },
-    { name = "torchcodec", marker = "sys_platform == 'win32' and extra == 'dataset'", specifier = ">=0.7.0,<0.12.0" },
-    { name = "torchdiffeq", marker = "extra == 'wallx'", specifier = ">=0.2.4,<0.3.0" },
-    { name = "torchvision", specifier = ">=0.22.0,<0.27.0" },
-    { name = "tqdm", specifier = ">=4.66.0,<5.0.0" },
-    { name = "transformers", marker = "extra == 'transformers-dep'", specifier = ">=5.4.0,<5.6.0" },
-    { name = "wandb", marker = "extra == 'training'", specifier = ">=0.24.0,<0.28.0" },
+[[package]]
+name = "litellm"
+version = "1.103.10"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.13' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "python_full_version == '3.13.*' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "python_full_version < '3.13' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
+    "(python_full_version < '3.13' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "python_full_version < '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
+    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
+    "(python_full_version < '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
 ]
-provides-extras = ["lancedb", "lancedb-convert", "dataset", "training", "hardware", "viz", "core-scripts", "evaluation", "dataset-viz", "av-dep", "pygame-dep", "placo-dep", "transformers-dep", "sentencepiece-dep", "grpcio-dep", "accelerate-dep", "can-dep", "peft-dep", "scipy-dep", "diffusers-dep", "qwen-vl-utils-dep", "matplotlib-dep", "pyserial-dep", "deepdiff-dep", "pynput-dep", "pyzmq-dep", "motorbridge-dep", "motorbridge-smart-servo-dep", "timm-dep", "feetech", "dynamixel", "damiao", "robstride", "openarms", "gamepad", "hopejr", "lekiwi", "unitree-g1", "reachy2", "rebot", "kinematics", "intelrealsense", "phone", "diffusion", "wallx", "pi", "dm05", "molmoact2", "smolvla", "multi-task-dit", "groot", "sarm", "robometer", "topreward", "xvla", "eo1", "fastwam", "flux3", "evo1", "fineart-vla", "fineart-vla-kernels", "hilserl", "vla-jepa", "lingbot-va", "lawam", "async", "peft", "annotations", "dev", "notebook", "test", "video-benchmark", "aloha", "pusht", "libero", "metaworld", "all"]
+dependencies = [
+    { name = "aiohttp", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "boto3", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "certifi", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "click", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "fastuuid", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "httpx", extra = ["http2"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "importlib-metadata", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "jinja2", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "jsonschema", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "openai", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "pydantic", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "pydantic-settings", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "python-dotenv", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "tiktoken", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "tokenizers", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/0d/4d210a75f88820903421d36d8160ed07e844e53941730433c294145d5b98/litellm-1.103.10.tar.gz", hash = "sha256:b1bf12810b6565156c6b23bda2ccaf115c6edafbbf92e98220ecbc73f89d6972", size = 18763166, upload-time = "2026-10-27T19:41:29.156Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/c3/6ba11f169a9acc9a9f1079b4ae998339a16c42d8806a23613be8cd4ed87c/litellm-1.103.10-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:0085bb61fdb321ce17014eac697d8d7513f36e6681d490af845e8d8b9af8e613", size = 27617034, upload-time = "2026-10-27T19:41:09.209Z" },
+    { url = "https://files.pythonhosted.org/packages/65/f2/dde77f2f18303bf9aa869a9c4b24e2d58d50977a1a4bd97e22734f9929fb/litellm-1.103.10-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:7451792391b9e268e812b17a4a5cc0d34dba9bac8d51615798ebcc58f10e1b09", size = 27075436, upload-time = "2026-10-27T19:41:12.677Z" },
+    { url = "https://files.pythonhosted.org/packages/34/6f/54181ae5987dec3442d902e3199498f855e14644092d44dc2b7704e6a2d9/litellm-1.103.10-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:ca4cbf0492f65c383de264da0ff98f48d4eb56e4edf4a55713d2562a554b986f", size = 27388878, upload-time = "2026-10-27T19:41:15.568Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/a1/6b49bbaa6bd180f981e51f03d56f86c3e3f47dc41d7994b54b0a893f57f6/litellm-1.103.10-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:f639bd02ac34869080b7792732336345bc066ffb04be301093090425f6caa2bc", size = 27934228, upload-time = "2026-10-27T19:41:18.366Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/4c/7eedabeabf932658f31db95179607e31842e7e04e30be615d2233aa883df/litellm-1.103.10-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:5774a19560e93b1da1838b160d0ac4fec5238c11bde2cd2411422a06fb4f5e7f", size = 27463638, upload-time = "2026-10-27T19:41:21.225Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/5e/d044b5092079b76b509e29faf0bd2f7a66f4d0ecdd1ffe53d0a8dc9e694e/litellm-1.103.10-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a7d2b6a0de7c0abfc97fe89184cb2b719a5f76170a4cac9ffd4d14e85fbb3b73", size = 28047479, upload-time = "2026-10-27T19:41:23.808Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/5b/8e011f2fed0a445b71b24a79cc426e30433e7435b684167c1953202a3a8a/litellm-1.103.10-cp310-abi3-win_amd64.whl", hash = "sha256:adbcbb663a9cc96331de0f6ddd60e81d883288b901b7a4f6fbbfeb66edb669cd", size = 27992824, upload-time = "2026-10-27T19:41:26.523Z" },
+]
 
 [[package]]
 name = "litellm"
 version = "1.105.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'linux'",
+    "python_full_version < '3.14' and sys_platform == 'linux'",
+    "python_full_version >= '3.14' and sys_platform != 'linux'",
+    "python_full_version < '3.14' and sys_platform != 'linux'",
+]
 dependencies = [
-    { name = "aiohttp" },
-    { name = "boto3" },
-    { name = "click" },
-    { name = "fastuuid" },
-    { name = "filelock" },
-    { name = "httpx", extra = ["http2"] },
-    { name = "huggingface-hub" },
-    { name = "importlib-metadata" },
-    { name = "jinja2" },
-    { name = "jsonschema" },
-    { name = "openai" },
-    { name = "packaging" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "tiktoken" },
-    { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "aiohttp", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "boto3", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "click", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "fastuuid", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "filelock", version = "3.32.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "httpx", extra = ["http2"], marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "importlib-metadata", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "jinja2", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "jsonschema", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "openai", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "packaging", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "pydantic", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "pydantic-settings", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "python-dotenv", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "pyyaml", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "tiktoken", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "tokenizers", marker = "extra == 'extra-11-so101-nexus-rocm'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3e/35/f326093937d03fbca3e25c42f42708854b9321af841db29ce28235f6237a/litellm-1.105.0.tar.gz", hash = "sha256:f4af675e480ba7cf1f43c2bf5e480564b547e0e58d31e88f724daa0a0967b065", size = 20320691, upload-time = "2026-10-11T09:48:15.603Z" }
 wheels = [
@@ -3231,15 +3090,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4b/33/b5db29a6c00eb8f50708110d8d453747ca125c8b805bc437b289dbdcc057/opencv_python_headless-4.13.0.92-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:0bd48544f77c68b2941392fcdf9bcd2b9cdf00e98cb8c29b2455d194763cf99e", size = 60391106, upload-time = "2026-02-05T10:30:14.236Z" },
     { url = "https://files.pythonhosted.org/packages/fb/c3/52cfea47cd33e53e8c0fbd6e7c800b457245c1fda7d61660b4ffe9596a7f/opencv_python_headless-4.13.0.92-cp37-abi3-win32.whl", hash = "sha256:a7cf08e5b191f4ebb530791acc0825a7986e0d0dee2a3c491184bd8599848a4b", size = 30812232, upload-time = "2026-02-05T07:02:29.594Z" },
     { url = "https://files.pythonhosted.org/packages/4a/90/b338326131ccb2aaa3c2c85d00f41822c0050139a4bfe723cfd95455bd2d/opencv_python_headless-4.13.0.92-cp37-abi3-win_amd64.whl", hash = "sha256:77a82fe35ddcec0f62c15f2ba8a12ecc2ed4207c17b0902c7a3151ae29f37fb6", size = 40070414, upload-time = "2026-02-05T07:02:26.448Z" },
-]
-
-[[package]]
-name = "orderly-set"
-version = "5.5.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4a/88/39c83c35d5e97cc203e9e77a4f93bf87ec89cf6a22ac4818fdcc65d66584/orderly_set-5.5.0.tar.gz", hash = "sha256:e87185c8e4d8afa64e7f8160ee2c542a475b738bc891dc3f58102e654125e6ce", size = 27414, upload-time = "2025-07-10T20:10:55.885Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/27/fb8d7338b4d551900fa3e580acbe7a0cf655d940e164cb5c00ec31961094/orderly_set-5.5.0-py3-none-any.whl", hash = "sha256:46f0b801948e98f427b412fcabb831677194c05c3b699b80de260374baa0b1e7", size = 13068, upload-time = "2025-07-10T20:10:54.377Z" },
 ]
 
 [[package]]
@@ -4428,6 +4278,40 @@ wheels = [
 ]
 
 [[package]]
+name = "rustypot"
+version = "1.13.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/1b/c8d543afe054ce04c593e9b2c25787270a537ce15f693e22c2b0aeb8c5d3/rustypot-1.13.1.tar.gz", hash = "sha256:516bbec63b69c0f73c9c1e6c82f362339472a604b8492ff1194be441202bee00", size = 144785, upload-time = "2026-10-14T16:09:27.853Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/fc/88293925304e4836f089de9055216663dd272d2454f66cd1468e8e3d1901/rustypot-1.13.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:f2540d17ba70c1699284d8c2ffe6a911ca5ee8c385e5cff7a0f262775d4e9dcb", size = 2190607, upload-time = "2026-10-14T16:08:51.322Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/fa/a53f5109daee7e186f4bfe3cd4efc14ecc67a14492e4a60297be0073fd1f/rustypot-1.13.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:be4e0d8306ea897bb20160695ce447098e057a79a5a9eb004fdebc1ed62b6ebc", size = 2055838, upload-time = "2026-10-14T16:08:41.226Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/87/780735f89cd17a24f492fcbf5674ed0e1547934bc6f0b3576f16ffdd0d93/rustypot-1.13.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5035ca9f64ad007664f638026e3d4bd5651f677cf6dd8803e9711ff83faf67b2", size = 2360056, upload-time = "2026-10-14T16:08:10.114Z" },
+    { url = "https://files.pythonhosted.org/packages/51/34/96f0dd7ef14479699d775e69ebb9a1141cffd85fbc0e8bb6453f04483fd5/rustypot-1.13.1-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:fc38bfdb3f160c21c822f5185456736b9059d5e879506f810a43165334dad879", size = 2276115, upload-time = "2026-10-14T16:08:18.204Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/9d/4810ffd92b89fff48860af14bcc3d2239fe0211a4a8325168175dcd28105/rustypot-1.13.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:98f8502f96af9e103489e31884e3348a1a7b4b5674f6383386f076d45a973ebe", size = 2240753, upload-time = "2026-10-14T16:08:33.916Z" },
+    { url = "https://files.pythonhosted.org/packages/48/be/73d6b9e36b7308149ad7e032ed17e354dd9d970594b9ce95e23046fb9f7d/rustypot-1.13.1-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:eb1015ef08e5fe58e2587a062f8442285c0582e29bafbc64bb932074d2b8a75a", size = 2316535, upload-time = "2026-10-14T16:08:26.212Z" },
+    { url = "https://files.pythonhosted.org/packages/02/5e/fcb645d2e248ba36f44c45a00042850d7f350ac0ccfd18cd50b8ac7a317c/rustypot-1.13.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:cfed196df787ff313774f8e03d9639e3d21b8110edf6d0ce4a90cea2093f9185", size = 2534965, upload-time = "2026-10-14T16:09:00.784Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/36/6e471ef39986522abb686d470608c6d16234028355bf652350d021e8767b/rustypot-1.13.1-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:b37c57f58bc9e8c95494c6445176b152e1029d53e785d9953d1f6f47daae569d", size = 2546449, upload-time = "2026-10-14T16:09:08.899Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/e4/c0d139b4fcf72e90be41fe7e28a3249ba9d42b9fa0d5ba5155f08ad4d452/rustypot-1.13.1-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:d06d4f83350238f35588aefe7ac7f5998bfc5e0af399ee4343c9040c89f662d5", size = 2458373, upload-time = "2026-10-14T16:09:16.227Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/b7/8145c1545e9caa4bfbcb18215f98160e360e2a5197f2890aa4993d8a774a/rustypot-1.13.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:9306538c5dc50f3b42c72963b541de589dbf74f07bbabb6eddc1efefa1b626b1", size = 2583538, upload-time = "2026-10-14T16:09:23.976Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/0c/da7825319f3d37e7ec250a6c95b1f645867ea122a36f282b198e71fa7b34/rustypot-1.13.1-cp312-cp312-win_amd64.whl", hash = "sha256:7552bec398c7e1351d138dd00677fae5d032708fa12d2ad77e2b0cd4367ce46b", size = 2236017, upload-time = "2026-10-14T16:09:33.016Z" },
+    { url = "https://files.pythonhosted.org/packages/89/e3/a57bd7983286966c6ef3adeb50e873a14b71ef2436ed9c26ee511352da36/rustypot-1.13.1-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:ec762250ac0efbc36860263bd00a63944000bf4cababdba2153da67c019ad6fa", size = 2190090, upload-time = "2026-10-14T16:08:53.411Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/f7/3efe4423035e5f8164b153f99c4d0510a1cbb9fbe713ec8a3b1ed7fb4d2a/rustypot-1.13.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f3db535f1eb9908c7847f38a8952d1bc876f2daccbd80a58574c686dbd6bc992", size = 2055198, upload-time = "2026-10-14T16:08:43.251Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/3e/893903f257fb59ba6432d84a26f3dce65e693e4d2e701a6098f39893c240/rustypot-1.13.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6963fad39392e2ce920ba6fc6045359a352288f6f565222fa47fd3771e4eaedc", size = 2360898, upload-time = "2026-10-14T16:08:12.335Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/03/4b8d70877828c815ce0abbc95c84e840b1f1b7ce50e8344c48540e4aef78/rustypot-1.13.1-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:84f574eb6607b891226fbadb7dbeffd1d7e55466eb8e6d0affdc505f99ce77df", size = 2276318, upload-time = "2026-10-14T16:08:20.438Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/f9/940b2028580f77fcb29442aa2a3ce8166175925087a24462e01bbf191194/rustypot-1.13.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a610174d59cc89deb75a3442f3049eafb76cd01ec9cc251b0f175a6c2ec8b97a", size = 2239481, upload-time = "2026-10-14T16:08:35.836Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/90/9c96f6d969b6e8d14944937a624578d39d42d894ebaaa044976e88ba29dd/rustypot-1.13.1-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:b092b53c48e6260332fcc1b3189b3f9e48a4371ca2536b591ec0d472a4d0ce41", size = 2320375, upload-time = "2026-10-14T16:08:28.025Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/f3/ca6953d7b3b2dc2c6a0bc918b2a070c3381642c2ff5c79749091e03d5d4e/rustypot-1.13.1-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:6d398af27a878206aa487d7b9170febe9eb917e31b3a476c4b49776a4a044b4e", size = 2534950, upload-time = "2026-10-14T16:09:02.884Z" },
+    { url = "https://files.pythonhosted.org/packages/04/c6/b02ab08e415622dafa3f7297b8e6a7a4e8c6d882ae3a874a30217cfd4607/rustypot-1.13.1-cp313-cp313-musllinux_1_2_armv7l.whl", hash = "sha256:4c347f21e68a94f70880df9003293ee23911201189d0f5b343730e6560c40eac", size = 2547017, upload-time = "2026-10-14T16:09:10.94Z" },
+    { url = "https://files.pythonhosted.org/packages/19/85/de91e84efb33cdb1fbde030d2b2f794565db6a147a0da3c3ab8aae59cd02/rustypot-1.13.1-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:572503ebc7693f007e4390dd1a8a54c6aa43f541b69b2ff968683c9d35f680aa", size = 2460230, upload-time = "2026-10-14T16:09:18.066Z" },
+    { url = "https://files.pythonhosted.org/packages/44/70/d984517caba9bc1b442dc0b2b9a0b76ae8b3b10d0762999b0af4ff68a2d4/rustypot-1.13.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:bc7509557ffe24ddebef60bf3254a4c0c3141ea950378aa59bf60da81dde0be4", size = 2584789, upload-time = "2026-10-14T16:09:26.015Z" },
+    { url = "https://files.pythonhosted.org/packages/61/52/7ddd9295ab6d6e0a284aaec5010709c258690c193ee8463801edc8039dae/rustypot-1.13.1-cp313-cp313-win_amd64.whl", hash = "sha256:f2e2089dbb9632abea2b599ff9c5e4f99c1ac120cfdf7a54ce2f72d051fca628", size = 2235750, upload-time = "2026-10-14T16:09:34.831Z" },
+    { url = "https://files.pythonhosted.org/packages/48/54/ed012ee3d4220e0c06d1851983e619a372b26e45f356ab49ae54199b865e/rustypot-1.13.1-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:5252366422e1c0159e940dca62263ab61f350c234ab434cd310958ecf9a7e300", size = 2195068, upload-time = "2026-10-14T16:08:55.236Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/fb/e63a36a2d7a4902642319dffdf4b7242f3743fc2814b0f356b80eace49d4/rustypot-1.13.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:418428383822ddbe578fea658ccf216a0bcf4ac384612fffc6fc43b57abb83d9", size = 2067678, upload-time = "2026-10-14T16:08:45.149Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/c1/f4e3ca61f6c491928472fa50c3b34ace99f270287247a7244194ca1b3932/rustypot-1.13.1-cp314-cp314-win_amd64.whl", hash = "sha256:765089973ecc58b7e23c6a30c39605bde6a6658d03663e769626dba0a6f56ec2", size = 2243890, upload-time = "2026-10-14T16:09:37.013Z" },
+    { url = "https://files.pythonhosted.org/packages/85/9e/f8214814e573270fbbb065e089240f53ae29685d6e7f302df7a2e589d07e/rustypot-1.13.1-cp315-cp315-win32.whl", hash = "sha256:c62602a507a87f89e871a81f9de5ebff49e73ffa1ae8b095ab5d7614ebced1e8", size = 1606765, upload-time = "2026-10-14T16:09:38.714Z" },
+]
+
+[[package]]
 name = "s3transfer"
 version = "0.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4634,11 +4518,11 @@ decomp = [
     { name = "threadpoolctl" },
 ]
 dm05 = [
-    { name = "lerobot", extra = ["peft-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "lerobot", extra = ["dm05", "peft-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "transformers" },
 ]
 molmoact2 = [
-    { name = "lerobot", extra = ["peft-dep", "scipy-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "lerobot", extra = ["molmoact2"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "transformers" },
 ]
 rocm = [
@@ -4674,7 +4558,7 @@ warp = [
 dev = [
     { name = "hypothesis" },
     { name = "imageio", extra = ["ffmpeg"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "lerobot", extra = ["dataset", "feetech", "peft-dep", "placo-dep", "scipy-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "lerobot", extra = ["dataset", "dm05", "feetech", "molmoact2", "placo-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4689,7 +4573,7 @@ dev = [
 test = [
     { name = "hypothesis" },
     { name = "imageio", extra = ["ffmpeg"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "lerobot", extra = ["dataset", "feetech", "peft-dep", "placo-dep", "scipy-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "lerobot", extra = ["dataset", "dm05", "feetech", "molmoact2", "placo-dep"], marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "pillow" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4701,7 +4585,8 @@ test = [
 ]
 visual = [
     { name = "imageio", extra = ["ffmpeg"] },
-    { name = "litellm" },
+    { name = "litellm", version = "1.103.10", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "litellm", version = "1.105.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-so101-nexus-rocm'" },
     { name = "pillow" },
 ]
 
@@ -4711,9 +4596,9 @@ requires-dist = [
     { name = "gradio", marker = "extra == 'teleop'", specifier = ">=5.0.0" },
     { name = "gymnasium", specifier = ">=1.0.0,<2" },
     { name = "huggingface-hub", specifier = "<2" },
-    { name = "lerobot", extras = ["dataset", "feetech", "placo-dep"], marker = "extra == 'teleop'", specifier = ">=0.6.1,<0.7" },
-    { name = "lerobot", extras = ["peft-dep"], marker = "extra == 'dm05'", url = "https://github.com/huggingface/lerobot/archive/2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz" },
-    { name = "lerobot", extras = ["peft-dep", "scipy-dep"], marker = "extra == 'molmoact2'", specifier = ">=0.6.1,<0.7" },
+    { name = "lerobot", extras = ["dataset", "feetech", "placo-dep"], marker = "extra == 'teleop'", specifier = ">=0.7.0,<0.8" },
+    { name = "lerobot", extras = ["dm05", "peft-dep"], marker = "extra == 'dm05'", specifier = ">=0.7.0,<0.8" },
+    { name = "lerobot", extras = ["molmoact2"], marker = "extra == 'molmoact2'", specifier = ">=0.7.0,<0.8" },
     { name = "mujoco", specifier = ">=3.17.0,<4" },
     { name = "mujoco-warp", marker = "extra == 'warp'", specifier = ">=3.13.0,<4" },
     { name = "numpy", specifier = "<3" },
@@ -4730,8 +4615,8 @@ requires-dist = [
     { name = "torch", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "torch", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'warp') or (sys_platform != 'linux' and extra == 'warp')", specifier = "<2.10" },
     { name = "torch", marker = "extra == 'train'" },
-    { name = "transformers", marker = "extra == 'dm05'", specifier = ">=5.10.0,<5.11" },
-    { name = "transformers", marker = "extra == 'molmoact2'", specifier = ">=5.10.0,<5.11" },
+    { name = "transformers", marker = "extra == 'dm05'", specifier = ">=5.22.0,<5.23" },
+    { name = "transformers", marker = "extra == 'molmoact2'", specifier = ">=5.22.0,<5.23" },
     { name = "trimesh", specifier = "<5" },
     { name = "triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rocm'", index = "https://download.pytorch.org/whl/rocm7.2", conflict = { package = "so101-nexus", extra = "rocm" } },
     { name = "tyro", specifier = ">=0.9.0,<2" },
@@ -4744,7 +4629,7 @@ provides-extras = ["decomp", "viz", "teleop", "molmoact2", "dm05", "train", "war
 dev = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", extras = ["dataset", "feetech", "peft-dep", "placo-dep", "scipy-dep"], specifier = ">=0.6.1,<0.7" },
+    { name = "lerobot", extras = ["dataset", "dm05", "feetech", "molmoact2", "placo-dep"], specifier = ">=0.7.0,<0.8" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
@@ -4753,13 +4638,13 @@ dev = [
     { name = "torch", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux')", specifier = ">=2.11,<2.12" },
     { name = "torchcodec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64') or sys_platform != 'linux'", specifier = "<0.10" },
     { name = "torchcodec", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux')", specifier = ">=0.11,<0.12" },
-    { name = "transformers", specifier = ">=5.10.0,<5.11" },
+    { name = "transformers", specifier = ">=5.22.0,<5.23" },
     { name = "ty" },
 ]
 test = [
     { name = "hypothesis", specifier = ">=6.140.0" },
     { name = "imageio", extras = ["ffmpeg"] },
-    { name = "lerobot", extras = ["dataset", "feetech", "peft-dep", "placo-dep", "scipy-dep"], specifier = ">=0.6.1,<0.7" },
+    { name = "lerobot", extras = ["dataset", "dm05", "feetech", "molmoact2", "placo-dep"], specifier = ">=0.7.0,<0.8" },
     { name = "pillow" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
@@ -4767,7 +4652,7 @@ test = [
     { name = "torch", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux')", specifier = ">=2.11,<2.12" },
     { name = "torchcodec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64') or sys_platform != 'linux'", specifier = "<0.10" },
     { name = "torchcodec", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux')", specifier = ">=0.11,<0.12" },
-    { name = "transformers", specifier = ">=5.10.0,<5.11" },
+    { name = "transformers", specifier = ">=5.22.0,<5.23" },
 ]
 visual = [
     { name = "imageio", extras = ["ffmpeg"] },
@@ -4948,74 +4833,10 @@ wheels = [
 
 [[package]]
 name = "tokenizers"
-version = "0.22.2"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "(python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version < '3.13' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "python_full_version == '3.13.*' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version == '3.13.*' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "python_full_version < '3.13' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop'",
-    "(python_full_version < '3.13' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version == '3.13.*' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (python_full_version < '3.13' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop')",
-    "(python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-    "(python_full_version < '3.14' and platform_machine == 'AMD64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-    "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "python_full_version >= '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "python_full_version < '3.14' and platform_machine != 'AMD64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop'",
-    "(python_full_version >= '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-    "(python_full_version < '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-    "(python_full_version < '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
-]
-dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-dm05' or extra == 'extra-11-so101-nexus-molmoact2' or extra != 'extra-11-so101-nexus-rocm' or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/73/6f/f80cfef4a312e1fb34baf7d85c72d4411afde10978d4657f8cdd811d3ccc/tokenizers-0.22.2.tar.gz", hash = "sha256:473b83b915e547aa366d1eee11806deaf419e17be16310ac0a14077f1e28f917", size = 372115, upload-time = "2026-01-05T10:45:15.988Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/97/5dbfabf04c7e348e655e907ed27913e03db0923abb5dfdd120d7b25630e1/tokenizers-0.22.2-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:544dd704ae7238755d790de45ba8da072e9af3eea688f698b137915ae959281c", size = 3100275, upload-time = "2026-01-05T10:41:02.158Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/47/174dca0502ef88b28f1c9e06b73ce33500eedfac7a7692108aec220464e7/tokenizers-0.22.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1e418a55456beedca4621dbab65a318981467a2b188e982a23e117f115ce5001", size = 2981472, upload-time = "2026-01-05T10:41:00.276Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/84/7990e799f1309a8b87af6b948f31edaa12a3ed22d11b352eaf4f4b2e5753/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2249487018adec45d6e3554c71d46eb39fa8ea67156c640f7513eb26f318cec7", size = 3290736, upload-time = "2026-01-05T10:40:32.165Z" },
-    { url = "https://files.pythonhosted.org/packages/78/59/09d0d9ba94dcd5f4f1368d4858d24546b4bdc0231c2354aa31d6199f0399/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:25b85325d0815e86e0bac263506dd114578953b7b53d7de09a6485e4a160a7dd", size = 3168835, upload-time = "2026-01-05T10:40:38.847Z" },
-    { url = "https://files.pythonhosted.org/packages/47/50/b3ebb4243e7160bda8d34b731e54dd8ab8b133e50775872e7a434e524c28/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:bfb88f22a209ff7b40a576d5324bf8286b519d7358663db21d6246fb17eea2d5", size = 3521673, upload-time = "2026-01-05T10:40:56.614Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/fa/89f4cb9e08df770b57adb96f8cbb7e22695a4cb6c2bd5f0c4f0ebcf33b66/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1c774b1276f71e1ef716e5486f21e76333464f47bece56bbd554485982a9e03e", size = 3724818, upload-time = "2026-01-05T10:40:44.507Z" },
-    { url = "https://files.pythonhosted.org/packages/64/04/ca2363f0bfbe3b3d36e95bf67e56a4c88c8e3362b658e616d1ac185d47f2/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:df6c4265b289083bf710dff49bc51ef252f9d5be33a45ee2bed151114a56207b", size = 3379195, upload-time = "2026-01-05T10:40:51.139Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/76/932be4b50ef6ccedf9d3c6639b056a967a86258c6d9200643f01269211ca/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:369cc9fc8cc10cb24143873a0d95438bb8ee257bb80c71989e3ee290e8d72c67", size = 3274982, upload-time = "2026-01-05T10:40:58.331Z" },
-    { url = "https://files.pythonhosted.org/packages/1d/28/5f9f5a4cc211b69e89420980e483831bcc29dade307955cc9dc858a40f01/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:29c30b83d8dcd061078b05ae0cb94d3c710555fbb44861139f9f83dcca3dc3e4", size = 9478245, upload-time = "2026-01-05T10:41:04.053Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/fb/66e2da4704d6aadebf8cb39f1d6d1957df667ab24cff2326b77cda0dcb85/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:37ae80a28c1d3265bb1f22464c856bd23c02a05bb211e56d0c5301a435be6c1a", size = 9560069, upload-time = "2026-01-05T10:45:10.673Z" },
-    { url = "https://files.pythonhosted.org/packages/16/04/fed398b05caa87ce9b1a1bb5166645e38196081b225059a6edaff6440fac/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:791135ee325f2336f498590eb2f11dc5c295232f288e75c99a36c5dbce63088a", size = 9899263, upload-time = "2026-01-05T10:45:12.559Z" },
-    { url = "https://files.pythonhosted.org/packages/05/a1/d62dfe7376beaaf1394917e0f8e93ee5f67fea8fcf4107501db35996586b/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:38337540fbbddff8e999d59970f3c6f35a82de10053206a7562f1ea02d046fa5", size = 10033429, upload-time = "2026-01-05T10:45:14.333Z" },
-    { url = "https://files.pythonhosted.org/packages/fd/18/a545c4ea42af3df6effd7d13d250ba77a0a86fb20393143bbb9a92e434d4/tokenizers-0.22.2-cp39-abi3-win32.whl", hash = "sha256:a6bf3f88c554a2b653af81f3204491c818ae2ac6fbc09e76ef4773351292bc92", size = 2502363, upload-time = "2026-01-05T10:45:20.593Z" },
-    { url = "https://files.pythonhosted.org/packages/65/71/0670843133a43d43070abeb1949abfdef12a86d490bea9cd9e18e37c5ff7/tokenizers-0.22.2-cp39-abi3-win_amd64.whl", hash = "sha256:c9ea31edff2968b44a88f97d784c2f16dc0729b8b143ed004699ebca91f05c48", size = 2747786, upload-time = "2026-01-05T10:45:18.411Z" },
-    { url = "https://files.pythonhosted.org/packages/72/f4/0de46cfa12cdcbcd464cc59fde36912af405696f687e53a091fb432f694c/tokenizers-0.22.2-cp39-abi3-win_arm64.whl", hash = "sha256:9ce725d22864a1e965217204946f830c37876eee3b2ba6fc6255e8e903d5fcbc", size = 2612133, upload-time = "2026-01-05T10:45:17.232Z" },
-]
-
-[[package]]
-name = "tokenizers"
 version = "0.23.2"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform != 'linux'",
-    "python_full_version < '3.14' and sys_platform != 'linux'",
-]
 dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-11-so101-nexus-rocm'" },
+    { name = "huggingface-hub" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/18/1e/bc6587c5ab643b2e17776cace9070a2ae73549c86bffac9934a600bf3c31/tokenizers-0.23.2.tar.gz", hash = "sha256:7f0f085686b9de0d0079e6f874ae053600db64c5d13049e0bbc0119926d25aac", size = 385745, upload-time = "2026-09-03T08:55:42.89Z" }
 wheels = [
@@ -5089,7 +4910,8 @@ resolution-markers = [
     "(python_full_version < '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop') or (python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-11-so101-nexus-rocm' and extra != 'extra-11-so101-nexus-teleop')",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or sys_platform != 'linux'" },
+    { name = "filelock", version = "3.32.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "filelock", version = "4.2.9", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (sys_platform != 'linux' and extra != 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "fsspec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or sys_platform != 'linux'" },
     { name = "jinja2", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or sys_platform != 'linux'" },
     { name = "networkx", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or sys_platform != 'linux'" },
@@ -5150,7 +4972,7 @@ resolution-markers = [
 dependencies = [
     { name = "cuda-bindings", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "cuda-toolkit", extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
-    { name = "filelock", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "filelock", version = "4.2.9", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "fsspec", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "jinja2", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "networkx", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine != 'aarch64' and platform_machine != 'arm64' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-dm05') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'extra-11-so101-nexus-molmoact2') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra != 'extra-11-so101-nexus-rocm') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'aarch64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (platform_machine == 'arm64' and extra != 'extra-11-so101-nexus-dm05' and extra != 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (sys_platform != 'linux' and extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
@@ -5195,7 +5017,7 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
+    { name = "filelock", version = "3.32.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "fsspec", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "jinja2", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
     { name = "networkx", marker = "(sys_platform == 'linux' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-dm05' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-molmoact2' and extra == 'extra-11-so101-nexus-rocm') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-teleop') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'extra-11-so101-nexus-warp') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-dev') or (extra == 'extra-11-so101-nexus-rocm' and extra == 'group-11-so101-nexus-test')" },
@@ -5420,7 +5242,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "5.10.4"
+version = "5.22.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -5429,13 +5251,13 @@ dependencies = [
     { name = "pyyaml" },
     { name = "regex" },
     { name = "safetensors" },
-    { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" } },
+    { name = "tokenizers" },
     { name = "tqdm" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/5d/1df789ca27a436ce09de67c8fee6acd2a528d34c28685991f8203e5418ae/transformers-5.10.4.tar.gz", hash = "sha256:de37741509e64ccb88f7f5708beaf5b1914df447f5fe659f9c0fd95950413168", size = 8799021, upload-time = "2026-06-15T17:28:29.306Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/42/54/b040ac523bad74f303d032505e3464cf4794f9d51defc8981ec66001936e/transformers-5.22.2.tar.gz", hash = "sha256:55f57e5cbd7c0b500b7a706daa0ecd76567b56ca139e6e02ef0bba0437e3a763", size = 10383941, upload-time = "2026-11-06T15:42:57.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/f1/d66881f28d3e64002a21d043c7c8db306c0ad5a711c85337ff551bfbc040/transformers-5.10.4-py3-none-any.whl", hash = "sha256:8c5b99b141b53619435a76629b0284f04d27ff46d788b463fc0ecb23b8ff130e", size = 11004075, upload-time = "2026-06-15T17:28:26.21Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/bb/cc0b27a3000ddcf4903d3a26983c8b4c9a36050bbaf05675f353e8bcb08c/transformers-5.22.2-py3-none-any.whl", hash = "sha256:829c2820aff91730b8ec45a4b8ff4be07f586a140b68a9073998b36fa35297dc", size = 13053178, upload-time = "2026-11-06T15:42:54.257Z" },
 ]
 
 [[package]]

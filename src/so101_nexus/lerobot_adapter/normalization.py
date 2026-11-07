@@ -6,8 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from lerobot.motors import Motor, MotorCalibration, MotorNormMode
-from lerobot.motors.feetech import FeetechMotorsBus
+from lerobot.motors import Motor, MotorCalibration, MotorNormMode, SerialMotorsBus
 
 from so101_nexus.config import (
     ABSOLUTE_CONTROL_MODES,
@@ -44,8 +43,8 @@ def _bus_for(
     *,
     motors: Mapping[str, Motor],
     calibration: dict[str, MotorCalibration],
-) -> FeetechMotorsBus:
-    return FeetechMotorsBus(port="/dev/null", motors=dict(motors), calibration=calibration)
+) -> SerialMotorsBus:
+    return SerialMotorsBus(port="/dev/null", motors=dict(motors), calibration=calibration)
 
 
 def normalize_ticks(

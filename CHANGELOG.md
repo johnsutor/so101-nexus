@@ -11,6 +11,11 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Upgrade LeRobot to released 0.7.0 and Transformers to 5.22. Native DM0.5 no
+  longer needs a source archive. Simulator motor normalization uses
+  `SerialMotorsBus`. EnvHub setup uses `use_native_batch` and `make_env_kwargs`.
+  MolmoAct2 collection adapts the renamed Transformers cache-length method.
+
 - MuJoCo and Warp share grasp-oriented numerical defaults: 2.5 ms physics steps,
   implicit integration, and matched solver settings. The 50 Hz command clock
   stays unchanged, with eight physics steps per command instead of four.

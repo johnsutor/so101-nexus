@@ -20,16 +20,22 @@ scalar or natively batched CPU MuJoCo backend, or a GPU-batched MuJoCo Warp back
 [so101-nexus](https://github.com/johnsutor/so101-nexus).
 
 ```python
+from lerobot.envs.configs import HubEnvConfig
 from lerobot.envs.factory import make_env
 
-envs = make_env(
-    "johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
-    n_envs=4,
+config = HubEnvConfig(
+    hub_path="johnsutor/so101-nexus-envs:envs/MuJoCoPickLift-v1.py",
     trust_remote_code=True,
+    use_native_batch=True,
 )
+envs = make_env(config, n_envs=4)
 env = envs["MuJoCoPickLift-v1"][0]
 obs, info = env.reset(seed=0)
 ```
+
+LeRobot 0.7 requires `use_native_batch=True` for these batches.
+Pass task and camera settings through `make_env_kwargs`.
+See [LeRobot compatibility](https://so101-nexus.com/docs/concepts/lerobot#loading-the-environments-from-the-hub-envhub) for the full contract.
 
 Loading `env.py` at the repository root gives `MuJoCoPickLift-v1`. Every other
 environment has its own file under `envs/`.
@@ -113,24 +119,24 @@ follower adapter store LeRobot motor units instead (degrees, with the gripper in
 
 ## Configuration
 
-A `HubEnvConfig` selects the environment through its `task` field:
+Use `make_env_kwargs` to select the environment and pass provider settings:
 
 ```python
-from lerobot.envs.factory import make_env
 from lerobot.envs.configs import HubEnvConfig
+from lerobot.envs.factory import make_env
 
-cfg = HubEnvConfig(hub_path="johnsutor/so101-nexus-envs", task="MuJoCoStackCube-v1")
+cfg = HubEnvConfig(
+    hub_path="johnsutor/so101-nexus-envs",
+    use_native_batch=True,
+    make_env_kwargs={"env_id": "MuJoCoStackCube-v1", "episode_length": 300},
+)
 envs = make_env(cfg, n_envs=2, trust_remote_code=True)
 ```
 
-A file under `envs/` pins its own id, so `task` is ignored when the hub path
-names one; select by `task` through the root `env.py`.
-
-`obs_type`, `observation_width`, `observation_height`, `episode_length` and
-`disable_env_checker` are read off the config too when it carries them
-(LeRobot's `LiberoEnv` carries the first four), as is a free-form `kwargs` dict
-(`IsaaclabArenaEnv` carries one). For the full option set without a config
-class, call the library entry point directly:
+A file under `envs/` supplies its own default environment id.
+LeRobot 0.7 passes `make_env_kwargs` directly to the provider.
+For the full contract, see [LeRobot compatibility](https://so101-nexus.com/docs/concepts/lerobot#loading-the-environments-from-the-hub-envhub).
+You can also call the library entry point directly:
 
 ```python
 from so101_nexus.envhub import make_env

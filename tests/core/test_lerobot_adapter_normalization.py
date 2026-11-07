@@ -42,7 +42,7 @@ def test_build_so101_motors_uses_lerobot_modes() -> None:
 
 
 def test_normalize_ticks_matches_upstream_feetech_private_method() -> None:
-    from lerobot.motors.feetech import FeetechMotorsBus
+    from lerobot.motors import SerialMotorsBus
 
     from so101_nexus.lerobot_adapter.normalization import (
         build_so101_motors,
@@ -52,7 +52,7 @@ def test_normalize_ticks_matches_upstream_feetech_private_method() -> None:
     motors = build_so101_motors(use_degrees=False)
     calibration = _calibration(drive_mode=1)
     ticks = {name: 1200 + i * 150 for i, name in enumerate(SO101_JOINT_NAMES)}
-    bus = FeetechMotorsBus(port="/dev/null", motors=motors, calibration=calibration)
+    bus = SerialMotorsBus(port="/dev/null", motors=motors, calibration=calibration)
     expected_by_id = bus._normalize({motors[name].id: tick for name, tick in ticks.items()})
     expected = {name: expected_by_id[motors[name].id] for name in ticks}
 
@@ -60,7 +60,7 @@ def test_normalize_ticks_matches_upstream_feetech_private_method() -> None:
 
 
 def test_unnormalize_values_matches_upstream_feetech_private_method() -> None:
-    from lerobot.motors.feetech import FeetechMotorsBus
+    from lerobot.motors import SerialMotorsBus
 
     from so101_nexus.lerobot_adapter.normalization import (
         build_so101_motors,
@@ -77,7 +77,7 @@ def test_unnormalize_values_matches_upstream_feetech_private_method() -> None:
         "wrist_roll": 40.0,
         "gripper": 75.0,
     }
-    bus = FeetechMotorsBus(port="/dev/null", motors=motors, calibration=calibration)
+    bus = SerialMotorsBus(port="/dev/null", motors=motors, calibration=calibration)
     expected_by_id = bus._unnormalize({motors[name].id: val for name, val in values.items()})
     expected = {name: expected_by_id[motors[name].id] for name in values}
 

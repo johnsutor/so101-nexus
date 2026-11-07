@@ -42,8 +42,8 @@ The base install ships the MuJoCo backend and the environment API. Everything el
 | Extra | Adds | Install |
 | --- | --- | --- |
 | `teleop` | Gradio demonstration recorder and leader return IK: `lerobot[dataset,feetech,placo-dep]`, `gradio`, `plotly`, `opencv-python` | `pip install "so101-nexus[teleop]"` |
-| `molmoact2` | LeRobot 0.6.1 MolmoAct2 model dependencies; combine with `teleop` for correction collection | `pip install "so101-nexus[teleop,molmoact2]"` |
-| `dm05` | Native DM0.5 model and LoRA dependencies; requires LeRobot's source integration | See [Native DM0.5](#native-dm05) |
+| `molmoact2` | LeRobot 0.7 MolmoAct2 model dependencies; combine with `teleop` for correction collection | `pip install "so101-nexus[teleop,molmoact2]"` |
+| `dm05` | Native DM0.5 model and LoRA dependencies from LeRobot 0.7 | See [Native DM0.5](#native-dm05) |
 | `decomp` | Measured convex decomposition of YCB collision meshes (`coacd`, `rtree`, `threadpoolctl`). Without it YCB collision geometry falls back to a single convex hull. The packages ship wheels for the supported platforms | `pip install "so101-nexus[decomp]"` |
 | `viz` | Pillow image labels and high-quality resizing in visualization helpers | `pip install "so101-nexus[viz]"` |
 | `train` | Torch training dependencies for the PPO and BC examples | `pip install "so101-nexus[train]"` |
@@ -54,30 +54,23 @@ Extras combine: `pip install "so101-nexus[teleop,train]"`.
 
 From source, use `uv sync --extra teleop --extra molmoact2` for MolmoAct2 collection.
 Other LeRobot policy checkpoints may need their own model dependencies. For example,
-`uv run --extra teleop --with "lerobot[smolvla]==0.6.1" so101-nexus teleop ...`
+`uv run --extra teleop --with "lerobot[smolvla]==0.7.0" so101-nexus teleop ...`
 adds SmolVLA dependencies for that invocation. Use the matching LeRobot extra for
 other supported policy families. The base install stays independent of LeRobot.
 
 
 ## Native DM0.5
 
-From a source checkout, the `dm05` extra selects a pinned LeRobot source archive automatically:
+LeRobot 0.7 includes the native DM0.5 integration. Install it with the `dm05` extra:
 
 ```bash
-uv sync --extra teleop --extra dm05
+pip install "so101-nexus[teleop,dm05]"
 ```
 
-The integration documented in [LeRobot's DM0.5 guide](https://huggingface.co/docs/lerobot/main/en/dm05)
-is newer than LeRobot 0.6.1. For pip installations, include the same source archive:
-
-```bash
-pip install "so101-nexus[teleop,dm05]" \
-    "lerobot[peft-dep] @ https://github.com/huggingface/lerobot/archive/2577da0ef39b47f870592d62d81edc8bce922cc4.tar.gz"
-```
-
-The extra retains this project's Transformers version range instead of installing OpenDM's
-runtime. The model runs in the teleop process. Weights download through the Hugging Face
-cache on first use; ensure your account has access to the model and its license.
+From a source checkout, run `uv sync --extra teleop --extra dm05`.
+Both policy extras use Transformers 5.22. The model runs in the teleop process.
+Weights download through the Hugging Face cache on first use.
+Your account must have access to the model and its license.
 See [Teleoperation](/docs/workflow/teleoperation#dm05-so101-pick-cube) for the launch command.
 
 ## Native CPU batching
@@ -101,7 +94,7 @@ The `rocm` extra installs PyTorch from the [ROCm 7.2 wheel index](https://downlo
 uv sync --extra train --extra rocm --no-default-groups
 ```
 
-`--no-default-groups` skips the `dev` dependency group. The test suite pins compatible Torch/TorchCodec pairs. Desktop platforms retain Torch `<2.10` and TorchCodec `<0.10`. Linux ARM64 uses Torch 2.11 and TorchCodec 0.11 because those dataset decoder wheels require that pair. LeRobot requires Torch `<2.12`, while the ROCm 7.2 build uses a newer version. `uv` therefore rejects combining `rocm` with `teleop`, `molmoact2`, `dm05`, `dev`, or `test`.
+`--no-default-groups` skips the `dev` dependency group. The test suite pins compatible Torch/TorchCodec pairs. Desktop platforms retain Torch `<2.10` and TorchCodec `<0.10`. Linux ARM64 uses Torch 2.11 and TorchCodec 0.11 because those dataset decoder wheels require that pair. The ROCm extra selects a newer Torch build that conflicts with these test pins. `uv` therefore rejects combining `rocm` with `teleop`, `molmoact2`, `dm05`, `dev`, or `test`.
 
 <Callout type="warn">
   `rocm` affects MuJoCo-backend training only, meaning behavior cloning and PPO on CPU-simulated environments. It does not enable the Warp backend: Warp is built on NVIDIA Warp, which has no ROCm/AMD support and always requires a CUDA GPU.

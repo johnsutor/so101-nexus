@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, cast
 from so101_nexus.config import SO101_JOINT_NAMES
 
 if TYPE_CHECKING:
+    from transformers.cache_utils import Cache
+
     from so101_nexus.policy_adapters.chunked_policy import ChunkedActionPolicy
 
 
@@ -79,6 +81,8 @@ class LeRobotPolicyAdapter:
                 raise ValueError("--policy-type does not match the checkpoint")
         if config.action_feature is None or config.action_feature.shape != (6,):
             raise ValueError("Collection requires six joint action targets")
+        if config.type == "molmoact2":
+            _configure_molmoact2_cache()
         policy_class = get_policy_class(config.type)
         policy = (
             policy_class(config)
@@ -280,3 +284,18 @@ def validate_policy_fps(
         )
     if expected_fps <= 0 or recording_fps != expected_fps:
         raise ValueError(f"Set recording FPS to the policy's {expected_fps} FPS")
+
+
+def _configure_molmoact2_cache() -> None:
+    from lerobot.policies.molmoact2.molmoact2_hf_model import modeling_molmoact2
+
+    def cache_max_len(past_key_values: Cache | None) -> int:
+        if past_key_values is None:
+            return -1
+        # Transformers 5.22 renamed this method; MolmoAct2's private static cache still uses it.
+        method = (
+            getattr(past_key_values, "get_max_cache_shape", None) or past_key_values.get_max_length
+        )
+        return int(method())
+
+    modeling_molmoact2.__dict__["_cache_max_len_int"] = cache_max_len
