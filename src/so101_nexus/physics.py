@@ -8,6 +8,13 @@ import numpy as np
 from so101_nexus.config import EnvironmentConfig, PhysicsConfig
 
 
+def apply_warp_collision_config(model: mujoco.MjModel) -> None:
+    """Retain near-parallel box contacts with Warp's analytic box manifold."""
+    # Warp's float32 convex path can lose aligned box contacts. This flag changes
+    # only box-box detection in Warp; mesh collision keeps its convex path.
+    model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_NATIVECCD
+
+
 def apply_robot_config(model: mujoco.MjModel, config: EnvironmentConfig) -> None:
     """Apply hardware dynamics only when the simulation uses its recorded clock."""
     profile = config.robot.profile

@@ -25,6 +25,12 @@ for the public-API and deprecation policy.
   camera pose and 61-degree field of view, and noncolliding camera PCB and lens.
   Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
 
+### Fixed
+
+- Use Warp's analytic box-box manifold to retain nearly aligned support contacts.
+  The native convex path could lose all contacts between stacked cubes after a
+  small model inertia change. Mesh collision paths remain unchanged.
+
 ## [0.11.0] - 2026-11-07
 
 ### Changed

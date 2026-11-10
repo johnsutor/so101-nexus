@@ -97,7 +97,11 @@ from so101_nexus.observations import (
     OverheadCamera,
     WristCamera,
 )
-from so101_nexus.physics import apply_physics_config, apply_robot_config
+from so101_nexus.physics import (
+    apply_physics_config,
+    apply_robot_config,
+    apply_warp_collision_config,
+)
 from so101_nexus.rendering import RenderingQuality
 from so101_nexus.rewards import _PotentialState
 from so101_nexus.scene import robot_material_ids
@@ -305,6 +309,7 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
             "cpu" if self.device.type == "cpu" else f"cuda:{self.device.index or 0}"
         )
 
+        apply_warp_collision_config(mjm)
         apply_robot_config(mjm, config)
         if config.physics is not None:
             self._N_SUBSTEPS = apply_physics_config(mjm, config.physics, backend="warp")
