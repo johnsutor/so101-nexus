@@ -170,18 +170,16 @@ def test_a_real_pinch_still_grasps_and_carries_the_object():
 
 
 @pytest.mark.parametrize("half_size,angle_deg", [(0.009525, 0), (0.012, 0), (0.02, 0), (0.012, 45)])
-def test_lifting_a_cube_limits_finger_penetration(env_factory, half_size, angle_deg):
+def test_lifting_a_cube_limits_finger_penetration(supported_pick_factory, half_size, angle_deg):
     """A loaded pinch must carry the cube with less than 1.5 mm penetration."""
-    env = env_factory(
-        task="PickLift",
-        config=PickConfig(objects=[CubeObject(half_size=half_size, color="red")]),
-        control_mode="pd_ee_delta_pose",
-    ).unwrapped
+    env, pose = supported_pick_factory(half_size=half_size, angle_deg=angle_deg)
     env.reset(seed=3)
-    angle_rad = np.deg2rad(angle_deg)
-    _pinch_the_target(env, quat=(np.cos(angle_rad / 2), 0, 0, np.sin(angle_rad / 2)))
-    # Let the released cube settle into a pinch after the imposed placement.
-    for _ in range(10):
+    slot = env._slots[env._target_slot_idx]
+    env.data.qpos[slot.qpos_addr : slot.qpos_addr + 7] = pose
+    env.data.qvel[slot.dof_addr : slot.dof_addr + 6] = 0
+    mujoco.mj_forward(env.model, env.data)
+    # Physical support carries acquisition and settling without imposed contacts.
+    for _ in range(110):
         env.step(_CLOSE)
     assert env._is_grasping() == 1.0
     fingers = env._gripper_geom_ids | env._jaw_geom_ids
