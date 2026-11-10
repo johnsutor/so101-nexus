@@ -58,7 +58,7 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus.physics import apply_physics_config
+from so101_nexus.physics import apply_physics_config, apply_robot_config
 from so101_nexus.rewards import _PotentialState, lift_progress, reach_progress
 from so101_nexus.scene import robot_material_ids
 
@@ -221,6 +221,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         self._init_qpos_clamp_warned = False
 
     def _finish_model_setup(self) -> None:
+        apply_robot_config(self.model, self.config)
         self._robot_material_ids = robot_material_ids(self.model)
         if self.config.physics is not None:
             self._N_SUBSTEPS = apply_physics_config(
@@ -285,12 +286,8 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         ctrl_low = ctrl_range[:, 0]
         ctrl_high = ctrl_range[:, 1]
 
-        # Valid position-target bounds: a commanded actuator target must lie
-        # within both the actuator ctrlrange and the compiled joint range. The
-        # menagerie wrist_roll actuator advertises a wider ctrlrange than its
-        # joint limit, so commanding the ctrlrange edge would drive the joint
-        # into its limit. Clamp every position target (reset and control) to the
-        # intersection.
+        # Joint limits can be tighter than actuator limits in custom models.
+        # Apply their intersection during both reset and control.
         jnt_range = self.model.jnt_range[self._joint_ids]
         self._target_low = np.maximum(ctrl_low, jnt_range[:, 0])
         self._target_high = np.minimum(ctrl_high, jnt_range[:, 1])

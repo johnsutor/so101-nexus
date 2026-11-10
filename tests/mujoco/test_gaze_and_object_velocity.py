@@ -142,7 +142,7 @@ def test_lookat_fov_deg_pins_the_gaze_state_boundary():
         cam_pos, axis = _camera(env)
         perp = np.array([axis[1], -axis[0], 0.0])
         perp = perp / np.linalg.norm(perp)
-        angle = np.radians(18.0)  # inside the real 48.5 deg fovy, outside the 10 deg pin
+        angle = np.radians(18.0)  # Inside the model FOV, outside the 10 degree pin.
         env.data.mocap_pos[env._look_target_mocap_id] = (
             cam_pos + (np.cos(angle) * axis + np.sin(angle) * perp) * 0.12
         )

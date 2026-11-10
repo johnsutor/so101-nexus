@@ -9,6 +9,22 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- Save and load robot-specific profiles containing LeRobot encoder calibration,
+  explicit hardware-to-model alignment, and per-joint dynamics. MuJoCo and Warp
+  apply the same dynamics before simulation; the LeRobot simulator follower can
+  load a profile directly.
+- Generate repeatable excitation and held-out trajectories, check them in MuJoCo,
+  and collect timestamped hardware responses through LeRobot. Optional MuJoCo
+  system identification produces candidate profiles and held-out diagnostics.
+
+### Changed
+
+- Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,
+  camera pose and 61-degree field of view, and noncolliding camera PCB and lens.
+  Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
+
 ## [0.11.0] - 2026-11-07
 
 ### Changed

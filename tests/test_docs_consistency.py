@@ -147,6 +147,53 @@ def test_examples_readme_references_existing_example_scripts() -> None:
     assert missing == [], f"examples/README.md references missing scripts: {missing}"
 
 
+def test_identification_recipe_loads_saved_excitation_episodes(monkeypatch, tmp_path):
+    """The documented offline recipe must read the collector's numbered files."""
+
+    import so101_nexus
+    from so101_nexus import ExcitationConfig, RecordedTrajectory, RobotProfile, generate_excitation
+    from so101_nexus.excitation import profile_digest
+
+    calibration = {
+        name: {
+            "id": index,
+            "drive_mode": 0,
+            "homing_offset": 0,
+            "range_min": 0,
+            "range_max": 4095,
+        }
+        for index, name in enumerate(so101_nexus.SO101_JOINT_NAMES, 1)
+    }
+    profile = RobotProfile("docs-arm", calibration)
+    profile.save(tmp_path / "my_robot_profile.json")
+    plans = generate_excitation(ExcitationConfig((0, -15, 30, 45, 0, 50)), profile)
+    for index, plan in enumerate(plans):
+        RecordedTrajectory(
+            plan.name,
+            plan.split,
+            plan.timestamps_s,
+            plan.timestamps_s,
+            plan.commands_deg,
+            plan.commands_deg,
+            profile_digest(profile),
+        ).save(tmp_path / "sysid_recordings" / f"{index:02d}_{plan.name}.npz")
+    loaded = []
+
+    def fit(profile, recordings, **kwargs):
+        loaded.extend(recordings)
+
+    monkeypatch.setattr(so101_nexus, "fit_robot_profile", fit)
+    monkeypatch.chdir(tmp_path)
+    section = _read(DOCS / "workflow" / "teleoperation.mdx").split("### Fit and evaluate dynamics")[
+        1
+    ]
+    recipe = re.search(r"```python\n(.*?)```", section, re.DOTALL)
+    assert recipe is not None
+    exec(compile(recipe[1], "documented_identification_recipe", "exec"), {})
+    assert [episode.name for episode in loaded] == [plan.name for plan in plans]
+    assert [episode.split for episode in loaded] == ["train", "train", "validation"]
+
+
 def test_max_episode_steps_documented_as_make_kwarg_not_config_field() -> None:
     """Episode length is a gym.make/make_vec keyword, never a config field or table row."""
     offenders = []

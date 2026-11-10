@@ -77,9 +77,10 @@ def test_model_diff_bindings():
 
     for n in _JOINTS:
         assert np.allclose(m.actuator_forcerange[aid(n)], [-2.94, 2.94])
-    # wrist_roll joint upper is tighter than its advertised ctrlrange upper.
-    assert m.jnt_range[jid("wrist_roll")][1] < 2.80
-    assert m.actuator_ctrlrange[aid("wrist_roll")][1] > 2.80
+    assert m.jnt_range[jid("wrist_roll")][1] == pytest.approx(2.8412063)
+    np.testing.assert_allclose(
+        m.jnt_range[jid("wrist_roll")], m.actuator_ctrlrange[aid("wrist_roll")], atol=1e-5
+    )
 
 
 @pytest.mark.parametrize("env_id,cfg_cls", _ENVS)

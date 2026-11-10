@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path  # noqa: TC003 - LeRobot resolves config annotations at runtime.
 from typing import Any
 
 from lerobot.cameras import CameraConfig  # noqa: TC002
@@ -24,3 +25,4 @@ class SimSOFollowerConfig(RobotConfig):
     use_degrees: bool = True
     max_relative_target: float | dict[str, float] | None = None
     disable_torque_on_disconnect: bool = True
+    profile_path: Path | None = None

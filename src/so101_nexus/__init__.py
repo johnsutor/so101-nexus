@@ -49,6 +49,14 @@ from so101_nexus.constants import (
     ColorName,
     sample_color,
 )
+from so101_nexus.excitation import (
+    ExcitationConfig,
+    ExcitationTrajectory,
+    RecordedTrajectory,
+    collect_excitation,
+    generate_excitation,
+    preflight_excitation,
+)
 from so101_nexus.gaze import (
     direction_to_object,
     gaze_angle_rad,
@@ -113,6 +121,7 @@ from so101_nexus.observations import (
     privileged_state_feature_names,
 )
 from so101_nexus.policy_adapters.collection import LeRobotPolicyAdapter
+from so101_nexus.profiles import JointDynamics, RobotProfile, model_fingerprint
 from so101_nexus.rendering import RenderingQuality
 from so101_nexus.rewards import (
     lift_progress,
@@ -120,6 +129,7 @@ from so101_nexus.rewards import (
     reach_progress,
     simple_reward,
 )
+from so101_nexus.sysid import FitResult, fit_robot_profile
 from so101_nexus.teleop.intervention import InterventionSession, intervention_chunk_mask
 from so101_nexus.teleop.leader import SOLeaderSynchronizer
 from so101_nexus.ycb_assets import (
@@ -234,6 +244,9 @@ __all__ = [
     "CylinderObject",
     "EndEffectorPose",
     "EnvironmentConfig",
+    "ExcitationConfig",
+    "ExcitationTrajectory",
+    "FitResult",
     "GSOCollisionPart",
     "GSOObject",
     "GazeDirection",
@@ -242,6 +255,7 @@ __all__ = [
     "GripperContactForce",
     "GsoModelId",
     "InterventionSession",
+    "JointDynamics",
     "JointEfforts",
     "JointPositions",
     "JointVelocities",
@@ -264,12 +278,14 @@ __all__ = [
     "Pose",
     "PrimitiveObject",
     "PyramidObject",
+    "RecordedTrajectory",
     "RenderConfig",
     "RenderingQuality",
     "RestingJointPositions",
     "RewardConfig",
     "RobotCameraPreset",
     "RobotConfig",
+    "RobotProfile",
     "SOLeaderSynchronizer",
     "ScannedMeshObject",
     "SceneObject",
@@ -283,14 +299,17 @@ __all__ = [
     "YCBObject",
     "YcbModelId",
     "__version__",
+    "collect_excitation",
     "component_slice",
     "dataset_row_to_sim_qpos",
     "describe_pick_target",
     "direction_to_object",
     "ensure_gso_assets",
     "ensure_ycb_assets",
+    "fit_robot_profile",
     "gaze_angle_rad",
     "gaze_cosine",
+    "generate_excitation",
     "get_gso_collision_mesh",
     "get_gso_collision_meshes",
     "get_gso_collision_parts",
@@ -310,10 +329,12 @@ __all__ = [
     "get_ycb_visual_mesh",
     "intervention_chunk_mask",
     "lift_progress",
+    "model_fingerprint",
     "object_in_view",
     "observations_from_feature_names",
     "opposing_normals_ok",
     "orientation_progress",
+    "preflight_excitation",
     "privileged_state_feature_names",
     "reach_progress",
     "relabel_environment_state",

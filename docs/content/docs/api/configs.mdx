@@ -9,6 +9,65 @@ All configuration classes live in `so101_nexus` and are plain Python classes wit
 The default is `None`, which lets Gymnasium select the random state.
 Teleoperation sets this field from its effective episode seed.
 
+## Robot profiles
+
+`RobotProfile` stores the encoder calibration, coordinate alignment, and effective dynamics of one physical SO-101 arm.
+`RobotConfig(profile=profile)` applies its dynamics before MuJoCo execution or Warp conversion.
+Raw environment actions retain their existing model coordinates.
+Both backends intersect model joint and actuator limits with the calibrated hardware travel.
+The LeRobot adapter applies coordinate alignment at the hardware boundary.
+See [Robot identification](/docs/workflow/teleoperation#robot-identification) for automatic collection and fitting.
+
+```python
+from so101_nexus import MoveConfig, RobotConfig, RobotProfile
+
+profile = RobotProfile.load("my_robot.json")
+config = MoveConfig(robot=RobotConfig(profile=profile))
+```
+
+| Field | Meaning |
+| --- | --- |
+| `robot_id` | Identity of the physical follower, matching the LeRobot robot ID |
+| `calibration` | Original LeRobot motor calibration, with all six SO-101 motor names and IDs |
+| `joint_offsets_deg` | Five body-joint offsets: model degrees equal LeRobot degrees plus the offset |
+| `gripper_limits_deg` | Model gripper angles at hardware 0 and 100 percent |
+| `dynamics` | Optional mapping from joint names to `JointDynamics` values |
+| `model_sha256` | Fingerprint of vendored robot XML and meshes. An empty value permits an unpinned profile. |
+| `control_period_s` | Command interval for the identified control loop. Must match `PhysicsConfig.control_period_s`. |
+| `servo_gains` | Hardware PID coefficients `(P, I, D)`, default `(16, 0, 32)`. Collection requires matching LeRobot coefficients. |
+| `schema_version` | Version of the saved JSON schema, currently `1` |
+
+`RobotProfile.from_lerobot(path, robot_id=...)` imports an existing calibration and pins the robot asset fingerprint.
+`with_reference_pose(hardware_body_deg=..., model_body_deg=...)` returns a profile aligned from five measured body-joint angles.
+Both reference vectors describe the same physical pose.
+The gripper endpoints require separate measurements.
+`save(path)` writes JSON atomically, and `load(path)` validates the saved schema.
+`export_lerobot(path)` writes the original encoder calibration as standard LeRobot JSON.
+Profiles contain immutable snapshots of calibration and dynamics.
+
+`to_model_deg(values)` and `from_model_deg(values)` accept NumPy arrays and torch tensors with shape `(..., 6)`.
+Hardware vectors contain five body angles in degrees and gripper percent.
+Model vectors contain six angles in degrees.
+These affine transforms preserve values outside the endpoints.
+The simulator follower clamps commands to calibrated hardware travel and model limits.
+
+`JointDynamics` separates actuator derivative gain from passive joint damping:
+
+| Field | Units |
+| --- | --- |
+| `armature` | kg m² |
+| `frictionloss`, `force_limit` | N m |
+| `kp` | N m/rad |
+| `kd`, `joint_damping` | N m s/rad |
+
+These SI gains describe simulation actuators. They are not servo register values.
+Profile loading does not write hardware registers.
+
+`SimSOFollowerConfig(profile_path=...)` loads the profile and its encoder calibration without a separate calibration file.
+It requires `use_degrees=True` and a matching robot ID.
+It rejects conflicting calibration files or environment profiles.
+When physics configuration is omitted, this adapter selects the profile command interval.
+
 ## PhysicsConfig
 
 Pass `physics=PhysicsConfig(...)` to any task configuration to select physics timing, solver behavior, and optional jaw contact impedance.
