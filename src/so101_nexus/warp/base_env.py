@@ -1478,6 +1478,8 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
         if n_pool is None:
             raise ValueError(f"{type(self).__name__} has no object pool to target")
         raw = options["target_index"]
+        if isinstance(raw, np.integer):
+            raw = int(raw)
         if isinstance(raw, (list, tuple)) and any(
             isinstance(value, (bool, np.bool_)) for value in raw
         ):

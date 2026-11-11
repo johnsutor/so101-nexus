@@ -88,7 +88,9 @@ def test_warp_target_index_rejects_noninteger_vectors(env_factory, target_index)
         env.reset(seed=8, options={"target_index": target_index})
 
 
-@pytest.mark.parametrize("target_index", [np.int64(1), [1, 0], np.array([1, 0], dtype=np.int32)])
+@pytest.mark.parametrize(
+    "target_index", [np.int64(1), np.uint64(1), [1, 0], np.array([1, 0], dtype=np.int32)]
+)
 def test_warp_target_index_accepts_integer_scalars_and_vectors(env_factory, target_index):
     config = PickConfig(objects=[CubeObject(color="red"), CubeObject(color="blue")])
     env = env_factory("warp", task="PickLift", config=config)
