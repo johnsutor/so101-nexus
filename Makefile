@@ -20,7 +20,7 @@ mutation:
 	uv run --with "mutmut==3.8.0" mutmut run --max-children 4
 
 test-warp:
-	uv run --extra warp pytest tests/warp tests/core/test_rewards_tensor.py -q
+	uv run --extra warp pytest tests/warp tests/core tests/test_*.py -q
 
 rocm-sync:
 	uv sync --extra rocm --no-default-groups
