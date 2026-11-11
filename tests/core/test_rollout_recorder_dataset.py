@@ -97,6 +97,81 @@ class _Dataset:
         self.save_episode_calls += 1
 
 
+@pytest.mark.parametrize("failure", ["policy", "step", "add_frame", "save_episode"])
+def test_failed_episode_can_retry_without_persisting_partial_frames(tmp_path, monkeypatch, failure):
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    from so101_nexus.policy_adapters import RolloutRecorder
+    from so101_nexus.teleop.dataset import FieldSelection, build_features
+
+    selection = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    motors = {f"joint_{index}.pos": float for index in range(6)}
+    root = tmp_path / "retry"
+    dataset = LeRobotDataset.create(
+        repo_id="local/retry",
+        root=root,
+        fps=30,
+        features=build_features(selection, motors, motors),
+        use_videos=False,
+    )
+    env = _DatasetEnv()
+    policy = _Policy(np.zeros(6, dtype=np.float32))
+    recorder = RolloutRecorder(env, policy, camera_keys=(), dataset=dataset)
+    owner, method = {
+        "policy": (policy, "select_action"),
+        "step": (env, "step"),
+        "add_frame": (dataset, "add_frame"),
+        "save_episode": (dataset, "save_episode"),
+    }[failure]
+    original = getattr(owner, method)
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == (1 if failure == "save_episode" else 2):
+            raise RuntimeError("injected recording failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, method, fail_once)
+    try:
+        with pytest.raises(RuntimeError, match="injected recording failure"):
+            recorder.record_episode(seed=17)
+        result = recorder.record_episode(seed=18)
+    finally:
+        dataset.finalize()
+
+    reloaded = LeRobotDataset("local/retry", root=root)
+    assert result.n_steps == len(reloaded) == 2
+    assert reloaded.num_episodes == 1
+    np.testing.assert_allclose(
+        np.stack([reloaded[index]["observation.state"].numpy() for index in range(2)]),
+        result.states_deg,
+    )
+
+
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_failed_episode_preserves_original_error_with_optional_cleanup(monkeypatch, cleanup_fails):
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    dataset = _Dataset()
+    if cleanup_fails:
+
+        def broken_cleanup():
+            raise ValueError("cleanup failed")
+
+        dataset.clear_episode_buffer = broken_cleanup
+    policy = _Policy(np.zeros(6, dtype=np.float32))
+
+    def broken_policy(_batch):
+        raise RuntimeError("policy failed")
+
+    monkeypatch.setattr(policy, "select_action", broken_policy)
+    recorder = RolloutRecorder(_DatasetEnv(), policy, dataset=dataset)
+    with pytest.raises(RuntimeError, match="policy failed"):
+        recorder.record_episode()
+
+
 def test_record_episode_writes_lerobot_frames_in_degrees() -> None:
     from so101_nexus.policy_adapters import RolloutRecorder
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -115,6 +116,16 @@ class RolloutRecorder:
 
     def record_episode(self, *, seed: int | None = None) -> EpisodeResult:
         """Record one policy rollout episode."""
+        try:
+            return self._record_episode(seed=seed)
+        except Exception:
+            clear_buffer = getattr(self.dataset, "clear_episode_buffer", None)
+            if callable(clear_buffer):
+                with contextlib.suppress(Exception):
+                    clear_buffer()
+            raise
+
+    def _record_episode(self, *, seed: int | None) -> EpisodeResult:
         obs, _ = self.env.reset(seed=seed)
         self.policy.reset()
         task = self.task

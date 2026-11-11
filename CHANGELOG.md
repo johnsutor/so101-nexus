@@ -27,6 +27,8 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Clear incomplete policy rollout buffers after recording failures so retries
+  save only frames from the successful episode.
 - Preserve millimeter cube sizes when teleop applies camera, timing, and task
   overrides to pick-and-place and stacking configurations.
 - Use Warp's analytic box-box manifold to retain nearly aligned support contacts.
