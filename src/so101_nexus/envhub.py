@@ -435,11 +435,16 @@ class WarpEnvHubAdapter(gym.vector.VectorWrapper):
     def call(self, name: str, *args: Any, **kwargs: Any) -> tuple[Any, ...]:
         """Return one value per world for the attribute or method ``name``."""
         inner = self.env.unwrapped
+        attribute_name = {
+            "task_description": "task_descriptions",
+            "task": "task_descriptions",
+            "_max_episode_steps": "max_episode_steps",
+        }.get(name, name)
+        attribute = getattr(inner, attribute_name)
         if name in ("task_description", "task"):
-            return tuple(inner.task_descriptions)
+            return tuple(attribute)
         if name == "_max_episode_steps":
-            return (inner.max_episode_steps,) * self.num_envs
-        attribute = getattr(inner, name)
+            return (attribute,) * self.num_envs
         value = attribute(*args, **kwargs) if callable(attribute) else attribute
         # A per-world value is already one entry per world; a scalar describes the
         # whole batch, so it is what every world reports.
