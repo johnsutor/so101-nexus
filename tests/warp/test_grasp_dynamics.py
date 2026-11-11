@@ -55,6 +55,8 @@ def test_supported_pick_survives_hold_translation_and_reversal(
         mass=mass,
         device=device,
         max_episode_steps=1024,
+        # CPU worlds follow the same pinned trajectory; isolation has separate tests.
+        num_envs=1 if device == "cpu" else 2,
     )
     if graph:
         assert env._step_graph is not None

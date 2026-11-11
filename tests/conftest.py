@@ -24,7 +24,10 @@ def env_factory():
                 pytest.importorskip("mujoco_warp")
                 pytest.importorskip("torch")
                 device = kwargs.pop("device", "cpu")
-                env = gym.make_vec(f"Warp{task}-v{version}", num_envs=2, device=device, **kwargs)
+                num_envs = kwargs.pop("num_envs", 2)
+                env = gym.make_vec(
+                    f"Warp{task}-v{version}", num_envs=num_envs, device=device, **kwargs
+                )
             else:
                 env = gym.make(f"MuJoCo{task}-v{version}", **kwargs)
             stack.callback(env.close)
