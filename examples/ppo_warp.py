@@ -129,7 +129,6 @@ class Args:
     num_updates: int = field(default=0, init=False)
 
 
-_finite = _training._finite
 RunningMeanStd = _training.RunningMeanStd
 ObsNormalizer = _training.ObsNormalizer
 RewardScaler = _training.RewardScaler
@@ -286,17 +285,6 @@ def train(  # noqa: PLR0915, PLR0912, C901
     obs_norm = ObsNormalizer(obs_dim, dev, enabled=norm_obs)
     rew_scaler = RewardScaler(num_envs, dev, gamma, enabled=norm_reward)
 
-    obs_buf = torch.zeros((num_steps, num_envs, obs_dim), device=dev)
-    act_buf = torch.zeros((num_steps, num_envs, act_dim), device=dev)
-    logp_buf = torch.zeros((num_steps, num_envs), device=dev)
-    rew_buf = torch.zeros((num_steps, num_envs), device=dev)
-    done_buf = torch.zeros((num_steps, num_envs), device=dev)
-    val_buf = torch.zeros((num_steps, num_envs), device=dev)
-
-    episode_stats = torch.empty((num_steps, num_envs, 4), device=dev)
-    ep_ret = torch.zeros(num_envs, device=dev)
-    ep_len = torch.zeros(num_envs, device=dev)
-    ep_succeeded = torch.zeros(num_envs, dtype=torch.bool, device=dev)
     ret_hist: deque = deque(maxlen=400)
     succ_hist: deque = deque(maxlen=400)
     len_hist: deque = deque(maxlen=400)
@@ -313,8 +301,9 @@ def train(  # noqa: PLR0915, PLR0912, C901
         envs._elapsed = torch.randint(
             0, episode_length, (num_envs,), generator=stagger_rng, device=dev
         )
-    next_obs = obs_norm(next_obs_raw.to(dev), update=True)
-    next_done = torch.zeros(num_envs, device=dev)
+    rollout = _training.RolloutCollector(
+        envs, agent, obs_norm, rew_scaler, policy_rng, num_steps, next_obs_raw.to(dev)
+    )
 
     pg_loss = v_loss = entropy_loss = torch.tensor(0.0)
     approx_kl = torch.tensor(0.0)
@@ -327,66 +316,31 @@ def train(  # noqa: PLR0915, PLR0912, C901
             optimizer.param_groups[0]["lr"] = frac * learning_rate
         ent_now = ent_coef + (ent_coef_final - ent_coef) * ((update - 1.0) / num_updates)
 
-        hold_sum = torch.zeros((), device=dev)
-        for step in range(num_steps):
-            global_step += num_envs
-            obs_buf[step] = next_obs
-            done_buf[step] = next_done
-
-            with torch.no_grad():
-                action, logprob, _, value = agent.get_action_and_value(
-                    next_obs, generator=policy_rng
-                )
-            act_buf[step] = action
-            logp_buf[step] = logprob
-            val_buf[step] = value
-
-            next_obs_raw, reward, terminated, truncated, info = envs.step(action)
-            next_obs_raw = _finite(next_obs_raw.to(dev))
-            reward = _finite(reward.to(dev))
-            terminated = terminated.to(dev)
-            done = (terminated | truncated.to(dev)).float()
-            succ = info["success"].to(dev).bool()
-            hold_sum += succ.float().mean()
-
-            # Fire success_bonus once, on the step success is first reached: fixed horizon
-            # suppresses `terminated`, so key off the true info["success"] instead.
-            first_success = succ & ~ep_succeeded
-            shaped = reward + success_bonus * first_success.float()
-            rew_buf[step] = rew_scaler(shaped, done)
-
-            # episodic bookkeeping on the RAW env reward / true success
-            ep_ret += reward
-            ep_len += 1
-            ep_succeeded |= succ
-            episode_stats[step] = torch.stack((ep_ret, ep_len, ep_succeeded, done), dim=-1)
-            done_mask = done.bool()
-            ep_ret.masked_fill_(done_mask, 0.0)
-            ep_len.masked_fill_(done_mask, 0.0)
-            ep_succeeded &= ~done_mask
-
-            next_obs = obs_norm(next_obs_raw, update=True)
-            next_done = done
-
-        # Transfer episode diagnostics once per rollout, preserving step/world order.
-        completed = episode_stats.cpu()
-        for r_, l_, s_ in completed[completed[..., 3].bool(), :3].tolist():
+        completed, hold_sum = rollout.collect(success_bonus)
+        global_step += batch_size
+        for r_, l_, s_ in completed:
             ret_hist.append(r_)
             len_hist.append(l_)
             succ_hist.append(s_)
 
         with torch.no_grad():
-            next_value = agent.get_value(next_obs).squeeze(-1)
+            next_value = agent.get_value(rollout.next_obs).squeeze(-1)
             advantages, returns = _training.generalized_advantage_estimate(
-                rew_buf, val_buf, done_buf, next_value, next_done, gamma, gae_lambda
+                rollout.rewards,
+                rollout.values,
+                rollout.dones,
+                next_value,
+                rollout.next_done,
+                gamma,
+                gae_lambda,
             )
 
-        b_obs = obs_buf.reshape(-1, obs_dim)
-        b_logp = logp_buf.reshape(-1)
-        b_act = act_buf.reshape(-1, act_dim)
+        b_obs = rollout.observations.reshape(-1, obs_dim)
+        b_logp = rollout.log_probs.reshape(-1)
+        b_act = rollout.actions.reshape(-1, act_dim)
         b_adv = advantages.reshape(-1)
         b_ret = returns.reshape(-1)
-        b_val = val_buf.reshape(-1)
+        b_val = rollout.values.reshape(-1)
 
         b_inds = np.arange(batch_size)
         clipfracs = []

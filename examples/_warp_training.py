@@ -90,6 +90,79 @@ class RewardScaler:
         return scaled
 
 
+class RolloutCollector:
+    """Collect PPO batches while preserving episode state across updates."""
+
+    def __init__(self, envs, agent, obs_norm, rew_scaler, generator, num_steps, initial_obs):
+        self.envs = envs
+        self.agent = agent
+        self.obs_norm = obs_norm
+        self.rew_scaler = rew_scaler
+        self.generator = generator
+        self.next_obs = obs_norm(initial_obs, update=True)
+        self.next_done = torch.zeros(envs.num_envs, device=initial_obs.device)
+        shape = (num_steps, envs.num_envs)
+        self.observations = torch.zeros((*shape, initial_obs.shape[-1]), device=initial_obs.device)
+        self.actions = torch.zeros(
+            (*shape, *envs.single_action_space.shape), device=initial_obs.device
+        )
+        self.log_probs = torch.zeros(shape, device=initial_obs.device)
+        self.rewards = torch.zeros(shape, device=initial_obs.device)
+        self.dones = torch.zeros(shape, device=initial_obs.device)
+        self.values = torch.zeros(shape, device=initial_obs.device)
+        self._episode_stats = torch.empty((*shape, 4), device=initial_obs.device)
+        self._episode_returns = torch.zeros(envs.num_envs, device=initial_obs.device)
+        self._episode_lengths = torch.zeros(envs.num_envs, device=initial_obs.device)
+        self._episode_succeeded = torch.zeros(
+            envs.num_envs, dtype=torch.bool, device=initial_obs.device
+        )
+
+    def collect(self, success_bonus):
+        """Fill the buffers and return completed episodes and summed success rates."""
+        device = self.next_obs.device
+        hold_sum = torch.zeros((), device=device)
+        for step in range(self.rewards.shape[0]):
+            self.observations[step] = self.next_obs
+            self.dones[step] = self.next_done
+            with torch.no_grad():
+                action, logprob, _, value = self.agent.get_action_and_value(
+                    self.next_obs, generator=self.generator
+                )
+            self.actions[step] = action
+            self.log_probs[step] = logprob
+            self.values[step] = value
+
+            observation, reward, terminated, truncated, info = self.envs.step(action)
+            observation = _finite(observation.to(device))
+            reward = _finite(reward.to(device))
+            done = (terminated.to(device) | truncated.to(device)).float()
+            success = info["success"].to(device).bool()
+            hold_sum += success.float().mean()
+            # Fixed-horizon tasks report success without terminating the episode.
+            first_success = success & ~self._episode_succeeded
+            self.rewards[step] = self.rew_scaler(
+                reward + success_bonus * first_success.float(), done
+            )
+
+            self._episode_returns += reward
+            self._episode_lengths += 1
+            self._episode_succeeded |= success
+            self._episode_stats[step] = torch.stack(
+                (self._episode_returns, self._episode_lengths, self._episode_succeeded, done),
+                dim=-1,
+            )
+            done_mask = done.bool()
+            self._episode_returns.masked_fill_(done_mask, 0.0)
+            self._episode_lengths.masked_fill_(done_mask, 0.0)
+            self._episode_succeeded &= ~done_mask
+            self.next_obs = self.obs_norm(observation, update=True)
+            self.next_done = done
+
+        # Transfer once per rollout and retain step/world ordering.
+        completed = self._episode_stats.cpu()
+        return completed[completed[..., 3].bool(), :3].tolist(), hold_sum
+
+
 def layer_init(layer, std=_LAYER_INIT_STD, bias_const=0.0):
     """Orthogonal-initialize a linear layer."""
     nn.init.orthogonal_(layer.weight, std)

@@ -78,3 +78,71 @@ def test_single_advantage_is_not_normalized():
         True,
     )
     assert policy.item() == -1.0
+
+
+def test_rollout_buffers_keep_episode_boundaries_and_one_time_success_bonus():
+    from types import SimpleNamespace
+
+    from examples._warp_training import ObsNormalizer, RewardScaler, RolloutCollector
+
+    class Agent:
+        def get_action_and_value(self, observation, *, generator):
+            assert not torch.is_grad_enabled()
+            action = torch.rand((2, 1), generator=generator)
+            return action, observation[:, 0] + 0.1, None, observation[:, 0] + 0.2
+
+    rewards = torch.tensor([[1, 2], [3, 4], [5, 6], [7, 8]]).float()
+    successes = torch.tensor([[True, False], [True, True], [True, True], [False, False]])
+    terminated = torch.tensor([[False, False], [True, False], [False, False], [False, False]])
+    truncated = torch.tensor([[False, False], [False, False], [False, True], [False, False]])
+    position = 0
+    actions = []
+
+    def step(action):
+        nonlocal position
+        actions.append(action.clone())
+        i = position
+        position += 1
+        observation = torch.tensor([[2 * i + 2], [2 * i + 3]]).float()
+        return observation, rewards[i], terminated[i], truncated[i], {"success": successes[i]}
+
+    generator = torch.Generator().manual_seed(47)
+    collector = RolloutCollector(
+        SimpleNamespace(num_envs=2, single_action_space=SimpleNamespace(shape=(1,)), step=step),
+        Agent(),
+        ObsNormalizer(1, "cpu", enabled=False),
+        RewardScaler(2, "cpu", 0.99, enabled=False),
+        generator,
+        2,
+        torch.tensor([[0.0], [1.0]]),
+    )
+    completed, hold_sum = collector.collect(success_bonus=5)
+    assert completed == [[4, 2, 1]]
+    assert hold_sum.item() == 1.5
+    torch.testing.assert_close(
+        collector.observations[:, :, 0], torch.tensor([[0, 1], [2, 3]]).float()
+    )
+    torch.testing.assert_close(collector.log_probs, torch.tensor([[0.1, 1.1], [2.1, 3.1]]))
+    torch.testing.assert_close(collector.values, torch.tensor([[0.2, 1.2], [2.2, 3.2]]))
+    torch.testing.assert_close(collector.rewards, torch.tensor([[6, 2], [3, 9]]).float())
+    torch.testing.assert_close(collector.dones, torch.zeros(2, 2))
+    torch.testing.assert_close(collector.next_obs, torch.tensor([[4.0], [5.0]]))
+    torch.testing.assert_close(collector.next_done, torch.tensor([1.0, 0.0]))
+
+    completed, hold_sum = collector.collect(success_bonus=5)
+    assert completed == [[12, 3, 1]]
+    assert hold_sum.item() == 1
+    torch.testing.assert_close(
+        collector.observations[:, :, 0], torch.tensor([[4, 5], [6, 7]]).float()
+    )
+    torch.testing.assert_close(collector.rewards, torch.tensor([[10, 6], [7, 8]]).float())
+    torch.testing.assert_close(collector.dones, torch.tensor([[1, 0], [0, 1]]).float())
+    torch.testing.assert_close(collector.next_obs, torch.tensor([[8.0], [9.0]]))
+    torch.testing.assert_close(collector.next_done, torch.zeros(2))
+    expected_generator = torch.Generator().manual_seed(47)
+    expected_actions = [torch.rand((2, 1), generator=expected_generator) for _ in range(4)]
+    torch.testing.assert_close(torch.stack(actions), torch.stack(expected_actions), rtol=0, atol=0)
+    torch.testing.assert_close(collector.actions, torch.stack(expected_actions[2:]), rtol=0, atol=0)
+    torch.testing.assert_close(
+        generator.get_state(), expected_generator.get_state(), rtol=0, atol=0
+    )

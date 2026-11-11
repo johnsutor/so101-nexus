@@ -16,6 +16,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, cast
 
+from so101_nexus.config import PickAndPlaceConfig, StackCubeConfig
 from so101_nexus.constants import (
     COLOR_MAP,
     CUBE_COLOR_MAP,
@@ -201,6 +202,17 @@ def apply_config_overrides[ConfigT](
         if value is not None and name in attrs:
             attrs[name] = value
 
+    return _replace_config(config, **attrs)
+
+
+def _replace_config[ConfigT](config: ConfigT, **updates: Any) -> ConfigT:
+    attrs = {**vars(config), **updates}
+    if (
+        isinstance(config, (PickAndPlaceConfig, StackCubeConfig))
+        and attrs["cube_side_length_mm"] is not None
+    ):
+        # The constructor derives half-size from the original millimeter input.
+        attrs.pop("cube_half_size")
     return config.__class__(**attrs)
 
 

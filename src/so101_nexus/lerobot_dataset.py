@@ -195,6 +195,7 @@ def relabel_environment_state(
     if dt <= 0:
         raise ValueError(f"dt must be > 0, got {dt}")
 
+    blocks = _episode_blocks(episode_index, len(state))
     target_names = privileged_state_feature_names(observations)
     _reject_duplicate_names(recorded_names, "recorded_names")
     _reject_duplicate_names(target_names, "target observation layout")
@@ -219,7 +220,7 @@ def relabel_environment_state(
             )
         qpos = state[:, [column[name] for name in position_names]]
         qvel = np.zeros_like(qpos)
-        for start, stop in _episode_blocks(episode_index, len(state)):
+        for start, stop in blocks:
             qvel[start + 1 : stop] = (qpos[start + 1 : stop] - qpos[start : stop - 1]) / dt
         reconstructed = dict(zip(velocity_names, qvel.T, strict=True))
 

@@ -15,11 +15,11 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 
 def test_completed_dataset_retries_native_upload_with_corrected_repo_id(monkeypatch, tmp_path):
     from lerobot.datasets import lerobot_dataset
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     from so101_nexus.teleop.app import _cb_push_to_hub
     from so101_nexus.teleop.dataset import (
         FieldSelection,
-        _make_reward_scalar_dataset_cls,
         build_features,
         build_frame,
     )
@@ -31,7 +31,7 @@ def test_completed_dataset_retries_native_upload_with_corrected_repo_id(monkeypa
     selection = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
     motor_features = {"joint.pos": float}
     root = tmp_path / "original-recording"
-    dataset = _make_reward_scalar_dataset_cls().create(
+    dataset = LeRobotDataset.create(
         repo_id="local/recording",
         fps=30,
         root=root,
@@ -163,7 +163,6 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
         REWARD_KEY,
         WRIST_KEY,
         FieldSelection,
-        _make_reward_scalar_dataset_cls,
         build_features,
         build_frame,
     )
@@ -187,7 +186,7 @@ def test_gradio_recording_reloads_as_lerobot_dataset(tmp_path) -> None:
     )
 
     dataset_root = tmp_path / "dataset"
-    dataset = _make_reward_scalar_dataset_cls().create(
+    dataset = LeRobotDataset.create(
         repo_id="local/teleop-smoke",
         fps=30,
         features=features,
@@ -294,7 +293,6 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
         ENV_STATE_KEY,
         SUCCESS_KEY,
         FieldSelection,
-        _make_reward_scalar_dataset_cls,
         build_features,
         build_frame,
     )
@@ -311,7 +309,7 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     # Camera-free selection: no wrist/overhead video, so `finalize` never invokes
     # ffmpeg. This isolates the env_state/success/done channels from video encoding
     # (which can hang in some environments), while still exercising the real
-    # LeRobot write + reload path via `_make_reward_scalar_dataset_cls`.
+    # LeRobot write + reload path.
     selection = FieldSelection(
         wrist_image=False,
         overhead_image=False,
@@ -336,7 +334,7 @@ def test_camera_free_recording_reloads_env_state_success_done(tmp_path) -> None:
     )
 
     dataset_root = tmp_path / "dataset"
-    dataset = _make_reward_scalar_dataset_cls().create(
+    dataset = LeRobotDataset.create(
         repo_id="local/teleop-envstate",
         fps=30,
         features=features,

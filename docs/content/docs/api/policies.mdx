@@ -90,6 +90,11 @@ Pass `record_side_video=True` to record the env's configured render view as an e
 
 ## Caveats
 
+If collection fails, the recorder clears the episode buffer when the dataset provides
+`clear_episode_buffer()`, allowing another attempt. If cleanup or saving fails, the recorder
+rejects further episodes. Save failures preserve the writer state because LeRobot can write
+data before updating its episode metadata. Recover the dataset before creating a new recorder.
+
 ### Action Semantics
 
 The recorder treats policy actions as absolute joint positions in degrees, then converts those positions to radians and clips them before `env.step(action)`. It does not integrate deltas. If a real-model rollout visibly drifts away from rest or immediately saturates the clip, validate the assumption by disabling your policy's internal chunk replay so every call re-queries the model, and printing `state_deg` next to `action_deg` for a few steps.

@@ -27,6 +27,16 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Reject interleaved demonstration episodes before constructing behavior-cloning
+  transitions, including datasets with recorded joint velocities.
+- Honor configured MuJoCo reset noise while retaining explicit constructor
+  overrides. Reject malformed Warp action batches before changing simulation
+  state, and require integer target indices consistently across backends.
+- Clear incomplete policy rollout buffers after collection failures so retries
+  save only frames from the successful episode. Require dataset recovery after
+  cleanup failures or save errors that may have written partial episode data.
+- Preserve millimeter cube sizes when teleop applies camera, timing, and task
+  overrides to pick-and-place and stacking configurations.
 - Use Warp's analytic box-box manifold to retain nearly aligned support contacts.
   The native convex path could lose all contacts between stacked cubes after a
   small model inertia change. Mesh collision paths remain unchanged.

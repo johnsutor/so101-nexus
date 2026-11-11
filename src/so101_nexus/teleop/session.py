@@ -30,6 +30,7 @@ from so101_nexus.teleop.config_customization import (
     ConfigFactory,
     ConfigFactoryUpdate,
     TeleopConfigOverrides,
+    _replace_config,
     apply_config_factory,
     apply_config_overrides,
     load_profile_overrides,
@@ -321,11 +322,9 @@ def build_sim_follower_config(
         physics = config.physics or PhysicsConfig()
         period = 1 / fps
         substeps = max(1, math.ceil(period / physics.timestep_s))
-        env_kwargs["config"] = config.__class__(
-            **{
-                **vars(config),
-                "physics": replace(physics, control_period_s=period, timestep_s=period / substeps),
-            }
+        env_kwargs["config"] = _replace_config(
+            config,
+            physics=replace(physics, control_period_s=period, timestep_s=period / substeps),
         )
     wrist_w, wrist_h = wrist_wh
     overhead_w, overhead_h = overhead_wh
@@ -465,8 +464,7 @@ def _customize_recording_config(
         return ConfigFactoryUpdate(config, factory_update.kwargs)
 
     updated_obs = _wire_camera_observations(observations, wrist_wh, overhead_wh)
-    config_attrs = vars(config).copy()
-    config_attrs["observations"] = updated_obs
+    updates: dict[str, object] = {"observations": updated_obs}
     render = getattr(config, "render", None)
     if isinstance(render, RenderConfig):
         render_attrs = vars(render).copy()
@@ -477,8 +475,8 @@ def _customize_recording_config(
         ):
             if render_attrs[name] is None:
                 render_attrs[name] = bounds
-        config_attrs["render"] = RenderConfig(**render_attrs)
-    return ConfigFactoryUpdate(config.__class__(**config_attrs), factory_update.kwargs)
+        updates["render"] = RenderConfig(**render_attrs)
+    return ConfigFactoryUpdate(_replace_config(config, **updates), factory_update.kwargs)
 
 
 def _review_camera_grid(streams: Mapping[str, list[np.ndarray]]) -> Iterator[np.ndarray]:

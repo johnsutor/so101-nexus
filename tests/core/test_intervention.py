@@ -679,7 +679,6 @@ def test_intervention_fields_reload_from_real_lerobot_dataset(tmp_path):
 
     from so101_nexus.teleop.dataset import (
         FieldSelection,
-        _make_reward_scalar_dataset_cls,
         build_features,
         build_frame,
     )
@@ -688,7 +687,7 @@ def test_intervention_fields_reload_from_real_lerobot_dataset(tmp_path):
     joints = {f"{name}.pos": float for name in SO101_JOINT_NAMES}
     features = build_features(selection, joints, joints, intervention=True)
     root = tmp_path / "corrections"
-    dataset = _make_reward_scalar_dataset_cls().create(
+    dataset = LeRobotDataset.create(
         repo_id="local/corrections",
         fps=30,
         features=features,

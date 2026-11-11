@@ -338,3 +338,93 @@ def test_bc_ppo_warp_same_seed_cpu_short_runs_are_reproducible(tmp_path):
     torch.testing.assert_close(
         first_checkpoint["obs_var"], second_checkpoint["obs_var"], rtol=0, atol=0
     )
+
+
+@pytest.mark.parametrize("record_velocities", [False, True])
+@pytest.mark.parametrize(
+    "episode_ids,kept",
+    [
+        pytest.param([2, 2, 2, 4, 4], [0, 1, 3], id="adjacent"),
+        pytest.param([4, 4, 4, 2, 2], [3, 0, 1], id="episode_id_order"),
+        pytest.param([2, 2, 3, 4, 4], [0, 3], id="singleton"),
+        pytest.param([4, 2, 4, 2, 4], None, id="interleaved"),
+    ],
+)
+def test_local_demo_episode_boundaries(tmp_path, monkeypatch, record_velocities, episode_ids, kept):
+    import json
+
+    import huggingface_hub
+    import pandas as pd
+    import torch
+
+    from examples.bc_ppo_warp import load_demo_transitions
+    from so101_nexus import (
+        JointPositions,
+        JointVelocities,
+        dataset_row_to_sim_qpos,
+        privileged_state_feature_names,
+    )
+    from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
+
+    count = len(episode_ids)
+    positions = np.arange(count * 6, dtype=np.float32).reshape(count, 6) * 0.001
+    velocities = np.full_like(positions, 17)
+    recorded = [JointPositions(), JointVelocities()] if record_velocities else [JointPositions()]
+    state = np.concatenate((positions, velocities), axis=1) if record_velocities else positions
+    joints = np.arange(count * 6, dtype=np.float32).reshape(count, 6) * 0.1
+    table = pd.DataFrame(
+        {
+            "index": np.arange(count),
+            "episode_index": episode_ids,
+            "observation.state": list(joints),
+            "observation.environment_state": list(state),
+        }
+    )
+    parquet = tmp_path / "frames.parquet"
+    table.iloc[::-1].to_parquet(parquet)
+    info = tmp_path / "info.json"
+    info.write_text(
+        json.dumps(
+            {
+                "features": {
+                    "observation.environment_state": {
+                        "names": privileged_state_feature_names(recorded)
+                    }
+                }
+            }
+        )
+    )
+
+    def download(repo, name, *, repo_type, revision):
+        assert repo == "local/demos"
+        assert repo_type == "dataset"
+        assert revision == "a" * 40
+        return str(info if name == "meta/info.json" else parquet)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    kwargs = {
+        "control_dt": 0.02,
+        "observations": [JointPositions(), JointVelocities()],
+        "revision": "a" * 40,
+        "parquet_files": ["data/frames.parquet"],
+    }
+    if kept is None:
+        with pytest.raises(ValueError, match="non-contiguous episode"):
+            load_demo_transitions("local/demos", torch.device("cpu"), **kwargs)
+        return
+
+    observations, actions = load_demo_transitions("local/demos", torch.device("cpu"), **kwargs)
+    np.testing.assert_array_equal(observations[:, :6], positions[kept])
+    if not record_velocities:
+        velocities = np.zeros_like(positions)
+        for i in range(1, count):
+            if episode_ids[i] == episode_ids[i - 1]:
+                velocities[i] = (positions[i] - positions[i - 1]) / 0.02
+    np.testing.assert_allclose(observations[:, 6:], velocities[kept])
+    qpos = dataset_row_to_sim_qpos(joints).astype(np.float32)
+    expected = np.clip(
+        (qpos[np.asarray(kept) + 1] - qpos[kept]) / np.asarray(_DELTA_ACTION_SCALE),
+        -1,
+        1,
+    )
+    np.testing.assert_allclose(actions, expected, atol=1e-6)

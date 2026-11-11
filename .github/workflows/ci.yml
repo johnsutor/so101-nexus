@@ -72,7 +72,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --locked --group test
+        run: uv sync --locked --group test --extra teleop
+
+      - name: Verify teleop test dependencies
+        run: uv run --no-sync python -c "from gradio import Blocks; import plotly.graph_objects"
 
       - name: Run tests
         run: xvfb-run -a make test
@@ -134,6 +137,9 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked --extra warp
+
+      - name: Verify Warp test dependencies
+        run: uv run --no-sync python -c "import mujoco_warp; import torch"
 
       - name: Run Warp tests
         env:
