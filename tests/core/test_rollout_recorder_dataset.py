@@ -220,6 +220,9 @@ def test_failed_episode_preserves_original_error_with_optional_cleanup(monkeypat
     recorder = RolloutRecorder(_DatasetEnv(), policy, dataset=dataset)
     with pytest.raises(RuntimeError, match="policy failed"):
         recorder.record_episode()
+    if cleanup_fails:
+        with pytest.raises(RuntimeError, match=r"Recover.*new recorder"):
+            recorder.record_episode()
 
 
 def test_record_episode_writes_lerobot_frames_in_degrees() -> None:

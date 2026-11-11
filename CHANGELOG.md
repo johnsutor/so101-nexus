@@ -34,7 +34,7 @@ for the public-API and deprecation policy.
   state, and require integer target indices consistently across backends.
 - Clear incomplete policy rollout buffers after collection failures so retries
   save only frames from the successful episode. Require dataset recovery after
-  save errors that may have written partial episode data.
+  cleanup failures or save errors that may have written partial episode data.
 - Preserve millimeter cube sizes when teleop applies camera, timing, and task
   overrides to pick-and-place and stacking configurations.
 - Use Warp's analytic box-box manifold to retain nearly aligned support contacts.

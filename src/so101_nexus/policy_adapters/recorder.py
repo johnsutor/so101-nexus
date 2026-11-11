@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -113,22 +112,24 @@ class RolloutRecorder:
         self.dataset = dataset
         self.fps = fps
         self.record_side_video = record_side_video
-        self._save_incomplete = False
+        self._dataset_incomplete = False
 
     def record_episode(self, *, seed: int | None = None) -> EpisodeResult:
         """Record one policy rollout episode."""
-        if self._save_incomplete:
+        if self._dataset_incomplete:
             raise RuntimeError(
-                "The previous dataset save did not complete. Recover the dataset, "
+                "The previous dataset episode did not complete. Recover the dataset, "
                 "then create a new recorder."
             )
         try:
             return self._record_episode(seed=seed)
         except Exception:
             clear_buffer = getattr(self.dataset, "clear_episode_buffer", None)
-            if not self._save_incomplete and callable(clear_buffer):
-                with contextlib.suppress(Exception):
+            if not self._dataset_incomplete and callable(clear_buffer):
+                try:
                     clear_buffer()
+                except Exception:
+                    self._dataset_incomplete = True
             raise
 
     def _record_episode(self, *, seed: int | None) -> EpisodeResult:
@@ -188,7 +189,7 @@ class RolloutRecorder:
         if rendering is not None:
             info = {**info, "rendering": rendering}
         if self.dataset is not None:
-            self._save_incomplete = True
+            self._dataset_incomplete = True
             save_recorded_episode(
                 self.dataset,
                 info.get("placement_contract"),
@@ -196,7 +197,7 @@ class RolloutRecorder:
                 if rendering is not None
                 else None,
             )
-            self._save_incomplete = False
+            self._dataset_incomplete = False
 
         return EpisodeResult(
             success=bool(info.get("success", False)),
