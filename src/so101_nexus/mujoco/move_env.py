@@ -63,7 +63,7 @@ class MoveEnv(SO101NexusMuJoCoBaseEnv):
         config: MoveConfig | None = None,
         render_mode: str | None = None,
         control_mode: ControlMode = "pd_joint_pos",
-        robot_init_qpos_noise: float = 0.02,
+        robot_init_qpos_noise: float | None = None,
     ) -> None:
         if config is None:
             config = MoveConfig()

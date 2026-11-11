@@ -82,7 +82,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
         config: PickAndPlaceConfig | None = None,
         render_mode: str | None = None,
         control_mode: ControlMode = "pd_joint_pos",
-        robot_init_qpos_noise: float = 0.02,
+        robot_init_qpos_noise: float | None = None,
     ):
         if config is None:
             config = self.default_config_cls()
@@ -454,7 +454,7 @@ class PickAndPlaceV2Env(PickAndPlaceEnv):
         config: PickAndPlaceV2Config | None = None,
         render_mode: str | None = None,
         control_mode: ControlMode = "pd_joint_pos",
-        robot_init_qpos_noise: float = 0.02,
+        robot_init_qpos_noise: float | None = None,
     ):
         super().__init__(config, render_mode, control_mode, robot_init_qpos_noise)
         self._placement_geometry = compiled_slot_geometry(self.model, self._slots)

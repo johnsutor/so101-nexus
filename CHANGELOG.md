@@ -27,6 +27,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Honor configured MuJoCo reset noise while retaining explicit constructor
+  overrides. Reject malformed Warp action batches before changing simulation
+  state, and require integer target indices consistently across backends.
 - Clear incomplete policy rollout buffers after recording failures so retries
   save only frames from the successful episode.
 - Preserve millimeter cube sizes when teleop applies camera, timing, and task

@@ -1255,6 +1255,10 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
     ]:
         """Apply actions to all worlds, advance physics, autoreset done worlds."""
         public_action = torch.as_tensor(actions, device=self.device, dtype=torch.float32)
+        if public_action.shape != self.action_space.shape:
+            raise ValueError(
+                f"actions shape {tuple(public_action.shape)} != expected {self.action_space.shape}"
+            )
         energy_norm = torch.linalg.norm(public_action, dim=1)
         if self._prev_action is None:
             action_delta_norm = torch.zeros(self.num_envs, device=self.device)
@@ -1473,7 +1477,18 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
         n_pool = getattr(self, "_n_pool", None)
         if n_pool is None:
             raise ValueError(f"{type(self).__name__} has no object pool to target")
-        arr = torch.as_tensor(options["target_index"], dtype=torch.long, device=self.device)
+        raw = options["target_index"]
+        if isinstance(raw, (list, tuple)) and any(
+            isinstance(value, (bool, np.bool_)) for value in raw
+        ):
+            raise ValueError("target_index entries must be integers")
+        try:
+            arr = torch.as_tensor(raw, device=self.device)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise ValueError("target_index entries must be integers") from exc
+        if arr.dtype == torch.bool or arr.is_floating_point() or arr.is_complex():
+            raise ValueError("target_index entries must be integers")
+        arr = arr.to(dtype=torch.long)
         if arr.ndim == 0:
             arr = arr.expand(self.num_envs)
         if arr.shape != (self.num_envs,):

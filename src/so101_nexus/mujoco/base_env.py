@@ -203,7 +203,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         config: EnvironmentConfig,
         render_mode: str | None,
         control_mode: ControlMode,
-        robot_init_qpos_noise: float,
+        robot_init_qpos_noise: float | None,
     ) -> None:
         if control_mode not in self._VALID_CONTROL_MODES:
             valid = sorted(self._VALID_CONTROL_MODES)
@@ -212,7 +212,9 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         self.config = config
         self.control_mode = control_mode
         self.render_mode = render_mode
-        self.robot_init_qpos_noise = robot_init_qpos_noise
+        self.robot_init_qpos_noise = (
+            config.robot_init_qpos_noise if robot_init_qpos_noise is None else robot_init_qpos_noise
+        )
         self._privileged_state: np.ndarray | None = None
         # Grasp-detection target, sized to the model by _set_target_geoms. Left
         # empty for primitive envs, which must never call _is_grasping(); it
@@ -1023,7 +1025,7 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         self._prev_action = None
         applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
-        if "target_index" in self._reset_options and not self._target_index_consumed:
+        if self._reset_options.get("target_index") is not None and not self._target_index_consumed:
             raise ValueError(f"{type(self).__name__} has no object pool to target")
         self._randomize_wrist_camera()
 
