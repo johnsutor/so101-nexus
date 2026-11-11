@@ -802,9 +802,7 @@ def test_create_dataset_wraps_creation_failure(monkeypatch) -> None:
         def create(cls, **kwargs):
             raise ValueError("schema mismatch")
 
-    monkeypatch.setattr(
-        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
-    )
+    monkeypatch.setattr("lerobot.datasets.lerobot_dataset.LeRobotDataset", Dataset)
     with pytest.raises(RuntimeError, match="Failed to create dataset: schema mismatch"):
         _create_dataset("local/test", 30, "so101", {})
 
@@ -818,9 +816,7 @@ def test_create_dataset_returns_dataset_on_success(monkeypatch) -> None:
             seen.update(kwargs)
             return cls()
 
-    monkeypatch.setattr(
-        "so101_nexus.teleop.dataset._make_reward_scalar_dataset_cls", lambda: Dataset
-    )
+    monkeypatch.setattr("lerobot.datasets.lerobot_dataset.LeRobotDataset", Dataset)
     dataset = _create_dataset("local/test", 30, "so101", {"action": {}})
     assert isinstance(dataset, Dataset)
     assert seen["repo_id"] == "local/test"

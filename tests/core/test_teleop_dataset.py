@@ -478,7 +478,7 @@ def test_dataset_module_import_does_not_require_lerobot(monkeypatch) -> None:
     _reload_dataset_module()
 
 
-def test_dataset_uses_lerobot_061_feature_utils(monkeypatch) -> None:
+def test_dataset_uses_lerobot_feature_utils(monkeypatch) -> None:
     from lerobot.utils import feature_utils
 
     calls = []
@@ -493,38 +493,8 @@ def test_dataset_uses_lerobot_061_feature_utils(monkeypatch) -> None:
     assert calls == ["action", "observation"]
 
 
-def _reward_buffer() -> dict:
-    return {"reward": [np.array([0.25], dtype=np.float32), np.array([1.5], dtype=np.float32)]}
-
-
-def _patch_parent_save_episode(monkeypatch) -> dict:
-    """Stub ``LeRobotDataset.save_episode`` so the override is tested in isolation."""
-    from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-    seen: dict = {}
-
-    def stub(self, episode_data=None, parallel_encoding=True):
-        seen["episode_data"] = episode_data
-
-    monkeypatch.setattr(LeRobotDataset, "save_episode", stub, raising=True)
-    return seen
-
-
-def _blank_recording_obj(cls):
-    """Construct a recording instance without LeRobot's heavy ``create()``.
-
-    ``_is_finalized`` and no-op writer hooks keep ``LeRobotDataset.__del__``
-    quiet at GC time without a live writer.
-    """
-    obj = cls.__new__(cls)
-    obj._is_finalized = True
-    obj.writer = None
-    return obj
-
-
 def test_save_recorded_episode_writes_reproducibility_metadata(tmp_path) -> None:
     import json
-    import types
 
     from so101_nexus.teleop.dataset import save_recorded_episode
 
@@ -543,7 +513,6 @@ def test_save_recorded_episode_writes_reproducibility_metadata(tmp_path) -> None
 
 
 def test_save_recorded_episode_requires_root_for_metadata() -> None:
-    import types
 
     from so101_nexus.teleop.dataset import save_recorded_episode
 
@@ -554,7 +523,6 @@ def test_save_recorded_episode_requires_root_for_metadata() -> None:
 
 
 def test_save_recorded_episode_serializes_all_metadata_before_writing(tmp_path) -> None:
-    import types
 
     from so101_nexus.teleop.dataset import save_recorded_episode
 
@@ -571,7 +539,6 @@ def test_save_recorded_episode_serializes_all_metadata_before_writing(tmp_path) 
 
 
 def test_save_recorded_episode_rolls_back_first_file_when_second_write_fails(tmp_path) -> None:
-    import types
 
     from so101_nexus.teleop.dataset import save_recorded_episode
 
@@ -589,7 +556,6 @@ def test_save_recorded_episode_rolls_back_first_file_when_second_write_fails(tmp
 
 
 def test_save_recorded_episode_without_metadata_does_not_require_root() -> None:
-    import types
 
     from so101_nexus.teleop.dataset import save_recorded_episode
 
@@ -601,20 +567,48 @@ def test_save_recorded_episode_without_metadata_does_not_require_root() -> None:
     assert calls == [None]
 
 
-def test_reward_squeeze_finds_writer_buffer_lerobot_061(monkeypatch) -> None:
-    """0.6 routes recording through DatasetWriter.episode_buffer."""
-    pytest.importorskip("lerobot")
-    from so101_nexus.teleop.dataset import _make_reward_scalar_dataset_cls
+@pytest.mark.filterwarnings("error:Conversion of an array with ndim:DeprecationWarning")
+def test_native_lerobot_scalar_fields_round_trip(tmp_path) -> None:
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-    seen = _patch_parent_save_episode(monkeypatch)
-    obj = _blank_recording_obj(_make_reward_scalar_dataset_cls())
-    buf = _reward_buffer()
-    obj.writer = types.SimpleNamespace(
-        episode_buffer=buf, close=lambda: None, finalize=lambda: None
+    from so101_nexus.config import REWARD_COMPONENT_KEYS
+    from so101_nexus.teleop.dataset import SCALAR_KEYS
+
+    selection = FieldSelection(wrist_image=False, overhead_image=False, environment_state=False)
+    features = build_features(selection, _motor_features(), _motor_features(), intervention=True)
+    root = tmp_path / "scalars"
+    dataset = LeRobotDataset.create(
+        repo_id="local/scalars", root=root, fps=30, features=features, use_videos=False
     )
+    for segment, value in enumerate((0.0, 0.25, -1.5)):
+        dataset.add_frame(
+            build_frame(
+                selection,
+                state=np.zeros(6),
+                action=np.ones(6),
+                task="Pick",
+                wrist_image=None,
+                overhead_image=None,
+                reward=value,
+                reward_components=dict.fromkeys(REWARD_COMPONENT_KEYS, value),
+                success=float(segment > 0),
+                done=float(segment == 2),
+                intervention_id=segment,
+            )
+        )
+    dataset.save_episode()
+    dataset.finalize()
 
-    obj.save_episode()
-
-    assert seen["episode_data"] is None
-    assert buf["reward"] == [pytest.approx(0.25), pytest.approx(1.5)]
-    assert all(isinstance(v, float) for v in buf["reward"])
+    reloaded = LeRobotDataset("local/scalars", root=root)
+    assert len(reloaded) == 3
+    for segment, value in enumerate((0.0, 0.25, -1.5)):
+        row = reloaded[segment]
+        for key in SCALAR_KEYS:
+            expected = {SUCCESS_KEY: float(segment > 0), DONE_KEY: float(segment == 2)}.get(
+                key, value
+            )
+            assert row[key].item() == expected
+            assert row[key].numpy().dtype == np.float32
+        assert row["intervention_id"].item() == segment
+        assert row["intervention_id"].numpy().dtype == np.int64
+        assert row["is_intervention"].item() == float(segment > 0)
