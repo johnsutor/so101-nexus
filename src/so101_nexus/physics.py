@@ -5,7 +5,27 @@ from typing import Literal
 import mujoco
 import numpy as np
 
-from so101_nexus.config import PhysicsConfig
+from so101_nexus.config import EnvironmentConfig, PhysicsConfig
+
+
+def apply_warp_collision_config(model: mujoco.MjModel) -> None:
+    """Retain near-parallel box contacts with Warp's analytic box manifold."""
+    # Warp's float32 convex path can lose aligned box contacts. This flag changes
+    # only box-box detection in Warp; mesh collision keeps its convex path.
+    model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_NATIVECCD
+
+
+def apply_robot_config(model: mujoco.MjModel, config: EnvironmentConfig) -> None:
+    """Apply hardware dynamics only when the simulation uses its recorded clock."""
+    profile = config.robot.profile
+    if profile is None:
+        return
+    from so101_nexus.profiles import apply_robot_profile
+
+    period = (config.physics or PhysicsConfig()).control_period_s
+    if not np.isclose(period, profile.control_period_s, rtol=0, atol=1e-12):
+        raise ValueError("RobotProfile.control_period_s must match PhysicsConfig.control_period_s")
+    apply_robot_profile(model, profile)
 
 
 def apply_physics_config(

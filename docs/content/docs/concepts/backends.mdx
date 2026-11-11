@@ -85,12 +85,15 @@ Vectorized worlds may carry different tasks, so `env.task_descriptions` holds on
 
 ## Physics Divergence
 
-Both backends use the same native numerical configuration and shared jaw collision model.
+Both backends share the `PhysicsConfig` defaults and jaw collision geometry.
 The [PhysicsConfig reference](/docs/api/configs#physicsconfig) defines the defaults and the [grasp retention tests](/docs/api/configs#grasp-retention-profile).
 An explicit configuration preserves command timing when the physics timestep changes.
 MuJoCo Warp 3.13 supports `implicit` and `implicitfast` but does not implement NoSlip.
 Warp rejects nonzero `noslip_iterations` and solver tolerances smaller than the float32 representation of `1e-6`.
 Matching configuration does not guarantee identical contacts or trajectories. The backends use different floating-point arithmetic and collision algorithms.
+Warp selects its analytic box-box manifold before model conversion with MuJoCo's `mjDSBL_NATIVECCD` flag.
+The native convex path can lose support contacts between nearly aligned boxes after small changes in model inertia.
+This flag changes box-box detection in Warp. Mesh collisions retain the convex path.
 The optional [Warp box collision patch](/docs/getting-started/installation#warp-box-collision-patch) addresses the measured box contact mismatch in version 3.13.0.
 Validate transferred policies on the target backend.
 

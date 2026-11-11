@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection
 
     from so101_nexus.observations import Observation
+    from so101_nexus.profiles import RobotProfile
 ControlMode = Literal[
     "pd_joint_pos",
     "pd_joint_delta_pos",
@@ -337,6 +338,9 @@ class RobotConfig:
 
     Parameters
     ----------
+    profile : RobotProfile, optional
+        Saved hardware alignment and dynamics. Both backends apply its dynamics;
+        LeRobot adapters apply its coordinate alignment.
     rest_qpos_deg : tuple[float, ...]
         Rest joint positions in degrees.
     init_pose : str | Pose | None
@@ -379,7 +383,14 @@ class RobotConfig:
         static_vel_threshold: float = 0.2,
         ee_orientation_weight: float = EE_ORIENTATION_WEIGHT,
         ee_delta_action_scale: tuple[float, ...] = EE_DELTA_ACTION_SCALE,
+        profile: RobotProfile | None = None,
     ) -> None:
+        if profile is not None:
+            from so101_nexus.profiles import RobotProfile
+
+            if not isinstance(profile, RobotProfile):
+                raise TypeError("profile must be a RobotProfile or None")
+        self.profile = profile
         self.rest_qpos_deg = rest_qpos_deg
         self.grasp_force_threshold = grasp_force_threshold
         self.grasp_opposing_normal_threshold = grasp_opposing_normal_threshold

@@ -115,7 +115,8 @@ def test_resting_placement_requires_physics_dwell_and_queries_do_not_add_time(en
     assert info["table_support_force"][0] > 0
 
 
-def test_other_object_support_does_not_count_as_table_support():
+@pytest.mark.parametrize("tilt_rad", [0.0, -1e-12, 1e-12])
+def test_other_object_support_does_not_count_as_table_support(tilt_rad):
     import torch
 
     from so101_nexus.config import PickAndPlaceV2Config
@@ -133,10 +134,14 @@ def test_other_object_support_does_not_count_as_table_support():
         instance.reset(seed=1)
         half = cfg.cube_half_size
         _put_object(instance, 0, height=3 * half - 2e-5)
+        target_qa = int(instance._target_qadr[0])
+        instance.qpos[0, target_qa + 4] = np.sin(tilt_rad / 2)
         qa = instance._slot_qadr_host[instance._d_offset]
         instance.qpos[0, qa : qa + 7] = torch.tensor((0.7, 0.0, half - 1e-5, 1.0, 0.0, 0.0, 0.0))
         for _ in range(20):
             _, _, _, _, info = instance.step(instance._joint_qpos().clone())
+            assert info["supported_by_other"][0]
+            assert not info["supported_by_table"][0]
         assert info["geometric_placement_ok"][0]
         assert info["supported_by_other"][0]
         assert not info["supported_by_table"][0]

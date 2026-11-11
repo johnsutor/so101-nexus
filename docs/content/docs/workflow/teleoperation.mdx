@@ -575,6 +575,139 @@ teleop records it as the required LeRobot `task` field.
 | PickLift | [johnsutor/MuJoCoPickLift-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickLift-v1%2Fepisode_0) |
 | PickAndPlace | [johnsutor/MuJoCoPickAndPlace-v1](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1) | [episode 0](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fjohnsutor%2FMuJoCoPickAndPlace-v1%2Fepisode_0) |
 
+## Robot identification
+
+Use a saved robot profile to reproduce the coordinate alignment and dynamics of your physical follower.
+The example script separates profile creation, automatic hardware collection, and offline fitting.
+It requires the [teleop and sysid extras](/docs/getting-started/installation#extras).
+
+### Create the profile
+
+1. Calibrate the follower with LeRobot as described in [LeRobot compatibility](/docs/concepts/lerobot#recording-with-lerobot-record).
+2. Place the arm in a known reference pose.
+3. Record the five body-joint readings in LeRobot degrees.
+4. Determine the corresponding five model angles from a physical reference or external measurement.
+5. Create a profile with those reference vectors:
+
+```bash
+uv run python examples/calibrate_robot.py create \
+  --calibration /path/to/my_robot.json --robot-id my_robot \
+  --hardware-body-deg 0 0 0 0 0 --model-body-deg 0 0 0 0 0 \
+  --output my_robot_profile.json
+```
+
+The zero vectors illustrate the argument format. Replace them with measurements of the same physical pose.
+A motor travel midpoint does not establish the model joint zero.
+The [profile reference](/docs/api/configs#robot-profiles) defines all fields, units, and gripper endpoint alignment.
+
+### Collect automatic excitation
+
+Support the arm at an unobstructed, raised center pose before connection.
+The driver briefly disables torque during connection, so an unsupported arm can fall.
+Use the six model angles of that pose for `--center-qpos-deg`.
+The following pose is illustrative and requires verification in your workspace:
+
+```bash
+uv run python examples/calibrate_robot.py collect \
+  --profile-path my_robot_profile.json --port /dev/ttyACM1 \
+  --center-qpos-deg 0 -15 30 45 0 50 --output-dir sysid_recordings
+```
+
+The script generates three episodes: a multisine, sequential joint chirps, and an independent held-out trajectory.
+Minimum-jerk envelopes start and end each episode at the center pose.
+Velocity and acceleration limits bound the generated commands.
+
+Before connection, the collector verifies all episodes with kinematic and dynamic MuJoCo rollouts.
+It checks physical calibration ranges, model joint limits, collisions, and tool clearance.
+The default scene contains the robot and a horizontal table.
+For additional obstacles, call `collect_excitation(..., model=workspace_model)` with your workspace model.
+Simulation checks cannot establish hardware safety or represent obstacles absent from the scene.
+
+The collector connects with calibration disabled, then checks the physical calibration before commands start.
+The LeRobot driver configures motor registers and torque during connection.
+Collection requires the saved hardware PID coefficients and degree units.
+Collection requires a follower without cameras to avoid camera latency in the control loop.
+An initial pose mismatch, excessive tracking error, slow reads, or loop overruns stop collection.
+The collector disconnects through the driver on completion or error.
+It does not command a return motion after an error.
+
+Each completed episode saves immediately to a new output directory.
+Existing directories are rejected to preserve previous recordings.
+Recordings contain actual sent commands, read intervals, host write times, and a digest of the profile coordinate contract.
+Host write times do not measure motor receipt.
+`RecordedTrajectory.load(path)` reads these files without pickle.
+
+### Fit and evaluate dynamics
+
+```bash
+uv run python examples/calibrate_robot.py fit \
+  --profile-path my_robot_profile.json --recordings-dir sysid_recordings \
+  --output-dir sysid_fit
+```
+
+The fitter uses training episodes for optimization and separate held-out episodes for evaluation.
+It writes `candidate_profile.json` and `metrics.json`.
+The candidate contains effective simulation dynamics, not hardware register gains.
+
+Review the per-joint baseline and identified RMSE, parameter bounds, confidence intervals, and correlations.
+Weak excitation can leave parameters poorly constrained, even with low training error.
+Confidence intervals assume independent residuals and can underestimate uncertainty for correlated trajectories.
+A lower held-out RMSE does not establish successful policy transfer.
+
+The library API supports explicit parameter selection and freezing:
+
+```python
+from so101_nexus import RecordedTrajectory, RobotProfile, fit_robot_profile
+
+profile = RobotProfile.load("my_robot_profile.json")
+recordings = [
+    RecordedTrajectory.load(f"sysid_recordings/{index:02d}_{name}.npz")
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout"))
+]
+result = fit_robot_profile(
+    profile,
+    recordings,
+    parameters=("shoulder_pan.kp", "shoulder_pan.kd"),
+    freeze=("shoulder_pan.kd",),
+    output_dir="sysid_fit_selected",
+)
+```
+
+The default fit selects proportional and derivative gains for all six joints.
+Other supported parameters are `armature` and `frictionloss`.
+Passive damping and unselected parameters retain their baseline values.
+
+### Reuse the selected profile
+
+Load the reviewed candidate through [RobotConfig](/docs/api/configs#robot-profiles) for training on either backend.
+Use the same profile with the simulator follower:
+
+```python
+from pathlib import Path
+
+from so101_nexus.lerobot_adapter import SimSOFollower, SimSOFollowerConfig
+
+robot = SimSOFollower(
+    SimSOFollowerConfig(
+        id="my_robot",
+        env_id="MuJoCoMove-v1",
+        profile_path=Path("sysid_fit/candidate_profile.json"),
+    )
+)
+```
+
+Keep the hardware PID coefficients, payload, and command frequency consistent with collection.
+Joint-trajectory identification does not calibrate camera geometry or establish grasp-contact fidelity.
+
+### Comparison with Playground
+
+Nexus preserves LeRobot calibration files and adds explicit model alignment in a separate profile.
+Playground stores an explicit reference zero and uses modular encoder differences.
+Its encoder conversion uses 4096 counts per turn. LeRobot degree normalization uses 4095.
+Playground calibration files require an explicit conversion before reuse in Nexus.
+They cannot replace LeRobot calibration files directly.
+See the [Playground calibration implementation](https://github.com/google-deepmind/mujoco_playground/blob/main/mujoco_playground/robots/so101/real/get_calibration.py).
+
 ## Troubleshooting
 
 <Accordions>

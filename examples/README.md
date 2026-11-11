@@ -5,6 +5,7 @@ Run scripts from the repository root after [installation from source](https://so
 
 | Goal | Script | Guide |
 | --- | --- | --- |
+| Create a robot profile and collect automatic excitation | [`calibrate_robot.py`](calibrate_robot.py) | [Robot identification](https://so101-nexus.com/docs/workflow/teleoperation#robot-identification) |
 | Train from demonstrations with BC and PPO | [`bc_ppo_warp.py`](bc_ppo_warp.py) | [Training](https://so101-nexus.com/docs/workflow/training) |
 | Train from scratch with PPO | [`ppo_warp.py`](ppo_warp.py) | [Task recipes](https://so101-nexus.com/docs/workflow/training#recommended-commands) |
 | Evaluate a saved checkpoint | [`eval_warp.py`](eval_warp.py) | [Train and evaluate](https://so101-nexus.com/docs/workflow/training#quick-start) |

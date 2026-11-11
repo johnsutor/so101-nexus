@@ -44,7 +44,7 @@ def test_distance_does_not_change_the_angle():
 
 
 def test_in_view_flips_at_the_half_fov_boundary():
-    half_fov = math.radians(24.25)  # the SO-101 wrist camera's 48.5 degree fovy
+    half_fov = math.radians(30.5)
     assert bool(object_in_view(half_fov - 1e-6, half_fov))
     assert not bool(object_in_view(half_fov + 1e-6, half_fov))
 

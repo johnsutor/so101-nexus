@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from copy import copy
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, cast
 
 import gymnasium as gym
 import numpy as np
+from lerobot.motors import MotorCalibration
 from lerobot.robots.robot import Robot
 from lerobot.robots.utils import ensure_safe_goal_position
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
@@ -20,6 +22,7 @@ from so101_nexus.config import (
     EE_CONTROL_MODES,
     SO101_JOINT_NAMES,
     SO101_TCP_FRAME_NAME,
+    PhysicsConfig,
 )
 from so101_nexus.lerobot_adapter.normalization import (
     GRIPPER_NAME,
@@ -28,17 +31,16 @@ from so101_nexus.lerobot_adapter.normalization import (
     action_for_env,
     build_so101_motors,
     leader_action_to_sim_qpos,
-    motor_ticks_to_sim_rad,
     normalize_ticks,
     read_gripper_limits_rad,
     read_privileged_state,
     read_sim_qpos,
     sim_rad_to_motor_ticks,
-    unnormalize_values,
 )
 from so101_nexus.lerobot_adapter.sim_camera import SimCamera
 from so101_nexus.lerobot_adapter.sim_camera_config import SimCameraConfig
 from so101_nexus.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
+from so101_nexus.profiles import RobotProfile
 from so101_nexus.teleop.leader import import_backend_for_env_id
 
 if TYPE_CHECKING:
@@ -131,6 +133,27 @@ class SimSOFollower(Robot):
             )
         self._is_ee_control = self._control_mode in EE_CONTROL_MODES
         self.motors = build_so101_motors(use_degrees=config.use_degrees)
+        env_config = config.env_kwargs.get("config")
+        self._profile = getattr(getattr(env_config, "robot", None), "profile", None)
+        if config.profile_path is not None:
+            loaded = RobotProfile.load(config.profile_path)
+            if self._profile is not None and self._profile.to_dict() != loaded.to_dict():
+                raise ValueError("profile_path conflicts with the environment robot profile")
+            self._profile = loaded
+        if self._profile is not None:
+            if not config.use_degrees:
+                raise ValueError("RobotProfile requires use_degrees=True")
+            if config.id != self._profile.robot_id:
+                raise ValueError("RobotProfile.robot_id must match the follower id")
+            calibration = {
+                name: MotorCalibration(**dict(fields))
+                for name, fields in self._profile.calibration.items()
+            }
+            if self.calibration and self.calibration != calibration:
+                raise ValueError(
+                    "RobotProfile calibration conflicts with the follower calibration file"
+                )
+            self.calibration = calibration
         self.cameras: dict[str, SimCamera] = {}
         for name, camera_config in config.cameras.items():
             if not isinstance(camera_config, SimCameraConfig):
@@ -204,6 +227,8 @@ class SimSOFollower(Robot):
             "control_mode": DEFAULT_CONTROL_MODE,
         }
         make_kwargs.update(self.config.env_kwargs)
+        if self._profile is not None:
+            make_kwargs["config"] = self._profile_env_config(make_kwargs.get("config"))
 
         try:
             self._env = gym.make(self.config.env_id, **make_kwargs)
@@ -261,11 +286,8 @@ class SimSOFollower(Robot):
                 "Policy episode return requires a configured resting posture and joint bounds"
             )
         limits = self._require_gripper_limits()
-        current_qpos_rad = leader_action_to_sim_qpos(
-            current_action,
-            motors=self.motors,
-            calibration=self.calibration,
-            gripper_limits_rad=limits,
+        current_qpos_rad = self._motor_values_to_qpos(
+            {name.removesuffix(".pos"): value for name, value in current_action.items()}, limits
         )
         rest_deg = np.array(robot_config.rest_qpos_deg, dtype=np.float64, copy=True)
         low_deg, high_deg = (np.degrees(bound) for bound in bounds)
@@ -276,10 +298,7 @@ class SimSOFollower(Robot):
             np.degrees(current_qpos_rad), rest_deg, low_deg, high_deg
         )
         target_qpos_rad = np.radians(target_deg)
-        ticks = sim_rad_to_motor_ticks(
-            target_qpos_rad, calibration=self.calibration, gripper_limits_rad=limits
-        )
-        values = normalize_ticks(ticks, motors=self.motors, calibration=self.calibration)
+        values = self._qpos_to_motor_values(target_qpos_rad, limits)
         return {f"{name}.pos": value for name, value in values.items()}
 
     @cached_property
@@ -349,11 +368,13 @@ class SimSOFollower(Robot):
         options = None
         if self._pending_leader_init_action is not None:
             options = {
-                "init_qpos": leader_action_to_sim_qpos(
-                    self._pending_leader_init_action,
-                    motors=self.motors,
-                    calibration=self.calibration,
-                    gripper_limits_rad=self._require_gripper_limits(),
+                "init_qpos": self._motor_values_to_qpos(
+                    {
+                        key.removesuffix(".pos"): float(value)
+                        for key, value in self._pending_leader_init_action.items()
+                        if key.endswith(".pos")
+                    },
+                    self._require_gripper_limits(),
                 )
             }
         self._camera_frames.clear()
@@ -384,12 +405,7 @@ class SimSOFollower(Robot):
 
         start = time.perf_counter()
         qpos_rad = read_sim_qpos(self._env)
-        ticks = sim_rad_to_motor_ticks(
-            qpos_rad,
-            calibration=self.calibration,
-            gripper_limits_rad=gripper_limits_rad,
-        )
-        motor_values = normalize_ticks(ticks, motors=self.motors, calibration=self.calibration)
+        motor_values = self._qpos_to_motor_values(qpos_rad, gripper_limits_rad)
         obs_dict: RobotObservation = {
             f"{motor}.pos": value for motor, value in motor_values.items()
         }
@@ -506,25 +522,11 @@ class SimSOFollower(Robot):
                 self.config.max_relative_target,
             )
 
-        ticks = unnormalize_values(goal_pos, motors=self.motors, calibration=self.calibration)
-        target_qpos = motor_ticks_to_sim_rad(
-            ticks,
-            calibration=self.calibration,
-            gripper_limits_rad=gripper_limits_rad,
-        )
+        target_qpos = self._motor_values_to_qpos(goal_pos, gripper_limits_rad)
         sent_qpos = action_for_env(env, target_qpos)
         self._step_env(env, sent_qpos)
-
-        sent_ticks = sim_rad_to_motor_ticks(
-            sent_qpos,
-            calibration=self.calibration,
-            gripper_limits_rad=gripper_limits_rad,
-        )
-        sent_values = normalize_ticks(
-            {motor: sent_ticks[motor] for motor in goal_pos},
-            motors=self.motors,
-            calibration=self.calibration,
-        )
+        motor_values = self._qpos_to_motor_values(sent_qpos, gripper_limits_rad)
+        sent_values = {motor: motor_values[motor] for motor in goal_pos}
         return {f"{motor}.pos": value for motor, value in sent_values.items()}
 
     def _step_env(self, env: gym.Env, action: np.ndarray) -> None:
@@ -577,7 +579,11 @@ class SimSOFollower(Robot):
         sent: RobotAction = dict(
             zip(EE_POSE_KEYS, sent_action[:-1].tolist(), strict=True),
         )
-        sent[EE_GRIPPER_KEY] = gripper_value
+        sent_qpos = read_sim_qpos(env).copy()
+        sent_qpos[-1] = sent_action[-1]
+        sent[EE_GRIPPER_KEY] = self._qpos_to_motor_values(sent_qpos, gripper_limits_rad)[
+            GRIPPER_NAME
+        ]
         return sent
 
     def _gripper_value_to_sim_rad(
@@ -587,23 +593,9 @@ class SimSOFollower(Robot):
         gripper_limits_rad: GripperLimitsRad,
     ) -> float:
         """Convert a normalized LeRobot gripper value to simulator radians."""
-        ticks = sim_rad_to_motor_ticks(
-            read_sim_qpos(env),
-            calibration=self.calibration,
-            gripper_limits_rad=gripper_limits_rad,
-        )
-        ticks[GRIPPER_NAME] = unnormalize_values(
-            {GRIPPER_NAME: value},
-            motors=self.motors,
-            calibration=self.calibration,
-        )[GRIPPER_NAME]
-        return float(
-            motor_ticks_to_sim_rad(
-                ticks,
-                calibration=self.calibration,
-                gripper_limits_rad=gripper_limits_rad,
-            )[-1]
-        )
+        present = self._qpos_to_motor_values(read_sim_qpos(env), gripper_limits_rad)
+        present[GRIPPER_NAME] = value
+        return float(self._motor_values_to_qpos(present, gripper_limits_rad)[-1])
 
     def disconnect(self) -> None:
         """Close the simulator env and disconnect simulator cameras."""
@@ -631,9 +623,54 @@ class SimSOFollower(Robot):
         if self._env is None:
             raise RuntimeError("SimSOFollower is not connected to an environment")
         qpos_rad = read_sim_qpos(self._env)
-        ticks = sim_rad_to_motor_ticks(
-            qpos_rad,
+        return self._qpos_to_motor_values(qpos_rad, gripper_limits_rad)
+
+    def _motor_values_to_qpos(
+        self, values: dict[str, float], gripper_limits_rad: GripperLimitsRad
+    ) -> np.ndarray:
+        if self._profile is not None:
+            if set(values) != set(SO101_JOINT_NAMES):
+                raise KeyError("Profile actions must provide all six SO101 joint positions")
+            vector = np.array([values[name] for name in SO101_JOINT_NAMES], dtype=np.float64)
+            low, high = self._profile.model_joint_limits_deg()
+            return np.radians(np.clip(self._profile.to_model_deg(vector), low, high))
+        return leader_action_to_sim_qpos(
+            {f"{name}.pos": value for name, value in values.items()},
+            motors=self.motors,
             calibration=self.calibration,
             gripper_limits_rad=gripper_limits_rad,
         )
+
+    def _qpos_to_motor_values(
+        self, qpos_rad: np.ndarray, gripper_limits_rad: GripperLimitsRad
+    ) -> dict[str, float]:
+        if self._profile is not None:
+            values = self._profile.from_model_deg(np.degrees(qpos_rad))
+            values[-1] = np.clip(values[-1], 0, 100)
+            return dict(zip(SO101_JOINT_NAMES, values.tolist(), strict=True))
+        ticks = sim_rad_to_motor_ticks(
+            qpos_rad, calibration=self.calibration, gripper_limits_rad=gripper_limits_rad
+        )
         return normalize_ticks(ticks, motors=self.motors, calibration=self.calibration)
+
+    def _profile_env_config(self, env_config: Any) -> Any:
+        profile = self._profile
+        if profile is None:
+            raise RuntimeError("No robot profile was selected")
+        if env_config is None:
+            from gymnasium.envs.registration import load_env_creator
+
+            entry_point = gym.spec(self.config.env_id).entry_point
+            creator = load_env_creator(entry_point) if isinstance(entry_point, str) else entry_point
+            config_type = getattr(creator, "default_config_cls", None)
+            if config_type is None:
+                raise ValueError(
+                    "Profile environments must expose default_config_cls or supply config"
+                )
+            env_config = config_type()
+        env_config = copy(env_config)
+        env_config.robot = copy(env_config.robot)
+        env_config.robot.profile = profile
+        if env_config.physics is None:
+            env_config.physics = PhysicsConfig(control_period_s=profile.control_period_s)
+        return env_config
