@@ -1257,13 +1257,12 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         reach_now = reach_progress(info["tcp_to_obj_dist"], scale=scale)
         grasp_now = float(info["is_grasped"] > 0.5)
         lift_potential = lift_progress(info["lift_height"], scale=scale, grasped=grasp_now)
-        reach_delta, grasp_delta, lift_prog = self._update_potentials(
-            reach_now, grasp_now, lift_potential
-        )
+        return self._potential_shaped_reward(info, (reach_now, grasp_now, lift_potential))
+
+    def _potential_shaped_reward(self, info: dict, potentials: tuple[float, float, float]) -> float:
+        deltas = self._update_potentials(*potentials)
         components = self.config.reward.compute_components(
-            reach_progress=reach_delta,
-            is_grasped=grasp_delta,
-            task_progress=lift_prog,
+            *deltas,
             is_complete=info.get("success", False),
             action_delta_norm=info.get("action_delta_norm", 0.0),
             energy_norm=info.get("energy_norm", 0.0),

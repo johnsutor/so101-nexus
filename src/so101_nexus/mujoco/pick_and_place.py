@@ -307,20 +307,7 @@ class PickAndPlaceEnv(SO101NexusMuJoCoBaseEnv):
             info["tcp_to_obj_dist"], info["is_obj_placed"], scale=scale
         )
         grasp_now = place_grasp_potential(info["is_grasped"], info["is_obj_placed"])
-        task_potential = info["task_potential"]
-        reach_delta, grasp_delta, task_progress = self._update_potentials(
-            reach_now, grasp_now, task_potential
-        )
-        components = self.config.reward.compute_components(
-            reach_progress=reach_delta,
-            is_grasped=grasp_delta,
-            task_progress=task_progress,
-            is_complete=info["success"],
-            action_delta_norm=info.get("action_delta_norm", 0.0),
-            energy_norm=info.get("energy_norm", 0.0),
-        )
-        info["reward_components"] = components
-        return sum(components.values())
+        return self._potential_shaped_reward(info, (reach_now, grasp_now, info["task_potential"]))
 
     def _refresh_reset_reference_state(self) -> None:
         """Refresh the placement, reach, and grasp baselines from the post-settle pose."""
