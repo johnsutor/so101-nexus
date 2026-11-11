@@ -170,10 +170,11 @@ def test_relabel_rejects_state_width_mismatch() -> None:
         relabel_environment_state(state[:, :-1], names, [JointPositions()], dt=0.1)
 
 
-def test_relabel_rejects_episode_index_length_mismatch() -> None:
+@pytest.mark.parametrize("reconstruct", [False, True])
+def test_relabel_rejects_episode_index_length_mismatch(reconstruct) -> None:
     """A short episode_index used to leave the uncovered tail at zero velocity."""
     state, names = _legacy_recording(4)
-    target = [JointPositions(), JointVelocities()]
+    target = [JointPositions(), JointVelocities()] if reconstruct else [JointPositions()]
 
     with pytest.raises(ValueError, match="episode_index shape"):
         relabel_environment_state(state, names, target, dt=0.02, episode_index=np.array([0, 0]))
@@ -186,10 +187,11 @@ def test_relabel_rejects_episode_index_length_mismatch() -> None:
         pytest.param(np.array([1, 1, 0, 1]), id="episode_resumes"),
     ],
 )
-def test_relabel_rejects_non_contiguous_episodes(episode_index: np.ndarray) -> None:
+@pytest.mark.parametrize("reconstruct", [False, True])
+def test_relabel_rejects_non_contiguous_episodes(episode_index: np.ndarray, reconstruct) -> None:
     """Unsorted rows used to silently difference temporally unrelated frames."""
     state, names = _legacy_recording(4)
-    target = [JointPositions(), JointVelocities()]
+    target = [JointPositions(), JointVelocities()] if reconstruct else [JointPositions()]
 
     with pytest.raises(ValueError, match="non-contiguous episode"):
         relabel_environment_state(state, names, target, dt=0.02, episode_index=episode_index)

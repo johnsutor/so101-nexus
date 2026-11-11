@@ -27,6 +27,8 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Reject interleaved demonstration episodes before constructing behavior-cloning
+  transitions, including datasets with recorded joint velocities.
 - Honor configured MuJoCo reset noise while retaining explicit constructor
   overrides. Reject malformed Warp action batches before changing simulation
   state, and require integer target indices consistently across backends.

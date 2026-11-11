@@ -201,7 +201,6 @@ class Args:
     num_updates: int = field(default=0, init=False)
 
 
-_finite = _training._finite
 RunningMeanStd = _training.RunningMeanStd
 
 
@@ -407,6 +406,7 @@ def load_demo_transitions(
     from huggingface_hub import hf_hub_download
 
     from so101_nexus import dataset_row_to_sim_qpos, relabel_environment_state
+    from so101_nexus.lerobot_dataset import _episode_blocks
 
     env_state_key = "observation.environment_state"
 
@@ -438,6 +438,7 @@ def load_demo_transitions(
 
     joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)  # [N,6]
     ep_index = df["episode_index"].to_numpy()
+    blocks = _episode_blocks(ep_index, len(df))
     # `environment_state` is the env's full privileged state vector; its declared
     # per-column names let an older recording be mapped onto the current layout.
     obs_all = relabel_environment_state(
@@ -454,11 +455,9 @@ def load_demo_transitions(
     delta_scale = np.asarray(_DELTA_ACTION_SCALE, dtype=np.float32)
 
     obs_list, act_list = [], []
-    for e in sorted(np.unique(ep_index)):
-        idx = np.nonzero(ep_index == e)[0]
-        s, t = idx[0], idx[-1]  # inclusive contiguous block, L = t - s + 1 rows
-        ep_obs = obs_all[s:t]  # [L-1, obs_dim] -- drop the last row (no outgoing transition)
-        ep_delta = joints_rad[s + 1 : t + 1] - joints_rad[s:t]  # [L-1, 6] realized motion
+    for start, stop in sorted(blocks, key=lambda block: ep_index[block[0]]):
+        ep_obs = obs_all[start : stop - 1]
+        ep_delta = joints_rad[start + 1 : stop] - joints_rad[start : stop - 1]
         obs_list.append(ep_obs)
         act_list.append(np.clip(ep_delta / delta_scale, -1.0, 1.0))
     obs = torch.as_tensor(np.concatenate(obs_list, axis=0), device=device)
