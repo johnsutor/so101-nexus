@@ -484,3 +484,113 @@ def test_training_recipe_runs_directly(recipe):
     )
     assert "--num-envs" in result.stdout
     assert ("--bc-coef" in result.stdout) is recipe.startswith("bc_")
+
+
+def test_training_recipes_preserve_rollout_rng_and_episode_statistics(monkeypatch, tmp_path):
+    import importlib
+    from types import SimpleNamespace
+
+    import torch
+
+    from so101_nexus import JointPositions, TouchConfig
+
+    class VectorEnv:
+        num_envs = 2
+        single_observation_space = SimpleNamespace(shape=(6,))
+        single_action_space = SimpleNamespace(shape=(6,))
+        config = TouchConfig(observations=[JointPositions()])
+        control_dt = 0.02
+        device = torch.device("cpu")
+
+        def __init__(self):
+            self.unwrapped = self
+            self._elapsed = torch.zeros(2, dtype=torch.long)
+            self.closed = False
+
+        def reset(self, *, seed):
+            assert seed == 17
+            return torch.zeros(2, 6), {}
+
+        def step(self, actions):
+            self._elapsed += 1
+            success = torch.tensor([True, False])
+            terminated = torch.tensor([self._elapsed[0] == 2, False])
+            truncated = torch.tensor([False, self._elapsed[1] == 3])
+            self._elapsed[terminated | truncated] = 0
+            observation = actions * 0.1 + self._elapsed[:, None]
+            return (
+                observation,
+                torch.tensor([1.0, 2.0]),
+                terminated,
+                truncated,
+                {"success": success},
+            )
+
+        def close(self):
+            self.closed = True
+
+    def run_recipe(name):
+        mod = importlib.import_module(name)
+        env = VectorEnv()
+        samples, rng_states, shaped_rewards = [], [], []
+        agent_class = mod.Agent
+        scaler_class = mod.RewardScaler
+
+        class Agent(agent_class):
+            def get_action_and_value(self, observation, action=None, *, generator=None):
+                result = super().get_action_and_value(observation, action, generator=generator)
+                if action is None:
+                    samples.append(result[0].detach().clone())
+                    rng_states.append(generator.get_state().clone())
+                return result
+
+        class RewardScaler(scaler_class):
+            def __call__(self, reward, done):
+                shaped_rewards.append(reward.clone())
+                return super().__call__(reward, done)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(mod, "_make_envs", lambda *args, **kwargs: env)
+            patch.setattr(mod, "Agent", Agent)
+            patch.setattr(mod, "RewardScaler", RewardScaler)
+            extra = {"use_demos": False} if name.endswith("bc_ppo_warp") else {}
+            stats = mod.train(
+                num_envs=2,
+                num_steps=3,
+                total_timesteps=12,
+                num_minibatches=1,
+                update_epochs=1,
+                episode_length=3,
+                hidden_dim=8,
+                stagger_resets=False,
+                success_bonus=3,
+                device="cpu",
+                seed=17,
+                save_dir=str(tmp_path / name),
+                **extra,
+            )
+        assert env.closed
+        assert stats["episodes"] == 5
+        assert stats["mean_return"] == 3.6
+        assert stats["success_rate"] == 0.6
+        expected_rng = torch.Generator().manual_seed(18)
+        for state in rng_states:
+            torch.randn((2, 6), generator=expected_rng)
+            torch.testing.assert_close(state, expected_rng.get_state(), rtol=0, atol=0)
+        torch.testing.assert_close(
+            torch.stack(shaped_rewards),
+            torch.tensor([[4, 2], [1, 2], [4, 2], [1, 2], [4, 2], [1, 2]]).float(),
+            rtol=0,
+            atol=0,
+        )
+        checkpoint = torch.load(tmp_path / name / "agent.pt", weights_only=False)
+        return stats, torch.stack(samples), checkpoint
+
+    first = run_recipe("examples.ppo_warp")
+    second = run_recipe("examples.bc_ppo_warp")
+    assert first[0] == {key: second[0][key] for key in first[0]}
+    torch.testing.assert_close(first[1], second[1], rtol=0, atol=0)
+    for key in first[2]["model"]:
+        torch.testing.assert_close(first[2]["model"][key], second[2]["model"][key], rtol=0, atol=0)
+    for key in ("obs_mean", "obs_var"):
+        torch.testing.assert_close(first[2][key], second[2][key], rtol=0, atol=0)
