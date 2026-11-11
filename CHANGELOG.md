@@ -27,6 +27,8 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Preserve millimeter cube sizes when teleop applies camera, timing, and task
+  overrides to pick-and-place and stacking configurations.
 - Use Warp's analytic box-box manifold to retain nearly aligned support contacts.
   The native convex path could lose all contacts between stacked cubes after a
   small model inertia change. Mesh collision paths remain unchanged.
