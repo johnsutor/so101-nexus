@@ -113,14 +113,20 @@ class RolloutRecorder:
         self.dataset = dataset
         self.fps = fps
         self.record_side_video = record_side_video
+        self._save_incomplete = False
 
     def record_episode(self, *, seed: int | None = None) -> EpisodeResult:
         """Record one policy rollout episode."""
+        if self._save_incomplete:
+            raise RuntimeError(
+                "The previous dataset save did not complete. Recover the dataset, "
+                "then create a new recorder."
+            )
         try:
             return self._record_episode(seed=seed)
         except Exception:
             clear_buffer = getattr(self.dataset, "clear_episode_buffer", None)
-            if callable(clear_buffer):
+            if not self._save_incomplete and callable(clear_buffer):
                 with contextlib.suppress(Exception):
                     clear_buffer()
             raise
@@ -182,6 +188,7 @@ class RolloutRecorder:
         if rendering is not None:
             info = {**info, "rendering": rendering}
         if self.dataset is not None:
+            self._save_incomplete = True
             save_recorded_episode(
                 self.dataset,
                 info.get("placement_contract"),
@@ -189,6 +196,7 @@ class RolloutRecorder:
                 if rendering is not None
                 else None,
             )
+            self._save_incomplete = False
 
         return EpisodeResult(
             success=bool(info.get("success", False)),
