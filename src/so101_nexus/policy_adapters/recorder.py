@@ -130,6 +130,8 @@ class RolloutRecorder:
                     clear_buffer()
                 except BaseException:
                     self._dataset_incomplete = True
+            elif self.dataset is not None:
+                self._dataset_incomplete = True
             raise
 
     def _record_episode(self, *, seed: int | None) -> EpisodeResult:

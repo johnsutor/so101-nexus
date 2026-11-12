@@ -230,6 +230,30 @@ def test_failed_episode_preserves_original_error_with_optional_cleanup(
             recorder.record_episode()
 
 
+def test_partial_episode_without_buffer_cleanup_blocks_retry(native_dataset, monkeypatch):
+    from so101_nexus.policy_adapters import RolloutRecorder
+
+    dataset = native_dataset
+    monkeypatch.setattr(dataset, "clear_episode_buffer", None)
+    policy = _Policy(np.zeros(6, dtype=np.float32))
+    calls = 0
+
+    def interrupted_policy(batch):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("policy failed")
+        return np.zeros(6, dtype=np.float32)
+
+    monkeypatch.setattr(policy, "select_action", interrupted_policy)
+    recorder = RolloutRecorder(_DatasetEnv(), policy, camera_keys=(), dataset=dataset)
+    with pytest.raises(RuntimeError, match="policy failed"):
+        recorder.record_episode()
+    with pytest.raises(RuntimeError, match=r"Recover.*new recorder"):
+        recorder.record_episode()
+    assert calls == 2
+
+
 def test_record_episode_writes_lerobot_frames_in_degrees() -> None:
     from so101_nexus.policy_adapters import RolloutRecorder
 

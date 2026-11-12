@@ -27,6 +27,7 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Block policy rollout retries when the dataset cannot clear its incomplete buffer.
 - Preserve immutable robot profiles when serializing environment configurations
   for training checkpoints or worker processes.
 - Clear incomplete policy rollout buffers after interrupts as well as ordinary
