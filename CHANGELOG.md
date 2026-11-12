@@ -27,6 +27,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Preserve immutable robot profiles when serializing environment configurations
+  for training checkpoints or worker processes.
+- Clear incomplete policy rollout buffers after interrupts as well as ordinary
+  errors, and block retries if interrupted cleanup leaves dataset state uncertain.
 - Reject interleaved demonstration episodes before constructing behavior-cloning
   transitions, including datasets with recorded joint velocities.
 - Honor configured MuJoCo reset noise while retaining explicit constructor

@@ -52,6 +52,18 @@ def test_robot_config_rejects_untyped_profile():
         RobotConfig(profile={})
 
 
+def test_training_checkpoint_preserves_robot_profile(tmp_path):
+    import torch
+
+    from examples._warp_training import Agent, ObsNormalizer, _save
+
+    config = MoveConfig(robot=RobotConfig(profile=_profile()))
+    path = tmp_path / "checkpoint.pt"
+    _save(Agent(6, 6, 8), ObsNormalizer(6, "cpu"), path, 0, 0, env_config=config)
+    restored = torch.load(path, weights_only=False)["env_config"]
+    assert restored.robot.profile.to_dict() == config.robot.profile.to_dict()
+
+
 def test_profile_rejects_control_clock_mismatch(env_factory):
     from dataclasses import replace
 

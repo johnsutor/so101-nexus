@@ -174,6 +174,20 @@ class RobotProfile:
         """Share this immutable snapshot when environment configurations are copied."""
         return self
 
+    def __reduce__(self) -> tuple[type[RobotProfile], tuple[Any, ...]]:
+        """Rebuild immutable mappings through validation when loading checkpoints."""
+        return type(self), (
+            self.robot_id,
+            {name: dict(motor) for name, motor in self.calibration.items()},
+            self.joint_offsets_deg,
+            self.gripper_limits_deg,
+            dict(self.dynamics),
+            self.model_sha256,
+            self.control_period_s,
+            self.servo_gains,
+            self.schema_version,
+        )
+
     def with_reference_pose(
         self,
         *,

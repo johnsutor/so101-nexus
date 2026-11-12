@@ -123,12 +123,12 @@ class RolloutRecorder:
             )
         try:
             return self._record_episode(seed=seed)
-        except Exception:
+        except BaseException:
             clear_buffer = getattr(self.dataset, "clear_episode_buffer", None)
             if not self._dataset_incomplete and callable(clear_buffer):
                 try:
                     clear_buffer()
-                except Exception:
+                except BaseException:
                     self._dataset_incomplete = True
             raise
 

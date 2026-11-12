@@ -119,8 +119,9 @@ def native_dataset(tmp_path):
 
 
 @pytest.mark.parametrize("failure", ["policy", "step", "add_frame"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_failed_episode_can_retry_without_persisting_partial_frames(
-    native_dataset, monkeypatch, failure
+    native_dataset, monkeypatch, failure, error_type
 ):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
@@ -142,11 +143,11 @@ def test_failed_episode_can_retry_without_persisting_partial_frames(
         nonlocal calls
         calls += 1
         if calls == 2:
-            raise RuntimeError("injected recording failure")
+            raise error_type("injected recording failure")
         return original(*args, **kwargs)
 
     monkeypatch.setattr(owner, method, fail_once)
-    with pytest.raises(RuntimeError, match="injected recording failure"):
+    with pytest.raises(error_type, match="injected recording failure"):
         recorder.record_episode(seed=17)
     result = recorder.record_episode(seed=18)
     dataset.finalize()
@@ -161,8 +162,9 @@ def test_failed_episode_can_retry_without_persisting_partial_frames(
 
 
 @pytest.mark.parametrize("after_data_write", [False, True])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_save_failure_blocks_reuse_and_preserves_writer_state(
-    native_dataset, monkeypatch, after_data_write
+    native_dataset, monkeypatch, after_data_write, error_type
 ):
     from unittest.mock import Mock
 
@@ -177,11 +179,11 @@ def test_save_failure_blocks_reuse_and_preserves_writer_state(
     monkeypatch.setattr(policy, "reset", Mock(wraps=policy.reset))
     monkeypatch.setattr(dataset, "add_frame", Mock(wraps=dataset.add_frame))
     monkeypatch.setattr(dataset, "clear_episode_buffer", Mock(wraps=dataset.clear_episode_buffer))
-    error = RuntimeError("injected save failure")
+    error = error_type("injected save failure")
     failed_save = Mock(side_effect=error)
     monkeypatch.setattr(dataset.meta if after_data_write else dataset, "save_episode", failed_save)
     recorder = RolloutRecorder(env, policy, camera_keys=(), dataset=dataset)
-    with pytest.raises(RuntimeError, match="injected save failure") as failure:
+    with pytest.raises(error_type, match="injected save failure") as failure:
         recorder.record_episode(seed=17)
     assert failure.value is error
     with pytest.raises(RuntimeError, match=r"Recover.*new recorder"):
@@ -201,14 +203,17 @@ def test_save_failure_blocks_reuse_and_preserves_writer_state(
 
 
 @pytest.mark.parametrize("cleanup_fails", [False, True])
-def test_failed_episode_preserves_original_error_with_optional_cleanup(monkeypatch, cleanup_fails):
+@pytest.mark.parametrize("cleanup_error_type", [ValueError, KeyboardInterrupt])
+def test_failed_episode_preserves_original_error_with_optional_cleanup(
+    monkeypatch, cleanup_fails, cleanup_error_type
+):
     from so101_nexus.policy_adapters import RolloutRecorder
 
     dataset = _Dataset()
     if cleanup_fails:
 
         def broken_cleanup():
-            raise ValueError("cleanup failed")
+            raise cleanup_error_type("cleanup failed")
 
         dataset.clear_episode_buffer = broken_cleanup
     policy = _Policy(np.zeros(6, dtype=np.float32))
