@@ -27,6 +27,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Derive behavior-cloning action labels from recorded model joint positions,
+  preserving custom profile gripper ranges. Reject incompatible control modes
+  before demonstration training starts.
 - Block policy rollout retries when the dataset cannot clear its incomplete buffer.
 - Preserve immutable robot profiles when serializing environment configurations
   for training checkpoints or worker processes.
