@@ -21,6 +21,8 @@ for the public-API and deprecation policy.
 - Check excitation offline with `examples/calibrate_robot.py check`. Profile
   creation exposes the command interval, and CLI help explains the joint order.
 
+- Add readiness, cancellation, and progress callbacks to excitation collection.
+
 ### Changed
 
 - Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,

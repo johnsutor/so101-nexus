@@ -484,6 +484,8 @@ def _collect_episode(
     trajectory: ExcitationTrajectory,
     clock: Callable[[], float],
     sleep: Callable[[float], None],
+    should_stop: Callable[[], bool] | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> RecordedTrajectory:
     origin = clock()
     measured, commands, starts, ends, writes = [], [], [], [], []
@@ -496,6 +498,7 @@ def _collect_episode(
         remaining = origin + planned_time - clock()
         if remaining > 0:
             sleep(remaining)
+        _check_cancelled(should_stop)
         if clock() - origin - planned_time > max_overrun_s:
             raise RuntimeError("hardware loop exceeded the allowed overrun")
         position, before, after = _read_position(
@@ -507,6 +510,7 @@ def _collect_episode(
         if np.max(np.abs(position - previous)) > threshold:
             raise RuntimeError("hardware tracking error exceeded the allowed limit")
         action = profile.from_model_deg(target)
+        _check_cancelled(should_stop)
         sent = robot.send_action(
             {
                 f"{name}.pos": float(value)
@@ -527,6 +531,8 @@ def _collect_episode(
         starts.append(before)
         ends.append(after)
         writes.append(write)
+        if on_progress is not None:
+            on_progress(trajectory.name, index + 1, len(trajectory.timestamps_s))
     return RecordedTrajectory(
         trajectory.name,
         trajectory.split,
@@ -559,6 +565,33 @@ def _validate_robot(robot: Any, profile: RobotProfile) -> None:
         name: dict(value) for name, value in profile.calibration.items()
     }:
         raise ValueError("robot calibration does not match profile")
+
+
+def _check_cancelled(should_stop: Callable[[], bool] | None) -> None:
+    if should_stop is not None and should_stop():
+        raise InterruptedError("excitation collection cancelled")
+
+
+def _collect_recordings(
+    robot: Any,
+    profile: RobotProfile,
+    config: ExcitationConfig,
+    trajectories: Sequence[ExcitationTrajectory],
+    destination: Path | None,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+    should_stop: Callable[[], bool] | None,
+    on_progress: Callable[[str, int, int], None] | None,
+) -> tuple[RecordedTrajectory, ...]:
+    recordings = []
+    for index, trajectory in enumerate(trajectories):
+        recording = _collect_episode(
+            robot, profile, config, trajectory, clock, sleep, should_stop, on_progress
+        )
+        if destination is not None:
+            recording.save(destination / f"{index:02d}_{trajectory.name}.npz")
+        recordings.append(recording)
+    return tuple(recordings)
 
 
 def _disconnect_robot(robot: Any) -> None:
@@ -620,6 +653,9 @@ def collect_excitation(
     sleep: Callable[[float], None] = time.sleep,
     model: mujoco.MjModel | None = None,
     output_dir: str | Path | None = None,
+    on_ready: Callable[[], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> tuple[RecordedTrajectory, ...]:
     """Preflight every episode, then automatically collect through a LeRobot follower.
 
@@ -632,8 +668,15 @@ def collect_excitation(
     Standard LeRobot SO followers must start torque-free; their current position
     seeds the servo goal before connection enables torque. Custom adapters own
     their connection behavior.
+    ``on_ready`` runs after connection enables holding torque and before motion;
+    it may wait for operator confirmation. ``should_stop`` cancels before the
+    next hardware read or command by raising ``InterruptedError``. Cancellation
+    preserves the follower's configured disconnect behavior, including torque.
+    ``on_progress`` receives episode name, completed samples, and total samples.
+    Callbacks run synchronously and must not delay the active command loop.
     """
     _validate_robot(robot, profile)
+    _check_cancelled(should_stop)
     trajectories = generate_excitation(config, profile)
     if model is None:
         preflight_excitation(trajectories, profile, config)
@@ -643,17 +686,26 @@ def collect_excitation(
     if destination is not None:
         destination.mkdir(parents=True, exist_ok=False)
     try:
+        _check_cancelled(should_stop)
         _prepare_follower_connection(robot, profile, config)
         try:
+            _check_cancelled(should_stop)
             robot.connect(calibrate=False)
             if not robot.is_calibrated:
                 raise RuntimeError("hardware calibration does not match the loaded calibration")
-            recordings = []
-            for index, trajectory in enumerate(trajectories):
-                recording = _collect_episode(robot, profile, config, trajectory, clock, sleep)
-                if destination is not None:
-                    recording.save(destination / f"{index:02d}_{trajectory.name}.npz")
-                recordings.append(recording)
+            if on_ready is not None:
+                on_ready()
+            recordings = _collect_recordings(
+                robot,
+                profile,
+                config,
+                trajectories,
+                destination,
+                clock,
+                sleep,
+                should_stop,
+                on_progress,
+            )
         except BaseException as error:
             try:
                 _disconnect_robot(robot)
@@ -666,4 +718,4 @@ def collect_excitation(
             with suppress(OSError):
                 destination.rmdir()
         raise
-    return tuple(recordings)
+    return recordings

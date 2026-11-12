@@ -728,3 +728,103 @@ def test_excitation_config_snapshots_mutable_joint_inputs():
     amplitudes[:] = 1000
     assert config.center_qpos_deg == (0, -15, 30, 45, 0, 50)
     assert config.amplitudes_deg == (1, 1, 1, 1, 1, 1)
+
+
+def test_collector_readiness_precedes_commands_and_reports_progress(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    progress = []
+    ready_calls = []
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+
+    def ready():
+        assert robot.connected
+        assert not robot.commands
+        ready_calls.append(True)
+
+    recordings = collect_excitation(
+        robot,
+        profile,
+        config,
+        clock=clock,
+        sleep=clock.sleep,
+        on_ready=ready,
+        on_progress=lambda *sample: progress.append(sample),
+    )
+    assert ready_calls == [True]
+    assert len(progress) == sum(len(recording.commanded_qpos_deg) for recording in recordings)
+    for recording in recordings:
+        samples = [sample for sample in progress if sample[0] == recording.name]
+        count = len(recording.commanded_qpos_deg)
+        assert samples == [(recording.name, index, count) for index in range(1, count + 1)]
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("phase", ["initial", "prepared", "ready", "read", "progress"])
+def test_collector_cancellation_stops_commands_and_cleans_up(
+    monkeypatch, profile, config, tmp_path, phase
+):
+    from so101_nexus import excitation
+
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    stopped = phase == "initial"
+    prepared = []
+    monkeypatch.setattr(excitation, "preflight_excitation", lambda *args: None)
+    original_read = robot.get_observation
+
+    def prepare(*args):
+        nonlocal stopped
+        prepared.append(True)
+        if phase == "prepared":
+            stopped = True
+
+    def ready():
+        nonlocal stopped
+        if phase == "ready":
+            stopped = True
+
+    def read():
+        nonlocal stopped
+        result = original_read()
+        if phase == "read":
+            stopped = True
+        return result
+
+    def progress(*args):
+        nonlocal stopped
+        if phase == "progress":
+            stopped = True
+
+    monkeypatch.setattr(excitation, "_prepare_follower_connection", prepare)
+    monkeypatch.setattr(robot, "get_observation", read)
+    output = tmp_path / "cancelled"
+    with pytest.raises(InterruptedError, match="cancelled"):
+        collect_excitation(
+            robot,
+            profile,
+            config,
+            clock=clock,
+            sleep=clock.sleep,
+            output_dir=output,
+            on_ready=ready,
+            should_stop=lambda: stopped,
+            on_progress=progress,
+        )
+    assert not robot.connected
+    assert len(robot.commands) == (1 if phase == "progress" else 0)
+    assert bool(prepared) is (phase != "initial")
+    assert not output.exists()
+
+
+def test_collector_readiness_failure_disconnects_without_commands(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+
+    def ready():
+        raise RuntimeError("operator did not confirm readiness")
+
+    with pytest.raises(RuntimeError, match="operator"):
+        collect_excitation(robot, profile, config, on_ready=ready)
+    assert not robot.connected
+    assert not robot.commands
