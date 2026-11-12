@@ -98,6 +98,7 @@ from so101_nexus.observations import (
     WristCamera,
 )
 from so101_nexus.physics import (
+    _physics_for_control_period,
     apply_physics_config,
     apply_robot_config,
     apply_warp_collision_config,
@@ -311,13 +312,18 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
 
         apply_warp_collision_config(mjm)
         apply_robot_config(mjm, config)
-        if config.physics is not None:
-            self._N_SUBSTEPS = apply_physics_config(mjm, config.physics, backend="warp")
+        profile = config.robot.profile
+        physics = config.physics or (
+            None if profile is None else _physics_for_control_period(profile.control_period_s)
+        )
+        if physics is not None:
+            self._N_SUBSTEPS = apply_physics_config(mjm, physics, backend="warp")
         # Warp materials are model-global, so color pools use their first entry.
         colors = config.robot_colors
         color = colors if isinstance(colors, str) else colors[0]
         mjm.mat_rgba[robot_material_ids(mjm)] = COLOR_MAP[color]
         self.mjm = mjm
+        self.metadata = {**self.metadata, "render_fps": 1 / self.control_dt}
         mjd = mujoco.MjData(mjm)
         mujoco.mj_forward(mjm, mjd)
         with wp.ScopedDevice(self._wp_device):
@@ -1512,6 +1518,8 @@ class SO101NexusWarpVectorEnv(VectorEnv, _PotentialState[torch.Tensor]):
                 f"init_qpos shape {tuple(arr.shape)} != expected ({n_joints},) "
                 f"or ({self.num_envs}, {n_joints})"
             )
+        if not bool(torch.isfinite(arr).all()):
+            raise ValueError("init_qpos must contain only finite joint positions")
         return arr
 
     def _sample_reset_qpos(

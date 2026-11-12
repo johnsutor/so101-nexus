@@ -33,14 +33,15 @@ config = MoveConfig(robot=RobotConfig(profile=profile))
 | `gripper_limits_deg` | Model gripper angles at hardware 0 and 100 percent |
 | `dynamics` | Optional mapping from joint names to `JointDynamics` values |
 | `model_sha256` | Fingerprint of vendored robot XML and meshes. An empty value permits an unpinned profile. |
-| `control_period_s` | Command interval for the identified control loop. Must match `PhysicsConfig.control_period_s`. |
+| `control_period_s` | Command interval for the identified control loop. Sets the physics timing when `physics` is omitted. An explicit `PhysicsConfig.control_period_s` must match. |
 | `servo_gains` | Hardware PID coefficients `(P, I, D)`, default `(16, 0, 32)`. Collection requires matching LeRobot coefficients. |
 | `schema_version` | Version of the saved JSON schema, currently `1` |
 
 `RobotProfile.from_lerobot(path, robot_id=...)` imports an existing calibration and pins the robot asset fingerprint.
 `with_reference_pose(hardware_body_deg=..., model_body_deg=...)` returns a profile aligned from five measured body-joint angles.
 Both reference vectors describe the same physical pose.
-The gripper endpoints require separate measurements.
+The default gripper endpoints provide a nominal mapping.
+Robot-specific gripper alignment requires separate endpoint measurements.
 `save(path)` writes JSON atomically, and `load(path)` validates the saved schema.
 `export_lerobot(path)` writes the original encoder calibration as standard LeRobot JSON.
 Profiles contain immutable snapshots of calibration and dynamics.
@@ -66,7 +67,8 @@ Profile loading does not write hardware registers.
 `SimSOFollowerConfig(profile_path=...)` loads the profile and its encoder calibration without a separate calibration file.
 It requires `use_degrees=True` and a matching robot ID.
 It rejects conflicting calibration files or environment profiles.
-When physics configuration is omitted, this adapter selects the profile command interval.
+When physics configuration is omitted, environments and this adapter select the profile command interval.
+They choose physics substeps that divide this interval without exceeding the default timestep.
 
 ## PhysicsConfig
 

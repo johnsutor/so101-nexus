@@ -578,13 +578,13 @@ teleop records it as the required LeRobot `task` field.
 ## Robot identification
 
 Use a saved robot profile to reproduce the coordinate alignment and dynamics of your physical follower.
-The example script separates profile creation, automatic hardware collection, and offline fitting.
+Run `examples/calibrate_robot.py` to create a profile, collect three recordings, and fit candidate dynamics.
 It requires the [teleop and sysid extras](/docs/getting-started/installation#extras).
 
 ### Create the profile
 
 1. Calibrate the follower with LeRobot as described in [LeRobot compatibility](/docs/concepts/lerobot#recording-with-lerobot-record).
-2. Place the arm in a known reference pose.
+2. Place and support the arm in a known, raised reference pose with room for motion.
 3. Record the five body-joint readings in LeRobot degrees.
 4. Determine the corresponding five model angles from a physical reference or external measurement.
 5. Create a profile with those reference vectors:
@@ -599,6 +599,24 @@ uv run python examples/calibrate_robot.py create \
 The zero vectors illustrate the argument format. Replace them with measurements of the same physical pose.
 A motor travel midpoint does not establish the model joint zero.
 The [profile reference](/docs/api/configs#robot-profiles) defines all fields, units, and gripper endpoint alignment.
+Use the same raised reference pose as the collection center to avoid a second set of model-angle measurements.
+Pass `--control-period-s` to select a command interval other than the default 50 Hz.
+
+### Check the pose offline
+
+Run the optional `check` command to validate the planned motion entirely in MuJoCo:
+
+```bash
+uv run python examples/calibrate_robot.py check \
+  --profile-path my_robot_profile.json \
+  --center-qpos-deg 0 -15 30 45 0 50
+```
+
+Replace the example center with your verified reference pose.
+The six values follow this order: shoulder pan, shoulder lift, elbow flex, wrist flex, wrist roll, gripper.
+All six values use model degrees, including the gripper.
+The command reports the episode duration and command frequency after validation.
+Use the same center, duration, table height, and seed for collection.
 
 ### Collect automatic excitation
 
@@ -616,6 +634,7 @@ uv run python examples/calibrate_robot.py collect \
 The script generates three episodes: a multisine, sequential joint chirps, and an independent held-out trajectory.
 Minimum-jerk envelopes start and end each episode at the center pose.
 Velocity and acceleration limits bound the generated commands.
+The script rounds the requested duration to whole command periods and adjusts the ramp for short episodes.
 
 Before connection, the collector verifies all episodes with kinematic and dynamic MuJoCo rollouts.
 It checks physical calibration ranges, model joint limits, collisions, and tool clearance.
@@ -628,11 +647,13 @@ The LeRobot driver configures motor registers and torque during connection.
 Collection requires the saved hardware PID coefficients and degree units.
 Collection requires a follower without cameras to avoid camera latency in the control loop.
 An initial pose mismatch, excessive tracking error, slow reads, or loop overruns stop collection.
+The collector also stops after a missed command period to prevent catch-up commands.
 The collector disconnects through the driver on completion or error.
 It does not command a return motion after an error.
 
 Each completed episode saves immediately to a new output directory.
 Existing directories are rejected to preserve previous recordings.
+If collection fails before it saves any data, an empty output directory is removed for the next attempt.
 Recordings contain actual sent commands, read intervals, host write times, and a digest of the profile coordinate contract.
 Host write times do not measure motor receipt.
 `RecordedTrajectory.load(path)` reads these files without pickle.

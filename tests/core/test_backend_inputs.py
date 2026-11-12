@@ -62,6 +62,26 @@ def test_none_target_index_matches_omitted_option(env_factory, backend, task):
 
 
 @pytest.mark.parametrize("backend", ["mujoco", "warp"])
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_reset_rejects_nonfinite_joint_positions(env_factory, backend, value):
+    env = env_factory(backend, task="Move", config=MoveConfig(reset_settle_frames=0))
+    env.reset(seed=8)
+    raw = env.unwrapped
+    state = raw.data if backend == "mujoco" else raw
+    fields = ("qpos", "qvel", "ctrl")
+    snapshots = {
+        name: getattr(state, name).copy() if backend == "mujoco" else getattr(state, name).clone()
+        for name in fields
+    }
+    positions = np.zeros(6)
+    positions[2] = value
+    with pytest.raises(ValueError, match=r"init_qpos.*finite"):
+        env.reset(options={"init_qpos": positions})
+    for name, expected in snapshots.items():
+        np.testing.assert_array_equal(getattr(state, name), expected)
+
+
+@pytest.mark.parametrize("backend", ["mujoco", "warp"])
 @pytest.mark.parametrize("target_index", [0.9, 1.0, False, True, "0", np.bool_(False)])
 def test_target_index_rejects_nonintegers(env_factory, backend, target_index):
     config = PickConfig(objects=[CubeObject(color="red"), CubeObject(color="blue")])

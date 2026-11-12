@@ -8,6 +8,7 @@ import math
 import os
 import tempfile
 import time
+from contextlib import suppress
 from copy import copy
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from so101_nexus.config import SO101_JOINT_NAMES, SO101_TCP_SITE_NAME, PhysicsConfig
+from so101_nexus.config import SO101_JOINT_NAMES, SO101_TCP_SITE_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -60,6 +61,8 @@ class ExcitationConfig:
         Height of the modeled horizontal work surface relative to the arm base.
     min_clearance_m : float
         Minimum tool-center height above the work surface.
+    max_overrun_s : float
+        Maximum loop lateness. Missing a full control period also stops collection.
     """
 
     center_qpos_deg: tuple[float, ...]
@@ -310,7 +313,7 @@ def _preflight_model(
     import mujoco
 
     from so101_nexus import get_so101_mujoco_model_path
-    from so101_nexus.physics import apply_physics_config
+    from so101_nexus.physics import _physics_for_control_period, apply_physics_config
     from so101_nexus.profiles import apply_robot_profile
 
     if model is None:
@@ -326,7 +329,7 @@ def _preflight_model(
         model = copy(model)
     apply_robot_profile(model, profile)
     apply_physics_config(
-        model, PhysicsConfig(control_period_s=profile.control_period_s), backend="mujoco"
+        model, _physics_for_control_period(profile.control_period_s), backend="mujoco"
     )
     return model
 
@@ -399,9 +402,8 @@ def preflight_excitation(
         ):
             raise ValueError("trajectory timestamps must match profile control period")
         _check_commands(trajectory, profile, config)
+        _check_command_limits(trajectory, np.degrees(ctrl_range), "actuator control")
         targets = np.deg2rad(trajectory.commands_deg)
-        if np.any(targets < ctrl_range[:, 0]) or np.any(targets > ctrl_range[:, 1]):
-            raise ValueError(f"{trajectory.name}: actuator control limit violated")
         data = mujoco.MjData(model)
         previous = targets[0]
         for target in targets:
@@ -422,12 +424,28 @@ def preflight_excitation(
                 _check_state(model, data, config, trajectory.name, robot_geoms)
 
 
+def _check_command_limits(
+    trajectory: ExcitationTrajectory, limits_deg: np.ndarray, kind: str
+) -> None:
+    commands = trajectory.commands_deg
+    invalid = (commands < limits_deg[:, 0]) | (commands > limits_deg[:, 1])
+    joints = np.flatnonzero(np.any(invalid, axis=0))
+    if joints.size:
+        joint = joints[0]
+        lower, upper = limits_deg[joint]
+        raise ValueError(
+            f"{trajectory.name}: {kind} limit violated for {SO101_JOINT_NAMES[joint]}: "
+            f"requested [{commands[:, joint].min():.3f}, {commands[:, joint].max():.3f}] deg, "
+            f"allowed [{lower:.3f}, {upper:.3f}] deg"
+        )
+
+
 def _check_commands(
     trajectory: ExcitationTrajectory, profile: RobotProfile, config: ExcitationConfig
 ) -> None:
-    lower, upper = profile.model_joint_limits_deg()
-    if np.any(trajectory.commands_deg < lower) or np.any(trajectory.commands_deg > upper):
-        raise ValueError(f"{trajectory.name}: physical calibration limit violated")
+    _check_command_limits(
+        trajectory, np.asarray(profile.model_joint_limits_deg()).T, "physical calibration"
+    )
     velocity = np.diff(trajectory.commands_deg, axis=0) / profile.control_period_s
     acceleration = np.diff(velocity, axis=0) / profile.control_period_s
     if np.max(np.abs(velocity)) > config.max_velocity_deg_s + 1e-9 or (
@@ -470,18 +488,20 @@ def _collect_episode(
     origin = clock()
     measured, commands, starts, ends, writes = [], [], [], [], []
     previous = trajectory.commands_deg[0]
+    # Catching up missed command periods would compress the verified motion.
+    max_overrun_s = min(config.max_overrun_s, profile.control_period_s)
     for index, (planned_time, target) in enumerate(
         zip(trajectory.timestamps_s, trajectory.commands_deg, strict=True)
     ):
         remaining = origin + planned_time - clock()
         if remaining > 0:
             sleep(remaining)
-        if clock() - origin - planned_time > config.max_overrun_s:
+        if clock() - origin - planned_time > max_overrun_s:
             raise RuntimeError("hardware loop exceeded the allowed overrun")
         position, before, after = _read_position(
             robot, profile, clock, origin, config.max_read_duration_s
         )
-        if clock() - origin - planned_time > config.max_overrun_s:
+        if clock() - origin - planned_time > max_overrun_s:
             raise RuntimeError("hardware read caused an excessive loop overrun")
         threshold = config.max_tracking_error_deg if index else config.max_start_error_deg
         if np.max(np.abs(position - previous)) > threshold:
@@ -494,7 +514,7 @@ def _collect_episode(
             }
         )
         write = clock() - origin
-        if write - planned_time > config.max_overrun_s:
+        if write - planned_time > max_overrun_s:
             raise RuntimeError("hardware write exceeded the allowed overrun")
         actual = _joints([sent[f"{name}.pos"] for name in SO101_JOINT_NAMES], "sent action")
         previous = np.asarray(profile.to_model_deg(actual))
@@ -608,6 +628,7 @@ def collect_excitation(
     commands on a fault. Cameras must be disabled for consistent sample timing.
     Hardware disconnect behavior belongs to the follower driver.
     An optional new ``output_dir`` preserves each completed episode immediately.
+    Failed attempts remove that directory only when it is still empty.
     Standard LeRobot SO followers must start torque-free; their current position
     seeds the servo goal before connection enables torque. Custom adapters own
     their connection behavior.
@@ -621,22 +642,28 @@ def collect_excitation(
     destination = Path(output_dir) if output_dir is not None else None
     if destination is not None:
         destination.mkdir(parents=True, exist_ok=False)
-    _prepare_follower_connection(robot, profile, config)
     try:
-        robot.connect(calibrate=False)
-        if not robot.is_calibrated:
-            raise RuntimeError("hardware calibration does not match the loaded calibration")
-        recordings = []
-        for index, trajectory in enumerate(trajectories):
-            recording = _collect_episode(robot, profile, config, trajectory, clock, sleep)
-            if destination is not None:
-                recording.save(destination / f"{index:02d}_{trajectory.name}.npz")
-            recordings.append(recording)
-    except BaseException as error:
+        _prepare_follower_connection(robot, profile, config)
         try:
-            _disconnect_robot(robot)
-        except Exception as cleanup_error:
-            error.add_note(f"Hardware cleanup failed: {cleanup_error}")
+            robot.connect(calibrate=False)
+            if not robot.is_calibrated:
+                raise RuntimeError("hardware calibration does not match the loaded calibration")
+            recordings = []
+            for index, trajectory in enumerate(trajectories):
+                recording = _collect_episode(robot, profile, config, trajectory, clock, sleep)
+                if destination is not None:
+                    recording.save(destination / f"{index:02d}_{trajectory.name}.npz")
+                recordings.append(recording)
+        except BaseException as error:
+            try:
+                _disconnect_robot(robot)
+            except Exception as cleanup_error:
+                error.add_note(f"Hardware cleanup failed: {cleanup_error}")
+            raise
+        _disconnect_robot(robot)
+    except BaseException:
+        if destination is not None:
+            with suppress(OSError):
+                destination.rmdir()
         raise
-    _disconnect_robot(robot)
     return tuple(recordings)

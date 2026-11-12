@@ -58,7 +58,11 @@ from so101_nexus.observations import (
     TargetPosition,
     WristCamera,
 )
-from so101_nexus.physics import apply_physics_config, apply_robot_config
+from so101_nexus.physics import (
+    _physics_for_control_period,
+    apply_physics_config,
+    apply_robot_config,
+)
 from so101_nexus.rewards import _PotentialState, lift_progress, reach_progress
 from so101_nexus.scene import robot_material_ids
 
@@ -225,10 +229,11 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
     def _finish_model_setup(self) -> None:
         apply_robot_config(self.model, self.config)
         self._robot_material_ids = robot_material_ids(self.model)
-        if self.config.physics is not None:
-            self._N_SUBSTEPS = apply_physics_config(
-                self.model, self.config.physics, backend="mujoco"
-            )
+        physics = self.config.physics
+        if physics is None and self.config.robot.profile is not None:
+            physics = _physics_for_control_period(self.config.robot.profile.control_period_s)
+        if physics is not None:
+            self._N_SUBSTEPS = apply_physics_config(self.model, physics, backend="mujoco")
         self.metadata = {**self.metadata, "render_fps": 1 / self.control_dt}
         self._joint_ids = np.array(
             [
@@ -1004,14 +1009,6 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         ``target_index`` that the task never consumes raises, so a pin aimed at
         a task with no object pool cannot silently mislabel collected data.
         """
-        super().reset(seed=seed, options=options)
-        self._reset_options = {} if options is None else dict(options)
-        self._target_index_consumed = False
-        mujoco.mj_resetData(self.model, self.data)
-        self.model.mat_rgba[self._robot_material_ids] = sample_color(
-            self.config.robot_colors, self.np_random
-        )
-
         init_qpos: np.ndarray | None = None
         if options is not None:
             raw = options.get("init_qpos")
@@ -1021,6 +1018,16 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
                     raise ValueError(
                         f"init_qpos shape {init_qpos.shape} != expected ({len(self._joint_ids)},)"
                     )
+                if not np.isfinite(init_qpos).all():
+                    raise ValueError("init_qpos must contain only finite joint positions")
+
+        super().reset(seed=seed, options=options)
+        self._reset_options = {} if options is None else dict(options)
+        self._target_index_consumed = False
+        mujoco.mj_resetData(self.model, self.data)
+        self.model.mat_rgba[self._robot_material_ids] = sample_color(
+            self.config.robot_colors, self.np_random
+        )
 
         self._prev_action = None
         applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)

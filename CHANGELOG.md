@@ -18,23 +18,33 @@ for the public-API and deprecation policy.
 - Generate repeatable excitation and held-out trajectories, check them in MuJoCo,
   and collect timestamped hardware responses through LeRobot. Optional MuJoCo
   system identification produces candidate profiles and held-out diagnostics.
+- Check excitation offline with `examples/calibrate_robot.py check`. Profile
+  creation exposes the command interval, and CLI help explains the joint order.
 
 ### Changed
 
 - Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,
   camera pose and 61-degree field of view, and noncolliding camera PCB and lens.
   Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
+- Use a robot profile's command interval when physics configuration is omitted.
+  Excitation and fitting choose matching physics substeps for rates such as 30 Hz.
+  The example rounds episode durations to whole command periods and adjusts ramps
+  for short recordings.
 
 ### Fixed
 
-- Derive behavior-cloning action labels from recorded model joint positions,
-  preserving custom profile gripper ranges. Reject incompatible control modes
-  before demonstration training starts.
-- Block policy rollout retries when the dataset cannot clear its incomplete buffer.
 - Preserve immutable robot profiles when serializing environment configurations
   for training checkpoints or worker processes.
 - Clear incomplete policy rollout buffers after interrupts as well as ordinary
   errors, and block retries if interrupted cleanup leaves dataset state uncertain.
+- Block policy rollout retries when the dataset cannot clear its incomplete buffer.
+- Reject nonfinite reset poses before changing physics state on either backend.
+- Derive behavior-cloning action labels from recorded model joint positions,
+  preserving custom profile gripper ranges. Reject incompatible control modes
+  before demonstration training starts.
+- Stop excitation after a missed command period instead of issuing catch-up
+  commands. Allow retries after failed collection by removing empty output
+  directories while preserving recorded data.
 - Reject interleaved demonstration episodes before constructing behavior-cloning
   transitions, including datasets with recorded joint velocities.
 - Honor configured MuJoCo reset noise while retaining explicit constructor

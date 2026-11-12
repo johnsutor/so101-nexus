@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from so101_nexus.config import SO101_JOINT_NAMES, PhysicsConfig
+from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.profiles import JointDynamics, RobotProfile, apply_robot_profile
 
 if TYPE_CHECKING:
@@ -131,9 +131,10 @@ def _make_spec(profile: RobotProfile) -> mujoco.MjSpec:
     import mujoco
 
     from so101_nexus import get_so101_mujoco_model_path
+    from so101_nexus.physics import _physics_for_control_period
 
     spec = mujoco.MjSpec.from_file(str(get_so101_mujoco_model_path()))
-    spec.option.timestep = PhysicsConfig(control_period_s=profile.control_period_s).timestep_s
+    spec.option.timestep = _physics_for_control_period(profile.control_period_s).timestep_s
     model = spec.compile()
     apply_robot_profile(model, profile)
     for name in SO101_JOINT_NAMES:

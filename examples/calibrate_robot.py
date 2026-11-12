@@ -1,5 +1,6 @@
 """Create a robot profile, collect automatic excitation, and fit candidate dynamics."""
 
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -11,6 +12,8 @@ from so101_nexus import (
     RobotProfile,
     collect_excitation,
     fit_robot_profile,
+    generate_excitation,
+    preflight_excitation,
 )
 
 
@@ -22,8 +25,30 @@ def create(
     model_body_deg: tuple[float, float, float, float, float],
     gripper_limits_deg: tuple[float, float] = (-10, 100),
     servo_gains: tuple[int, int, int] = (16, 0, 32),
+    control_period_s: float = 0.02,
 ) -> None:
-    """Import LeRobot calibration and align a measured physical reference pose."""
+    """Import LeRobot calibration and align a measured physical reference pose.
+
+    Parameters
+    ----------
+    calibration : Path
+        Existing LeRobot follower calibration JSON.
+    robot_id : str
+        Follower ID from the calibration filename.
+    output : Path
+        New profile JSON file.
+    hardware_body_deg : tuple of float
+        Measured LeRobot degrees: shoulder pan, shoulder lift, elbow flex,
+        wrist flex, wrist roll.
+    model_body_deg : tuple of float
+        Model angles of the same physical pose, in the same joint order.
+    gripper_limits_deg : tuple of float
+        Model gripper angles at hardware 0 and 100 percent.
+    servo_gains : tuple of int
+        Hardware P/I/D register coefficients used during collection.
+    control_period_s : float
+        Seconds between commands, 0.02 for 50 Hz or 0.03333333333333333 for 30 Hz.
+    """
     if output.exists():
         raise FileExistsError(f"Profile already exists: {output}")
     profile = RobotProfile.from_lerobot(
@@ -32,7 +57,53 @@ def create(
         gripper_limits_deg=gripper_limits_deg,
         servo_gains=servo_gains,
     ).with_reference_pose(hardware_body_deg=hardware_body_deg, model_body_deg=model_body_deg)
-    profile.save(output)
+    replace(profile, control_period_s=control_period_s).save(output)
+    print(f"Saved profile: {output}")
+
+
+def _excitation_config(profile, center_qpos_deg, duration_s, table_z_m, seed):
+    config = ExcitationConfig(
+        center_qpos_deg=center_qpos_deg,
+        duration_s=duration_s,
+        ramp_s=min(2.0, duration_s / 5),
+        table_z_m=table_z_m,
+        seed=seed,
+    )
+    duration_s = round(duration_s / profile.control_period_s) * profile.control_period_s
+    return replace(config, duration_s=duration_s, ramp_s=min(2.0, duration_s / 5))
+
+
+def check(
+    profile_path: Path,
+    center_qpos_deg: tuple[float, float, float, float, float, float],
+    duration_s: float = 20,
+    table_z_m: float = 0,
+    seed: int = 0,
+) -> None:
+    """Check the excitation in simulation without a hardware connection.
+
+    Parameters
+    ----------
+    profile_path : Path
+        Saved robot profile JSON.
+    center_qpos_deg : tuple of float
+        Model degrees: shoulder pan, shoulder lift, elbow flex, wrist flex,
+        wrist roll, gripper. Use a raised pose with room for motion.
+    duration_s : float
+        Seconds per episode, rounded to the nearest whole command period.
+    table_z_m : float
+        Table height in meters relative to the robot base.
+    seed : int
+        Seed for repeatable excitation.
+    """
+    profile = RobotProfile.load(profile_path)
+    config = _excitation_config(profile, center_qpos_deg, duration_s, table_z_m, seed)
+    trajectories = generate_excitation(config, profile)
+    preflight_excitation(trajectories, profile, config)
+    print(
+        f"Verified {len(trajectories)} trajectories, {config.duration_s:g} s each, "
+        f"at {1 / profile.control_period_s:g} Hz."
+    )
 
 
 def collect(
@@ -44,7 +115,26 @@ def collect(
     table_z_m: float = 0,
     seed: int = 0,
 ) -> None:
-    """Check generated motion, then collect three episodes from a physical arm."""
+    """Check generated motion, then collect three episodes from a physical arm.
+
+    Parameters
+    ----------
+    profile_path : Path
+        Saved robot profile JSON.
+    port : str
+        Follower serial port, for example /dev/ttyACM1.
+    output_dir : Path
+        New directory for the three recordings.
+    center_qpos_deg : tuple of float
+        Model degrees: shoulder pan, shoulder lift, elbow flex, wrist flex,
+        wrist roll, gripper. Place and support the arm at this pose first.
+    duration_s : float
+        Seconds per episode, rounded to the nearest whole command period.
+    table_z_m : float
+        Table height in meters relative to the robot base.
+    seed : int
+        Seed for repeatable excitation.
+    """
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
     profile = RobotProfile.load(profile_path)
@@ -65,21 +155,22 @@ def collect(
         collect_excitation(
             robot,
             profile,
-            ExcitationConfig(
-                center_qpos_deg=center_qpos_deg,
-                duration_s=duration_s,
-                table_z_m=table_z_m,
-                seed=seed,
-            ),
+            _excitation_config(profile, center_qpos_deg, duration_s, table_z_m, seed),
             output_dir=output_dir,
         )
+    print(f"Saved recordings: {output_dir}")
 
 
 def fit(profile_path: Path, recordings_dir: Path, output_dir: Path, max_iters: int = 100) -> None:
     """Fit candidate dynamics and report held-out prediction errors."""
+    if not recordings_dir.is_dir():
+        raise FileNotFoundError(f"Recordings directory does not exist: {recordings_dir}")
+    paths = sorted(recordings_dir.glob("*.npz"))
+    if not paths:
+        raise ValueError(f"No .npz recordings in {recordings_dir}. Run collect first.")
     result = fit_robot_profile(
         RobotProfile.load(profile_path),
-        [RecordedTrajectory.load(path) for path in sorted(recordings_dir.glob("*.npz"))],
+        [RecordedTrajectory.load(path) for path in paths],
         output_dir=output_dir,
         max_iters=max_iters,
     )
@@ -90,4 +181,6 @@ def fit(profile_path: Path, recordings_dir: Path, output_dir: Path, max_iters: i
 
 
 if __name__ == "__main__":
-    tyro.extras.subcommand_cli_from_dict({"create": create, "collect": collect, "fit": fit})
+    tyro.extras.subcommand_cli_from_dict(
+        {"create": create, "check": check, "collect": collect, "fit": fit}
+    )

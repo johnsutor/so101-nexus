@@ -22,7 +22,6 @@ from so101_nexus.config import (
     EE_CONTROL_MODES,
     SO101_JOINT_NAMES,
     SO101_TCP_FRAME_NAME,
-    PhysicsConfig,
 )
 from so101_nexus.lerobot_adapter.normalization import (
     GRIPPER_NAME,
@@ -40,6 +39,7 @@ from so101_nexus.lerobot_adapter.normalization import (
 from so101_nexus.lerobot_adapter.sim_camera import SimCamera
 from so101_nexus.lerobot_adapter.sim_camera_config import SimCameraConfig
 from so101_nexus.lerobot_adapter.sim_follower_config import SimSOFollowerConfig
+from so101_nexus.physics import _physics_for_control_period
 from so101_nexus.profiles import RobotProfile
 from so101_nexus.teleop.leader import import_backend_for_env_id
 
@@ -672,5 +672,5 @@ class SimSOFollower(Robot):
         env_config.robot = copy(env_config.robot)
         env_config.robot.profile = profile
         if env_config.physics is None:
-            env_config.physics = PhysicsConfig(control_period_s=profile.control_period_s)
+            env_config.physics = _physics_for_control_period(profile.control_period_s)
         return env_config
