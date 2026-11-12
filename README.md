@@ -30,6 +30,7 @@ datasets, and Gymnasium environments in one Python library.
 | --- | --- |
 | Install the library | [Installation](https://so101-nexus.com/docs/getting-started/installation) |
 | Run a simulated robot | [Quickstart](https://so101-nexus.com/docs/getting-started/quickstart) |
+| Align and identify a physical follower | [Robot identification](https://so101-nexus.com/docs/workflow/teleoperation#robot-identification) |
 | Record demonstrations with a leader arm | [Teleoperation](https://so101-nexus.com/docs/workflow/teleoperation) |
 | Train with published demonstrations | [Training](https://so101-nexus.com/docs/workflow/training) |
 | Choose a task | [Environments](https://so101-nexus.com/docs/environments) |

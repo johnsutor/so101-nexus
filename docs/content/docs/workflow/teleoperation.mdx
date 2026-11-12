@@ -577,105 +577,109 @@ teleop records it as the required LeRobot `task` field.
 
 ## Robot identification
 
-Use a saved robot profile to reproduce the coordinate alignment and dynamics of your physical follower.
-Run `examples/calibrate_robot.py` to create a profile, collect three recordings, and fit candidate dynamics.
-It requires the [teleop and sysid extras](/docs/getting-started/installation#extras).
-
-### Create the profile
-
-1. Calibrate the follower with LeRobot as described in [LeRobot compatibility](/docs/concepts/lerobot#recording-with-lerobot-record).
-2. Place and support the arm in a known, raised reference pose with room for motion.
-3. Record the five body-joint readings in LeRobot degrees.
-4. Determine the corresponding five model angles from a physical reference or external measurement.
-5. Create a profile with those reference vectors:
+Launch the local Gradio app from the repository root:
 
 ```bash
-uv run python examples/calibrate_robot.py create \
-  --calibration /path/to/my_robot.json --robot-id my_robot \
-  --hardware-body-deg 0 0 0 0 0 --model-body-deg 0 0 0 0 0 \
-  --output my_robot_profile.json
+uv run --extra teleop --extra sysid python -m so101_nexus.calibration
 ```
 
-The zero vectors illustrate the argument format. Replace them with measurements of the same physical pose.
-A motor travel midpoint does not establish the model joint zero.
-The [profile reference](/docs/api/configs#robot-profiles) defines all fields, units, and gripper endpoint alignment.
-Use the same raised reference pose as the collection center to avoid a second set of model-angle measurements.
-Pass `--control-period-s` to select a command interval other than the default 50 Hz.
+The [installation guide](/docs/getting-started/installation#extras) describes the required extras.
+The app guides reference alignment, motion preview, hardware collection, and candidate evaluation.
+One shared session owns the hardware. Browser reconnects show that same session.
+Port ownership prevents overlapping workers in this app. Close other applications that use the follower port.
 
-### Check the pose offline
+### Connect and align the reference
 
-Run the optional `check` command to validate the planned motion entirely in MuJoCo:
+1. Discover the follower serial port in the app.
+2. Connect the read-only monitor.
+3. Confirm that the app identifies the expected saved LeRobot calibration.
+4. Support the arm with motor torque off.
+5. Select the active body joint and adjust its simulated reference angle.
+6. Match the physical joint to the reference using the overlay and joint instructions.
+7. Confirm the physically understood reference for each of the five body joints.
+8. Confirm the separate gripper endpoint mapping.
+9. Save the robot profile.
 
-```bash
-uv run python examples/calibrate_robot.py check \
-  --profile-path my_robot_profile.json \
-  --center-qpos-deg 0 -15 30 45 0 50
-```
+Discovery and live measurements do not enable torque, write calibration, or send movement commands.
+The viewport shows a translucent reference robot and a distinct measured robot in one coordinate frame.
+The persistent legend identifies both robots. View controls change the camera only.
+Reference controls change the simulated reference only.
 
-Replace the example center with your verified reference pose.
-The six values follow this order: shoulder pan, shoulder lift, elbow flex, wrist flex, wrist roll, gripper.
-All six values use model degrees, including the gripper.
-The command reports the episode duration and command frequency after validation.
-Use the same center, duration, table height, and seed for collection.
+Encoder calibration does not establish the physical model zero.
+Before reference capture, the measured overlay uses provisional offsets and cannot prove alignment.
+A capture associates the live encoder reading with a physical joint position that the operator understands.
+An arbitrary pose cannot establish that reference.
+The app captures encoder readings directly, so angle transcription is unnecessary.
+
+Body-joint alignment and gripper endpoint mapping are separate steps.
+The [profile reference](/docs/api/configs#robot-profiles) defines the units, endpoint mapping, and saved fields.
+
+### Preview and preflight
+
+1. Place the supported arm at a raised center pose with room for motion.
+2. Capture the excitation center from live measurements.
+3. Adjust the motion amplitudes, duration, seed, and table height.
+4. Preview the generated motion.
+5. Run the simulation preflight.
+
+The preview and collector use the same trajectory configuration.
+A change to the alignment or motion configuration invalidates the previous preflight.
+Editing motion settings during holding or collection stops further commands. Repeat preflight before restarting.
+The app generates a multisine, sequential joint chirps, and an independent held-out trajectory.
+Smooth envelopes start and end each episode at the center pose.
+Velocity and acceleration limits bound the commands.
+
+The preflight evaluates kinematic and dynamic MuJoCo rollouts before hardware collection.
+It examines physical calibration ranges, model joint limits, collisions, and tool clearance.
+The default scene contains the robot and a horizontal table.
+Simulation cannot represent unmodeled obstacles or establish hardware safety.
+For a custom workspace model, use `collect_excitation(..., model=workspace_model)` through the library API.
 
 ### Collect automatic excitation
 
-Support the arm at an unobstructed, raised center pose before connection.
-The driver briefly disables torque during connection, so an unsupported arm can fall.
-Use the six model angles of that pose for `--center-qpos-deg`.
-The following pose is illustrative and requires verification in your workspace:
+1. Support the arm at the verified center pose.
+2. Select **Enable hold** to enable torque at the current position.
+3. Confirm that the arm holds its position.
+4. Remove your hands from the arm and its workspace.
+5. Select **Start excitation** to begin motion.
 
-```bash
-uv run python examples/calibrate_robot.py collect \
-  --profile-path my_robot_profile.json --port /dev/ttyACM1 \
-  --center-qpos-deg 0 -15 30 45 0 50 --output-dir sysid_recordings
-```
+The driver briefly disables torque during connection. An unsupported arm can fall.
+The app transfers serial ownership from the monitor to one collection worker.
+The collector requires matching calibration, hardware PID coefficients, and a follower without cameras.
+An initial pose mismatch, excessive tracking error, slow reads, or a missed command period stops collection.
+The collector does not command a return motion after an error.
 
-The script generates three episodes: a multisine, sequential joint chirps, and an independent held-out trajectory.
-Minimum-jerk envelopes start and end each episode at the center pose.
-Velocity and acceleration limits bound the generated commands.
-The script rounds the requested duration to whole command periods and adjusts the ramp for short episodes.
+**Stop commands** ends further commands and preserves torque at the last commanded target.
+**Disconnect** closes the serial connection and preserves the current torque state.
+Neither action releases the motors.
+If browser heartbeats stop for five seconds, the worker cancels collection and preserves torque.
+A stopped or disconnected arm can still hold its previous target.
 
-Before connection, the collector verifies all episodes with kinematic and dynamic MuJoCo rollouts.
-It checks physical calibration ranges, model joint limits, collisions, and tool clearance.
-The default scene contains the robot and a horizontal table.
-For additional obstacles, call `collect_excitation(..., model=workspace_model)` with your workspace model.
-Simulation checks cannot establish hardware safety or represent obstacles absent from the scene.
-
-The collector connects with calibration disabled, then checks the physical calibration before commands start.
-The LeRobot driver configures motor registers and torque during connection.
-Collection requires the saved hardware PID coefficients and degree units.
-Collection requires a follower without cameras to avoid camera latency in the control loop.
-An initial pose mismatch, excessive tracking error, slow reads, or loop overruns stop collection.
-The collector also stops after a missed command period to prevent catch-up commands.
-The collector disconnects through the driver on completion or error.
-It does not command a return motion after an error.
+To release the motors, support the arm first. Then confirm **Release motors** in the app.
+This action disables torque, so an unsupported arm can fall.
 
 Each completed episode saves immediately to a new output directory.
 Existing directories are rejected to preserve previous recordings.
-If collection fails before it saves any data, an empty output directory is removed for the next attempt.
-Recordings contain actual sent commands, read intervals, host write times, and a digest of the profile coordinate contract.
+An unsuccessful attempt removes its new output directory only if that directory remains empty.
+Recordings contain sent commands, read intervals, host write times, and a digest of the profile coordinate contract.
 Host write times do not measure motor receipt.
 `RecordedTrajectory.load(path)` reads these files without pickle.
 
 ### Fit and evaluate dynamics
 
-```bash
-uv run python examples/calibrate_robot.py fit \
-  --profile-path my_robot_profile.json --recordings-dir sysid_recordings \
-  --output-dir sysid_fit
-```
-
+Select **Fit candidate** after collection. The app shows baseline and candidate errors for each joint and episode.
 The fitter uses training episodes for optimization and separate held-out episodes for evaluation.
 It writes `candidate_profile.json` and `metrics.json`.
 The candidate contains effective simulation dynamics, not hardware register gains.
+The app provides the resulting files for download and shows their local locations.
+It never selects candidate dynamics automatically.
 
-Review the per-joint baseline and identified RMSE, parameter bounds, confidence intervals, and correlations.
-Weak excitation can leave parameters poorly constrained, even with low training error.
+Review the held-out errors, parameter bounds, confidence intervals, and correlations before selecting a profile.
+Weak excitation can leave parameters poorly identified, even with low training error.
 Confidence intervals assume independent residuals and can underestimate uncertainty for correlated trajectories.
 A lower held-out RMSE does not establish successful policy transfer.
 
-The library API supports explicit parameter selection and freezing:
+For explicit parameter selection and freezing, use the library API:
 
 ```python
 from so101_nexus import RecordedTrajectory, RobotProfile, fit_robot_profile

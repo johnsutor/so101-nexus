@@ -147,6 +147,16 @@ def test_examples_readme_references_existing_example_scripts() -> None:
     assert missing == [], f"examples/README.md references missing scripts: {missing}"
 
 
+def test_robot_identification_uses_the_guided_local_ui() -> None:
+    """The canonical workflow and examples index must use the current launch path."""
+    text = _read(DOCS / "workflow" / "teleoperation.mdx")
+    section = text.split("## Robot identification", 1)[1].split("## Troubleshooting", 1)[0]
+    assert "uv run --extra teleop --extra sysid python -m so101_nexus.calibration" in section
+    assert not (ROOT / "examples" / "calibrate_robot.py").exists()
+    for path in TEXT_DOCS:
+        assert "calibrate_robot.py" not in _read(path), str(path.relative_to(ROOT))
+
+
 def test_identification_recipe_loads_saved_excitation_episodes(monkeypatch, tmp_path):
     """The documented offline recipe must read the collector's numbered files."""
 

@@ -18,9 +18,9 @@ for the public-API and deprecation policy.
 - Generate repeatable excitation and held-out trajectories, check them in MuJoCo,
   and collect timestamped hardware responses through LeRobot. Optional MuJoCo
   system identification produces candidate profiles and held-out diagnostics.
-- Check excitation offline with `examples/calibrate_robot.py check`. Profile
-  creation exposes the command interval, and CLI help explains the joint order.
-
+- Add a local Gradio calibration app with a live reference overlay, guided body
+  alignment, separate gripper mapping, exact excitation preview and preflight,
+  explicit hold and start controls, and candidate-fit diagnostics and downloads.
 - Add readiness, cancellation, and progress callbacks to excitation collection.
 
 ### Changed
@@ -30,8 +30,13 @@ for the public-API and deprecation policy.
   Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
 - Use a robot profile's command interval when physics configuration is omitted.
   Excitation and fitting choose matching physics substeps for rates such as 30 Hz.
-  The example rounds episode durations to whole command periods and adjusts ramps
-  for short recordings.
+  The calibration app rounds episode durations to whole command periods and adjusts
+  ramps for short recordings.
+
+### Removed
+
+- Replace the numerical calibration example CLI with the guided local app.
+  Launch it with `python -m so101_nexus.calibration`.
 
 ### Fixed
 
