@@ -1,11 +1,11 @@
 """Robot profiles reach both physics backends and the LeRobot coordinate boundary."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
 
-from so101_nexus import MoveConfig, RobotConfig
+from so101_nexus import MoveConfig, PhysicsConfig, RobotConfig
 
 
 def _profile():
@@ -52,19 +52,56 @@ def test_robot_config_rejects_untyped_profile():
         RobotConfig(profile={})
 
 
-def test_profile_rejects_control_clock_mismatch(env_factory):
-    from dataclasses import replace
+def test_training_checkpoint_preserves_robot_profile(tmp_path):
+    import torch
 
+    from examples._warp_training import Agent, ObsNormalizer, _save
+
+    config = MoveConfig(robot=RobotConfig(profile=_profile()))
+    path = tmp_path / "checkpoint.pt"
+    _save(Agent(6, 6, 8), ObsNormalizer(6, "cpu"), path, 0, 0, env_config=config)
+    restored = torch.load(path, weights_only=False)["env_config"]
+    assert restored.robot.profile.to_dict() == config.robot.profile.to_dict()
+
+
+@pytest.mark.parametrize("backend", ["mujoco", "warp"])
+def test_profile_rejects_explicit_control_clock_mismatch(env_factory, backend):
     profile = replace(_profile(), control_period_s=0.04)
     with pytest.raises(ValueError, match="control_period"):
-        env_factory(task="Move", config=MoveConfig(robot=RobotConfig(profile=profile)))
+        env_factory(
+            backend,
+            task="Move",
+            config=MoveConfig(robot=RobotConfig(profile=profile), physics=PhysicsConfig()),
+        )
 
 
-def test_follower_profile_coordinates_and_persistence(tmp_path):
+@pytest.mark.parametrize("backend", ["mujoco", "warp"])
+@pytest.mark.parametrize("control_period_s", [0.02, 0.04, 1 / 30])
+def test_profile_clock_drives_implicit_physics(env_factory, backend, control_period_s):
+    profile = replace(_profile(), control_period_s=control_period_s)
+    config = MoveConfig(robot=RobotConfig(profile=profile), reset_settle_frames=0)
+    env = env_factory(backend, task="Move", config=config).unwrapped
+    env.reset(seed=8)
+    time_before = float(env.data.time) if backend == "mujoco" else env._time.clone()
+    env.step(np.zeros(env.action_space.shape))
+    time_after = float(env.data.time) if backend == "mujoco" else env._time
+    np.testing.assert_allclose(time_after - time_before, control_period_s, atol=1e-8)
+    assert env.control_dt == pytest.approx(control_period_s)
+    assert env.metadata["render_fps"] == pytest.approx(1 / control_period_s)
+    model = env.model if backend == "mujoco" else env.mjm
+    assert model.opt.timestep <= PhysicsConfig().timestep_s
+    lower, upper = profile.model_joint_limits_deg()
+    action_space = env.action_space if backend == "mujoco" else env.single_action_space
+    np.testing.assert_allclose(action_space.low, np.radians(lower), atol=1e-7)
+    np.testing.assert_allclose(action_space.high, np.radians(upper), atol=1e-7)
+
+
+@pytest.mark.parametrize("control_period_s", [0.02, 1 / 30])
+def test_follower_profile_coordinates_and_persistence(tmp_path, control_period_s):
     from so101_nexus import SO101_JOINT_NAMES
     from so101_nexus.lerobot_adapter import SimSOFollower, SimSOFollowerConfig
 
-    profile = _profile()
+    profile = replace(_profile(), control_period_s=control_period_s)
     path = tmp_path / "robot.json"
     profile.save(path)
     robot = SimSOFollower(
@@ -84,6 +121,7 @@ def test_follower_profile_coordinates_and_persistence(tmp_path):
         )
         sent = robot.send_action(action)
         env = robot._env.unwrapped
+        assert env.control_dt == pytest.approx(control_period_s)
         np.testing.assert_allclose(
             np.degrees(env.data.ctrl[env._actuator_ids]), (5, -3, 2, 0, 1, 30), atol=1e-6
         )

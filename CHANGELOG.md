@@ -18,15 +18,100 @@ for the public-API and deprecation policy.
 - Generate repeatable excitation and held-out trajectories, check them in MuJoCo,
   and collect timestamped hardware responses through LeRobot. Optional MuJoCo
   system identification produces candidate profiles and held-out diagnostics.
+- Add a local Gradio calibration app with a live reference overlay, guided body
+  alignment, separate gripper mapping, exact excitation preview and preflight,
+  explicit hold and start controls, and candidate-fit diagnostics and downloads.
+- Add readiness, cancellation, and progress callbacks to excitation collection.
 
 ### Changed
+
+- Keep calibration profiles, recordings, and fitted results in persistent per-user
+  application data using platformdirs, with directory overrides. Discover saved
+  profiles across launch directories, support native profile import and export,
+  and copy legacy calibration data without removing originals. Reconnect from a
+  durable profile when LeRobot's cached encoder file is unavailable. Reuse complete,
+  validated recordings matching that profile after a restart or migration.
+
+- Simplify dynamics tuning to prepare, record, and tune. One start records both
+  training motions and the independent check, with an up-front run plan and live
+  progress. Preparation combines the pose read, motion check, and explicit hold
+  action. Completed datasets advance automatically to a clear tuning result and
+  profile download; technical previews and diagnostics stay under advanced controls.
+- Guide calibration through connection, one physical joint at a time, jaw checks,
+  and profile saving before offering dynamics tuning. Default to
+  `/dev/ttyACM0` and reveal advanced settings only in the relevant step.
 
 - Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,
   camera pose and 61-degree field of view, and noncolliding camera PCB and lens.
   Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
+- Use a robot profile's command interval when physics configuration is omitted.
+  Excitation and fitting choose matching physics substeps for rates such as 30 Hz.
+  The calibration app rounds episode durations to whole command periods and adjusts
+  ramps for short recordings.
+
+### Removed
+
+- Replace the numerical calibration example CLI with the guided local app.
+  Launch it with `python -m so101_nexus.calibration`.
 
 ### Fixed
 
+- Allow Gradio profile downloads from persistent application storage when the
+  calibration server starts outside that directory.
+
+- Isolate GUI dynamics collection from UI rendering and garbage collection in a
+  separate process. Preserve strict command timing, explicit start and Stop,
+  browser-loss cancellation, and serial ownership through worker cleanup.
+
+- Tolerate bounded scheduler pauses during dynamics collection by checking a fresh
+  arm pose before resuming without catch-up. Keep strict motor communication and
+  tracking checks, with a separate configurable wake-up lateness budget.
+
+- Prevent a stopped or disconnected motion check from enabling calibration hold
+  afterward, and reject navigation or profile changes while a check is running.
+- Keep completed calibration datasets available after a matching-profile reconnect.
+  Hide stale datasets and fitted results after coordinate or timing changes, and
+  recover cleanly when downloaded files are moved or removed.
+- Keep Stop visible during narrow-screen motion checks, expose saved-profile
+  downloads directly, and choose fresh filenames when saving edited profiles.
+  Use native Gradio progress and Markdown feedback instead of custom status markup.
+- Show visible loading feedback for calibration actions, including motion checks,
+  reconnects, profile operations, and dynamics fitting. Keep activity indicators
+  separate from polling updates and show indeterminate progress while hardware arms.
+- Show asynchronous calibration collection failures as queued top-right warnings
+  and persistent error panels. Timing errors include measured lateness and the limit.
+- Honor the configured excitation lateness budget instead of capping it at one
+  command period. Rebase delayed cycles on actual writes without catch-up bursts,
+  preserving actual recording timestamps and excessive-delay stops.
+- Update calibration meshes in the mounted viewer instead of replacing the plot,
+  preserving camera interaction while live joint measurements change.
+- Open the saved-profile pane when a calibration profile exists, verify it against
+  the connected follower, and offer an explicit full recalibration action.
+- Preserve the calibration viewer camera across live updates and expand framing
+  for changing arm poses and arbitrary rotations.
+- Refresh stale calibration instructions before another capture, without recording
+  a joint against an outdated reference.
+- Read the live pose for dynamics preflight, show sequential hold and start controls,
+  explain stopped attempts inline, and offer explicit reconnect and retry controls.
+  Preserve prior recordings in numbered directories and save the exact collection
+  profile beside completed episodes for later fitting.
+- Fit the calibration robot to a large upright viewport, with named views and wrist
+  close-ups. Quarter-turn wrist previews remain provisional until physical capture.
+- Revoke saved-profile associations after coordinate or timing changes and restore
+  guide progress and exact profile settings when the browser reconnects.
+
+- Preserve immutable robot profiles when serializing environment configurations
+  for training checkpoints or worker processes.
+- Clear incomplete policy rollout buffers after interrupts as well as ordinary
+  errors, and block retries if interrupted cleanup leaves dataset state uncertain.
+- Block policy rollout retries when the dataset cannot clear its incomplete buffer.
+- Reject nonfinite reset poses before changing physics state on either backend.
+- Derive behavior-cloning action labels from recorded model joint positions,
+  preserving custom profile gripper ranges. Reject incompatible control modes
+  before demonstration training starts.
+- Stop excitation beyond the configured lateness budget instead of issuing catch-up
+  commands. Allow retries after failed collection by removing empty output
+  directories while preserving recorded data.
 - Reject interleaved demonstration episodes before constructing behavior-cloning
   transitions, including datasets with recorded joint velocities.
 - Honor configured MuJoCo reset noise while retaining explicit constructor

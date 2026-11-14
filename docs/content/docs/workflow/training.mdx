@@ -223,11 +223,12 @@ a matching env automatically. Re-record the demos to train on the current defaul
 <Callout type="warn">
 **Do not switch control modes between record and train.** Teleop recording is pinned to
 `pd_joint_pos` because absolute joint positions are the only label a leader arm produces, but
-training uses `pd_joint_delta_pos`. Demo actions are therefore relabeled as the delta between
-consecutive recorded joint states, normalized by the environment's `_DELTA_ACTION_SCALE`.
-`pd_ee_delta_pose` labels are the same finite difference taken over the recorded
-`EndEffectorPose`, targeting the same TCP, so no re-recording is needed there either. Change
-the record-time mode and the clone is silently wrong. See
+the BC-seeded Warp recipe requires `pd_joint_delta_pos`. It constructs action labels from
+consecutive recorded model joint positions, normalized by the environment's `_DELTA_ACTION_SCALE`.
+This preserves the alignment and gripper range of robot profiles.
+Datasets without model joint positions use the default motor-to-model conversion.
+The shared dataset conversion API also supports `pd_ee_delta_pose` labels from the recorded
+`EndEffectorPose`. The BC-seeded Warp recipe supports joint-position deltas only. See
 [Control Modes](/docs/concepts/control-modes).
 </Callout>
 

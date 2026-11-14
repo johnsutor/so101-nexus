@@ -1,6 +1,7 @@
 """Portable profiles preserve calibration, alignment, and joint dynamics."""
 
 import json
+import pickle
 from copy import deepcopy
 from dataclasses import replace
 
@@ -213,6 +214,16 @@ def test_profile_takes_defensive_copies():
 
 def test_immutable_profile_can_be_deep_copied(profile):
     assert deepcopy(profile) is profile
+
+
+@pytest.mark.parametrize("protocol", [4, pickle.HIGHEST_PROTOCOL])
+def test_profile_pickle_roundtrip_preserves_values_and_immutability(profile, protocol):
+    restored = pickle.loads(pickle.dumps(profile, protocol=protocol))
+    assert restored.to_dict() == profile.to_dict()
+    with pytest.raises(TypeError):
+        restored.calibration["shoulder_pan"]["range_min"] = 0
+    with pytest.raises(TypeError):
+        restored.dynamics["shoulder_pan"] = JointDynamics(0, 0, 1, 0)
 
 
 def test_known_reference_pose_establishes_alignment_without_changing_source(profile):

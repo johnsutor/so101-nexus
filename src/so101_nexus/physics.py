@@ -1,11 +1,17 @@
 """Apply numerical options before simulation or device conversion."""
 
+import math
 from typing import Literal
 
 import mujoco
 import numpy as np
 
 from so101_nexus.config import EnvironmentConfig, PhysicsConfig
+
+
+def _physics_for_control_period(control_period_s: float) -> PhysicsConfig:
+    substeps = max(1, math.ceil(control_period_s / PhysicsConfig().timestep_s))
+    return PhysicsConfig(control_period_s=control_period_s, timestep_s=control_period_s / substeps)
 
 
 def apply_warp_collision_config(model: mujoco.MjModel) -> None:
@@ -22,8 +28,9 @@ def apply_robot_config(model: mujoco.MjModel, config: EnvironmentConfig) -> None
         return
     from so101_nexus.profiles import apply_robot_profile
 
-    period = (config.physics or PhysicsConfig()).control_period_s
-    if not np.isclose(period, profile.control_period_s, rtol=0, atol=1e-12):
+    if config.physics is not None and not np.isclose(
+        config.physics.control_period_s, profile.control_period_s, rtol=0, atol=1e-12
+    ):
         raise ValueError("RobotProfile.control_period_s must match PhysicsConfig.control_period_s")
     apply_robot_profile(model, profile)
 

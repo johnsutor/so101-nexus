@@ -63,6 +63,32 @@ def test_bc_ppo_warp_shares_ppo_warp_decisive_defaults():
     assert args.target_kl is None
 
 
+@pytest.mark.parametrize(
+    "control_mode", ["pd_joint_pos", "pd_joint_target_delta_pos", "pd_ee_delta_pose"]
+)
+@pytest.mark.parametrize("use_demos", [False, True])
+def test_demo_control_mode_validated_before_download_or_environment_setup(
+    monkeypatch, control_mode, use_demos
+):
+    from examples import bc_ppo_warp
+
+    def unavailable_download(*args, **kwargs):
+        raise AssertionError("Dataset download must not start for incompatible control modes")
+
+    def environment_setup(*args, **kwargs):
+        raise RuntimeError("environment setup reached")
+
+    monkeypatch.setattr(bc_ppo_warp, "resolve_demo_revision", unavailable_download)
+    monkeypatch.setattr(bc_ppo_warp, "_make_envs", environment_setup)
+    error, match = (
+        (ValueError, "pd_joint_delta_pos")
+        if use_demos
+        else (RuntimeError, "environment setup reached")
+    )
+    with pytest.raises(error, match=match):
+        bc_ppo_warp.train(control_mode=control_mode, use_demos=use_demos, device="cpu")
+
+
 def _pick_lift_control_dt() -> float:
     """Live ``control_dt`` of the env the published demo dataset was recorded on.
 
@@ -179,16 +205,14 @@ def test_bc_ppo_warp_delta_action_matches_consecutive_joint_difference():
 
     import torch
 
-    from so101_nexus import dataset_row_to_sim_qpos
     from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
 
     mod = importlib.import_module("examples.bc_ppo_warp")
 
-    df, _ = _pick_lift_frames()
+    df, names = _pick_lift_frames()
     df = df[df["episode_index"] == df["episode_index"].iloc[0]].reset_index(drop=True)
-    joints_rad = dataset_row_to_sim_qpos(
-        np.stack(df["observation.state"].to_numpy()).astype(np.float32)
-    )
+    state = np.stack(df["observation.environment_state"].to_numpy()).astype(np.float32)
+    joints_rad = state[:, [names.index(f"joint_positions_{i}") for i in range(6)]]
     expected_first = np.clip(
         (joints_rad[1] - joints_rad[0]) / np.asarray(_DELTA_ACTION_SCALE, dtype=np.float32),
         -1.0,
@@ -361,7 +385,6 @@ def test_local_demo_episode_boundaries(tmp_path, monkeypatch, record_velocities,
     from so101_nexus import (
         JointPositions,
         JointVelocities,
-        dataset_row_to_sim_qpos,
         privileged_state_feature_names,
     )
     from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
@@ -421,10 +444,79 @@ def test_local_demo_episode_boundaries(tmp_path, monkeypatch, record_velocities,
             if episode_ids[i] == episode_ids[i - 1]:
                 velocities[i] = (positions[i] - positions[i - 1]) / 0.02
     np.testing.assert_allclose(observations[:, 6:], velocities[kept])
-    qpos = dataset_row_to_sim_qpos(joints).astype(np.float32)
     expected = np.clip(
-        (qpos[np.asarray(kept) + 1] - qpos[kept]) / np.asarray(_DELTA_ACTION_SCALE),
+        (positions[np.asarray(kept) + 1] - positions[kept]) / np.asarray(_DELTA_ACTION_SCALE),
         -1,
         1,
     )
     np.testing.assert_allclose(actions, expected, atol=1e-6)
+
+
+@pytest.mark.parametrize("model_positions", [False, True])
+def test_demo_actions_use_model_positions_for_profile_recordings(
+    tmp_path, monkeypatch, model_positions
+):
+    import json
+
+    import huggingface_hub
+    import pandas as pd
+    import torch
+
+    from examples.bc_ppo_warp import load_demo_transitions
+    from so101_nexus import (
+        SO101_JOINT_NAMES,
+        EndEffectorPose,
+        JointPositions,
+        RobotProfile,
+        dataset_row_to_sim_qpos,
+        privileged_state_feature_names,
+    )
+    from so101_nexus.warp.base_env import _DELTA_ACTION_SCALE
+
+    profile = RobotProfile(
+        "demo-arm",
+        {
+            name: {"id": i, "drive_mode": 0, "homing_offset": 0, "range_min": 0, "range_max": 4095}
+            for i, name in enumerate(SO101_JOINT_NAMES, 1)
+        },
+        gripper_limits_deg=(-5, 65),
+    )
+    positions = np.radians([[0, 0, 0, 0, 0, 25], [1, 0, 0, 0, 0, 26], [2, 0, 0, 0, 0, 27]])
+    motors = profile.from_model_deg(np.degrees(positions))
+    motors[:, 0] += [0, 0.1, 0.2]
+    layout = [JointPositions()] if model_positions else [EndEffectorPose()]
+    state = positions if model_positions else np.zeros((3, 7))
+    table = pd.DataFrame(
+        {
+            "index": np.arange(3),
+            "episode_index": [0, 0, 0],
+            "observation.state": list(motors),
+            "observation.environment_state": list(state),
+        }
+    )
+    info = tmp_path / "info.json"
+    info.write_text(
+        json.dumps(
+            {
+                "features": {
+                    "observation.environment_state": {
+                        "names": privileged_state_feature_names(layout)
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda *args, **kwargs: str(info))
+    monkeypatch.setattr(pd, "read_parquet", lambda path: table)
+    _, actions = load_demo_transitions(
+        "local/demos",
+        torch.device("cpu"),
+        control_dt=0.02,
+        observations=layout,
+        revision="a" * 40,
+        parquet_files=["data/frames.parquet"],
+    )
+    expected_positions = positions if model_positions else dataset_row_to_sim_qpos(motors)
+    np.testing.assert_allclose(
+        actions, np.diff(expected_positions, axis=0) / np.asarray(_DELTA_ACTION_SCALE), atol=1e-6
+    )

@@ -62,6 +62,8 @@ def test_excitation_is_repeatable_bounded_and_includes_heldout(profile, config):
     [
         {"duration_s": 0},
         {"ramp_s": -1},
+        {"max_wakeup_lateness_s": 0},
+        {"max_wakeup_lateness_s": float("nan")},
         {"max_velocity_deg_s": float("nan")},
         {"center_qpos_deg": (0,) * 5},
         {"amplitudes_deg": (0,) * 6},
@@ -113,7 +115,32 @@ def test_preflight_rejects_joint_limit_before_hardware(profile, config):
         preflight_excitation(generate_excitation(unsafe, profile), profile, unsafe)
 
 
+@pytest.mark.parametrize("kind", ["physical calibration", "actuator control"])
+def test_preflight_limit_error_identifies_joint_and_degree_ranges(profile, config, kind):
+    config = replace(
+        config,
+        center_qpos_deg=(0, -15, 30, 45, 175, 50),
+        duration_s=20 if kind == "physical calibration" else 1,
+        ramp_s=2 if kind == "physical calibration" else 0.2,
+    )
+    trajectories = generate_excitation(config, profile)
+    requested = trajectories[0].commands_deg[:, 4]
+    expected_allowed = (
+        "[-180.000, 180.000]" if kind == "physical calibration" else "[-157.211, 162.789]"
+    )
+    with pytest.raises(ValueError, match=rf"{kind} limit.*wrist_roll") as caught:
+        preflight_excitation(trajectories, profile, config)
+    assert f"requested [{requested.min():.3f}, {requested.max():.3f}] deg" in str(caught.value)
+    assert f"allowed {expected_allowed} deg" in str(caught.value)
+
+
 def test_preflight_checks_both_valid_paths(profile, config):
+    preflight_excitation(generate_excitation(config, profile), profile, config)
+
+
+@pytest.mark.parametrize("control_period_s", [1 / 30, 0.001])
+def test_preflight_supports_nondefault_profile_clock(profile, config, control_period_s):
+    profile = replace(profile, control_period_s=control_period_s)
     preflight_excitation(generate_excitation(config, profile), profile, config)
 
 
@@ -389,6 +416,92 @@ def test_collector_rejects_existing_output_before_connect(monkeypatch, profile, 
     assert not robot.connected
 
 
+@pytest.mark.parametrize("phase", ["prepare", "connect", "read"])
+def test_collector_removes_empty_failed_output_for_retry(
+    monkeypatch, profile, config, tmp_path, phase
+):
+    from so101_nexus import excitation
+
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    output = tmp_path / "logs"
+    error = RuntimeError(f"{phase} failed")
+    monkeypatch.setattr(excitation, "preflight_excitation", lambda *args: None)
+
+    with monkeypatch.context() as fault:
+        if phase == "prepare":
+
+            def prepare(*args):
+                raise error
+
+            fault.setattr(excitation, "_prepare_follower_connection", prepare)
+        elif phase == "connect":
+
+            def connect(**kwargs):
+                robot.connected = True
+                raise error
+
+            fault.setattr(robot, "connect", connect)
+        else:
+            original = robot.get_observation
+
+            def read():
+                if robot.commands:
+                    raise error
+                return original()
+
+            fault.setattr(robot, "get_observation", read)
+        with pytest.raises(RuntimeError) as caught:
+            collect_excitation(
+                robot, profile, config, clock=clock, sleep=clock.sleep, output_dir=output
+            )
+    assert caught.value is error
+    assert not robot.connected
+    assert not output.exists()
+    recordings = collect_excitation(
+        robot, profile, config, clock=clock, sleep=clock.sleep, output_dir=output
+    )
+    assert len(recordings) == len(list(output.glob("*.npz"))) == 3
+
+
+def test_failed_collector_preserves_partial_output(monkeypatch, profile, config, tmp_path):
+    from so101_nexus import excitation
+
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    output = tmp_path / "logs"
+    error = RuntimeError("partial recording failed")
+
+    def collect(*args):
+        (output / "partial.npz").write_bytes(b"partial")
+        raise error
+
+    monkeypatch.setattr(excitation, "preflight_excitation", lambda *args: None)
+    monkeypatch.setattr(excitation, "_collect_episode", collect)
+    with pytest.raises(RuntimeError) as caught:
+        collect_excitation(robot, profile, config, output_dir=output)
+    assert caught.value is error
+    assert (output / "partial.npz").read_bytes() == b"partial"
+    assert not robot.connected
+
+
+def test_failed_output_cleanup_preserves_original_error(monkeypatch, profile, config, tmp_path):
+    from pathlib import Path
+    from unittest.mock import Mock
+
+    from so101_nexus import excitation
+
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    output = tmp_path / "logs"
+    error = RuntimeError("preparation failed")
+    monkeypatch.setattr(excitation, "preflight_excitation", lambda *args: None)
+    monkeypatch.setattr(excitation, "_prepare_follower_connection", Mock(side_effect=error))
+    monkeypatch.setattr(Path, "rmdir", Mock(side_effect=PermissionError("cleanup failed")))
+    with pytest.raises(RuntimeError) as caught:
+        collect_excitation(robot, profile, config, output_dir=output)
+    assert caught.value is error
+    assert output.is_dir()
+
+
 def test_collector_checks_deadline_after_read_before_command(monkeypatch, profile, config):
     robot = FakeRobot(profile, config.center_qpos_deg)
     clock = FakeClock()
@@ -403,6 +516,49 @@ def test_collector_checks_deadline_after_read_before_command(monkeypatch, profil
     with pytest.raises(RuntimeError, match="overrun"):
         collect_excitation(robot, profile, config, clock=clock, sleep=clock.sleep)
     assert not robot.commands
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("phase", ["read", "write"])
+def test_collector_aborts_after_exceeding_configured_lateness(monkeypatch, profile, config, phase):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    original_read, original_send = robot.get_observation, robot.send_action
+
+    def read():
+        if phase == "read" and len(robot.commands) == 1:
+            clock.now += config.max_overrun_s + profile.control_period_s
+        return original_read()
+
+    def send(action):
+        result = original_send(action)
+        if phase == "write" and len(robot.commands) == 2:
+            clock.now += config.max_overrun_s + profile.control_period_s
+        return result
+
+    monkeypatch.setattr(robot, "get_observation", read)
+    monkeypatch.setattr(robot, "send_action", send)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match="overrun"):
+        collect_excitation(robot, profile, config, clock=clock, sleep=clock.sleep)
+    assert len(robot.commands) == (1 if phase == "read" else 2)
+    assert not robot.connected
+
+
+def test_collector_tolerates_subperiod_read_jitter(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    original_read = robot.get_observation
+
+    def read():
+        if len(robot.commands) == 1:
+            clock.now += profile.control_period_s / 2
+        return original_read()
+
+    monkeypatch.setattr(robot, "get_observation", read)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    recordings = collect_excitation(robot, profile, config, clock=clock, sleep=clock.sleep)
+    assert len(recordings) == 3
     assert not robot.connected
 
 
@@ -574,3 +730,300 @@ def test_excitation_config_snapshots_mutable_joint_inputs():
     amplitudes[:] = 1000
     assert config.center_qpos_deg == (0, -15, 30, 45, 0, 50)
     assert config.amplitudes_deg == (1, 1, 1, 1, 1, 1)
+
+
+def test_collector_readiness_precedes_commands_and_reports_progress(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    progress = []
+    ready_calls = []
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+
+    def ready():
+        assert robot.connected
+        assert not robot.commands
+        ready_calls.append(True)
+
+    recordings = collect_excitation(
+        robot,
+        profile,
+        config,
+        clock=clock,
+        sleep=clock.sleep,
+        on_ready=ready,
+        on_progress=lambda *sample: progress.append(sample),
+    )
+    assert ready_calls == [True]
+    assert len(progress) == sum(len(recording.commanded_qpos_deg) for recording in recordings)
+    for recording in recordings:
+        samples = [sample for sample in progress if sample[0] == recording.name]
+        count = len(recording.commanded_qpos_deg)
+        assert samples == [(recording.name, index, count) for index in range(1, count + 1)]
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("phase", ["initial", "prepared", "ready", "read", "progress"])
+def test_collector_cancellation_stops_commands_and_cleans_up(
+    monkeypatch, profile, config, tmp_path, phase
+):
+    from so101_nexus import excitation
+
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    stopped = phase == "initial"
+    prepared = []
+    monkeypatch.setattr(excitation, "preflight_excitation", lambda *args: None)
+    original_read = robot.get_observation
+
+    def prepare(*args):
+        nonlocal stopped
+        prepared.append(True)
+        if phase == "prepared":
+            stopped = True
+
+    def ready():
+        nonlocal stopped
+        if phase == "ready":
+            stopped = True
+
+    def read():
+        nonlocal stopped
+        result = original_read()
+        if phase == "read":
+            stopped = True
+        return result
+
+    def progress(*args):
+        nonlocal stopped
+        if phase == "progress":
+            stopped = True
+
+    monkeypatch.setattr(excitation, "_prepare_follower_connection", prepare)
+    monkeypatch.setattr(robot, "get_observation", read)
+    output = tmp_path / "cancelled"
+    with pytest.raises(InterruptedError, match="cancelled"):
+        collect_excitation(
+            robot,
+            profile,
+            config,
+            clock=clock,
+            sleep=clock.sleep,
+            output_dir=output,
+            on_ready=ready,
+            should_stop=lambda: stopped,
+            on_progress=progress,
+        )
+    assert not robot.connected
+    assert len(robot.commands) == (1 if phase == "progress" else 0)
+    assert bool(prepared) is (phase != "initial")
+    assert not output.exists()
+
+
+def test_collector_readiness_failure_disconnects_without_commands(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+
+    def ready():
+        raise RuntimeError("operator did not confirm readiness")
+
+    with pytest.raises(RuntimeError, match="operator"):
+        collect_excitation(robot, profile, config, on_ready=ready)
+    assert not robot.connected
+    assert not robot.commands
+
+
+@pytest.mark.parametrize("joint_index", [2, 5])
+def test_start_mismatch_identifies_worst_joint_before_motor_writes(
+    monkeypatch, profile, config, joint_index
+):
+    from so101_nexus.lerobot_adapter.normalization import normalize_ticks
+
+    robot = _prepared_robot(monkeypatch, profile, config)
+    robot.bus.raw_positions["shoulder_pan"] += 100
+    joint = SO101_JOINT_NAMES[joint_index]
+    robot.bus.raw_positions[joint] += 500
+    normalized = normalize_ticks(
+        robot.bus.raw_positions, motors=robot.bus.motors, calibration=robot.calibration
+    )
+    measured = profile.to_model_deg(np.array([normalized[name] for name in SO101_JOINT_NAMES]))
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    monkeypatch.setattr(
+        robot, "connect", lambda **kwargs: pytest.fail("must not configure or enable torque")
+    )
+    with pytest.raises(RuntimeError, match="hardware start position differs") as caught:
+        collect_excitation(robot, profile, config)
+    message = str(caught.value)
+    assert joint in message
+    assert f"{measured[joint_index]:.3f} model deg" in message
+    assert f"previewed {config.center_qpos_deg[joint_index]:.3f} model deg" in message
+    assert f"tolerance {config.max_start_error_deg:.3f} deg" in message
+    assert robot.bus.events == [
+        "read_only_connect",
+        "read_Torque_Enable",
+        "read_Present_Position",
+        "close_without_torque_change",
+    ]
+    assert robot.bus.seeded_positions is None
+    assert not any(robot.bus.torque.values())
+    assert not robot.bus.is_connected
+    assert not robot.commands
+
+
+@pytest.mark.parametrize("phase", ["wake", "read", "write"])
+def test_collector_tolerates_missed_period_without_catchup(monkeypatch, profile, config, phase):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    read, send, sleep = robot.get_observation, robot.send_action, clock.sleep
+    delayed = False
+
+    def delay(where):
+        nonlocal delayed
+        if where == phase and not delayed and len(robot.commands) == 1:
+            clock.now += 1.5 * profile.control_period_s
+            delayed = True
+
+    def observe():
+        delay("read")
+        return read()
+
+    def command(action):
+        delay("write")
+        return send(action)
+
+    def wait(duration):
+        sleep(duration)
+        delay("wake")
+
+    monkeypatch.setattr(robot, "get_observation", observe)
+    monkeypatch.setattr(robot, "send_action", command)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    recordings = collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert delayed
+    assert len(recordings) == 3
+    for recording, trajectory in zip(recordings, generate_excitation(config, profile), strict=True):
+        assert np.min(np.diff(recording.command_timestamps_s)) >= profile.control_period_s - 1e-12
+        np.testing.assert_allclose(recording.commanded_qpos_deg, trajectory.commands_deg)
+        assert recording.command_timestamps_s[-1] >= trajectory.timestamps_s[-1]
+    assert not robot.connected
+
+
+def test_configured_tighter_lateness_limit_still_stops_before_command(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    monkeypatch.setattr(FakeClock, "__call__", lambda self: self.now)
+    clock = FakeClock()
+    read = robot.get_observation
+
+    def slow_read():
+        clock.now += 0.006
+        return read()
+
+    monkeypatch.setattr(robot, "get_observation", slow_read)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match=r"6.0 ms late, limit 5.0 ms"):
+        collect_excitation(
+            robot, profile, replace(config, max_overrun_s=0.005), clock=clock, sleep=clock.sleep
+        )
+    assert not robot.commands
+    assert not robot.connected
+
+
+def test_late_wakeup_after_early_read_stops_before_sending(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    read, sleep = robot.get_observation, clock.sleep
+    waits = 0
+    monkeypatch.setattr(FakeClock, "__call__", lambda self: self.now)
+
+    def observe():
+        if not robot.commands:
+            clock.now += 0.01
+        return read()
+
+    def wait(duration):
+        nonlocal waits
+        sleep(duration)
+        if len(robot.commands) == 1:
+            waits += 1
+            if waits == 2:
+                clock.now += 0.06
+
+    monkeypatch.setattr(robot, "get_observation", observe)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(
+        RuntimeError, match=r"before sending a command: 60.0 ms late, limit 50.0 ms"
+    ):
+        collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert len(robot.commands) == 1
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("pause_s", [0.1262, 0.24])
+def test_scheduler_pause_reads_fresh_pose_and_resumes_without_catchup(
+    monkeypatch, profile, config, pause_s
+):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+    delayed = False
+
+    def wait(duration):
+        nonlocal delayed
+        sleep(duration)
+        if len(robot.commands) == 1 and not delayed:
+            clock.now += pause_s
+            delayed = True
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    recordings = collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert delayed
+    for recording, trajectory in zip(recordings, generate_excitation(config, profile), strict=True):
+        np.testing.assert_allclose(recording.commanded_qpos_deg, trajectory.commands_deg)
+        assert np.min(np.diff(recording.command_timestamps_s)) >= profile.control_period_s - 1e-12
+    assert np.max(np.diff(recordings[0].command_timestamps_s)) >= pause_s
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("budget_s", [0.08, 0.25])
+def test_scheduler_pause_budget_stops_before_read_or_command(
+    monkeypatch, profile, config, budget_s
+):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+
+    def wait(duration):
+        sleep(duration)
+        if len(robot.commands) == 1:
+            clock.now += budget_s + 0.02
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match="waiting for the next sample"):
+        collect_excitation(
+            robot,
+            profile,
+            replace(config, max_wakeup_lateness_s=budget_s),
+            clock=clock,
+            sleep=wait,
+        )
+    assert len(robot.commands) == 1
+    assert not robot.connected
+
+
+def test_scheduler_pause_still_checks_fresh_tracking_before_command(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+
+    def wait(duration):
+        sleep(duration)
+        if len(robot.commands) == 1:
+            clock.now += 0.1262
+            robot.position = np.asarray(
+                profile.from_model_deg(np.asarray(config.center_qpos_deg) + 20)
+            )
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match="tracking error"):
+        collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert len(robot.commands) == 1
+    assert not robot.connected

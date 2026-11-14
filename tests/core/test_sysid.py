@@ -188,6 +188,16 @@ def test_identification_model_preserves_runtime_joint_and_actuator_limits(profil
     assert model.actuator("shoulder_pan").ctrllimited[0]
 
 
+@pytest.mark.parametrize("control_period_s", [1 / 30, 0.001])
+def test_identification_model_supports_nondefault_profile_clock(profile, control_period_s):
+    from so101_nexus import PhysicsConfig, sysid
+
+    model = sysid._make_spec(replace(profile, control_period_s=control_period_s)).compile()
+    timestep_s = model.opt.timestep
+    assert timestep_s <= PhysicsConfig().timestep_s
+    assert round(control_period_s / timestep_s) * timestep_s == pytest.approx(control_period_s)
+
+
 def test_controls_hold_until_actual_write_time(profile):
     from so101_nexus import sysid
 

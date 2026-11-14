@@ -33,14 +33,17 @@ config = MoveConfig(robot=RobotConfig(profile=profile))
 | `gripper_limits_deg` | Model gripper angles at hardware 0 and 100 percent |
 | `dynamics` | Optional mapping from joint names to `JointDynamics` values |
 | `model_sha256` | Fingerprint of vendored robot XML and meshes. An empty value permits an unpinned profile. |
-| `control_period_s` | Command interval for the identified control loop. Must match `PhysicsConfig.control_period_s`. |
+| `control_period_s` | Command interval for the identified control loop. Sets the physics timing when `physics` is omitted. An explicit `PhysicsConfig.control_period_s` must match. |
 | `servo_gains` | Hardware PID coefficients `(P, I, D)`, default `(16, 0, 32)`. Collection requires matching LeRobot coefficients. |
 | `schema_version` | Version of the saved JSON schema, currently `1` |
 
 `RobotProfile.from_lerobot(path, robot_id=...)` imports an existing calibration and pins the robot asset fingerprint.
 `with_reference_pose(hardware_body_deg=..., model_body_deg=...)` returns a profile aligned from five measured body-joint angles.
 Both reference vectors describe the same physical pose.
-The gripper endpoints require separate measurements.
+Encoder calibration alone does not establish a body joint's physical model zero.
+The guided app requires an operator-confirmed physical reference before it treats the measured overlay as aligned.
+The default gripper endpoints provide a nominal mapping.
+Robot-specific gripper alignment requires separate endpoint measurements.
 `save(path)` writes JSON atomically, and `load(path)` validates the saved schema.
 `export_lerobot(path)` writes the original encoder calibration as standard LeRobot JSON.
 Profiles contain immutable snapshots of calibration and dynamics.
@@ -66,7 +69,62 @@ Profile loading does not write hardware registers.
 `SimSOFollowerConfig(profile_path=...)` loads the profile and its encoder calibration without a separate calibration file.
 It requires `use_degrees=True` and a matching robot ID.
 It rejects conflicting calibration files or environment profiles.
-When physics configuration is omitted, this adapter selects the profile command interval.
+When physics configuration is omitted, environments and this adapter select the profile command interval.
+They choose physics substeps that divide this interval without exceeding the default timestep.
+
+### Calibration storage
+
+Robot profiles and dynamics calibration are durable application data, separate from disposable caches.
+The GUI discovers saved profiles independently of its working directory.
+On Linux, the defaults are `~/.local/share/so101-nexus/profiles/` and `~/.local/share/so101-nexus/calibration/`.
+`platformdirs` selects the platform's user data directory, including `XDG_DATA_HOME` on Linux.
+It uses Application Support on macOS and local application data on Windows.
+
+| Environment variable | Default |
+| --- | --- |
+| `SO101_NEXUS_DATA_DIR` | Platform user data directory for `so101-nexus` |
+| `SO101_NEXUS_PROFILES_DIR` | `profiles/` under the application data directory |
+| `SO101_NEXUS_CALIBRATION_DIR` | `calibration/` under the application data directory |
+
+Overrides must be absolute paths; `~` is expanded.
+Back up these directories. Their contents include operator-verified physical calibration and recordings.
+A durable profile includes the encoder calibration needed to reconnect after clearing LeRobot's cache.
+Reconnect still checks the live motor registers and servo gains before restoring alignment.
+
+The GUI copies legacy `runs/calibration` files from its launch directory or source checkout on startup.
+It preserves the originals and stores complete, versioned snapshots under `calibration/legacy/`.
+Valid top-level profiles also enter the saved-profile selector.
+Repeated migration reuses identical snapshots, and filename conflicts preserve both profiles.
+Dynamics tuning reuses the latest complete recording set matching the connected profile.
+It checks each recording before restoring it, including its profile identity and training or validation split.
+For files elsewhere, use **Import previous calibration folder** under **Advanced storage and migration**.
+**Import profile** copies a selected JSON file into durable storage.
+Profile downloads export portable files for another machine.
+
+### Excitation timing
+
+`ExcitationConfig.max_wakeup_lateness_s` defaults to 0.25 seconds.
+It bounds scheduler delays before reading the current motor positions.
+After a permitted delay, collection reads a fresh pose, checks tracking, and resumes without catch-up.
+`max_overrun_s` retains a separate 0.05-second lateness limit after reads and during command writes.
+`max_read_duration_s` limits each position read to 0.1 seconds.
+Actual measurement and command timestamps are saved for fitting.
+
+### Excitation collection callbacks
+
+`collect_excitation(robot, profile, config, ...)` owns the follower connection and disconnection.
+Its optional callbacks support guided hardware collection:
+
+| Argument | Contract |
+| --- | --- |
+| `on_ready` | Callable without arguments. Runs after connection enables holding torque and before trajectory commands. Can wait for operator confirmation. |
+| `should_stop` | Callable without arguments that returns a Boolean. A true result raises `InterruptedError` before the next hardware read or command. |
+| `on_progress` | Callable with `(episode_name, completed_samples, total_samples)`. Runs after each recorded command. |
+
+Callbacks run synchronously. A progress callback must not delay the command loop.
+Cancellation uses the follower's configured disconnect behavior.
+The guided app preserves torque on stop and disconnect, then provides a separate motor-release action.
+The [identification workflow](/docs/workflow/teleoperation#record-dynamics-calibration) describes that hardware procedure.
 
 ## PhysicsConfig
 

@@ -23,8 +23,8 @@ throughput for MPC planning's kernel-launch-bound cost.
 **Action units.** The demo dataset records absolute joint-position targets (as commanded to a
 `pd_joint_pos` teleop session), but this recipe drives the env in PPO's proven
 `pd_joint_delta_pos` mode. Rather than switch control modes (risking the proven recipe), demo
-actions are recomputed as the delta between consecutive recorded joint states
-(`observation.state[t+1] - observation.state[t]`, the realized per-step motion), matching what
+actions are recomputed as the delta between consecutive model joint positions
+(the realized per-step motion), matching what
 a delta controller would need to command to reproduce that trajectory, then normalized by the
 same `_DELTA_ACTION_SCALE` the env applies internally.
 
@@ -394,7 +394,10 @@ def load_demo_transitions(
     joint states -- the realized motion, matching what ``pd_joint_delta_pos``
     needs to reproduce the trajectory -- normalized by ``_DELTA_ACTION_SCALE`` to
     the same ``[-1, 1]`` frame the env expects directly (no further env-side
-    rescale, unlike an absolute-position control mode).
+    rescale, unlike an absolute-position control mode). Recorded model joint
+    positions take precedence over motor values, preserving robot-profile
+    alignment and gripper travel. Datasets without model joint positions use
+    the default SO101 motor-to-model conversion.
 
     Returns ``(obs, action)`` float32 tensors of shape ``(N, obs_dim)`` / ``(N, 6)``
     on ``device``.
@@ -436,22 +439,26 @@ def load_demo_transitions(
         .reset_index(drop=True)
     )
 
-    joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)  # [N,6]
     ep_index = df["episode_index"].to_numpy()
     blocks = _episode_blocks(ep_index, len(df))
+    recorded_state = np.stack(df[env_state_key].to_numpy()).astype(np.float32)
+    recorded_names = info["features"][env_state_key]["names"]
     # `environment_state` is the env's full privileged state vector; its declared
     # per-column names let an older recording be mapped onto the current layout.
     obs_all = relabel_environment_state(
-        np.stack(df[env_state_key].to_numpy()),
-        info["features"][env_state_key]["names"],
+        recorded_state,
+        recorded_names,
         layout,
         dt=control_dt,
         episode_index=ep_index,
     )
 
-    joints_rad = dataset_row_to_sim_qpos(joints_raw).astype(
-        np.float32
-    )  # SO101_GRIPPER_LIMITS_RAD default; used for the delta-action target below
+    position_names = [f"joint_positions_{i}" for i in range(6)]
+    if all(name in recorded_names for name in position_names):
+        joints_rad = recorded_state[:, [recorded_names.index(name) for name in position_names]]
+    else:
+        joints_raw = np.stack(df["observation.state"].to_numpy()).astype(np.float32)
+        joints_rad = dataset_row_to_sim_qpos(joints_raw).astype(np.float32)
     delta_scale = np.asarray(_DELTA_ACTION_SCALE, dtype=np.float32)
 
     obs_list, act_list = [], []
@@ -521,6 +528,8 @@ def train(  # noqa: PLR0915, PLR0912, C901
     Batch-size arguments are validated before any environment is constructed, so
     invalid configurations fail fast without paying the Warp model-build cost.
     """
+    if use_demos and control_mode != "pd_joint_delta_pos":
+        raise ValueError("Demonstration training requires control_mode='pd_joint_delta_pos'")
     run_config = locals().copy()
     run_config.pop("writer")
     batch_size = num_envs * num_steps
