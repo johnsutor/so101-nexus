@@ -15,13 +15,27 @@ class LaunchOptions:
 
 def main() -> None:
     """Launch Gradio on loopback without connecting to hardware."""
+    import os
+
     import tyro
 
     from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.storage import calibration_dir, profiles_dir
 
     options = tyro.cli(LaunchOptions)
     build_app().queue().launch(
-        server_name="127.0.0.1", server_port=options.port, inbrowser=options.open_browser
+        server_name="127.0.0.1",
+        server_port=options.port,
+        inbrowser=options.open_browser,
+        allowed_paths=[
+            str(profiles_dir()),
+            str(calibration_dir()),
+            *[
+                path.strip()
+                for path in os.environ.get("GRADIO_ALLOWED_PATHS", "").split(",")
+                if path.strip()
+            ],
+        ],
     )
 
 

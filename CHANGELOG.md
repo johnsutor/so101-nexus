@@ -56,6 +56,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Allow Gradio profile downloads from persistent application storage when the
+  calibration server starts outside that directory.
+
 - Isolate GUI dynamics collection from UI rendering and garbage collection in a
   separate process. Preserve strict command timing, explicit start and Stop,
   browser-loss cancellation, and serial ownership through worker cleanup.

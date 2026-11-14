@@ -130,14 +130,15 @@ def test_calibration_launch_import_stays_lightweight():
     assert result.returncode == 0, result.stderr
 
 
-def test_launcher_binds_loopback_and_passes_browser_preference(monkeypatch):
+def test_launcher_binds_loopback_and_passes_browser_preference(monkeypatch, tmp_path):
     from unittest.mock import Mock
 
     import tyro
 
-    from so101_nexus.calibration import app
+    from so101_nexus.calibration import app, storage
     from so101_nexus.calibration.__main__ import LaunchOptions, main
 
+    monkeypatch.setenv("GRADIO_ALLOWED_PATHS", str(tmp_path / "exports"))
     server = Mock()
     builder = Mock(return_value=server)
     monkeypatch.setattr(app, "build_app", builder)
@@ -146,7 +147,14 @@ def test_launcher_binds_loopback_and_passes_browser_preference(monkeypatch):
     builder.assert_called_once_with()
     server.queue.assert_called_once_with()
     server.queue.return_value.launch.assert_called_once_with(
-        server_name="127.0.0.1", server_port=7862, inbrowser=False
+        server_name="127.0.0.1",
+        server_port=7862,
+        inbrowser=False,
+        allowed_paths=[
+            str(storage.profiles_dir()),
+            str(storage.calibration_dir()),
+            str(tmp_path / "exports"),
+        ],
     )
 
 
