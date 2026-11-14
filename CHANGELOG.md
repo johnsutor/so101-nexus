@@ -25,6 +25,9 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Shorten the README and getting-started pages around the record, clone, reinforce
+  workflow. Link to canonical simulation and training recipes instead of repeating them.
+
 - Keep calibration profiles, recordings, and fitted results in persistent per-user
   application data using platformdirs, with directory overrides. Discover saved
   profiles across launch directories, support native profile import and export,

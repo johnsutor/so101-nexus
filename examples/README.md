@@ -11,9 +11,6 @@ Run scripts from the repository root after [installation from source](https://so
 | Run the CPU MuJoCo PPO reference | [`ppo.py`](ppo.py) | [Backend differences](https://so101-nexus.com/docs/concepts/backends) |
 | List environment IDs | [`list_envs.py`](list_envs.py) | [Environment reference](https://so101-nexus.com/docs/environments) |
 
-The [training guide](https://so101-nexus.com/docs/workflow/training) owns the recipes, hyperparameters, results, and reproducibility instructions.
-The Warp scripts need the hardware and extras listed in [Installation](https://so101-nexus.com/docs/getting-started/installation#extras).
-
 ## Train in Colab
 
 Select a GPU runtime and run all cells:
@@ -21,14 +18,7 @@ Select a GPU runtime and run all cells:
 - [BC + PPO notebook](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb): train with published demonstrations.
 - [PPO notebook](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/ppo_warp_colab.ipynb): train from scratch.
 
-Both notebooks install dependencies, show TensorBoard metrics, evaluate the policy, and display a rollout video.
+## Record demonstrations
 
-## Calibrate a physical follower
-
-Use the guided local app for reference alignment, excitation, and candidate dynamics.
-See [Robot identification](https://so101-nexus.com/docs/workflow/teleoperation#robot-identification) for its launch command and hardware procedure.
-
-## Record your own demonstrations
-
-The recorder uses the `so101-nexus teleop` CLI.
-Follow the [teleoperation guide](https://so101-nexus.com/docs/workflow/teleoperation) for arm calibration, launch commands, episode review, and dataset details.
+Follow [Teleoperation](https://so101-nexus.com/docs/workflow/teleoperation) for the recorder CLI, arm calibration, and dataset details.
+For a physical follower, use [Robot identification](https://so101-nexus.com/docs/workflow/teleoperation#robot-identification).

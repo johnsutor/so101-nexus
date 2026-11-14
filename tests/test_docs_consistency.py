@@ -598,6 +598,17 @@ def test_entry_pages_link_to_canonical_references() -> None:
     assert not re.search(r"^#+ (?:Baseline hyperparameters|Results)", examples, re.MULTILINE)
 
 
+def test_getting_started_pages_delegate_recipes_to_their_owners() -> None:
+    """Entry pages link to runnable recipes instead of maintaining copies."""
+    installation = _read(DOCS / "getting-started" / "installation.mdx")
+    assert "](/docs/getting-started/quickstart)" in installation
+    assert "gym.make(" not in installation
+
+    overview = _read(DOCS / "workflow" / "overview.mdx")
+    assert "](/docs/workflow/training#quick-start)" in overview
+    assert "python examples/" not in overview
+
+
 def test_documented_lerobot_release_matches_dependency_range():
     from packaging.requirements import Requirement
 
