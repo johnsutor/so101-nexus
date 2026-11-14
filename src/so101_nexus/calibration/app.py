@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from so101_nexus.calibration.guide import CalibrationGuide
-from so101_nexus.calibration.session import CalibrationSession
 from so101_nexus.calibration.view import expand_bounds, overlay_bounds, render_overlay
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.excitation import ExcitationConfig, generate_excitation, profile_digest
 
 if TYPE_CHECKING:
+    from so101_nexus.calibration.session import CalibrationSession
     from so101_nexus.profiles import RobotProfile
 
 _DEFAULT_CENTER = (0, -15, 30, 45, 0, 50)
@@ -1486,7 +1486,10 @@ def build_app(session: CalibrationSession | None = None) -> Any:
     """Build a guided local profile workflow without opening a hardware connection."""
     import gradio as gr
 
-    session = session or CalibrationSession()
+    if session is None:
+        from so101_nexus.calibration.worker import IsolatedCalibrationSession
+
+        session = IsolatedCalibrationSession()
     guide, viewport, ui = CalibrationGuide(session), _Viewport(), {}
     candidates = _saved_profiles()
     guide.saved_profile = session.profile_path or (candidates[0] if candidates else None)

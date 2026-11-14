@@ -820,3 +820,23 @@ def test_prepare_stop_sits_above_progress_and_primary_action():
     activity_parent, activity_index = parent(config["layout"], activity)
     assert prepare_parent == stop_parent == activity_parent
     assert stop_index < activity_index < prepare_index
+
+
+def test_default_gui_isolates_hardware_collection_without_starting_a_process(monkeypatch):
+    import multiprocessing
+
+    from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.worker import IsolatedCalibrationSession
+
+    monkeypatch.setenv("GRADIO_ANALYTICS_ENABLED", "False")
+    before = {child.pid for child in multiprocessing.active_children()}
+    app = build_app()
+    dependency = next(
+        item
+        for item in app.get_config_file()["dependencies"]
+        if any(event == "tick" for _, event in item["targets"])
+    )
+    session = app.fns[dependency["id"]].fn.args[0]
+    assert isinstance(session, IsolatedCalibrationSession)
+    assert session.worker is None
+    assert {child.pid for child in multiprocessing.active_children()} == before

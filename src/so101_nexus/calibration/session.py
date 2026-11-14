@@ -516,7 +516,7 @@ class CalibrationSession:
             complete = True
             message = f"Collection complete: {destination}."
         except Exception as error:
-            message = f"Collection stopped: {error}."
+            message = f"Collection stopped: {str(error).rstrip('.')}."
         finally:
             with self.lock:
                 bus = getattr(robot, "bus", None)

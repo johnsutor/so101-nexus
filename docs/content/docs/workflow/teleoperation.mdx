@@ -685,6 +685,8 @@ The collector requires matching calibration, hardware PID coefficients, and a fo
 An initial pose mismatch, excessive tracking error, slow reads, or excessive command lateness stops collection.
 The collector tolerates brief scheduler pauses before reading a fresh pose and resuming.
 Motor reads and writes retain stricter [timing limits](/docs/api/configs#excitation-timing).
+The GUI runs collection in a separate process, so UI redraws and garbage collection do not pause the motor loop.
+An independent collector watchdog stops new commands if the UI stops responding.
 It never sends a burst of commands to catch up. Actual timestamps remain part of each recording.
 A timing error reports the measured delay, allowed delay, run, and sample.
 Collection failures appear as a top-right warning and a persistent error beside the recovery action.

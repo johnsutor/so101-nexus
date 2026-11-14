@@ -331,13 +331,14 @@ def test_worker_failure_publishes_queued_warning_and_persistent_alert(workflow, 
     ui = workflow
 
     def fail(*args, **kwargs):
-        raise RuntimeError("hardware loop overrun: 70.0 ms late, limit 50.0 ms")
+        raise RuntimeError("hardware loop overrun: 70.0 ms late, limit 50.0 ms.")
 
     monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", fail)
     ui.callback("Arm supported, prepare robot")(str(ui.directory / "failed"), False, *ui.settings)
     ui.session.worker.join(2)
     updates = ui.tick()
     assert "70.0 ms" in ui.session.collection_error
+    assert ".." not in ui.session.collection_error
     event, alert = updates[-2:]
     assert event["message"] == ui.session.collection_error
     assert alert["visible"]

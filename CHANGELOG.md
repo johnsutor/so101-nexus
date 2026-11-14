@@ -49,6 +49,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Isolate GUI dynamics collection from UI rendering and garbage collection in a
+  separate process. Preserve strict command timing, explicit start and Stop,
+  browser-loss cancellation, and serial ownership through worker cleanup.
+
 - Tolerate bounded scheduler pauses during dynamics collection by checking a fresh
   arm pose before resuming without catch-up. Keep strict motor communication and
   tracking checks, with a separate configurable wake-up lateness budget.
