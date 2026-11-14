@@ -1,9 +1,8 @@
 """Docs-to-code consistency checks.
 
 These tests guard against drift between user-facing documentation and the
-public Python API. They are intentionally lightweight: they run without
-importing any backend, so they can be executed with the dev dependency group
-alone.
+public Python API. They run with the dev dependency group alone. The README
+simulation check disables rendering so it needs no graphics libraries.
 """
 
 from __future__ import annotations
@@ -596,6 +595,39 @@ def test_entry_pages_link_to_canonical_references() -> None:
     assert "https://so101-nexus.com/docs/workflow/training" in examples
     assert "https://so101-nexus.com/docs/workflow/teleoperation" in examples
     assert not re.search(r"^#+ (?:Baseline hyperparameters|Results)", examples, re.MULTILINE)
+
+
+def test_getting_started_pages_delegate_recipes_to_their_owners() -> None:
+    """Entry pages link to runnable recipes instead of maintaining copies."""
+    installation = _read(DOCS / "getting-started" / "installation.mdx")
+    assert "](/docs/getting-started/quickstart)" in installation
+    assert "gym.make(" not in installation
+
+    overview = _read(DOCS / "workflow" / "overview.mdx")
+    assert "](/docs/workflow/training#quick-start)" in overview
+    assert "python examples/" not in overview
+
+
+def test_readme_provides_a_runnable_first_environment(env_factory, monkeypatch) -> None:
+    """Readers can install and run a simulation directly from the README."""
+    import gymnasium as gym
+
+    monkeypatch.setenv("MUJOCO_GL", "disabled")
+    readme = _read(ROOT / "README.md")
+    assert "pip install so101-nexus" in readme
+    example = re.search(r"```python\n(.*?)```", readme, re.DOTALL)
+    assert example is not None
+    env = env_factory(task="PickLift")
+
+    def make_headless(env_id, **kwargs):
+        assert env_id == env.spec.id
+        return env
+
+    monkeypatch.setattr(gym, "make", make_headless)
+    namespace = {}
+    exec(compile(example[1], "readme_quickstart", "exec"), namespace)
+    assert env.unwrapped.data.time > 0
+    assert env.observation_space.contains(namespace["obs"])
 
 
 def test_documented_lerobot_release_matches_dependency_range():

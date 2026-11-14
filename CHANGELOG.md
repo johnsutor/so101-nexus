@@ -9,6 +9,8 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-14
+
 ### Added
 
 - Save and load robot-specific profiles containing LeRobot encoder calibration,
@@ -24,6 +26,10 @@ for the public-API and deprecation policy.
 - Add readiness, cancellation, and progress callbacks to excitation collection.
 
 ### Changed
+
+- Shorten the README and getting-started pages around the record, clone, reinforce
+  workflow. Keep installation and a runnable simulation in the README, with links
+  to the full guides. Other entry pages link to canonical recipes.
 
 - Keep calibration profiles, recordings, and fitted results in persistent per-user
   application data using platformdirs, with directory overrides. Discover saved
@@ -1050,7 +1056,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.11.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.12.0...HEAD
+[0.12.0]: https://github.com/johnsutor/so101-nexus/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/johnsutor/so101-nexus/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/johnsutor/so101-nexus/compare/0.9.0...0.9.1

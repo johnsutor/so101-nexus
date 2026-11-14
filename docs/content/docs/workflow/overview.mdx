@@ -1,85 +1,32 @@
 ---
-title: Record -> Clone -> Reinforce
-description: How the three pipeline stages hand artifacts to each other, and how to start at stage two with no hardware.
+title: Record, clone, reinforce
+description: Take a simulated SO-101 from demonstrations to a trained policy.
 ---
 
-SO101-Nexus is built around one pipeline. **Record** demonstrations by teleoperating a
-simulated follower with a physical leader arm, which produces a LeRobot dataset. **Clone**
-an actor from that dataset with behavior cloning, which produces a BC-pretrained policy.
-**Reinforce** that policy with PPO while a persistent BC loss anchors it to the demos, which
-produces a checkpoint you can evaluate.
+One workflow connects demonstrations to a trained policy:
 
-The artifact passed between stages is small and explicit: stage 1 hands over a dataset repo
-id, stage 2 hands over actor weights, stage 3 hands over `best_agent.pt`.
+1. **Record.** Control a simulated follower with an SO-100 or SO-101 leader arm. Save a LeRobot dataset.
+2. **Clone.** Train an actor to reproduce the demonstrations with behavior cloning.
+3. **Reinforce.** Fine-tune with PPO while a behavior-cloning loss anchors the actor to the demonstrations.
 
-<Cards>
-  <Card title="Record" href="/docs/workflow/teleoperation">
-    Drive a simulated SO-101 with a physical leader arm. Output: a LeRobot v3 dataset.
-  </Card>
-  <Card title="Clone and reinforce" href="/docs/workflow/training">
-    BC-pretrain the actor, then fine-tune with PPO. Output: a policy checkpoint.
-  </Card>
-</Cards>
+Follow [Teleoperation](/docs/workflow/teleoperation) to record your dataset, then
+[Training](/docs/workflow/training#quick-start) to train and evaluate a policy checkpoint.
+The training script runs the clone and reinforce stages together.
 
 ## Start without hardware
 
-You do not need a leader arm. Two demonstration datasets are published, so you can skip the
-record stage entirely:
+Use the published demonstrations in the [training quick start](/docs/workflow/training#quick-start).
+For a hosted GPU, open the
+[BC + PPO Colab notebook](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb).
+Select a GPU runtime and run all cells.
 
-| Task | Published dataset |
-| --- | --- |
-| PickLift | [`johnsutor/MuJoCoPickLift-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickLift-v1) |
-| PickAndPlace | [`johnsutor/MuJoCoPickAndPlace-v1`](https://huggingface.co/datasets/johnsutor/MuJoCoPickAndPlace-v1) |
+To use your own recordings later, set `--demo-repo` to your dataset in the same training script.
 
-`examples/bc_ppo_warp.py` already defaults to `johnsutor/MuJoCoPickLift-v1` and
-`WarpPickLift-v1`, so one command runs both the clone and the reinforce stage:
+## Transfer between backends
 
-```bash
-uv run --extra warp --extra train python examples/bc_ppo_warp.py
-```
+Record with MuJoCo and train in parallel with Warp.
+Training derives delta-action labels from consecutive recorded joint positions.
+See [Control modes](/docs/concepts/control-modes) for the action contract.
 
-It downloads the demos, BC-pretrains the actor, fine-tunes with PPO, and writes
-`runs/WarpPickLift-v1__*/best_agent.pt`. Evaluate that checkpoint deterministically:
-
-```bash
-uv run --extra warp python examples/eval_warp.py \
-    --env-id WarpPickLift-v1 \
-    --checkpoint "runs/WarpPickLift-v1__*/best_agent.pt"
-```
-
-When you do get a leader arm, the record stage slots in front: teleoperate, then point the
-same command at your dataset with `--demo-repo your-user/YourDataset`. Nothing downstream
-changes.
-
-<Callout type="info">
-Prefer a browser? The
-[BC + PPO Colab](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb)
-runs this pipeline end to end on a GPU runtime, with embedded TensorBoard and a rollout
-video.
-</Callout>
-
-## The MuJoCo to Warp handoff
-
-Recording runs on the MuJoCo backend, because it needs a live viewer and a physical leader
-arm. Training runs on the Warp backend, because it needs thousands of parallel worlds. Two
-consequences are handled for you, but you should know they exist.
-
-**Action units.** Demos store absolute joint-position targets, while training uses
-`pd_joint_delta_pos`. Demo actions are relabeled into deltas between consecutive recorded
-joint states, normalized by the environment's `_DELTA_ACTION_SCALE`. Do not switch control
-modes between record and train. See [Control Modes](/docs/concepts/control-modes).
-
-**Physics transfer.** The backends share native physics defaults, but their contacts and trajectories can differ.
-Validate the transferred policy on the target backend.
-See [Backends](/docs/concepts/backends#physics-divergence) for the remaining differences and the grasp retention tests.
-
-## Next
-
-<Cards>
-  <Card title="Environments" href="/docs/environments">
-    The available tasks, their observation widths, and their success predicates.
-  </Card>
-  <Card title="Customization" href="/docs/concepts/customization">
-    Swap objects, distractors, colors, and spawn regions.
-  </Card>
-</Cards>
+The backends share physics defaults, but contacts and trajectories can differ.
+Evaluate the policy on its target backend. See [Backends](/docs/concepts/backends#physics-divergence) for the differences.

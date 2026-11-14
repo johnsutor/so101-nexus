@@ -24,16 +24,7 @@ cd so101-nexus
 uv sync
 ```
 
-## Verify the install
-
-```python
-import gymnasium as gym
-import so101_nexus.mujoco  # registers the MuJoCo env ids
-
-env = gym.make("MuJoCoPickLift-v1")
-print("Installation OK")
-env.close()
-```
+Run the [Quickstart](/docs/getting-started/quickstart) to verify the install with a simulated robot.
 
 ## Extras
 
@@ -58,7 +49,6 @@ Other LeRobot policy checkpoints may need their own model dependencies. For exam
 `uv run --extra teleop --with "lerobot[smolvla]==0.7.0" so101-nexus teleop ...`
 adds SmolVLA dependencies for that invocation. Use the matching LeRobot extra for
 other supported policy families. The base install stays independent of LeRobot.
-
 
 ## Native DM0.5
 
