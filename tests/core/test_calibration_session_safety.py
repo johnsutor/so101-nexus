@@ -625,3 +625,174 @@ def test_loading_profile_replaces_artifact_attribution_and_preserves_exact_perio
     session.set_period(1 / 30)
     assert session.profile_path == path.resolve()
     assert session.profile == profile
+
+
+@pytest.fixture
+def snapshot_recordings():
+    from so101_nexus.excitation import RecordedTrajectory, profile_digest
+
+    def make(profile):
+        times = np.arange(4) * profile.control_period_s
+        return [
+            RecordedTrajectory(
+                name,
+                split,
+                times,
+                times,
+                np.full((4, 6), index, dtype=float),
+                np.full((4, 6), index + 0.5, dtype=float),
+                profile_digest(profile),
+            )
+            for index, (name, split) in enumerate(
+                (("multisine", "train"), ("heldout", "validation"))
+            )
+        ]
+
+    return make
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_collection_snapshots_exact_source_profile_after_cleanup(
+    session, snapshot_recordings, monkeypatch, tmp_path, partial
+):
+    original = replace(session.profile, control_period_s=1 / 30, joint_offsets_deg=(1, 2, 3, 4, 5))
+    recordings = snapshot_recordings(original)
+    destination = tmp_path / "recordings"
+    released = []
+    lease = SimpleNamespace(release=lambda: released.append(True))
+    monkeypatch.setattr(session, "_make_robot", lambda *args: object())
+
+    def collect(*args, **kwargs):
+        assert not released
+        for recording in recordings[:1] if partial else recordings:
+            recording.save(destination / f"{recording.name}.npz")
+        assert not (destination / "source_profile.json").exists()
+        if partial:
+            raise RuntimeError("tracking failed after completed episode")
+        return recordings
+
+    monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", collect)
+    session._collect(original, session.config, destination, lease)
+    assert released == [True]
+    snapshot = destination / "source_profile.json"
+    assert RobotProfile.load(snapshot) == original
+    assert str(snapshot) in session.artifacts
+    assert len(list(destination.glob("*.npz"))) == (1 if partial else 2)
+    assert session.phase == "stopped"
+    assert ("tracking failed" if partial else "complete") in session.status
+
+
+def test_fit_uses_recording_snapshot_after_current_profile_is_lost(
+    session, snapshot_recordings, monkeypatch, tmp_path
+):
+    import so101_nexus.sysid
+
+    original = replace(session.profile, control_period_s=1 / 30, joint_offsets_deg=(1, 2, 3, 4, 5))
+    recordings_dir = tmp_path / "recordings"
+    recordings_dir.mkdir()
+    original.save(recordings_dir / "source_profile.json")
+    for recording in snapshot_recordings(original):
+        recording.save(recordings_dir / f"{recording.name}.npz")
+    session.disconnect()
+    session.profile = None
+    session.confirmed.clear()
+    session.gripper_confirmed = False
+    fitted = []
+
+    def fit(profile, recordings, **kwargs):
+        so101_nexus.sysid._validate_trajectories(profile, recordings)
+        fitted.append(profile)
+        return SimpleNamespace(episodes=(), diagnostics=(), validation_improved=False)
+
+    monkeypatch.setattr(so101_nexus.sysid, "fit_robot_profile", fit)
+    session.fit(str(recordings_dir), str(tmp_path / "fit"), 1)
+    assert fitted == [original]
+    assert session.profile is None
+
+
+def test_invalid_recording_snapshot_does_not_fall_back_to_current_profile(
+    session, snapshot_recordings, monkeypatch, tmp_path
+):
+    import so101_nexus.sysid
+
+    snapshot_recordings(session.profile)[0].save(tmp_path / "multisine.npz")
+    (tmp_path / "source_profile.json").write_text("invalid JSON")
+    monkeypatch.setattr(
+        so101_nexus.sysid, "fit_robot_profile", lambda *a, **k: pytest.fail("must not fit")
+    )
+    with pytest.raises(ValueError, match="Expecting value"):
+        session.fit(str(tmp_path), str(tmp_path / "fit"), 1)
+
+
+def test_empty_failed_attempt_does_not_create_snapshot_directory(session, monkeypatch, tmp_path):
+    destination = tmp_path / "never-created"
+    released = []
+    monkeypatch.setattr(session, "_make_robot", lambda *args: object())
+    monkeypatch.setattr(
+        "so101_nexus.calibration.session.collect_excitation",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("failed before first episode")),
+    )
+    session._collect(
+        session.profile,
+        session.config,
+        destination,
+        SimpleNamespace(release=lambda: released.append(True)),
+    )
+    assert released == [True]
+    assert not destination.exists()
+    assert not session.artifacts
+    assert session.phase == "stopped"
+
+
+def test_snapshot_io_failure_preserves_cleanup_recordings_and_failure_status(
+    session, snapshot_recordings, monkeypatch, tmp_path
+):
+    released = []
+    recording = snapshot_recordings(session.profile)[0]
+    monkeypatch.setattr(session, "_make_robot", lambda *args: object())
+
+    def collect(*args, **kwargs):
+        recording.save(tmp_path / "multisine.npz")
+        raise RuntimeError("original tracking fault")
+
+    def save(*args, **kwargs):
+        assert released == [True]
+        raise OSError("snapshot disk full")
+
+    monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", collect)
+    monkeypatch.setattr(RobotProfile, "save", save)
+    session._collect(
+        session.profile,
+        session.config,
+        tmp_path,
+        SimpleNamespace(release=lambda: released.append(True)),
+    )
+    assert released == [True]
+    assert session.phase == "stopped"
+    assert "original tracking fault" in session.status
+    assert "snapshot disk full" in session.status
+    assert session.artifacts == [str(tmp_path / "multisine.npz")]
+
+
+def test_snapshot_recordings_still_require_matching_digest(session, snapshot_recordings, tmp_path):
+    session.profile.save(tmp_path / "source_profile.json")
+    mismatched = replace(session.profile, control_period_s=1 / 30)
+    for recording in snapshot_recordings(mismatched):
+        recording.save(tmp_path / f"{recording.name}.npz")
+    with pytest.raises(ValueError, match="recording profile does not match"):
+        session.fit(str(tmp_path), str(tmp_path / "fit"), 1)
+    assert not (tmp_path / "fit").exists()
+
+
+def test_snapshot_never_overwrites_existing_different_profile(
+    session, snapshot_recordings, tmp_path
+):
+    original = replace(session.profile, control_period_s=1 / 30)
+    snapshot = tmp_path / "source_profile.json"
+    original.save(snapshot)
+    recording = snapshot_recordings(session.profile)[0]
+    recording.save(tmp_path / "multisine.npz")
+    artifacts, error = session._recording_artifacts(session.profile, tmp_path)
+    assert "differs from the collection profile" in error
+    assert artifacts == [str(tmp_path / "multisine.npz")]
+    assert RobotProfile.load(snapshot) == original

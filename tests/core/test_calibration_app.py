@@ -483,11 +483,143 @@ def test_capture_uses_the_reference_frame_received_by_the_browser(profile):
     guide = CalibrationGuide(session, stage=1, joint_index=3)
     guide.set_reference(15)
     with pytest.raises(ValueError, match="view to update"):
-        _capture_visible_reference(guide, 15, [3, 1])
+        _capture_visible_reference(guide, 15, [3, 1], 3)
     with pytest.raises(ValueError, match="view to update"):
-        _capture_visible_reference(guide, 15, [2, 15])
+        _capture_visible_reference(guide, 15, [2, 15], 3)
     session.monitor.read.assert_not_called()
     assert not session.confirmed
-    _capture_visible_reference(guide, 15, [3, 15])
+    _capture_visible_reference(guide, 15, [3, 15], 3)
     assert session.confirmed == {3}
     assert guide.joint_index == 4
+
+
+def test_capture_rejects_stale_instructions_even_when_the_live_frame_has_advanced(profile):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from so101_nexus.calibration.app import _capture_visible_reference
+    from so101_nexus.calibration.guide import CalibrationGuide
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.monitor = SimpleNamespace(read=Mock(return_value=np.zeros(6)), torque={})
+    guide = CalibrationGuide(session, stage=1, joint_index=1)
+    with pytest.raises(ValueError, match="reference view"):
+        _capture_visible_reference(guide, 0, [1, 0], 0)
+    session.monitor.read.assert_not_called()
+    assert not session.confirmed
+    assert guide.joint_index == 1
+
+
+def test_stale_capture_refreshes_the_form_instead_of_repeating_an_error(profile):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    pytest.importorskip("gradio")
+    from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.phase = "monitoring"
+    session.monitor = SimpleNamespace(read=Mock(return_value=np.zeros(6)), torque={})
+    app = build_app(session)
+    config = app.get_config_file()
+    tick = next(
+        item for item in config["dependencies"] if any(e == "tick" for _, e in item["targets"])
+    )
+    guide = app.fns[tick["id"]].fn.args[1]
+    guide.stage = 1
+    guide.set_reference(15)
+    capture_id = next(
+        item["id"]
+        for item in config["components"]
+        if item["type"] == "button"
+        and item["props"].get("value") == "Matches, capture and continue"
+    )
+    capture = next(
+        item for item in config["dependencies"] if (capture_id, "click") in item["targets"]
+    )
+    button, notice = app.fns[capture["id"]].fn(0, [0, 15], 0)
+    assert button["interactive"] is False
+    assert notice["visible"] is True
+    assert "check" in notice["value"].lower()
+    session.monitor.read.assert_not_called()
+    assert not session.confirmed
+    sync = next(
+        item for item in config["dependencies"] if item.get("trigger_after") == capture["id"]
+    )
+    synchronized = app.fns[sync["id"]].fn()
+    assert synchronized[3] == 15
+    assert synchronized[-1] == 0
+
+
+def test_motion_check_defaults_to_actual_live_pose_instead_of_example_center(profile, monkeypatch):
+    from types import SimpleNamespace
+
+    from so101_nexus.calibration.app import _check_motion_pose
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.confirmed = set(range(5))
+    session.gripper_confirmed = True
+    session.monitor = SimpleNamespace(read=lambda: np.array([5, -20, 35, 40, 10, 50]))
+    monkeypatch.setattr("so101_nexus.calibration.session.preflight_excitation", lambda *args: None)
+    values = [0, -15, 30, 45, 0, 50, *([8] * 6), 1, 0, 0, 0.02]
+    center = _check_motion_pose(session, values, manual_center=False)
+    assert center == [5, -20, 35, 40, 10, 45]
+    assert session.config.center_qpos_deg == tuple(center)
+    assert session.verified
+    _check_motion_pose(session, values, manual_center=True)
+    assert session.config.center_qpos_deg == tuple(values[:6])
+
+
+def test_recording_retries_choose_a_new_directory_without_touching_old_data(tmp_path):
+    from so101_nexus.calibration.app import _fresh_recording_path
+
+    first = tmp_path / "recordings"
+    assert _fresh_recording_path(first) == first
+    first.mkdir()
+    data = first / "00_multisine.npz"
+    data.write_bytes(b"completed episode")
+    second = _fresh_recording_path(first)
+    assert second == tmp_path / "recordings_002"
+    second.mkdir()
+    assert _fresh_recording_path(second) == tmp_path / "recordings_003"
+    assert data.read_bytes() == b"completed episode"
+
+
+def test_live_pose_expands_viewport_without_resetting_camera(profile, monkeypatch):
+    from types import SimpleNamespace
+
+    import plotly.graph_objects as go
+
+    from so101_nexus.calibration.app import _tick, _Viewport
+    from so101_nexus.calibration.guide import CalibrationGuide
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.phase = "monitoring"
+    session.monitor = SimpleNamespace(torque=dict.fromkeys(SO101_JOINT_NAMES, 0))
+    session.measured = np.zeros(6)
+    monkeypatch.setattr(session, "poll", lambda: None)
+    guide, viewport = CalibrationGuide(session), _Viewport()
+    calls = []
+    monkeypatch.setattr(
+        "so101_nexus.calibration.app.render_overlay",
+        lambda *a, **kw: calls.append(kw) or go.Figure(),
+    )
+    _tick(session, guide, viewport, "multisine", 0, 1.5)
+    bounds = np.array(viewport.bounds)
+    revision = viewport.revision
+    session.measured = np.array([90, -60, 80, -70, 90, 50])
+    figure = _tick(session, guide, viewport, "multisine", 0, 1.5)[3]
+    from so101_nexus.calibration.view import expand_bounds
+
+    expected = expand_bounds(bounds, guide.reference_deg, profile.to_model_deg(session.measured))
+    np.testing.assert_allclose(viewport.bounds, expected)
+    assert viewport.revision == revision
+    assert figure.layout.uirevision == f"guided:{guide.view}:None:{revision}"

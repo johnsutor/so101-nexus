@@ -135,6 +135,7 @@ def overlay_bounds(
 
     Save these limits in the UI session and reuse them between explicit fit actions
     to prevent small encoder changes from moving the viewport during alignment.
+    Use :func:`expand_bounds` when a later pose approaches the saved edges.
     ``focus_joint`` frames that joint and downstream links with upstream context.
     It changes only the view limits; all mesh coordinates remain in world meters.
     """
@@ -155,7 +156,7 @@ def _camera(view: str) -> dict:
     return {"eye": eye, "up": up, "projection": {"type": "orthographic"}}
 
 
-def _scene(bounds_m: Sequence[Sequence[float]], view: str, viewport_aspect: float) -> dict:
+def _validated_bounds(bounds_m: Sequence[Sequence[float]]) -> np.ndarray:
     bounds = np.asarray(bounds_m, dtype=np.float64)
     if (
         bounds.shape != (3, 2)
@@ -163,6 +164,38 @@ def _scene(bounds_m: Sequence[Sequence[float]], view: str, viewport_aspect: floa
         or np.any(bounds[:, 0] >= bounds[:, 1])
     ):
         raise ValueError("bounds_m must contain three finite increasing meter ranges")
+    return bounds
+
+
+def expand_bounds(
+    bounds_m: Sequence[Sequence[float]],
+    reference_deg: Sequence[float] | np.ndarray,
+    measured_deg: Sequence[float] | np.ndarray | None = None,
+    *,
+    focus_joint: str | None = None,
+) -> tuple[tuple[float, float], ...]:
+    """Expand saved meter ranges only when a pose approaches their outer edges.
+
+    Padded expansion leaves room for encoder jitter. Returning the same ranges
+    for contained poses prevents the viewport from following every measurement.
+    """
+    bounds = _validated_bounds(bounds_m)
+    poses = (reference_deg,) if measured_deg is None else (reference_deg, measured_deg)
+    vertices = np.concatenate(
+        [_framing_vertices(*_pose_vertices(_angles(pose)), focus_joint) for pose in poses]
+    )
+    if np.any(vertices.min(axis=0) < bounds[:, 0] + 0.002) or np.any(
+        vertices.max(axis=0) > bounds[:, 1] - 0.002
+    ):
+        fitted = np.asarray(_fit_bounds(vertices))
+        bounds = np.column_stack(
+            (np.minimum(bounds[:, 0], fitted[:, 0]), np.maximum(bounds[:, 1], fitted[:, 1]))
+        )
+    return tuple((float(lo), float(hi)) for lo, hi in bounds)
+
+
+def _scene(bounds_m: Sequence[Sequence[float]], viewport_aspect: float) -> dict:
+    bounds = _validated_bounds(bounds_m)
     axes = {
         f"{name}axis": {
             "title": f"{name.upper()} (m)",
@@ -176,16 +209,13 @@ def _scene(bounds_m: Sequence[Sequence[float]], view: str, viewport_aspect: floa
         }
         for name, limits in zip(("x", "y", "z"), bounds, strict=True)
     }
-    ratios = np.ptp(bounds, axis=1)
-    ratios /= np.cbrt(np.prod(ratios))
-    horizontal, vertical = {"front": (0, 2), "side": (1, 2), "top": (0, 1)}[view]
-    # Uniform scaling enlarges the viewport without changing the scale between axes.
-    scale = 1.85 / max(ratios[horizontal] / viewport_aspect, ratios[vertical])
+    spans = np.ptp(bounds, axis=1)
+    # The enclosing sphere stays visible at every orbit angle with equal meter scale.
+    ratios = spans * (1.85 * min(viewport_aspect, 1) / np.linalg.norm(spans))
     return {
         **axes,
         "aspectmode": "manual",
-        "aspectratio": dict(zip(("x", "y", "z"), ratios * scale, strict=True)),
-        "camera": _camera(view),
+        "aspectratio": dict(zip(("x", "y", "z"), ratios, strict=True)),
     }
 
 
@@ -199,6 +229,8 @@ def render_overlay(
     bounds_m: Sequence[Sequence[float]] | None = None,
     viewport_aspect: float = 1.5,
     focus_joint: str | None = None,
+    camera: dict | None = None,
+    camera_reset: bool = True,
 ) -> go.Figure:
     """Render the reference ghost and live pose in one model coordinate frame.
 
@@ -215,7 +247,7 @@ def render_overlay(
         Joint whose reference rotation axis should be highlighted.
     view : {"front", "side", "top"}
         Orthographic camera preset. Front and side keep world Z upright. Switching
-        presets resets the camera; repeated updates preserve the operator's orbit.
+        presets resets the camera; omit presets on live updates with ``camera_reset=False``.
     bounds_m : sequence of pairs of float, optional
         Fixed X, Y, and Z meter ranges from :func:`overlay_bounds`. Without fixed
         bounds, fit the actual union of both meshes. No mesh coordinates change.
@@ -225,6 +257,11 @@ def render_overlay(
     focus_joint : str, optional
         Frame this joint and its downstream links with adjacent upstream context.
         The full robot remains drawn without modifying its pose or geometry.
+    camera : dict, optional
+        Explicit Plotly camera state, overriding the named preset.
+    camera_reset : bool
+        Include the named preset when no explicit camera is supplied. Set false
+        for live updates so the frontend can preserve the operator's orbit.
     """
     import plotly.graph_objects as go
 
@@ -291,13 +328,16 @@ def render_overlay(
             )
         )
     bounds_m = _fit_bounds(np.concatenate(vertices_by_pose)) if bounds_m is None else bounds_m
+    scene = _scene(bounds_m, viewport_aspect)
+    if camera is not None or camera_reset:
+        scene["camera"] = _camera(view) if camera is None else camera
     figure.update_layout(
         template="plotly_white",
         height=650,
         margin={"l": 12, "r": 12, "t": 38, "b": 20},
         uirevision=f"calibration-overlay:{view}" + (f":{focus_joint}" if focus_joint else ""),
         legend={"orientation": "h", "y": 1.04, "x": 0},
-        scene=_scene(bounds_m, view, viewport_aspect),
+        scene=scene,
     )
     if measured_deg is None:
         figure.add_annotation(

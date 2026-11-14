@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import re
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -12,7 +13,7 @@ import numpy as np
 
 from so101_nexus.calibration.guide import CalibrationGuide
 from so101_nexus.calibration.session import CalibrationSession
-from so101_nexus.calibration.view import overlay_bounds, render_overlay
+from so101_nexus.calibration.view import expand_bounds, overlay_bounds, render_overlay
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.excitation import ExcitationConfig, generate_excitation
 
@@ -34,8 +35,40 @@ _GUIDANCE = (
     "the cyan reference. Use Front, Side, or Top if the jaw faces are hard to distinguish.",
 )
 _MEASURE_VIEW = """(...values) => {
-    const plot = document.querySelector('#calibration-robot-view .js-plotly-plot');
     const container = document.querySelector('#calibration-robot-view');
+    if (container && !container.nexusCamera) {
+        const state = {plot: null, camera: null, revision: null, restoring: false};
+        container.nexusCamera = state;
+        const remember = (plot) => {
+            if (plot !== state.plot || state.restoring) return;
+            const scene = plot?._fullLayout?.scene?._scene;
+            if (scene) state.camera = structuredClone(scene.getCamera());
+        };
+        const scan = () => {
+            const plot = container.querySelector('.js-plotly-plot');
+            if (!plot?._fullLayout?.scene?._scene) return;
+            if (plot === state.plot) { remember(plot); return; }
+            const revision = plot.layout.uirevision;
+            if (revision !== state.revision) state.camera = null;
+            state.plot = plot;
+            state.revision = revision;
+            plot.on('plotly_relayout', () => remember(plot));
+            plot.on('plotly_relayouting', () => remember(plot));
+            if (state.camera && window.Plotly) {
+                state.restoring = true;
+                Promise.resolve(window.Plotly.relayout(plot, {'scene.camera': state.camera}))
+                    .finally(() => { state.restoring = false; remember(plot); });
+            } else { remember(plot); }
+        };
+        const observer = new MutationObserver(() => requestAnimationFrame(scan));
+        observer.observe(container, {subtree: true, childList: true});
+        const timer = setInterval(() => {
+            if (container.isConnected) scan();
+            else { clearInterval(timer); observer.disconnect(); }
+        }, 50);
+        scan();
+    }
+    const plot = container?.querySelector('.js-plotly-plot');
     const width = plot?.clientWidth || container?.clientWidth || 975;
     return [...values.slice(0, -1), width / 650];
 }"""
@@ -48,6 +81,7 @@ class _Viewport:
     revision: int = 0
     tuning: bool = False
     tuning_step: int = 0
+    previous_artifacts: list[str] = field(default_factory=list)
 
     def fit(self) -> None:
         self.bounds = None
@@ -137,26 +171,66 @@ def _show_plan(gr, session, *values):
     return figure
 
 
-def _verify(gr, session, *values):
-    try:
+def _fresh_recording_path(requested):
+    path = Path(requested).expanduser().resolve()
+    if not path.exists():
+        return path
+    match = re.fullmatch(r"(.+)_([0-9]{3})", path.name)
+    name, index = (match[1], int(match[2]) + 1) if match else (path.name, 2)
+    candidate = path.with_name(f"{name}_{index:03d}")
+    while candidate.exists():
+        index += 1
+        candidate = path.with_name(f"{name}_{index:03d}")
+    return candidate
+
+
+def _check_motion_pose(session, values, *, manual_center):
+    settings = list(values)
+    if not manual_center:
+        settings[:6] = session.use_current_center()
+    _plan(session, *settings)
+    session.preflight()
+    return list(session.config.center_qpos_deg)
+
+
+def _ensure_saved_profile(session):
+    session._aligned()
+    if session.profile_path is None:
+        session.save_profile(_suggest_path(session))
+    return session.profile_path
+
+
+def _prepare_collection(session, path, supported, values):
+    with session.lock:
+        session._idle()
         _plan(session, *values)
-        session.preflight()
-    except Exception as error:
-        session.verified = False
-        session.status = (
-            f"Preflight failed: {error}. "
-            "Adjust the center, amplitudes, or table height, then retry."
-        )
-        gr.Warning(session.status)
+        if not session.verified:
+            raise ValueError("Check the current pose and motion before enabling hold.")
+        _ensure_saved_profile(session)
+        destination = _fresh_recording_path(path)
+        session.arm(destination, supported=supported)
+        return str(destination)
 
 
-def _enable_hold(gr, session, path, supported, *values):
-
-    def arm():
-        _plan(session, *values)
-        session.arm(path, supported=supported)
-
-    _call(gr, session, arm)
+def _dynamics_readiness(session):
+    active_messages = {
+        "arming": "Preparing holding. Keep supporting the arm until Holding appears.",
+        "holding": (
+            "Holding is ready. Remove your hands, confirm they are clear, then start excitation."
+        ),
+        "running": "Recording motion. Stop commands ends this attempt and preserves torque.",
+    }
+    if session.phase in active_messages:
+        return active_messages[session.phase]
+    if session.monitor is None:
+        return "Live readings are closed. Reconnect to prepare another attempt."
+    if any(session.monitor.torque.values()):
+        return "Motors are holding. Support the arm and release motors before a new attempt."
+    if not session.verified:
+        return "Read the current pose and check motion before enabling hold."
+    return (
+        "Motion check passed. Keep the arm at the checked pose, confirm support, and enable hold."
+    )
 
 
 def _start_motion(gr, session, hands_clear, *values):
@@ -185,7 +259,10 @@ def _start_motion(gr, session, hands_clear, *values):
 
 
 def _fit_candidate(gr, session, *values):
-    result = _call(gr, session, session.fit, *values)
+    recordings, output, max_iters = values
+    result = _call(
+        gr, session, session.fit, recordings, str(_fresh_recording_path(output)), max_iters
+    )
     return result if result is not None else ([], [], session.status)
 
 
@@ -236,6 +313,7 @@ def _alignment_controls(gr, ui):
             "After the preview, physically match this joint to the cyan reference before "
             "capturing it."
         )
+    ui["capture_notice"] = gr.Markdown("", visible=False)
     ui["capture"] = gr.Button("Matches, capture and continue", variant="primary")
     ui["previous"] = gr.Button("Previous joint", interactive=False)
     with gr.Accordion("Use a different known reference angle", open=False):
@@ -282,9 +360,9 @@ def _profile_controls(gr, ui):
             "runs/calibration/robot_profile.json", label="New profile JSON path"
         )
         ui["period"] = gr.Number(0.02, label="Command period (seconds)")
-    ui["tune"] = gr.Button("Optional: improve motion dynamics", visible=False)
+    ui["tune"] = gr.Button("Dynamics tuning", visible=False)
     gr.Markdown(
-        "An aligned profile establishes coordinates. Optional dynamics tuning improves how "
+        "An aligned profile establishes coordinates. Dynamics tuning improves how "
         "the simulator predicts motor response; neither step proves policy transfer "
         "performance."
     )
@@ -296,8 +374,11 @@ def _motion_controls(gr, ui):
         "to move. Read that pose as the center, then preview and check all three episodes "
         "in simulation."
     )
-    ui["current"] = gr.Button("Use live pose as center")
     with gr.Accordion("Motion settings and workspace", open=False):
+        ui["manual_center"] = gr.Checkbox(
+            value=False, label="Use a manually entered center instead of the live pose"
+        )
+        ui["current"] = gr.Button("Read live center")
         ui["centers"] = [
             gr.Number(value, label=f"Center {name.replace('_', ' ')} (model deg)")
             for name, value in zip(SO101_JOINT_NAMES, _DEFAULT_CENTER, strict=True)
@@ -309,7 +390,7 @@ def _motion_controls(gr, ui):
         ui["duration"] = gr.Number(20, label="Duration per episode (seconds)")
         ui["table"] = gr.Number(0, label="Table height relative to base (meters)")
         ui["seed"] = gr.Number(0, precision=0, label="Trajectory seed")
-    ui["preview"] = gr.Button("Preview and check motion", variant="primary")
+    ui["preview"] = gr.Button("Read current pose and check motion", variant="primary")
     ui["trajectory_plot"] = gr.Plot(label="Planned joint motion (model deg)")
     with gr.Accordion("Inspect an episode", open=False):
         ui["episode"] = gr.Radio(
@@ -326,10 +407,20 @@ def _collection_controls(gr, ui):
         "### Hold first, then start motion\n\nSupport the arm at the checked center. Enable "
         "hold, wait for Holding, then remove your hands before starting excitation."
     )
-    ui["support"] = gr.Checkbox(label="Arm supported at the center, torque off, workspace clear")
-    ui["hold"] = gr.Button("Enable hold", interactive=False)
-    ui["hands_clear"] = gr.Checkbox(label="Holding is stable, my hands and workspace are clear")
-    ui["start"] = gr.Button("Start excitation", variant="primary", interactive=False)
+    with gr.Column() as ui["hold_setup"]:
+        ui["support"] = gr.Checkbox(
+            label="Arm supported at the center, torque off, workspace clear"
+        )
+        ui["hold"] = gr.Button("Enable hold", interactive=False)
+    with gr.Column(visible=False) as ui["start_setup"]:
+        ui["hands_clear"] = gr.Checkbox(label="Holding is stable, my hands and workspace are clear")
+        ui["start"] = gr.Button("Start excitation", variant="primary", interactive=False)
+    ui["retry"] = gr.Button("Reconnect and prepare another attempt", visible=False)
+    with gr.Column(visible=False) as ui["release_setup"]:
+        ui["tuning_release_supported"] = gr.Checkbox(
+            label="I am supporting the arm before turning torque off"
+        )
+        ui["tuning_release"] = gr.Button("Release motors and prepare another attempt")
     ui["review"] = gr.Button("Review completed recordings")
     ui["back_preview_collect"] = gr.Button("Back to motion preview")
     with gr.Accordion("Recording location", open=False):
@@ -379,9 +470,10 @@ def _build_guide(gr, ui):
         ):
             with gr.Step(label, id=index, interactive=True):
                 builder(gr, ui)
-    with gr.Group(visible=False, elem_id="dynamics-workflow") as ui["dynamics"]:
+    with gr.Column(visible=False, min_width=0, elem_id="dynamics-workflow") as ui["dynamics"]:
+        ui["tuning_status"] = gr.Markdown("")
         gr.Markdown(
-            "### Optional dynamics tuning\n\nYour aligned profile is already saved. These "
+            "### Dynamics tuning\n\nYour aligned profile is already saved. These "
             "extra steps identify the robot's motion response."
         )
         with gr.Walkthrough(selected=0) as ui["tuning_steps"]:
@@ -467,6 +559,7 @@ def _build_layout(gr, ui):
             )
     ui["aspect"] = gr.Number(1.5, visible=False, label="Robot viewport aspect")
     ui["shown_reference"] = gr.JSON([0, 0], visible=False, label="Displayed reference frame")
+    ui["instruction_joint"] = gr.Number(0, precision=0, visible=False, label="Instruction joint")
 
 
 def _guide_updates(gr, guide):
@@ -479,6 +572,7 @@ def _guide_updates(gr, guide):
         guide.focused,
         guide.view,
         gr.update(interactive=guide.joint_index > 0),
+        guide.joint_index,
     )
 
 
@@ -506,12 +600,19 @@ def _profile_message(session):
     )
 
 
-def _capture_visible_reference(guide, angle, displayed):
-    if displayed != [guide.joint_index, angle]:
-        raise ValueError(
-            "Wait for the reference view to update, then check the physical joint before capturing."
-        )
-    guide.capture_next(angle)
+class _ReferenceViewChanged(ValueError):
+    """Reject captures against a stale form or rendered reference."""
+
+
+def _capture_visible_reference(guide, angle, displayed, instruction_joint):
+    with guide.session.lock:
+        expected = [guide.joint_index, guide.reference_deg[guide.joint_index]]
+        if displayed != expected or [instruction_joint, angle] != expected:
+            raise _ReferenceViewChanged(
+                "Wait for the reference view to update, "
+                "then check the physical joint before capturing."
+            )
+        guide.capture_next(angle)
 
 
 def _tick(session, guide, viewport, episode, fraction, aspect):
@@ -553,6 +654,16 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
         if viewport.bounds is None or key != viewport.key:
             viewport.bounds = overlay_bounds(target, measured, focus_joint=focus)
             viewport.key = key
+        else:
+            viewport.bounds = expand_bounds(viewport.bounds, target, measured, focus_joint=focus)
+        view = guide.view
+        camera_revision = f"guided:{view}:{focus}:{viewport.revision}"
+        active_joint = (
+            None
+            if viewport.tuning
+            else ("gripper" if guide.stage == 2 else SO101_JOINT_NAMES[guide.joint_index])
+        )
+        bounds = viewport.bounds
         confirmed = session.confirmed.copy()
         gripper_confirmed = session.gripper_confirmed
         phase = session.phase
@@ -593,9 +704,18 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             status,
             session.progress,
             rows,
-            gr.update(interactive=session.verified and phase == "monitoring"),
+            gr.update(
+                interactive=session.verified
+                and phase == "monitoring"
+                and session.monitor is not None
+                and not any(session.monitor.torque.values())
+            ),
             gr.update(interactive=phase == "holding" and not session.should_stop()),
-            gr.update(value=session.artifacts or None, visible=bool(session.artifacts)),
+            gr.update(
+                value=list(dict.fromkeys([*session.artifacts, *viewport.previous_artifacts]))
+                or None,
+                visible=bool(session.artifacts or viewport.previous_artifacts),
+            ),
             session.status,
             gr.update(visible=active),
             gr.Walkthrough(selected=guide.stage, visible=not viewport.tuning),
@@ -615,20 +735,34 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             gr.update(visible=guide.stage > 0 and session.monitor is None and not active),
             [guide.joint_index, float(target[guide.joint_index])],
             gr.update(interactive=guide.stage == 1 and session.monitor is not None),
+            f"{session.status}\n\n**Next:** {_dynamics_readiness(session)}",
+            gr.update(
+                visible=phase == "monitoring"
+                and session.monitor is not None
+                and not any(session.monitor.torque.values())
+            ),
+            gr.update(visible=phase == "holding"),
+            gr.update(visible=not active and session.monitor is None),
+            gr.update(visible=session.monitor is not None and any(session.monitor.torque.values())),
         )
     figure = render_overlay(
         target,
         measured,
         provisional=len(confirmed) != 5 or not gripper_confirmed,
-        active_joint=None
-        if viewport.tuning
-        else ("gripper" if guide.stage == 2 else SO101_JOINT_NAMES[guide.joint_index]),
-        view=guide.view,
+        active_joint=active_joint,
+        view=view,
         focus_joint=focus,
-        bounds_m=viewport.bounds,
+        bounds_m=bounds,
         viewport_aspect=aspect,
     )
-    figure.update_layout(uirevision=f"guided:{guide.view}:{focus}:{viewport.revision}")
+    if measured is None and phase in ("arming", "stopped"):
+        text = (
+            "Preparing holding. Keep supporting the arm."
+            if phase == "arming"
+            else "No live pose after this attempt. Reconnect to read the arm again."
+        )
+        figure.update_annotations(text=text)
+    figure.update_layout(uirevision=camera_revision)
     return (*outputs[:3], figure, *outputs[3:])
 
 
@@ -738,6 +872,7 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
             "focus",
             "camera",
             "previous",
+            "instruction_joint",
         )
     ]
 
@@ -777,12 +912,24 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         lambda: str(session.profile_path), outputs=ui["profile_output"]
     )
 
-    def capture(angle, displayed):
-        perform(_capture_visible_reference, guide, angle, displayed)
-        return gr.update(interactive=False)
+    def capture(angle, displayed, instruction_joint):
+        try:
+            _capture_visible_reference(guide, angle, displayed, instruction_joint)
+        except _ReferenceViewChanged:
+            return gr.update(interactive=False), gr.update(
+                value="The reference changed. This panel has been refreshed. "
+                "Check the highlighted physical joint against the cyan reference, "
+                "then capture again.",
+                visible=True,
+            )
+        except Exception as error:
+            raise gr.Error(str(error)) from error
+        return gr.update(interactive=False), gr.update(visible=False)
 
     ui["capture"].click(
-        capture, [ui["reference_angle"], ui["shown_reference"]], ui["capture"]
+        capture,
+        [ui["reference_angle"], ui["shown_reference"], ui["instruction_joint"]],
+        [ui["capture"], ui["capture_notice"]],
     ).then(sync, outputs=guide_outputs)
     for name in ("previous", "back_body", "edit_profile"):
         ui[name].click(lambda: perform(guide.previous_joint)).then(
@@ -812,6 +959,78 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
     return perform
 
 
+def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
+    def check(manual_center, *values):
+        try:
+            center = _check_motion_pose(session, values, manual_center=manual_center)
+            settings_values = [*center, *values[6:]]
+            plot = _show_plan(gr, session, *settings_values)
+        except Exception as error:
+            session.verified = False
+            session.status = (
+                f"Motion check failed: {error}. Adjust the supported pose and check again."
+            )
+            raise gr.Error(session.status) from error
+        viewport.tuning_step = 1
+        return plot, gr.Walkthrough(selected=1), *center, False, False
+
+    ui["preview"].click(
+        check,
+        [ui["manual_center"], *settings],
+        [
+            ui["trajectory_plot"],
+            ui["tuning_steps"],
+            *ui["centers"],
+            ui["support"],
+            ui["hands_clear"],
+        ],
+    )
+
+    def hold(path, supported, *values):
+        try:
+            return _prepare_collection(session, path, supported, values)
+        except Exception as error:
+            session.status = f"Could not enable hold: {error}"
+            raise gr.Error(session.status) from error
+
+    ui["hold"].click(hold, [ui["output_dir"], ui["support"], *settings], ui["output_dir"]).then(
+        lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]]
+    )
+    ui["start"].click(
+        partial(_start_motion, gr, session), [ui["hands_clear"], *settings], queue=False
+    ).then(lambda: False, outputs=ui["hands_clear"])
+
+    def retry(port, directory):
+        perform(session._idle)
+        saved = perform(_ensure_saved_profile, session)
+        viewport.previous_artifacts.extend(
+            path for path in session.artifacts if Path(path).exists()
+        )
+        perform(guide.connect, port, directory)
+        perform(guide.load_profile, saved)
+        viewport.tuning_step = 1 if any(session.monitor.torque.values()) else 0
+        viewport.fit()
+        session.status = (
+            "Read-only connection restored. Check the arm's current supported pose again."
+        )
+        return gr.Walkthrough(selected=viewport.tuning_step), False, False
+
+    retry_inputs = [ui["port"], ui["calibration_dir"]]
+    retry_outputs = [ui["tuning_steps"], ui["support"], ui["hands_clear"]]
+    ui["retry"].click(retry, retry_inputs, retry_outputs)
+
+    def release_and_retry(supported, port, directory):
+        perform(session.release, supported=supported)
+        result = retry(port, directory)
+        return *result, False
+
+    ui["tuning_release"].click(
+        release_and_retry,
+        [ui["tuning_release_supported"], *retry_inputs],
+        [*retry_outputs, ui["tuning_release_supported"]],
+    )
+
+
 def _wire_tuning(gr, ui, session, guide, viewport, perform):
     settings = [
         *ui["centers"],
@@ -827,6 +1046,9 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         perform(session._aligned)
         if session.profile_path is None or guide.stage != 3:
             raise gr.Error("Save your aligned profile first.")
+        session.status = (
+            "Position and support the arm in a raised pose. Check its current pose to plan motion."
+        )
         viewport.tuning = True
         viewport.tuning_step = 0
         viewport.fit()
@@ -852,21 +1074,7 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
     for setting in settings:
         setting.input(edited, settings, [ui["support"], ui["hands_clear"]], queue=False)
 
-    def check(*values):
-        plot = _show_plan(gr, session, *values)
-        _verify(gr, session, *values)
-        if not session.verified:
-            raise gr.Error(session.status)
-        viewport.tuning_step = 1
-        return plot, gr.Walkthrough(selected=1)
-
-    ui["preview"].click(check, settings, [ui["trajectory_plot"], ui["tuning_steps"]])
-    ui["hold"].click(
-        partial(_enable_hold, gr, session), [ui["output_dir"], ui["support"], *settings]
-    ).then(lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]])
-    ui["start"].click(
-        partial(_start_motion, gr, session), [ui["hands_clear"], *settings], queue=False
-    ).then(lambda: False, outputs=ui["hands_clear"])
+    _wire_attempts(gr, ui, session, guide, viewport, perform, settings)
 
     def review():
         perform(session._idle)
@@ -924,6 +1132,11 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "reconnect",
                 "shown_reference",
                 "capture",
+                "tuning_status",
+                "hold_setup",
+                "start_setup",
+                "retry",
+                "release_setup",
             )
         ]
         timer = gr.Timer(0.5)

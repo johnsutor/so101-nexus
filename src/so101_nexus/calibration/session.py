@@ -475,16 +475,31 @@ class CalibrationSession:
                     message = "Serial cleanup failed. Port remains owned; retry disconnect."
                 else:
                     lease.release()
+                artifacts, snapshot_error = self._recording_artifacts(profile, destination)
                 self.phase = "stopped"
                 self.verified = False
                 self.measured = None
                 self.status = (
-                    f"{message} Torque may remain enabled at the last target. "
+                    f"{message}{snapshot_error} Torque may remain enabled at the last target. "
                     "Support before release."
                 )
-                self.artifacts = ([str(self.profile_path)] if self.profile_path else []) + [
-                    str(path) for path in sorted(destination.glob("*.npz"))
-                ]
+                self.artifacts = ([str(self.profile_path)] if self.profile_path else []) + artifacts
+
+    @staticmethod
+    def _recording_artifacts(profile: RobotProfile, destination: Path) -> tuple[list[str], str]:
+        paths = [str(path) for path in sorted(destination.glob("*.npz"))]
+        if not paths:
+            return [], ""
+        snapshot = destination / "source_profile.json"
+        try:
+            if snapshot.exists():
+                if type(profile).load(snapshot) != profile:
+                    raise ValueError("existing source profile differs from the collection profile")
+            else:
+                profile.save(snapshot)
+        except (OSError, ValueError) as error:
+            return paths, f" Source profile snapshot could not be saved: {error}."
+        return [str(snapshot), *paths], ""
 
     def _close_pending(self) -> None:
         if self._pending_bus is not None:
@@ -574,14 +589,17 @@ class CalibrationSession:
 
     def fit(self, recordings_dir: str, output_dir: str, max_iters: int) -> tuple[list, list, str]:
         """Fit a candidate and expose held-out evidence without accepting dynamics."""
+        from so101_nexus.profiles import RobotProfile
         from so101_nexus.sysid import fit_robot_profile
 
         with self.lock:
             self._idle()
-            profile = self._aligned()
-            paths = sorted(Path(recordings_dir).expanduser().glob("*.npz"))
+            recordings = Path(recordings_dir).expanduser()
+            paths = sorted(recordings.glob("*.npz"))
             if not paths:
                 raise ValueError("No completed recordings found. Collect all three episodes first.")
+            snapshot = recordings / "source_profile.json"
+            profile = RobotProfile.load(snapshot) if snapshot.exists() else self._aligned()
             destination = Path(output_dir).expanduser().resolve()
             if destination.exists():
                 raise FileExistsError(f"Fit directory already exists: {destination}")

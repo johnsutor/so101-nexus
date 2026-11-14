@@ -622,13 +622,15 @@ The [profile reference](/docs/api/configs#robot-profiles) defines the units, end
 
 ### Preview and preflight
 
-After saving the profile, select **Optional: improve motion dynamics**.
+After saving the profile, select **Dynamics tuning**.
 You can stop after saving if you only need aligned joint coordinates.
 
 1. Place the supported arm at a raised center pose with room for motion.
-2. Capture the excitation center from live measurements.
-3. Open **Motion settings and workspace** if you need different motion or table settings.
-4. Select **Preview and check motion** to preview the commands and run simulation preflight.
+2. If needed, open **Motion settings and workspace** to change motion or table settings.
+3. Select **Read current pose and check motion**.
+
+The app reads the live arm position as the center, previews the commands, and runs simulation preflight.
+The advanced settings also allow a manually specified center.
 
 The preview and collector use the same trajectory configuration.
 A change to the alignment or motion configuration invalidates the previous preflight.
@@ -646,10 +648,13 @@ For a custom workspace model, use `collect_excitation(..., model=workspace_model
 ### Collect automatic excitation
 
 1. Support the arm at the verified center pose.
-2. Select **Enable hold** to enable torque at the current position.
-3. Confirm that the arm holds its position.
+2. Select the support acknowledgment, then **Enable hold** to enable torque at the current position.
+3. Check that the arm holds its position.
 4. Remove your hands from the arm and its workspace.
-5. Select **Start excitation** to begin motion.
+5. Select the hands-clear acknowledgment, then **Start excitation** to begin motion.
+
+The app shows each acknowledgment at the relevant stage.
+The status above the controls explains the next action and any collection error.
 
 The driver briefly disables torque during connection. An unsupported arm can fall.
 The app transfers serial ownership from the monitor to one collection worker.
@@ -666,9 +671,15 @@ A stopped or disconnected arm can still hold its previous target.
 To release the motors, support the arm first. Then confirm **Release motors** in the app.
 This action disables torque, so an unsupported arm can fall.
 
+After a stopped attempt, select **Reconnect and prepare another attempt**.
+If torque remains enabled, support the arm and use the explicit release control before repeating the motion check.
+A missing orange overlay means that live measurements are unavailable. The app explains how to reconnect.
+
 Each completed episode saves immediately to a new output directory.
-Existing directories are rejected to preserve previous recordings.
+The app chooses a numbered directory for each retry and preserves previous recordings.
 An unsuccessful attempt removes its new output directory only if that directory remains empty.
+Each directory with completed recordings includes the exact collection profile in `source_profile.json`.
+The fitter uses this snapshot, even after later profile edits.
 Recordings contain sent commands, read intervals, host write times, and a digest of the profile coordinate contract.
 Host write times do not measure motor receipt.
 `RecordedTrajectory.load(path)` reads these files without pickle.

@@ -142,7 +142,7 @@ def test_framing_preserves_equal_meter_scale_at_portrait_and_wide_viewports(view
     spans = np.array([np.ptp(getattr(scene, name).range) for name in ("xaxis", "yaxis", "zaxis")])
     ratios = np.array([scene.aspectratio.x, scene.aspectratio.y, scene.aspectratio.z])
     np.testing.assert_allclose(ratios / spans, np.repeat(ratios[0] / spans[0], 3))
-    assert 1.7 < max(ratios[0] / viewport_aspect, ratios[2]) < 2.0
+    assert np.linalg.norm(ratios) == pytest.approx(1.85 * min(viewport_aspect, 1))
 
 
 @pytest.mark.parametrize("viewport_aspect", [0, -1, float("nan"), True])
@@ -212,3 +212,67 @@ def test_joint_focus_persists_during_timer_updates_and_rejects_unknown_joint():
     assert first.layout.uirevision == next_frame.layout.uirevision
     with pytest.raises(ValueError, match="focus_joint"):
         render_overlay(reference_deg, focus_joint="jaw_position")
+
+
+@pytest.mark.parametrize("view", ["front", "side", "top"])
+def test_camera_updates_omit_presets_unless_reset_is_requested(view):
+    figure = render_overlay((0, 0, 0, 0, 0, 45), view=view, camera_reset=False)
+    assert "camera" not in figure.layout.scene.to_plotly_json()
+    camera = {"eye": {"x": 0.7, "y": -0.4, "z": 0.6}, "projection": {"type": "orthographic"}}
+    restored = render_overlay((0, 0, 0, 0, 0, 45), view=view, camera=camera, camera_reset=False)
+    assert restored.layout.scene.camera.to_plotly_json() == camera
+    reset = render_overlay((0, 0, 0, 0, 0, 45), view=view, camera_reset=True)
+    assert reset.layout.scene.camera.projection.type == "orthographic"
+
+
+@pytest.mark.parametrize("pose", [(0, 0, 0, 0, 0, 45), (75, -25, 50, 30, 60, 80)])
+@pytest.mark.parametrize("viewport_aspect", [0.6, 1.5, 2.0])
+def test_arbitrary_orbit_fits_the_entire_bounding_sphere(pose, viewport_aspect):
+    figure = render_overlay(pose, viewport_aspect=viewport_aspect)
+    scene = figure.layout.scene
+    ratios = np.array([scene.aspectratio.x, scene.aspectratio.y, scene.aspectratio.z])
+    spans = np.array([np.ptp(getattr(scene, name).range) for name in ("xaxis", "yaxis", "zaxis")])
+    center = np.array([np.mean(getattr(scene, name).range) for name in ("xaxis", "yaxis", "zaxis")])
+    points = np.column_stack((figure.data[0].x, figure.data[0].y, figure.data[0].z))
+    normalized = (points - center) / spans * ratios
+    for azimuth in np.linspace(0, 2 * np.pi, 13):
+        for elevation in np.linspace(-np.pi / 2, np.pi / 2, 7):
+            right = np.array([np.cos(azimuth), np.sin(azimuth), 0])
+            up = np.array(
+                [
+                    -np.sin(azimuth) * np.sin(elevation),
+                    np.cos(azimuth) * np.sin(elevation),
+                    np.cos(elevation),
+                ]
+            )
+            assert np.max(np.abs(normalized @ right)) < viewport_aspect
+            assert np.max(np.abs(normalized @ up)) < 1
+
+
+def test_expand_bounds_keeps_encoder_jitter_fixed_and_encloses_large_pose_changes():
+    from so101_nexus.calibration.view import expand_bounds, overlay_bounds
+
+    reference = (0, 0, 0, 0, 0, 45)
+    initial = overlay_bounds(reference)
+    assert expand_bounds(initial, reference, (0.01, 0, 0, 0, 0, 45)) == initial
+    measured = (75, -25, 50, 30, 60, 80)
+    expanded = np.array(expand_bounds(initial, reference, measured))
+    assert np.all(expanded[:, 0] <= np.array(initial)[:, 0])
+    assert np.all(expanded[:, 1] >= np.array(initial)[:, 1])
+    assert np.any(expanded != np.array(initial))
+    figure = render_overlay(reference, measured)
+    for trace in figure.data:
+        points = np.column_stack((trace.x, trace.y, trace.z))
+        assert np.all(points > expanded[:, 0])
+        assert np.all(points < expanded[:, 1])
+    assert expand_bounds(expanded.tolist(), reference, reference) == tuple(map(tuple, expanded))
+
+
+def test_expand_bounds_honors_joint_focus_and_validates_existing_ranges():
+    from so101_nexus.calibration.view import expand_bounds, overlay_bounds
+
+    reference = (0, 0, 0, 0, 0, 45)
+    initial = overlay_bounds(reference, focus_joint="wrist_roll")
+    assert expand_bounds(initial, reference, reference, focus_joint="wrist_roll") == initial
+    with pytest.raises(ValueError, match="bounds_m"):
+        expand_bounds(((0, 0),), reference, reference)

@@ -626,12 +626,14 @@ def _prepare_follower_connection(
         position = profile.to_model_deg(
             _joints([normalized[name] for name in SO101_JOINT_NAMES], "hardware start position")
         )
-        if (
-            np.max(np.abs(np.asarray(position) - config.center_qpos_deg))
-            > config.max_start_error_deg
-        ):
+        errors_deg = np.abs(np.asarray(position) - config.center_qpos_deg)
+        joint = int(np.argmax(errors_deg))
+        if errors_deg[joint] > config.max_start_error_deg:
             raise RuntimeError(
-                "hardware start position differs from the verified excitation center"
+                "hardware start position differs from the verified excitation center: "
+                f"{SO101_JOINT_NAMES[joint]} current {position[joint]:.3f} model deg, "
+                f"previewed {config.center_qpos_deg[joint]:.3f} model deg "
+                f"(tolerance {config.max_start_error_deg:.3f} deg)"
             )
         # SOFollower.configure enables torque, so replace any stale servo target first.
         bus.sync_write("Goal_Position", raw, normalize=False)

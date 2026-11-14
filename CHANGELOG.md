@@ -26,7 +26,7 @@ for the public-API and deprecation policy.
 ### Changed
 
 - Guide calibration through connection, one physical joint at a time, jaw checks,
-  and profile saving before offering optional dynamics tuning. Default to
+  and profile saving before offering dynamics tuning. Default to
   `/dev/ttyACM0` and reveal advanced settings only in the relevant step.
 
 - Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,
@@ -44,6 +44,14 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Preserve the calibration viewer camera across live updates and expand framing
+  for changing arm poses and arbitrary rotations.
+- Refresh stale calibration instructions before another capture, without recording
+  a joint against an outdated reference.
+- Read the live pose for dynamics preflight, show sequential hold and start controls,
+  explain stopped attempts inline, and offer explicit reconnect and retry controls.
+  Preserve prior recordings in numbered directories and save the exact collection
+  profile beside completed episodes for later fitting.
 - Fit the calibration robot to a large upright viewport, with named views and wrist
   close-ups. Quarter-turn wrist previews remain provisional until physical capture.
 - Revoke saved-profile associations after coordinate or timing changes and restore

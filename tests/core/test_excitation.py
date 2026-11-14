@@ -828,3 +828,40 @@ def test_collector_readiness_failure_disconnects_without_commands(monkeypatch, p
         collect_excitation(robot, profile, config, on_ready=ready)
     assert not robot.connected
     assert not robot.commands
+
+
+@pytest.mark.parametrize("joint_index", [2, 5])
+def test_start_mismatch_identifies_worst_joint_before_motor_writes(
+    monkeypatch, profile, config, joint_index
+):
+    from so101_nexus.lerobot_adapter.normalization import normalize_ticks
+
+    robot = _prepared_robot(monkeypatch, profile, config)
+    robot.bus.raw_positions["shoulder_pan"] += 100
+    joint = SO101_JOINT_NAMES[joint_index]
+    robot.bus.raw_positions[joint] += 500
+    normalized = normalize_ticks(
+        robot.bus.raw_positions, motors=robot.bus.motors, calibration=robot.calibration
+    )
+    measured = profile.to_model_deg(np.array([normalized[name] for name in SO101_JOINT_NAMES]))
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    monkeypatch.setattr(
+        robot, "connect", lambda **kwargs: pytest.fail("must not configure or enable torque")
+    )
+    with pytest.raises(RuntimeError, match="hardware start position differs") as caught:
+        collect_excitation(robot, profile, config)
+    message = str(caught.value)
+    assert joint in message
+    assert f"{measured[joint_index]:.3f} model deg" in message
+    assert f"previewed {config.center_qpos_deg[joint_index]:.3f} model deg" in message
+    assert f"tolerance {config.max_start_error_deg:.3f} deg" in message
+    assert robot.bus.events == [
+        "read_only_connect",
+        "read_Torque_Enable",
+        "read_Present_Position",
+        "close_without_torque_change",
+    ]
+    assert robot.bus.seeded_positions is None
+    assert not any(robot.bus.torque.values())
+    assert not robot.bus.is_connected
+    assert not robot.commands
