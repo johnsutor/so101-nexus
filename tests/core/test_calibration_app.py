@@ -6,6 +6,14 @@ import pytest
 from so101_nexus import SO101_JOINT_NAMES, RobotProfile, generate_excitation
 
 
+@pytest.fixture(autouse=True)
+def isolated_storage(monkeypatch, tmp_path):
+    monkeypatch.setenv("SO101_NEXUS_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.delenv("SO101_NEXUS_PROFILES_DIR", raising=False)
+    monkeypatch.delenv("SO101_NEXUS_CALIBRATION_DIR", raising=False)
+    monkeypatch.setattr("so101_nexus.calibration.storage.legacy_directories", list)
+
+
 @pytest.fixture
 def profile():
     return RobotProfile(
@@ -644,7 +652,7 @@ def test_live_updates_never_replace_the_mounted_plot(monkeypatch, tmp_path):
 
 def test_saved_profile_opens_completion_without_opening_hardware(profile, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    directory = tmp_path / "runs/calibration"
+    directory = tmp_path / "app-data/profiles"
     directory.mkdir(parents=True)
     (directory / "bad.json").write_text("{}")
     path = directory / "confirmed.json"
@@ -732,6 +740,7 @@ def test_slow_actions_show_progress_outside_hidden_settings():
         "Arm supported, prepare robot",
         "Hands clear, record calibration",
         "Tune simulation",
+        "Dynamics tuning",
         "Preview motion without enabling hold",
         "Reconnect and prepare another attempt",
         "Release motors and prepare another attempt",
@@ -840,3 +849,115 @@ def test_default_gui_isolates_hardware_collection_without_starting_a_process(mon
     assert isinstance(session, IsolatedCalibrationSession)
     assert session.worker is None
     assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def test_profile_discovery_and_default_outputs_ignore_launch_directory(
+    profile, tmp_path, monkeypatch
+):
+    from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.storage import calibration_dir, profiles_dir
+
+    saved = profiles_dir() / "portable.json"
+    profile.save(saved)
+    for name in ("first-launch", "second-launch"):
+        launch = tmp_path / name
+        launch.mkdir()
+        monkeypatch.chdir(launch)
+        app = build_app()
+        config = app.get_config_file()
+        tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+        session, guide = app.fns[tick["id"]].fn.args[:2]
+        assert guide.saved_profile == saved
+        assert guide.stage == 3
+        assert session.monitor is None
+        values = {c["props"].get("label"): c["props"].get("value") for c in config["components"]}
+        assert values["New profile JSON path"] == str(profiles_dir() / "robot_profile.json")
+        assert values["New recordings directory"] == str(calibration_dir() / "recordings")
+        assert values["New fit output directory"] == str(calibration_dir() / "fit")
+
+
+def test_gui_migrates_legacy_before_discovery_without_changing_original(
+    profile, tmp_path, monkeypatch
+):
+    from so101_nexus.calibration import storage
+    from so101_nexus.calibration.app import build_app
+
+    legacy = tmp_path / "old/runs/calibration"
+    original = legacy / "robot.json"
+    profile.save(original)
+    before = original.read_bytes()
+    monkeypatch.setattr(storage, "legacy_directories", lambda: [legacy])
+    app = build_app()
+    dependency = next(
+        d
+        for d in app.get_config_file()["dependencies"]
+        if any(e == "tick" for _, e in d["targets"])
+    )
+    session, guide = app.fns[dependency["id"]].fn.args[:2]
+    assert guide.saved_profile == storage.profiles_dir() / "robot.json"
+    assert guide.stage == 3
+    assert original.read_bytes() == before
+    assert session.monitor is None
+
+
+def test_native_profile_import_copies_upload_and_waits_for_live_verification(profile, tmp_path):
+    from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.storage import profiles_dir
+
+    gr = pytest.importorskip("gradio")
+    app = build_app()
+    config = app.get_config_file()
+    upload = next(c for c in config["components"] if c["type"] == "uploadbutton")
+    assert upload["props"]["file_types"] == [".json"]
+    event = next(d for d in config["dependencies"] if (upload["id"], "upload") in d["targets"])
+    callback = app.fns[event["id"]].fn
+    source = tmp_path / "upload/exported.json"
+    profile.save(source)
+    update = callback(str(source))
+    saved = profiles_dir() / "exported.json"
+    assert update["value"] == str(saved)
+    assert RobotProfile.load(saved) == profile
+    source.unlink()
+    tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+    session, guide = app.fns[tick["id"]].fn.args[:2]
+    assert guide.saved_profile == saved
+    assert guide.stage == 3
+    assert session.profile is None
+    assert not session.confirmed
+    assert session.monitor is None
+    source.write_text("{}")
+    with pytest.raises(gr.Error):
+        callback(str(source))
+    assert list(profiles_dir().glob("*.json")) == [saved]
+
+
+def test_filesystem_controls_remain_in_collapsed_advanced_settings():
+    from so101_nexus.calibration.app import build_app
+
+    config = build_app().get_config_file()
+    components = {item["id"]: item for item in config["components"]}
+
+    def ancestors(node, target, parents=()):
+        if node["id"] == target:
+            return parents
+        for child in node.get("children", []):
+            found = ancestors(child, target, (*parents, node["id"]))
+            if found is not None:
+                return found
+        return None
+
+    for item in config["components"]:
+        if item["props"].get("label") in {
+            "New profile JSON path",
+            "New recordings directory",
+            "New fit output directory",
+            "Recorded dataset directory",
+            "Previous calibration directory",
+        }:
+            parents = ancestors(config["layout"], item["id"])
+            assert any(
+                components[parent]["type"] == "accordion"
+                and not components[parent]["props"]["open"]
+                for parent in parents
+                if parent in components
+            )

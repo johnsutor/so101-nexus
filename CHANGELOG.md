@@ -25,6 +25,13 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Keep calibration profiles, recordings, and fitted results in persistent per-user
+  application data using platformdirs, with directory overrides. Discover saved
+  profiles across launch directories, support native profile import and export,
+  and copy legacy calibration data without removing originals. Reconnect from a
+  durable profile when LeRobot's cached encoder file is unavailable. Reuse complete,
+  validated recordings matching that profile after a restart or migration.
+
 - Simplify dynamics tuning to prepare, record, and tune. One start records both
   training motions and the independent check, with an up-front run plan and live
   progress. Preparation combines the pose read, motion check, and explicit hold

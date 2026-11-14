@@ -69,6 +69,15 @@ def default_calibration_dir() -> Path:
     return root / ROBOTS / "so_follower"
 
 
+def _matches_calibration(profile: RobotProfile, actual: dict[str, Any]) -> bool:
+    # Feetech drive direction lives in the saved file, not a motor register.
+    fields = ("id", "homing_offset", "range_min", "range_max")
+    return all(
+        all(profile.calibration[name][key] == asdict(actual[name])[key] for key in fields)
+        for name in SO101_JOINT_NAMES
+    )
+
+
 class ReadOnlyFollower:
     """Inspect encoders and registers without enabling torque or configuring motors.
 
@@ -157,18 +166,23 @@ class ReadOnlyFollower:
         for path in sorted(self.calibration_dir.glob("*.json")):
             try:
                 profile = RobotProfile.from_lerobot(path, robot_id=path.stem, servo_gains=gains)
-                # Feetech drive direction lives in the file, not a motor register.
-                fields = ("id", "homing_offset", "range_min", "range_max")
-                if all(
-                    all(
-                        profile.calibration[name][key] == asdict(actual[name])[key]
-                        for key in fields
-                    )
-                    for name in SO101_JOINT_NAMES
-                ):
+                if _matches_calibration(profile, actual):
                     matches.append((path, profile))
             except (ValueError, TypeError, OSError) as error:
                 errors.append(f"{path.name}: {error}")
+        if not matches:
+            from so101_nexus.calibration.storage import saved_profiles
+
+            for path in saved_profiles():
+                try:
+                    candidate = RobotProfile.load(path)
+                    profile = RobotProfile(
+                        candidate.robot_id, candidate.calibration, servo_gains=gains
+                    )
+                    if _matches_calibration(profile, actual):
+                        matches.append((path, profile))
+                except (ValueError, TypeError, OSError) as error:
+                    errors.append(f"{path.name}: {error}")
         if not matches:
             detail = "; ".join(errors)
             raise ValueError(

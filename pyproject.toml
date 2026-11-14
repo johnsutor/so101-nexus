@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy<3",
+    "platformdirs>=4,<5",
     "huggingface_hub<2",
     "trimesh<5",
     "scipy<2",

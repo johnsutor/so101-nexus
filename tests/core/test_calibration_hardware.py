@@ -12,7 +12,10 @@ from so101_nexus.config import SO101_JOINT_NAMES
 
 
 @pytest.fixture
-def hardware(tmp_path):
+def hardware(tmp_path, monkeypatch):
+    monkeypatch.setenv("SO101_NEXUS_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.delenv("SO101_NEXUS_PROFILES_DIR", raising=False)
+    monkeypatch.delenv("SO101_NEXUS_CALIBRATION_DIR", raising=False)
     from lerobot.motors import MotorCalibration
 
     calibration = {
@@ -167,3 +170,64 @@ def test_discovery_does_not_open_serial_ports(monkeypatch):
         lambda: [SimpleNamespace(device="/dev/ttyACM1"), SimpleNamespace(device="/dev/ttyACM0")],
     )
     assert discover_ports() == ["/dev/ttyACM0", "/dev/ttyACM1"]
+
+
+def test_saved_profile_reconnects_after_disposable_calibration_is_removed(
+    hardware, tmp_path, monkeypatch
+):
+    from so101_nexus import RobotProfile
+    from so101_nexus.calibration.storage import profiles_dir
+
+    monitor, bus = hardware
+    monkeypatch.setenv("SO101_NEXUS_DATA_DIR", str(tmp_path / "durable"))
+    source = monitor.calibration_dir / "arm.json"
+    saved = profiles_dir() / "robot.json"
+    original = RobotProfile.from_lerobot(source, robot_id="arm")
+    original.save(saved)
+    source.unlink()
+    profile = monitor.connect()
+    try:
+        assert profile.calibration == original.calibration
+        assert profile.servo_gains == (16, 0, 32)
+        assert monitor.calibration_path == saved
+        np.testing.assert_allclose(monitor.read(), [0, 0, 0, 0, 0, 50])
+        assert all(
+            event[0] in {"connect", "disconnect", "read", "read_calibration", "ping"}
+            for event in bus.events
+        )
+    finally:
+        monitor.close()
+
+
+def test_durable_fallback_still_rejects_changed_motor_calibration(hardware, tmp_path, monkeypatch):
+    from so101_nexus import RobotProfile
+    from so101_nexus.calibration.storage import profiles_dir
+
+    monitor, bus = hardware
+    monkeypatch.setenv("SO101_NEXUS_DATA_DIR", str(tmp_path / "durable"))
+    source = monitor.calibration_dir / "arm.json"
+    RobotProfile.from_lerobot(source, robot_id="arm").save(profiles_dir() / "robot.json")
+    source.unlink()
+    bus.calibration_read["shoulder_pan"].range_max = 3999
+    with pytest.raises(ValueError, match="matching calibration"):
+        monitor.connect()
+    assert not bus.is_connected
+
+
+def test_durable_fallback_rejects_conflicting_software_directions(hardware):
+    from dataclasses import replace
+
+    from so101_nexus import RobotProfile
+    from so101_nexus.calibration.storage import profiles_dir
+
+    monitor, bus = hardware
+    source = monitor.calibration_dir / "arm.json"
+    profile = RobotProfile.from_lerobot(source, robot_id="arm")
+    profile.save(profiles_dir() / "first.json")
+    calibration = {name: dict(value) for name, value in profile.calibration.items()}
+    calibration["wrist_roll"]["drive_mode"] = 1
+    replace(profile, calibration=calibration).save(profiles_dir() / "second.json")
+    source.unlink()
+    with pytest.raises(ValueError, match="Ambiguous"):
+        monitor.connect()
+    assert not bus.is_connected

@@ -12,6 +12,10 @@ from so101_nexus.profiles import RobotProfile
 
 @pytest.fixture
 def workflow(tmp_path, monkeypatch):
+    monkeypatch.setenv("SO101_NEXUS_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.delenv("SO101_NEXUS_PROFILES_DIR", raising=False)
+    monkeypatch.delenv("SO101_NEXUS_CALIBRATION_DIR", raising=False)
+    monkeypatch.setattr("so101_nexus.calibration.storage.legacy_directories", list)
     gr = pytest.importorskip("gradio")
     import plotly.graph_objects as go
 
@@ -100,9 +104,12 @@ def workflow(tmp_path, monkeypatch):
         component = next(
             c
             for c in config["components"]
-            if c["props"].get("label") == label
-            or c["props"].get("elem_id") == label
-            or c["props"].get("value") == label
+            if c["id"] in tick_dependency["outputs"]
+            and (
+                c["props"].get("label") == label
+                or c["props"].get("elem_id") == label
+                or c["props"].get("value") == label
+            )
         )
         return tick("multisine", 0, 1.5)[tick_dependency["outputs"].index(component["id"])]
 
@@ -475,7 +482,7 @@ def test_reconnect_finds_matching_profile_without_recalibration(workflow, monkey
 
     ui = workflow
     monkeypatch.chdir(ui.directory)
-    directory = ui.directory / "runs/calibration"
+    directory = ui.directory / "app-data/profiles"
     directory.mkdir(parents=True)
     matching = directory / "matching_robot.json"
     ui.session.profile.save(matching)
@@ -568,3 +575,54 @@ def test_newly_saved_profile_is_immediately_selectable(workflow):
     choice = result[-1]
     assert choice["value"] == str(path)
     assert any(value == str(path) for _, value in choice["choices"])
+
+
+def test_dynamics_reuses_persistent_matching_recordings_after_restart(workflow):
+    from so101_nexus.calibration.storage import calibration_dir
+    from so101_nexus.excitation import RecordedTrajectory, profile_digest
+
+    ui = workflow
+    recordings = calibration_dir() / "legacy/snapshot/recordings"
+    recordings.mkdir(parents=True)
+    ui.session.profile.save(recordings / "source_profile.json")
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+        RecordedTrajectory(
+            name,
+            "train" if index < 2 else "validation",
+            np.array([0, 0.02]),
+            np.array([0.001, 0.021]),
+            np.zeros((2, 6)),
+            np.zeros((2, 6)),
+            profile_digest(ui.session.profile),
+        ).save(recordings / f"{index:02d}_{name}.npz")
+    ui.callback("Dynamics tuning")()
+    ui.tick()
+    assert ui.session.collection_complete
+    assert ui.session.recordings_dir == recordings
+    assert ui.viewport.tuning_step == 2
+    assert ui.update("Tune simulation")["interactive"]
+    assert ui.session.worker is None
+
+
+def test_dynamics_does_not_restore_incomplete_or_mismatched_recordings(workflow):
+    from dataclasses import replace
+
+    from so101_nexus.calibration.storage import calibration_dir
+
+    ui = workflow
+    for label in ("incomplete", "different-profile", "corrupt"):
+        recordings = calibration_dir() / label
+        recordings.mkdir(parents=True)
+        source = (
+            ui.session.profile
+            if label != "different-profile"
+            else replace(ui.session.profile, control_period_s=0.03)
+        )
+        source.save(recordings / "source_profile.json")
+        for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+            if label != "incomplete" or index != 2:
+                (recordings / f"{index:02d}_{name}.npz").touch()
+    ui.callback("Dynamics tuning")()
+    assert not ui.session.collection_complete
+    assert ui.session.recordings_dir is None
+    assert ui.viewport.tuning_step == 0

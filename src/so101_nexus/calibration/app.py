@@ -11,13 +11,20 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from zipfile import BadZipFile
 
 import numpy as np
 
+from so101_nexus.calibration import storage
 from so101_nexus.calibration.guide import CalibrationGuide
 from so101_nexus.calibration.view import expand_bounds, overlay_bounds, render_overlay
 from so101_nexus.config import SO101_JOINT_NAMES
-from so101_nexus.excitation import ExcitationConfig, generate_excitation, profile_digest
+from so101_nexus.excitation import (
+    ExcitationConfig,
+    RecordedTrajectory,
+    generate_excitation,
+    profile_digest,
+)
 
 if TYPE_CHECKING:
     from so101_nexus.calibration.session import CalibrationSession
@@ -251,6 +258,38 @@ def _dataset_complete(session):
     return source is not None and profile_digest(source) == profile_digest(session.profile)
 
 
+def _restore_recordings(session):
+    if _dataset_complete(session):
+        return
+    sources = sorted(
+        storage.calibration_dir().rglob("source_profile.json"),
+        key=lambda path: path.stat().st_mtime_ns,
+        reverse=True,
+    )
+    for source in sources:
+        profile = _read_profile(source)
+        if profile is None or profile_digest(profile) != profile_digest(session.profile):
+            continue
+        files = [
+            source.parent / f"{index:02d}_{name}.npz"
+            for index, (name, _) in enumerate(_DATASET_RUNS)
+        ]
+        try:
+            for index, (path, (name, _)) in enumerate(zip(files, _DATASET_RUNS, strict=True)):
+                recording = RecordedTrajectory.load(path)
+                recording.validate_profile(session.profile)
+                if recording.name != name or recording.split != (
+                    "train" if index < 2 else "validation"
+                ):
+                    raise ValueError("Recording does not match its expected motion and split.")
+        except (OSError, ValueError, KeyError, TypeError, EOFError, BadZipFile):
+            continue
+        session.recordings_dir = source.parent
+        session.collection_complete = True
+        session.artifacts = list(dict.fromkeys([*session.artifacts, str(source), *map(str, files)]))
+        return
+
+
 def _dataset_summary(session):
     duration = session.config.duration_s if session.config else 20
     directory = session.recordings_dir
@@ -398,10 +437,24 @@ def _connection_settings(gr, ui):
             label="Saved robot profile",
         )
         ui["load"] = gr.Button("Load matched profile", interactive=False)
+        ui["import_profile"] = gr.UploadButton(
+            "Import profile", file_types=[".json"], type="filepath"
+        )
         gr.Markdown(
             "Choose a confirmed Nexus profile. Loading connects read-only and requires "
             "matching motor calibration."
         )
+
+    with gr.Accordion("Advanced storage and migration", open=False):
+        gr.Markdown(
+            "Profiles and calibration data are kept in persistent application storage, "
+            "separate from disposable caches. Export a profile using its download below."
+        )
+        ui["legacy_directory"] = gr.Textbox(
+            str(Path.cwd() / "runs/calibration"), label="Previous calibration directory"
+        )
+        ui["migrate_legacy"] = gr.Button("Import previous calibration folder")
+        ui["migration_status"] = gr.Markdown("")
 
 
 def _alignment_controls(gr, ui):
@@ -471,7 +524,7 @@ def _profile_controls(gr, ui):
     ui["edit_profile"] = gr.Button("Recalibrate robot")
     with gr.Accordion("Save location and control timing", open=False):
         ui["profile_output"] = gr.Textbox(
-            "runs/calibration/robot_profile.json", label="New profile JSON path"
+            str(storage.profiles_dir() / "robot_profile.json"), label="New profile JSON path"
         )
         ui["period"] = gr.Number(0.02, label="Command period (seconds)")
     ui["tune"] = gr.Button("Dynamics tuning", visible=False)
@@ -503,7 +556,7 @@ def _motion_controls(gr, ui):
         ui["table"] = gr.Number(0, label="Table height relative to base (meters)")
         ui["seed"] = gr.Number(0, precision=0, label="Trajectory seed")
         ui["output_dir"] = gr.Textbox(
-            "runs/calibration/recordings", label="New recordings directory"
+            str(storage.calibration_dir() / "recordings"), label="New recordings directory"
         )
         ui["preview"] = gr.Button("Preview motion without enabling hold")
         ui["trajectory_plot"] = gr.Plot(label="Planned joint motion (model deg)")
@@ -575,9 +628,13 @@ def _fit_controls(gr, ui):
         )
     with gr.Accordion("Fit settings and recording paths", open=False):
         ui["fit_recordings"] = gr.Textbox(
-            "runs/calibration/recordings", label="Recorded dataset directory", interactive=False
+            str(storage.calibration_dir() / "recordings"),
+            label="Recorded dataset directory",
+            interactive=False,
         )
-        ui["fit_output"] = gr.Textbox("runs/calibration/fit", label="New fit output directory")
+        ui["fit_output"] = gr.Textbox(
+            str(storage.calibration_dir() / "fit"), label="New fit output directory"
+        )
         ui["max_iters"] = gr.Number(100, precision=0, label="Maximum optimizer iterations")
 
 
@@ -719,7 +776,7 @@ def _guide_updates(gr, guide):
 
 def _suggest_path(session):
     name = session.profile.robot_id if session.profile else "robot"
-    path = Path("runs/calibration") / f"{name}_profile.json"
+    path = storage.profiles_dir() / f"{name}_profile.json"
     if path.exists():
         path = path.with_stem(f"{path.stem}_{datetime.now(UTC):%Y%m%dT%H%M%SZ}")
     return str(path)
@@ -1148,6 +1205,47 @@ def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_ou
     )
 
 
+def _wire_storage(gr, ui, session, guide, perform, sync, guide_outputs):
+    def select(paths):
+        choices = _saved_profiles()
+        selected = paths[0] if paths else (choices[0] if choices else None)
+        if selected is not None and session.profile is None:
+            guide.saved_profile = selected
+            guide.stage = 3
+        return gr.update(
+            choices=[(path.stem, str(path)) for path in choices],
+            value=str(selected) if selected else None,
+        )
+
+    def imported(path):
+        with session.lock:
+            perform(session._idle)
+            saved = perform(storage.import_profile, path)
+            update = select([saved])
+        gr.Info(
+            "Profile imported. Connect the saved robot or load it against your connected robot."
+        )
+        return update
+
+    ui["import_profile"].upload(
+        imported, ui["import_profile"], ui["saved_profile"], **_loading(ui)
+    ).then(sync, outputs=guide_outputs)
+
+    def migrated(path):
+        with session.lock:
+            perform(session._idle)
+            paths = perform(storage.migrate_legacy, path)
+            update = select(paths)
+        return update, "Previous calibration files were copied. All originals were preserved."
+
+    ui["migrate_legacy"].click(
+        migrated,
+        ui["legacy_directory"],
+        [ui["saved_profile"], ui["migration_status"]],
+        **_loading(ui),
+    ).then(sync, outputs=guide_outputs)
+
+
 def _wire_profile(gr, app, ui, session, guide, viewport):
     from so101_nexus.calibration.hardware import discover_ports
 
@@ -1269,6 +1367,7 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         **_loading(ui),
     )
 
+    _wire_storage(gr, ui, session, guide, perform, sync, guide_outputs)
     _wire_scene(gr, ui, guide, viewport, perform)
     _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_outputs)
     return perform
@@ -1396,12 +1495,19 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
             "Support the arm in a raised pose, then prepare the robot. "
             "Preparation checks all three motions before enabling hold."
         )
+        perform(_restore_recordings, session)
         viewport.tuning = True
-        viewport.tuning_step = 0
+        viewport.tuning_step = 2 if _dataset_complete(session) else 0
         viewport.fit()
-        return gr.update(visible=True), gr.update(visible=False), gr.Walkthrough(selected=0)
+        return (
+            gr.update(visible=True),
+            gr.update(visible=False),
+            gr.Walkthrough(selected=viewport.tuning_step),
+        )
 
-    ui["tune"].click(begin, outputs=[ui["dynamics"], ui["walkthrough"], ui["tuning_steps"]])
+    ui["tune"].click(
+        begin, outputs=[ui["dynamics"], ui["walkthrough"], ui["tuning_steps"]], **_loading(ui)
+    )
 
     def finish():
         with session.lock:
@@ -1469,17 +1575,8 @@ def _reconnect_saved_profile(session, guide, viewport, port, directory):
             session.artifacts = list(dict.fromkeys([*session.artifacts, *artifacts]))
 
 
-def _saved_profiles(directory: Path = Path("runs/calibration")) -> list[Path]:
-    from so101_nexus.profiles import RobotProfile
-
-    profiles = []
-    for path in directory.glob("*.json"):
-        try:
-            RobotProfile.load(path)
-            profiles.append(path.resolve())
-        except (OSError, ValueError, TypeError, KeyError):
-            continue
-    return sorted(profiles, key=lambda path: path.stat().st_mtime_ns, reverse=True)
+def _saved_profiles(directory: Path | None = None) -> list[Path]:
+    return storage.saved_profiles(directory)
 
 
 def build_app(session: CalibrationSession | None = None) -> Any:
@@ -1491,12 +1588,33 @@ def build_app(session: CalibrationSession | None = None) -> Any:
 
         session = IsolatedCalibrationSession()
     guide, viewport, ui = CalibrationGuide(session), _Viewport(), {}
+    migration_errors = []
+    for source in storage.legacy_directories():
+        if source.is_dir():
+            try:
+                storage.migrate_legacy(source)
+            except (OSError, ValueError) as error:
+                migration_errors.append(str(error))
     candidates = _saved_profiles()
     guide.saved_profile = session.profile_path or (candidates[0] if candidates else None)
     if guide.saved_profile:
         guide.stage = 3
     with gr.Blocks(title="SO Nexus Calibration", fill_width=True) as app:
         _build_layout(gr, ui, guide)
+        if migration_errors:
+            ui["migration_status"].value = "Previous files could not be imported: " + html.escape(
+                "; ".join(migration_errors)
+            )
+            app.load(
+                lambda: gr.Warning(
+                    "Previous calibration files could not be imported. "
+                    "Open Advanced storage and migration to retry. Originals remain safe.",
+                    title="Calibration import",
+                    duration=None,
+                ),
+                queue=True,
+                show_progress="hidden",
+            )
         perform = _wire_profile(gr, app, ui, session, guide, viewport)
         _wire_tuning(gr, ui, session, guide, viewport, perform)
         tick = partial(_tick, session, guide, viewport)

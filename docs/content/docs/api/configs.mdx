@@ -72,6 +72,35 @@ It rejects conflicting calibration files or environment profiles.
 When physics configuration is omitted, environments and this adapter select the profile command interval.
 They choose physics substeps that divide this interval without exceeding the default timestep.
 
+### Calibration storage
+
+Robot profiles and dynamics calibration are durable application data, separate from disposable caches.
+The GUI discovers saved profiles independently of its working directory.
+On Linux, the defaults are `~/.local/share/so101-nexus/profiles/` and `~/.local/share/so101-nexus/calibration/`.
+`platformdirs` selects the platform's user data directory, including `XDG_DATA_HOME` on Linux.
+It uses Application Support on macOS and local application data on Windows.
+
+| Environment variable | Default |
+| --- | --- |
+| `SO101_NEXUS_DATA_DIR` | Platform user data directory for `so101-nexus` |
+| `SO101_NEXUS_PROFILES_DIR` | `profiles/` under the application data directory |
+| `SO101_NEXUS_CALIBRATION_DIR` | `calibration/` under the application data directory |
+
+Overrides must be absolute paths; `~` is expanded.
+Back up these directories. Their contents include operator-verified physical calibration and recordings.
+A durable profile includes the encoder calibration needed to reconnect after clearing LeRobot's cache.
+Reconnect still checks the live motor registers and servo gains before restoring alignment.
+
+The GUI copies legacy `runs/calibration` files from its launch directory or source checkout on startup.
+It preserves the originals and stores complete, versioned snapshots under `calibration/legacy/`.
+Valid top-level profiles also enter the saved-profile selector.
+Repeated migration reuses identical snapshots, and filename conflicts preserve both profiles.
+Dynamics tuning reuses the latest complete recording set matching the connected profile.
+It checks each recording before restoring it, including its profile identity and training or validation split.
+For files elsewhere, use **Import previous calibration folder** under **Advanced storage and migration**.
+**Import profile** copies a selected JSON file into durable storage.
+Profile downloads export portable files for another machine.
+
 ### Excitation timing
 
 `ExcitationConfig.max_wakeup_lateness_s` defaults to 0.25 seconds.

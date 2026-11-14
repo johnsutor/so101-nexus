@@ -624,12 +624,17 @@ The app captures encoder readings directly, so angle transcription is unnecessar
 Body-joint alignment and gripper endpoint mapping are separate steps.
 The [profile reference](/docs/api/configs#robot-profiles) defines the units, endpoint mapping, and saved fields.
 
-The app opens the profile pane when it finds a saved Nexus profile in `runs/calibration`.
+The app opens the profile pane when it finds a saved Nexus profile in persistent application storage.
+Saved profiles are available regardless of the directory used to launch the app.
 Select **Connect saved robot** to verify the profile against the follower's motor calibration.
 The app finds a profile with matching motor calibration and restores its completed alignment without new reference captures.
 **Recalibrate robot** starts again at the first joint and preserves the saved file.
 Connect the robot before starting recalibration.
-The **Connection and saved profile** settings also accept a profile from another location.
+Use **Import profile** in **Connection and saved profile** to select a profile from another machine.
+Download the aligned or tuned profile to export it.
+Older calibration files are copied automatically when found; their originals are preserved.
+**Advanced storage and migration** can import an older calibration folder from another location.
+Storage defaults and environment overrides are listed in [Calibration storage](/docs/api/configs#calibration-storage).
 LeRobot encoder calibration alone does not establish physical model alignment.
 
 ### Prepare dynamics calibration
