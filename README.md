@@ -14,9 +14,32 @@ then fine-tune with reinforcement learning. One Python library connects the work
 
 ## Get started
 
-Follow [Installation](https://so101-nexus.com/docs/getting-started/installation), then
-run your first simulated robot with the [Quickstart](https://so101-nexus.com/docs/getting-started/quickstart).
-No hardware is required.
+With Python 3.12 or newer, install the library:
+
+```bash
+pip install so101-nexus
+```
+
+Run a simulated robot. No hardware is required:
+
+```python
+import gymnasium as gym
+import so101_nexus.mujoco  # registers the MuJoCo environments
+
+env = gym.make("MuJoCoPickLift-v1", render_mode="human")
+obs, info = env.reset(seed=0)
+env.action_space.seed(0)
+
+for _ in range(1000):
+    obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+    if terminated or truncated:
+        obs, info = env.reset()
+
+env.close()
+```
+
+See [Installation](https://so101-nexus.com/docs/getting-started/installation) for optional extras and source setup.
+The [Quickstart](https://so101-nexus.com/docs/getting-started/quickstart) explains the example and shows how to change objects.
 
 To train without a local setup, open the
 [BC + PPO Colab notebook](https://colab.research.google.com/github/johnsutor/so101-nexus/blob/main/examples/bc_ppo_warp_colab.ipynb).

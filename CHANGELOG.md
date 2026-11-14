@@ -9,6 +9,11 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Changed
+
+- Keep installation and a runnable simulation example in the README alongside
+  links to the full guides.
+
 ## [0.12.0] - 2026-11-14
 
 ### Added
