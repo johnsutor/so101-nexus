@@ -53,7 +53,7 @@ Select a GPU runtime and run all cells with the published demonstrations.
 
 [Environments](https://so101-nexus.com/docs/environments) lists the tasks.
 [Examples](examples/README.md) lists the scripts and notebooks.
-MuJoCo provides Gymnasium simulation and CPU batching; the optional Warp backend provides GPU batching.
+MuJoCo provides Gymnasium simulation and CPU batching. The optional Warp backend provides GPU batching.
 See [Backends](https://so101-nexus.com/docs/concepts/backends) for requirements and physics differences.
 
 This library is in beta. See [Stability and versioning](https://so101-nexus.com/docs/api/stability) before you depend on an API.
