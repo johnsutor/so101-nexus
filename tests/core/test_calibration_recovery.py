@@ -345,3 +345,16 @@ def test_worker_failure_publishes_queued_warning_and_persistent_alert(workflow, 
     repeated = ui.tick()[-2]
     assert repeated["sequence"] == event["sequence"] + 1
     assert repeated["message"] == event["message"]
+
+
+def test_hardware_arming_has_an_indeterminate_indicator_until_holding(workflow):
+    ui = workflow
+    ui.session._close_monitor()
+    ui.session.phase = "arming"
+    updates = ui.tick()
+    indicator = updates[-3]
+    assert indicator["visible"]
+    assert '<progress aria-label="Preparing robot">' in indicator["value"]
+    assert "Keep supporting the arm" in indicator["value"]
+    ui.session.phase = "holding"
+    assert not ui.tick()[-3]["visible"]

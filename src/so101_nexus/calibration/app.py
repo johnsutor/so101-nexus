@@ -125,6 +125,10 @@ def _call(gr, session, function, *args, **kwargs):
         return None
 
 
+def _loading(ui, target="activity"):
+    return {"show_progress": "full", "show_progress_on": ui[target]}
+
+
 def _plan(session, *values):
     if session.profile is None:
         raise ValueError("Connect a follower or load its matched profile before previewing motion.")
@@ -480,6 +484,7 @@ def _motion_controls(gr, ui):
         ui["fraction"] = gr.Slider(0, 1, value=0, step=0.01, label="Position within episode")
     ui["hold_setup"] = gr.Column()
     with ui["hold_setup"]:
+        ui["hold_activity"] = gr.Markdown("", min_height=44, elem_id="calibration-prepare-activity")
         ui["hold"] = gr.Button("Arm supported, prepare robot", variant="primary")
     gr.Markdown("The simulation checks the robot and table. Keep the real workspace clear.")
 
@@ -515,6 +520,7 @@ def _fit_controls(gr, ui):
         "simulator, then see how closely it matches the independent check recording. "
         "This step does not move the robot or change its motor settings."
     )
+    ui["fit_activity"] = gr.Markdown("", min_height=44, elem_id="calibration-fit-activity")
     ui["fit"] = gr.Button("Tune simulation", variant="primary", interactive=False)
     ui["fit_summary"] = gr.Markdown("")
     ui["tuned_profile"] = gr.File(label="Tuned robot profile", interactive=False, visible=False)
@@ -556,6 +562,7 @@ def _build_guide(gr, ui, stage):
     with gr.Column(visible=False, min_width=0, elem_id="dynamics-workflow") as ui["dynamics"]:
         ui["failure_event"] = gr.JSON(visible=False, label="Collection failure event")
         ui["failure_alert"] = gr.HTML(visible=False)
+        ui["worker_activity"] = gr.HTML(visible=False)
         ui["tuning_status"] = gr.Markdown("")
         gr.Markdown(
             "Your physical alignment is saved. Follow these steps to match the simulator's motion."
@@ -635,6 +642,7 @@ def _build_layout(gr, ui, guide):
         with gr.Column(scale=8, min_width=320, elem_classes="calibration-scene"):
             _build_scene(gr, ui)
         with gr.Column(scale=3, min_width=320):
+            ui["activity"] = gr.Markdown("", min_height=44, elem_id="calibration-activity")
             _build_guide(gr, ui, guide.stage)
             ui["progress"] = gr.Markdown("")
             ui["reconnect"] = gr.Button("Connect saved robot", visible=False)
@@ -930,6 +938,11 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             viewport.fit_summary
             if viewport.fitted_dataset == session.recordings_dir
             else gr.skip(),
+            gr.update(
+                value='<div role="status"><progress aria-label="Preparing robot"></progress>'
+                "<p>Enabling hold. Keep supporting the arm.</p></div>",
+                visible=phase == "arming",
+            ),
             {"sequence": session.failure_sequence, "message": session.collection_error}
             if session.collection_error
             else None,
@@ -1041,7 +1054,7 @@ def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_ou
         guide.saved_profile = session.profile_path or guide.saved_profile
         perform(guide.connect, port, directory)
 
-    ui["reconnect"].click(reconnect, [ui["port"], ui["calibration_dir"]]).then(
+    ui["reconnect"].click(reconnect, [ui["port"], ui["calibration_dir"]], **_loading(ui)).then(
         sync, outputs=guide_outputs
     ).then(
         restore,
@@ -1089,8 +1102,11 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         connect,
         [ui["port"], ui["calibration_dir"]],
         [ui["profile_output"], ui["grip_confirm"]],
+        **_loading(ui),
     ).then(sync, outputs=guide_outputs)
-    ui["discover"].click(lambda: gr.update(choices=discover_ports()), outputs=ui["port"])
+    ui["discover"].click(
+        lambda: gr.update(choices=discover_ports()), outputs=ui["port"], **_loading(ui)
+    )
 
     def load(path, port, directory):
         with session.lock:
@@ -1103,6 +1119,7 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         load,
         [ui["saved_profile"], ui["port"], ui["calibration_dir"]],
         [ui["period"], ui["grip_low"], ui["grip_high"]],
+        **_loading(ui),
     ).then(sync, outputs=guide_outputs).then(
         lambda: str(session.profile_path), outputs=ui["profile_output"]
     )
@@ -1125,6 +1142,7 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         capture,
         [ui["reference_angle"], ui["shown_reference"], ui["instruction_joint"]],
         [ui["capture"], ui["capture_notice"]],
+        **_loading(ui),
     ).then(sync, outputs=guide_outputs)
     ui["edit_profile"].click(lambda: perform(guide.recalibrate)).then(sync, outputs=guide_outputs)
     for name in ("previous", "back_body"):
@@ -1147,7 +1165,10 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         )
 
     ui["save"].click(
-        save, [ui["profile_output"], ui["period"]], [ui["profile_message"], ui["tune"]]
+        save,
+        [ui["profile_output"], ui["period"]],
+        [ui["profile_message"], ui["tune"]],
+        **_loading(ui),
     )
 
     _wire_scene(gr, ui, guide, viewport, perform)
@@ -1169,7 +1190,7 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         return plot, gr.Walkthrough(selected=0), *center
 
     check_outputs = [ui["trajectory_plot"], ui["tuning_steps"], *ui["centers"]]
-    ui["preview"].click(check, [ui["manual_center"], *settings], check_outputs)
+    ui["preview"].click(check, [ui["manual_center"], *settings], check_outputs, **_loading(ui))
 
     def prepare(path, manual_center, *values):
         checked = check(manual_center, *values)
@@ -1188,9 +1209,13 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         prepare,
         [ui["output_dir"], ui["manual_center"], *settings],
         [*check_outputs, ui["output_dir"]],
+        **_loading(ui, "hold_activity"),
     ).then(lambda: "", outputs=ui["fit_summary"])
     ui["start"].click(
-        lambda *values: _start_motion(gr, session, True, *values), settings, queue=False
+        lambda *values: _start_motion(gr, session, True, *values),
+        settings,
+        queue=False,
+        **_loading(ui),
     )
 
     def retry(port, directory):
@@ -1210,7 +1235,7 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
 
     retry_inputs = [ui["port"], ui["calibration_dir"]]
     retry_outputs = [ui["tuning_steps"]]
-    ui["retry"].click(retry, retry_inputs, retry_outputs)
+    ui["retry"].click(retry, retry_inputs, retry_outputs, **_loading(ui))
 
     def release_and_retry(supported, port, directory):
         perform(session.release, supported=supported)
@@ -1221,6 +1246,7 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         release_and_retry,
         [ui["tuning_release_supported"], *retry_inputs],
         [*retry_outputs, ui["tuning_release_supported"]],
+        **_loading(ui),
     )
 
 
@@ -1257,7 +1283,9 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         return gr.update(visible=False), gr.Walkthrough(visible=True, selected=3)
 
     ui["return_profile"].click(finish, outputs=[ui["dynamics"], ui["walkthrough"]])
-    ui["current"].click(partial(_current_center, gr, session), outputs=ui["centers"])
+    ui["current"].click(
+        partial(_current_center, gr, session), outputs=ui["centers"], **_loading(ui)
+    )
 
     def edited(*values):
         _call(gr, session, _plan, session, *values)
@@ -1271,6 +1299,7 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         partial(_fit_candidate, gr, session, viewport),
         [ui["fit_recordings"], ui["fit_output"], ui["max_iters"]],
         [ui["errors"], ui["diagnostics"], ui["fit_summary"]],
+        **_loading(ui, "fit_activity"),
     )
 
 
@@ -1335,6 +1364,7 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "fit",
                 "tuned_profile",
                 "fit_summary",
+                "worker_activity",
                 "failure_event",
                 "failure_alert",
             )
@@ -1350,11 +1380,12 @@ def build_app(session: CalibrationSession | None = None) -> Any:
         timer.tick(tick, inputs, outputs, js=_MEASURE_VIEW, queue=False, show_progress="hidden")
         app.load(tick, inputs, outputs, js=_MEASURE_VIEW)
         ui["stop"].click(session.stop, queue=False)
-        ui["disconnect"].click(lambda: perform(session.disconnect), queue=False)
+        ui["disconnect"].click(lambda: perform(session.disconnect), queue=False, **_loading(ui))
         ui["release"].click(
             lambda supported: perform(session.release, supported=supported),
             ui["release_supported"],
             queue=False,
+            **_loading(ui),
         ).then(lambda: False, outputs=ui["release_supported"])
         ui["walkthrough"].select(
             lambda: gr.Walkthrough(selected=guide.stage), outputs=ui["walkthrough"], queue=False

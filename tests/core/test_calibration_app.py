@@ -711,3 +711,52 @@ def test_collection_warning_uses_a_queued_change_event():
     assert dependency["queue"] is True
     assert dependency["targets"] == [(component["id"], "change")]
     assert app.fns[dependency["id"]].fn is _notify_collection_error
+
+
+def test_slow_actions_show_progress_outside_hidden_settings():
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    components = {c["id"]: c for c in config["components"]}
+    activity = next(
+        c for c in components.values() if c["props"].get("elem_id") == "calibration-activity"
+    )
+    assert activity["props"]["visible"]
+    labels = (
+        "Connect robot",
+        "Load matched profile",
+        "Connect saved robot",
+        "Save profile",
+        "Arm supported, prepare robot",
+        "Hands clear, record calibration",
+        "Tune simulation",
+        "Preview motion without enabling hold",
+        "Reconnect and prepare another attempt",
+        "Release motors and prepare another attempt",
+        "Release motors",
+        "Disconnect",
+    )
+    for label in labels:
+        button = next(
+            c
+            for c in components.values()
+            if c["type"] == "button" and c["props"].get("value") == label
+        )
+        event = next(d for d in config["dependencies"] if (button["id"], "click") in d["targets"])
+        assert event["show_progress"] == "full", label
+        target = {
+            "Arm supported, prepare robot": "calibration-prepare-activity",
+            "Tune simulation": "calibration-fit-activity",
+        }.get(label, "calibration-activity")
+        indicator = next(c for c in components.values() if c["props"].get("elem_id") == target)
+        assert event["show_progress_on"] == [indicator["id"]], label
+    tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+    indicators = [
+        c["id"]
+        for c in components.values()
+        if c["props"].get("elem_id")
+        in ("calibration-activity", "calibration-prepare-activity", "calibration-fit-activity")
+    ]
+    assert not set(indicators).intersection(tick["outputs"])
+    assert tick["show_progress"] == "hidden"

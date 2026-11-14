@@ -49,6 +49,9 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Show visible loading feedback for calibration actions, including motion checks,
+  reconnects, profile operations, and dynamics fitting. Keep activity indicators
+  separate from polling updates and show indeterminate progress while hardware arms.
 - Show asynchronous calibration collection failures as queued top-right warnings
   and persistent error panels. Timing errors include measured lateness and the limit.
 - Honor the configured excitation lateness budget instead of capping it at one

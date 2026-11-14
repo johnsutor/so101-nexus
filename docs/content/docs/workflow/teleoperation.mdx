@@ -639,6 +639,8 @@ You can stop after saving if you only need aligned joint coordinates.
 
 Preparation reads the live pose, checks all three motions in simulation, then enables holding torque.
 The robot does not start the recording until the separate hands-clear action.
+A visible activity indicator covers motion checks and other slow actions.
+An indeterminate indicator remains visible while hardware prepares to hold.
 The run plan shows all three motions and their total duration before preparation.
 Two recordings tune the simulator. The third is an independent check, recorded in the same sequence.
 No separate held-out collection is needed.
