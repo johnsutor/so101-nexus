@@ -697,3 +697,17 @@ def test_tuning_result_gives_one_clear_profile_outcome(profile, tmp_path, improv
     assert viewport.fitted_profile == str(destination / "candidate_profile.json")
     assert viewport.fitted_dataset == session.recordings_dir
     assert session.profile is profile
+
+
+def test_collection_warning_uses_a_queued_change_event():
+    from so101_nexus.calibration.app import _notify_collection_error, build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    component = next(
+        c for c in config["components"] if c["props"].get("label") == "Collection failure event"
+    )
+    dependency = next(d for d in config["dependencies"] if d["inputs"] == [component["id"]])
+    assert dependency["queue"] is True
+    assert dependency["targets"] == [(component["id"], "change")]
+    assert app.fns[dependency["id"]].fn is _notify_collection_error

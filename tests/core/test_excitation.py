@@ -518,20 +518,20 @@ def test_collector_checks_deadline_after_read_before_command(monkeypatch, profil
 
 
 @pytest.mark.parametrize("phase", ["read", "write"])
-def test_collector_aborts_after_missing_a_control_period(monkeypatch, profile, config, phase):
+def test_collector_aborts_after_exceeding_configured_lateness(monkeypatch, profile, config, phase):
     robot = FakeRobot(profile, config.center_qpos_deg)
     clock = FakeClock()
     original_read, original_send = robot.get_observation, robot.send_action
 
     def read():
         if phase == "read" and len(robot.commands) == 1:
-            clock.now += 1.5 * profile.control_period_s
+            clock.now += config.max_overrun_s + profile.control_period_s
         return original_read()
 
     def send(action):
         result = original_send(action)
         if phase == "write" and len(robot.commands) == 2:
-            clock.now += 1.5 * profile.control_period_s
+            clock.now += config.max_overrun_s + profile.control_period_s
         return result
 
     monkeypatch.setattr(robot, "get_observation", read)
@@ -865,3 +865,91 @@ def test_start_mismatch_identifies_worst_joint_before_motor_writes(
     assert not any(robot.bus.torque.values())
     assert not robot.bus.is_connected
     assert not robot.commands
+
+
+@pytest.mark.parametrize("phase", ["wake", "read", "write"])
+def test_collector_tolerates_missed_period_without_catchup(monkeypatch, profile, config, phase):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    read, send, sleep = robot.get_observation, robot.send_action, clock.sleep
+    delayed = False
+
+    def delay(where):
+        nonlocal delayed
+        if where == phase and not delayed and len(robot.commands) == 1:
+            clock.now += 1.5 * profile.control_period_s
+            delayed = True
+
+    def observe():
+        delay("read")
+        return read()
+
+    def command(action):
+        delay("write")
+        return send(action)
+
+    def wait(duration):
+        sleep(duration)
+        delay("wake")
+
+    monkeypatch.setattr(robot, "get_observation", observe)
+    monkeypatch.setattr(robot, "send_action", command)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    recordings = collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert delayed
+    assert len(recordings) == 3
+    for recording, trajectory in zip(recordings, generate_excitation(config, profile), strict=True):
+        assert np.min(np.diff(recording.command_timestamps_s)) >= profile.control_period_s - 1e-12
+        np.testing.assert_allclose(recording.commanded_qpos_deg, trajectory.commands_deg)
+        assert recording.command_timestamps_s[-1] >= trajectory.timestamps_s[-1]
+    assert not robot.connected
+
+
+def test_configured_tighter_lateness_limit_still_stops_before_command(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    monkeypatch.setattr(FakeClock, "__call__", lambda self: self.now)
+    clock = FakeClock()
+    read = robot.get_observation
+
+    def slow_read():
+        clock.now += 0.006
+        return read()
+
+    monkeypatch.setattr(robot, "get_observation", slow_read)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match=r"6.0 ms late, limit 5.0 ms"):
+        collect_excitation(
+            robot, profile, replace(config, max_overrun_s=0.005), clock=clock, sleep=clock.sleep
+        )
+    assert not robot.commands
+    assert not robot.connected
+
+
+def test_late_wakeup_after_early_read_stops_before_sending(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    read, sleep = robot.get_observation, clock.sleep
+    waits = 0
+    monkeypatch.setattr(FakeClock, "__call__", lambda self: self.now)
+
+    def observe():
+        if not robot.commands:
+            clock.now += 0.01
+        return read()
+
+    def wait(duration):
+        nonlocal waits
+        sleep(duration)
+        if len(robot.commands) == 1:
+            waits += 1
+            if waits == 2:
+                clock.now += 0.06
+
+    monkeypatch.setattr(robot, "get_observation", observe)
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(
+        RuntimeError, match=r"before sending a command: 60.0 ms late, limit 50.0 ms"
+    ):
+        collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert len(robot.commands) == 1
+    assert not robot.connected

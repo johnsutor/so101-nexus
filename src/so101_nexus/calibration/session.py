@@ -56,6 +56,8 @@ class CalibrationSession:
         self.artifacts: list[str] = []
         self.torque_possible = False
         self.progress = ""
+        self.collection_error: str | None = None
+        self.failure_sequence = 0
         self.collection_complete = False
         self.collection_progress: tuple[str, int, int] | None = None
         self._pending_bus: Any = None
@@ -101,6 +103,7 @@ class CalibrationSession:
             self.recordings_dir = None
             self.artifacts = []
             self.progress = ""
+            self.collection_error = None
             self.collection_complete = False
             self.collection_progress = None
             monitor = (self.monitor_factory or ReadOnlyFollower)(port, Path(calibration_dir))
@@ -382,6 +385,7 @@ class CalibrationSession:
             self.last_seen = time.monotonic()
             self.phase = "arming"
             self.progress = ""
+            self.collection_error = None
             self.collection_complete = False
             self.collection_progress = None
             self.status = (
@@ -493,6 +497,9 @@ class CalibrationSession:
                     f"{message}{snapshot_error} Torque may remain enabled at the last target. "
                     "Support before release."
                 )
+                if not complete or "cleanup failed" in message or snapshot_error:
+                    self.collection_error = self.status
+                    self.failure_sequence += 1
                 self.artifacts = ([str(self.profile_path)] if self.profile_path else []) + artifacts
 
     @staticmethod

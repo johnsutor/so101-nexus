@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from dataclasses import dataclass, field, replace
@@ -245,6 +246,8 @@ def _dataset_summary(session):
         directory is not None and (directory / f"{index:02d}_{name}.npz").is_file()
         for index, (name, _) in enumerate(_DATASET_RUNS)
     ]
+    if session.collection_error:
+        return f"**{sum(recorded)} of 3 recordings saved.** Completed recordings are preserved."
     if _dataset_complete(session):
         return (
             "**Calibration recording complete: 3 of 3 recordings saved.**\n\n"
@@ -551,6 +554,8 @@ def _build_guide(gr, ui, stage):
             with gr.Step(label, id=index, interactive=True):
                 builder(gr, ui)
     with gr.Column(visible=False, min_width=0, elem_id="dynamics-workflow") as ui["dynamics"]:
+        ui["failure_event"] = gr.JSON(visible=False, label="Collection failure event")
+        ui["failure_alert"] = gr.HTML(visible=False)
         ui["tuning_status"] = gr.Markdown("")
         gr.Markdown(
             "Your physical alignment is saved. Follow these steps to match the simulator's motion."
@@ -710,6 +715,28 @@ def _capture_visible_reference(guide, angle, displayed, instruction_joint):
         guide.capture_next(angle)
 
 
+def _collection_alert(message):
+    if not message:
+        return ""
+    return (
+        '<div role="alert" style="padding:16px;border-radius:8px;'
+        "border:1px solid var(--error-border-color,#fecaca);"
+        "background:var(--error-background-fill,#fef2f2);"
+        'color:var(--error-text-color,#991b1b)">'
+        "<strong>Recording stopped</strong>"
+        f"<p>{html.escape(message)}</p>"
+        "<p><strong>Next:</strong> Support the arm, then reconnect to prepare another attempt. "
+        "Completed recordings are preserved.</p></div>"
+    )
+
+
+def _notify_collection_error(event):
+    import gradio as gr
+
+    if event:
+        gr.Warning(event["message"], title="Recording stopped", duration=None)
+
+
 def _tick(session, guide, viewport, episode, fraction, aspect):
     import gradio as gr
 
@@ -802,6 +829,11 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
                 if session.torque_possible
                 else "Recording complete. Motors are off."
             )
+        status = (
+            "Recording stopped. Motors may still hold. Support the arm before release."
+            if session.collection_error
+            else status
+        )
         if viewport.tuning and ready and not active:
             viewport.tuning_step = 2
         outputs = (
@@ -849,7 +881,9 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             ),
             [guide.joint_index, float(target[guide.joint_index])],
             gr.update(interactive=guide.stage == 1 and session.monitor is not None),
-            (
+            ""
+            if session.collection_error
+            else (
                 (
                     "Tuning complete. Download your tuned profile below."
                     if viewport.fit_improved
@@ -879,7 +913,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             ),
             gr.update(visible=session.monitor is not None and any(session.monitor.torque.values())),
             _heading(guide, viewport),
-            gr.Walkthrough(selected=viewport.tuning_step),
+            gr.Walkthrough(selected=viewport.tuning_step, visible=session.collection_error is None),
             str(session.recordings_dir) if ready else gr.skip(),
             _dataset_summary(session),
             gr.update(
@@ -896,6 +930,13 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             viewport.fit_summary
             if viewport.fitted_dataset == session.recordings_dir
             else gr.skip(),
+            {"sequence": session.failure_sequence, "message": session.collection_error}
+            if session.collection_error
+            else None,
+            gr.update(
+                value=_collection_alert(session.collection_error),
+                visible=session.collection_error is not None,
+            ),
         )
     figure = render_overlay(
         target,
@@ -1294,9 +1335,17 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "fit",
                 "tuned_profile",
                 "fit_summary",
+                "failure_event",
+                "failure_alert",
             )
         ]
         ui["scene_frame"].change(fn=None, inputs=ui["scene_frame"], js=_UPDATE_VIEW, queue=False)
+        ui["failure_event"].change(
+            _notify_collection_error,
+            inputs=ui["failure_event"],
+            queue=True,
+            show_progress="hidden",
+        )
         timer = gr.Timer(0.5)
         timer.tick(tick, inputs, outputs, js=_MEASURE_VIEW, queue=False, show_progress="hidden")
         app.load(tick, inputs, outputs, js=_MEASURE_VIEW)

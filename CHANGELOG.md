@@ -49,6 +49,11 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Show asynchronous calibration collection failures as queued top-right warnings
+  and persistent error panels. Timing errors include measured lateness and the limit.
+- Honor the configured excitation lateness budget instead of capping it at one
+  command period. Rebase delayed cycles on actual writes without catch-up bursts,
+  preserving actual recording timestamps and excessive-delay stops.
 - Update calibration meshes in the mounted viewer instead of replacing the plot,
   preserving camera interaction while live joint measurements change.
 - Open the saved-profile pane when a calibration profile exists, verify it against
@@ -75,7 +80,7 @@ for the public-API and deprecation policy.
 - Derive behavior-cloning action labels from recorded model joint positions,
   preserving custom profile gripper ranges. Reject incompatible control modes
   before demonstration training starts.
-- Stop excitation after a missed command period instead of issuing catch-up
+- Stop excitation beyond the configured lateness budget instead of issuing catch-up
   commands. Allow retries after failed collection by removing empty output
   directories while preserving recorded data.
 - Reject interleaved demonstration episodes before constructing behavior-cloning

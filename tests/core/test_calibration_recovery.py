@@ -308,3 +308,40 @@ def test_completed_dataset_can_be_tuned_after_disconnect(workflow):
     assert ui.viewport.tuning_step == 2
     assert updates[26]["interactive"]
     assert updates[24] == str(directory)
+
+
+def test_worker_failure_publishes_queued_warning_and_persistent_alert(workflow, monkeypatch):
+    from unittest.mock import Mock
+
+    import gradio as gr
+
+    ui = workflow
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("hardware loop overrun: 70.0 ms late, limit 50.0 ms")
+
+    monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", fail)
+    ui.callback("Arm supported, prepare robot")(str(ui.directory / "failed"), False, *ui.settings)
+    ui.session.worker.join(2)
+    updates = ui.tick()
+    assert "70.0 ms" in ui.session.collection_error
+    event, alert = updates[-2:]
+    assert event["message"] == ui.session.collection_error
+    assert alert["visible"]
+    assert 'role="alert"' in alert["value"]
+    assert "Recording stopped" in alert["value"]
+    warning = Mock()
+    monkeypatch.setattr(gr, "Warning", warning)
+    from so101_nexus.calibration.app import _notify_collection_error
+
+    _notify_collection_error(event)
+    warning.assert_called_once_with(event["message"], title="Recording stopped", duration=None)
+    assert ui.tick()[-2] == event
+    ui.callback("Reconnect and prepare another attempt")("/dev/FAKE-recovery", str(ui.directory))
+    assert ui.tick()[-2] is None
+    assert not ui.tick()[-1]["visible"]
+    ui.callback("Arm supported, prepare robot")(str(ui.directory / "failed"), False, *ui.settings)
+    ui.session.worker.join(2)
+    repeated = ui.tick()[-2]
+    assert repeated["sequence"] == event["sequence"] + 1
+    assert repeated["message"] == event["message"]

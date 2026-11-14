@@ -62,7 +62,7 @@ class ExcitationConfig:
     min_clearance_m : float
         Minimum tool-center height above the work surface.
     max_overrun_s : float
-        Maximum loop lateness. Missing a full control period also stops collection.
+        Maximum command lateness. Delays shift subsequent commands without catch-up.
     """
 
     center_qpos_deg: tuple[float, ...]
@@ -490,27 +490,43 @@ def _collect_episode(
     origin = clock()
     measured, commands, starts, ends, writes = [], [], [], [], []
     previous = trajectory.commands_deg[0]
-    # Catching up missed command periods would compress the verified motion.
-    max_overrun_s = min(config.max_overrun_s, profile.control_period_s)
+    read_lead_s = 0.0
+
+    def check_deadline(deadline_s: float, stage: str, sample: int) -> None:
+        late_s = clock() - origin - deadline_s
+        if late_s > config.max_overrun_s:
+            raise RuntimeError(
+                f"hardware loop overrun during {stage}: {late_s * 1000:.1f} ms late, "
+                f"limit {config.max_overrun_s * 1000:.1f} ms "
+                f"(run {trajectory.name}, sample {sample + 1}/{len(trajectory.timestamps_s)}). "
+                "The computer or motor communication could not keep up. "
+                "Close other busy applications and retry."
+            )
+
     for index, (planned_time, target) in enumerate(
         zip(trajectory.timestamps_s, trajectory.commands_deg, strict=True)
     ):
-        remaining = origin + planned_time - clock()
+        interval_s = planned_time - trajectory.timestamps_s[index - 1] if index else 0.0
+        # Start from the last actual write so delayed cycles never compress later motion.
+        deadline_s = writes[-1] + interval_s if writes else planned_time
+        remaining = origin + deadline_s - read_lead_s - clock()
         if remaining > 0:
             sleep(remaining)
         _check_cancelled(should_stop)
-        if clock() - origin - planned_time > max_overrun_s:
-            raise RuntimeError("hardware loop exceeded the allowed overrun")
+        check_deadline(deadline_s, "waiting for the next sample", index)
         position, before, after = _read_position(
             robot, profile, clock, origin, config.max_read_duration_s
         )
-        if clock() - origin - planned_time > max_overrun_s:
-            raise RuntimeError("hardware read caused an excessive loop overrun")
+        check_deadline(deadline_s, "reading motor positions", index)
         threshold = config.max_tracking_error_deg if index else config.max_start_error_deg
         if np.max(np.abs(position - previous)) > threshold:
             raise RuntimeError("hardware tracking error exceeded the allowed limit")
         action = profile.from_model_deg(target)
+        remaining = origin + deadline_s - clock()
+        if remaining > 0:
+            sleep(remaining)
         _check_cancelled(should_stop)
+        check_deadline(deadline_s, "before sending a command", index)
         sent = robot.send_action(
             {
                 f"{name}.pos": float(value)
@@ -518,8 +534,8 @@ def _collect_episode(
             }
         )
         write = clock() - origin
-        if write - planned_time > max_overrun_s:
-            raise RuntimeError("hardware write exceeded the allowed overrun")
+        check_deadline(deadline_s, "sending a command", index)
+        read_lead_s = min(after - before, profile.control_period_s)
         actual = _joints([sent[f"{name}.pos"] for name in SO101_JOINT_NAMES], "sent action")
         previous = np.asarray(profile.to_model_deg(actual))
         if np.max(np.abs(previous - target)) > config.max_command_error_deg:
