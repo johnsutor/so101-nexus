@@ -796,3 +796,144 @@ def test_snapshot_never_overwrites_existing_different_profile(
     assert "differs from the collection profile" in error
     assert artifacts == [str(tmp_path / "multisine.npz")]
     assert RobotProfile.load(snapshot) == original
+
+
+@pytest.fixture
+def active_preflight(session, monkeypatch):
+    entered, finish = threading.Event(), threading.Event()
+    errors = []
+
+    def check(*args):
+        entered.set()
+        assert finish.wait(5)
+
+    def run():
+        try:
+            session.preflight()
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr("so101_nexus.calibration.session.preflight_excitation", check)
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert entered.wait(2)
+    try:
+        yield session, finish, thread, errors
+    finally:
+        finish.set()
+        thread.join(2)
+        assert not thread.is_alive()
+
+
+def test_stop_during_motion_check_cannot_restore_approval_or_arm(active_preflight, tmp_path):
+    session, finish, thread, errors = active_preflight
+    monitor = session.monitor
+    session.stop()
+    finish.set()
+    thread.join(2)
+    assert len(errors) == 1
+    assert isinstance(errors[0], InterruptedError)
+    assert not session.verified
+    assert session.monitor is monitor
+    assert not monitor.closed
+    assert session.worker is None
+    with pytest.raises(ValueError, match="preflight"):
+        session.arm(tmp_path / "must_not_arm", supported=True)
+
+
+def test_motion_check_blocks_navigation_without_blocking_the_caller(active_preflight):
+    session, _, _, _ = active_preflight
+    with pytest.raises(RuntimeError, match="motion check"):
+        session._idle()
+
+
+def test_motion_check_rejects_coordinate_changes_instead_of_queuing_them(active_preflight):
+    session, finish, _, _ = active_preflight
+    done = threading.Event()
+    errors = []
+    original = session.profile
+
+    def edit():
+        try:
+            session.set_period(0.03)
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=edit)
+    thread.start()
+    try:
+        assert done.wait(1), "coordinate edit waited behind the motion check"
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert "motion check" in str(errors[0])
+        assert session.profile is original
+    finally:
+        finish.set()
+        thread.join(2)
+
+
+def test_stop_during_final_live_read_does_not_transfer_to_holding(session, monkeypatch, tmp_path):
+    monitor = session.monitor
+    read = monitor.read
+
+    def stop_while_reading():
+        session.stop()
+        return read()
+
+    monkeypatch.setattr(monitor, "read", stop_while_reading)
+    with pytest.raises(InterruptedError, match="cancelled"):
+        session.arm(tmp_path / "never_started", supported=True)
+    assert session.monitor is monitor
+    assert not monitor.closed
+    assert session.worker is None
+    assert session.cancel.is_set()
+    assert not session.verified
+
+
+def test_a_new_explicit_motion_check_can_retry_after_stop(session, monkeypatch):
+    monkeypatch.setattr("so101_nexus.calibration.session.preflight_excitation", lambda *args: None)
+    session.stop()
+    session.preflight()
+    assert session.verified
+    assert not session.cancel.is_set()
+    assert not session._preflighting
+    assert session.phase == "monitoring"
+
+
+def test_encoder_loss_during_motion_check_cannot_restore_approval(active_preflight, monkeypatch):
+    session, finish, thread, errors = active_preflight
+    monkeypatch.setattr(
+        session.monitor, "read", lambda: (_ for _ in ()).throw(OSError("fake encoder lost"))
+    )
+    session.poll()
+    assert session.monitor is None
+    assert session.phase == "disconnected"
+    finish.set()
+    thread.join(2)
+    assert not session.verified
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "changed during the motion check" in str(errors[0])
+    assert session.phase == "disconnected"
+
+
+def test_stop_racing_with_approval_commit_cannot_be_overwritten(session, monkeypatch):
+    assign = type(session).__setattr__
+    stopped = False
+
+    def stop_at_commit(instance, name, value):
+        nonlocal stopped
+        if instance is session and name == "verified" and value is True and not stopped:
+            stopped = True
+            instance.stop()
+        assign(instance, name, value)
+
+    monkeypatch.setattr(type(session), "__setattr__", stop_at_commit)
+    monkeypatch.setattr("so101_nexus.calibration.session.preflight_excitation", lambda *args: None)
+    with pytest.raises(InterruptedError, match="cancelled"):
+        session.preflight()
+    assert stopped
+    assert not session.verified
+    assert session.cancel.is_set()

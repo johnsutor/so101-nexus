@@ -231,7 +231,7 @@ def test_guided_ui_reveals_profile_steps_before_optional_dynamics():
         "Connect",
         "Match joints",
         "Check jaws",
-        "Save profile",
+        "Your profile",
     ]
     assert all(step["props"]["interactive"] for step in steps)
     walkthrough_ids = {item["id"] for item in config["components"] if item["type"] == "walkthrough"}
@@ -663,7 +663,8 @@ def test_saved_profile_opens_completion_without_opening_hardware(profile, monkey
     result = callback("multisine", 0, 1.5)
     assert result[9].selected == 3
     assert result[14]["visible"]
-    assert "confirmed.json" in result[12]
+    assert "Saved profile found" in result[12]
+    assert any(isinstance(value, dict) and value.get("value") == str(path) for value in result)
     assert result[22].startswith("# Your robot profile")
 
 
@@ -760,3 +761,62 @@ def test_slow_actions_show_progress_outside_hidden_settings():
     ]
     assert not set(indicators).intersection(tick["outputs"])
     assert tick["show_progress"] == "hidden"
+
+
+def test_feedback_uses_native_components_and_arming_wait_is_not_polled():
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    assert not any(c["type"] == "html" for c in config["components"])
+    indicator = next(
+        c for c in config["components"] if c["props"].get("elem_id") == "calibration-hold-activity"
+    )
+    waits = [d for d in config["dependencies"] if d["show_progress_on"] == [indicator["id"]]]
+    assert len(waits) == 1
+    assert waits[0]["queue"] is True
+    assert waits[0]["trigger_only_on_success"]
+    tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+    assert indicator["id"] not in tick["outputs"]
+
+
+def test_prepare_stop_reserves_its_space_before_checking():
+    from so101_nexus.calibration.app import build_app
+
+    config = build_app().get_config_file()
+    stops = [
+        c
+        for c in config["components"]
+        if c["type"] == "button" and c["props"].get("value") == "Stop commands"
+    ]
+    prepare_stop = stops[0]
+    assert prepare_stop["props"]["visible"]
+    assert not prepare_stop["props"]["interactive"]
+    status = next(c for c in config["components"] if c["props"].get("elem_id") == "hardware-status")
+    assert status["props"]["min_height"] >= 44
+
+
+def test_prepare_stop_sits_above_progress_and_primary_action():
+    from so101_nexus.calibration.app import build_app
+
+    config = build_app().get_config_file()
+    components = config["components"]
+    prepare = next(
+        c["id"] for c in components if c["props"].get("value") == "Arm supported, prepare robot"
+    )
+    stop = next(c["id"] for c in components if c["props"].get("value") == "Stop commands")
+    activity = next(
+        c["id"] for c in components if c["props"].get("elem_id") == "calibration-prepare-activity"
+    )
+
+    def parent(node, identifier):
+        children = node.get("children", [])
+        if any(c["id"] == identifier for c in children):
+            return node["id"], [c["id"] for c in children].index(identifier)
+        return next((found for c in children if (found := parent(c, identifier))), None)
+
+    prepare_parent, prepare_index = parent(config["layout"], prepare)
+    stop_parent, stop_index = parent(config["layout"], stop)
+    activity_parent, activity_index = parent(config["layout"], activity)
+    assert prepare_parent == stop_parent == activity_parent
+    assert stop_index < activity_index < prepare_index

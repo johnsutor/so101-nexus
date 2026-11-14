@@ -49,6 +49,14 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Prevent a stopped or disconnected motion check from enabling calibration hold
+  afterward, and reject navigation or profile changes while a check is running.
+- Keep completed calibration datasets available after a matching-profile reconnect.
+  Hide stale datasets and fitted results after coordinate or timing changes, and
+  recover cleanly when downloaded files are moved or removed.
+- Keep Stop visible during narrow-screen motion checks, expose saved-profile
+  downloads directly, and choose fresh filenames when saving edited profiles.
+  Use native Gradio progress and Markdown feedback instead of custom status markup.
 - Show visible loading feedback for calibration actions, including motion checks,
   reconnects, profile operations, and dynamics fitting. Keep activity indicators
   separate from polling updates and show indeterminate progress while hardware arms.

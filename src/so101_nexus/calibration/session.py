@@ -63,14 +63,22 @@ class CalibrationSession:
         self._pending_bus: Any = None
         self._pending_lease: Any = None
         self._fitting = False
+        self._preflighting = False
 
     def _idle(self) -> None:
-        if self._pending_bus is not None:
-            raise RuntimeError("Serial cleanup is incomplete. Retry disconnect before continuing.")
-        if self._fitting:
-            raise RuntimeError("Wait for fitting to finish before changing the session.")
-        if self.worker is not None and self.worker.is_alive():
-            raise RuntimeError("Stop the active worker before changing the session.")
+        with self.lock:
+            if self._pending_bus is not None:
+                raise RuntimeError(
+                    "Serial cleanup is incomplete. Retry disconnect before continuing."
+                )
+            if self._preflighting:
+                raise RuntimeError(
+                    "Wait for the motion check to finish before changing the session."
+                )
+            if self._fitting:
+                raise RuntimeError("Wait for fitting to finish before changing the session.")
+            if self.worker is not None and self.worker.is_alive():
+                raise RuntimeError("Stop the active worker before changing the session.")
 
     def _aligned(self) -> RobotProfile:
         if self.profile is None or len(self.confirmed) != 5:
@@ -325,12 +333,40 @@ class CalibrationSession:
             profile = self._aligned()
             if self.config is None:
                 raise ValueError("Preview a motion plan first.")
-            preflight_excitation(generate_excitation(self.config, profile), profile, self.config)
-            self.verified = True
-            self.status = (
-                "Simulation preflight passed for all three episodes. "
-                "Support the arm at the center before enabling hold."
-            )
+            config = self.config
+            monitor = self.monitor
+            previous_phase = self.phase
+            self.cancel.clear()
+            self._preflighting = True
+            self.phase = "checking"
+        try:
+            preflight_excitation(generate_excitation(config, profile), profile, config)
+            with self.lock:
+                if (
+                    self.monitor is not monitor
+                    or self.profile is not profile
+                    or self.config != config
+                    or len(self.confirmed) != 5
+                    or not self.gripper_confirmed
+                ):
+                    raise RuntimeError(
+                        "Robot connection or calibration changed during the motion check. "
+                        "Reconnect and check again."
+                    )
+                self.verified = True
+                self.status = (
+                    "Simulation preflight passed for all three episodes. "
+                    "Support the arm at the center before enabling hold."
+                )
+                if self.cancel.is_set():
+                    self.verified = False
+                    self.status = "Motion check cancelled. Holding was not enabled."
+                    raise InterruptedError(self.status)
+        finally:
+            with self.lock:
+                self._preflighting = False
+                if self.phase == "checking":
+                    self.phase = previous_phase
 
     def should_stop(self) -> bool:
         """Stop commands after explicit cancellation or loss of browser heartbeat."""
@@ -371,6 +407,8 @@ class CalibrationSession:
                     "Reconnect read-only to verify current hardware before enabling hold."
                 )
             self.measured = self.monitor.read()
+            if self.cancel.is_set():
+                raise InterruptedError("Preparation cancelled. Holding was not enabled.")
             if any(self.monitor.torque.values()):
                 raise ValueError("Support the arm and release motors before enabling a new hold.")
             destination = Path(output_dir).expanduser().resolve()
@@ -380,7 +418,6 @@ class CalibrationSession:
             self._close_monitor()
             lease = PortLease(self.port)
             lease.acquire()
-            self.cancel.clear()
             self.motion.clear()
             self.last_seen = time.monotonic()
             self.phase = "arming"
@@ -539,6 +576,9 @@ class CalibrationSession:
         self.cancel.set()
         self.verified = False
         active = self.worker is not None and self.worker.is_alive()
+        if self._preflighting:
+            self.status = "Motion check stop requested. Holding will not be enabled."
+            return
         self.status = (
             "Stop requested. Waiting for worker cleanup; torque is preserved."
             if active

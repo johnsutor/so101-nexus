@@ -596,6 +596,10 @@ Port ownership prevents overlapping workers in this app. Close other application
 4. Select **Matches, capture and continue** for each of the five body joints.
 5. Compare the closed and open physical jaw endpoints with their reference views.
 6. Confirm the jaw endpoints, then select **Save profile**.
+7. Download the profile directly from **Your profile**.
+
+Saving an edited profile creates a new filename and preserves the original.
+The saved-profile selector lists available profiles, so typing a path is unnecessary for the usual setup.
 
 The robot view stays upright and fills most of the screen.
 **Front**, **Side**, **Top**, and **Fit view** change the camera only.
@@ -622,8 +626,9 @@ The [profile reference](/docs/api/configs#robot-profiles) defines the units, end
 
 The app opens the profile pane when it finds a saved Nexus profile in `runs/calibration`.
 Select **Connect saved robot** to verify the profile against the follower's motor calibration.
-A matching profile restores the completed alignment without new reference captures.
+The app finds a profile with matching motor calibration and restores its completed alignment without new reference captures.
 **Recalibrate robot** starts again at the first joint and preserves the saved file.
+Connect the robot before starting recalibration.
 The **Connection and saved profile** settings also accept a profile from another location.
 LeRobot encoder calibration alone does not establish physical model alignment.
 
@@ -641,6 +646,7 @@ Preparation reads the live pose, checks all three motions in simulation, then en
 The robot does not start the recording until the separate hands-clear action.
 A visible activity indicator covers motion checks and other slow actions.
 An indeterminate indicator remains visible while hardware prepares to hold.
+**Stop commands** stays beside the current action. During the motion check, it cancels preparation without enabling hold.
 The run plan shows all three motions and their total duration before preparation.
 Two recordings tune the simulator. The third is an independent check, recorded in the same sequence.
 No separate held-out collection is needed.
@@ -669,7 +675,9 @@ For a custom workspace model, use `collect_excitation(..., model=workspace_model
 One start records all three motions automatically, including the independent check.
 The run plan shows the current motion and how many recordings are saved.
 After all three recordings finish, the app opens **Tune simulation** automatically.
-A stopped or incomplete sequence stays in the recording step with recovery instructions.
+A stopped or incomplete sequence shows recovery instructions.
+Reconnect the same profile to keep a completed dataset available without recording again.
+A changed joint mapping or command period requires matching recordings before tuning; previous files remain available.
 
 The driver briefly disables torque during connection. An unsupported arm can fall.
 The app transfers serial ownership from the monitor to one collection worker.

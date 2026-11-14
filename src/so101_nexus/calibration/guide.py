@@ -47,6 +47,7 @@ class CalibrationGuide:
     def connect(self, port: str, calibration_dir: str) -> None:
         """Open read-only monitoring and begin the first body-joint reference."""
         with self.session.lock:
+            self.session._idle()
             self.stage = 0
             self.session.connect(port, calibration_dir)
             self.reference_deg = [0, 0, 0, 0, 0, 45]

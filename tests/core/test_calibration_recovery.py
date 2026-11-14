@@ -96,14 +96,26 @@ def workflow(tmp_path, monkeypatch):
         )
         return app.fns[dependency["id"]].fn
 
+    def update(label):
+        component = next(
+            c
+            for c in config["components"]
+            if c["props"].get("label") == label
+            or c["props"].get("elem_id") == label
+            or c["props"].get("value") == label
+        )
+        return tick("multisine", 0, 1.5)[tick_dependency["outputs"].index(component["id"])]
+
     settings = [0, -15, 30, 45, 0, 50, *([8] * 6), 1, 0, 0, 0.02]
     callback("Dynamics tuning")()
     return SimpleNamespace(
         gr=gr,
         session=session,
         callback=callback,
+        update=update,
         tick=lambda: tick("multisine", 0, 1.5),
         viewport=viewport,
+        guide=guide,
         positions=positions,
         torque=torque,
         monitors=monitors,
@@ -299,6 +311,7 @@ def test_completed_dataset_can_be_tuned_after_disconnect(workflow):
     directory.mkdir()
     for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
         (directory / f"{index:02d}_{name}.npz").write_bytes(b"saved recording")
+    ui.session.profile.save(directory / "source_profile.json")
     ui.session.recordings_dir = directory
     ui.session.collection_complete = True
     ui.session.disconnect()
@@ -328,7 +341,8 @@ def test_worker_failure_publishes_queued_warning_and_persistent_alert(workflow, 
     event, alert = updates[-2:]
     assert event["message"] == ui.session.collection_error
     assert alert["visible"]
-    assert 'role="alert"' in alert["value"]
+    assert alert["value"].startswith("### Recording stopped")
+    assert "<div" not in alert["value"]
     assert "Recording stopped" in alert["value"]
     warning = Mock()
     monkeypatch.setattr(gr, "Warning", warning)
@@ -347,14 +361,209 @@ def test_worker_failure_publishes_queued_warning_and_persistent_alert(workflow, 
     assert repeated["message"] == event["message"]
 
 
-def test_hardware_arming_has_an_indeterminate_indicator_until_holding(workflow):
+@pytest.mark.parametrize("outcome", ["holding", "stopped"])
+def test_native_arming_wait_finishes_on_success_or_failure(outcome):
+    import asyncio
+
+    from so101_nexus.calibration.app import _wait_for_hold
+
+    session = SimpleNamespace(phase="arming", worker=SimpleNamespace(is_alive=lambda: True))
+
+    async def run():
+        pending = asyncio.create_task(_wait_for_hold(session))
+        await asyncio.sleep(0.01)
+        assert not pending.done()
+        session.phase = outcome
+        assert await asyncio.wait_for(pending, timeout=1) == ""
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("matching", [True, False])
+def test_reconnect_preserves_only_the_matching_completed_dataset(workflow, matching):
+    from dataclasses import replace
+
     ui = workflow
-    ui.session._close_monitor()
-    ui.session.phase = "arming"
+    destination = ui.directory / "completed"
+    destination.mkdir()
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+        (destination / f"{index:02d}_{name}.npz").write_bytes(b"recorded episode")
+    ui.session.profile.save(destination / "source_profile.json")
+    ui.session.recordings_dir = destination
+    ui.session.collection_complete = True
+    ui.session.artifacts += [str(path) for path in destination.iterdir()]
+    ui.callback("Return to your profile")()
+    if not matching:
+        path = ui.directory / "different_alignment.json"
+        replace(ui.session.profile, joint_offsets_deg=(2, 3, 4, 5, 6)).save(path)
+        ui.session.profile_path = path
+    ui.callback("Connect saved robot")("/dev/FAKE-recovery", str(ui.directory))
+    assert ui.session.collection_complete is matching
+    assert ui.session.recordings_dir == (destination if matching else None)
+    if matching:
+        assert "All three recordings are ready" in ui.tick()[17]
+        assert ui.tick()[20]["visible"]
+    assert str(destination / "02_heldout.npz") in ui.viewport.previous_artifacts
+
+
+@pytest.mark.parametrize(
+    "change", [{"joint_offsets_deg": (2, 3, 4, 5, 6)}, {"control_period_s": 0.03}]
+)
+def test_changed_alignment_does_not_offer_old_dataset_or_fitted_profile(workflow, change):
+    from dataclasses import replace
+
+    ui = workflow
+    destination = ui.directory / "old_dataset"
+    destination.mkdir()
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+        (destination / f"{index:02d}_{name}.npz").write_bytes(b"recorded episode")
+    ui.session.profile.save(destination / "source_profile.json")
+    ui.session.recordings_dir = destination
+    ui.session.collection_complete = True
+    ui.viewport.tuning_step = 2
+    ui.viewport.fitted_dataset = destination
+    ui.viewport.fitted_profile = str(ui.saved)
+    ui.viewport.fit_summary = "Old tuning result"
+    ui.session._update_profile(replace(ui.session.profile, **change))
     updates = ui.tick()
-    indicator = updates[-3]
-    assert indicator["visible"]
-    assert '<progress aria-label="Preparing robot">' in indicator["value"]
-    assert "Keep supporting the arm" in indicator["value"]
-    ui.session.phase = "holding"
-    assert not ui.tick()[-3]["visible"]
+    assert ui.viewport.tuning_step == 0
+    assert not updates[26]["interactive"]
+    assert not updates[27]["visible"]
+    assert updates[28] != "Old tuning result"
+
+
+def test_leaving_after_a_motion_check_prevents_a_late_hold(workflow, monkeypatch):
+    from unittest.mock import Mock
+
+    import plotly.graph_objects as go
+
+    ui = workflow
+    arm = Mock(side_effect=AssertionError("must not enable hold after leaving"))
+    monkeypatch.setattr(ui.session, "arm", arm)
+
+    def leave(*args):
+        ui.callback("Return to your profile")()
+        return go.Figure()
+
+    monkeypatch.setattr("so101_nexus.calibration.app._show_plan", leave)
+    ui.callback("Arm supported, prepare robot")(str(ui.directory / "unused"), False, *ui.settings)
+    arm.assert_not_called()
+    assert not ui.viewport.tuning
+    assert "cancelled" in ui.session.status.lower()
+
+
+def test_checking_shows_stop_and_blocks_navigation(workflow):
+    ui = workflow
+    ui.session.phase = "checking"
+    assert ui.update("Stop commands")["interactive"]
+    assert not ui.update("Return to your profile")["interactive"]
+
+
+def test_save_immediately_exposes_download_and_hides_duplicate_save(workflow):
+    ui = workflow
+    path = ui.directory / "new_profile.json"
+    result = ui.callback("Save profile")(str(path), 0.02)
+    assert result[2]["visible"] is False
+    assert result[3]["value"] == str(path)
+    assert result[3]["visible"]
+    assert path.exists()
+
+
+def test_reconnect_finds_matching_profile_without_recalibration(workflow, monkeypatch):
+    from dataclasses import replace
+
+    ui = workflow
+    monkeypatch.chdir(ui.directory)
+    directory = ui.directory / "runs/calibration"
+    directory.mkdir(parents=True)
+    matching = directory / "matching_robot.json"
+    ui.session.profile.save(matching)
+    calibration = {name: dict(values) for name, values in ui.session.profile.calibration.items()}
+    calibration[SO101_JOINT_NAMES[0]]["homing_offset"] += 1
+    other = directory / "different_robot.json"
+    replace(ui.session.profile, calibration=calibration).save(other)
+    ui.session._close_monitor()
+    ui.session.profile = None
+    ui.session.profile_path = None
+    ui.guide.saved_profile = other
+    ui.callback("Connect saved robot")("/dev/FAKE-recovery", str(ui.directory))
+    assert ui.guide.stage == 3
+    assert ui.session.profile_path == matching
+    assert ui.session.confirmed == set(range(5))
+
+
+def test_saving_edited_profile_chooses_new_filename(workflow):
+    from so101_nexus.profiles import RobotProfile
+
+    ui = workflow
+    ui.session.set_period(0.03)
+    result = ui.callback("Save profile")(str(ui.saved), 0.03)
+    new_path = ui.saved.with_stem(ui.saved.stem + "_002")
+    assert result[3]["value"] == str(new_path)
+    assert RobotProfile.load(new_path).control_period_s == 0.03
+    assert RobotProfile.load(ui.saved).control_period_s == 0.02
+
+
+def test_stop_during_final_live_read_is_reported_as_cancellation(workflow, monkeypatch):
+    ui = workflow
+    read = ui.session.monitor.read
+    reads = 0
+
+    def observe():
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            ui.session.stop()
+        return read()
+
+    monkeypatch.setattr(ui.session.monitor, "read", observe)
+    ui.callback("Arm supported, prepare robot")(
+        str(ui.directory / "cancelled"), False, *ui.settings
+    )
+    assert ui.session.worker is None
+    assert ui.session.status == "Preparation cancelled. Holding was not enabled."
+    assert ui.session.cancel.is_set()
+
+
+def test_missing_downloads_do_not_break_polling(workflow):
+    ui = workflow
+    directory = ui.directory / "dataset_with_missing_output"
+    directory.mkdir()
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+        (directory / f"{index:02d}_{name}.npz").write_bytes(b"recorded episode")
+    ui.session.profile.save(directory / "source_profile.json")
+    ui.session.recordings_dir = directory
+    ui.session.collection_complete = True
+    missing = str(ui.directory / "deleted_profile.json")
+    ui.session.artifacts.append(missing)
+    ui.viewport.previous_artifacts.append(missing)
+    ui.viewport.fitted_dataset = directory
+    ui.viewport.fitted_profile = missing
+    ui.viewport.fit_summary = "Simulation tuned"
+    updates = ui.tick()
+    assert missing not in (updates[6]["value"] or [])
+    assert updates[26]["visible"]
+    assert updates[26]["interactive"]
+    assert updates[27]["value"] is None
+    assert not updates[27]["visible"]
+    assert "removed" in updates[28]
+
+
+def test_missing_aligned_profile_can_be_saved_again(workflow):
+    ui = workflow
+    ui.saved.unlink()
+    updates = ui.tick()
+    assert updates[13]["visible"]
+    assert not ui.update("Aligned robot profile")["visible"]
+    assert "new copy" in updates[12]
+    ui.callback("Save profile")(str(ui.saved), 0.02)
+    assert ui.saved.is_file()
+
+
+def test_newly_saved_profile_is_immediately_selectable(workflow):
+    ui = workflow
+    path = ui.directory / "new_choice.json"
+    result = ui.callback("Save profile")(str(path), 0.02)
+    choice = result[-1]
+    assert choice["value"] == str(path)
+    assert any(value == str(path) for _, value in choice["choices"])

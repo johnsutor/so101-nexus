@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import re
@@ -17,7 +18,7 @@ from so101_nexus.calibration.guide import CalibrationGuide
 from so101_nexus.calibration.session import CalibrationSession
 from so101_nexus.calibration.view import expand_bounds, overlay_bounds, render_overlay
 from so101_nexus.config import SO101_JOINT_NAMES
-from so101_nexus.excitation import ExcitationConfig, generate_excitation
+from so101_nexus.excitation import ExcitationConfig, generate_excitation, profile_digest
 
 if TYPE_CHECKING:
     from so101_nexus.profiles import RobotProfile
@@ -41,6 +42,7 @@ _MEASURE_VIEW = """(...values) => {
     const width = container?.clientWidth || 975;
     return [...values.slice(0, -1), width / 650];
 }"""
+# Native Plot remounts on value updates, so retain its mounted scene for camera interaction.
 _UPDATE_VIEW = """async (figure) => {
     const container = document.querySelector('#calibration-robot-view');
     if (!container || !figure) return;
@@ -187,12 +189,14 @@ def _fresh_recording_path(requested):
     path = Path(requested).expanduser().resolve()
     if not path.exists():
         return path
-    match = re.fullmatch(r"(.+)_([0-9]{3})", path.name)
-    name, index = (match[1], int(match[2]) + 1) if match else (path.name, 2)
-    candidate = path.with_name(f"{name}_{index:03d}")
+    suffix = path.suffix if path.is_file() else ""
+    stem = path.stem if suffix else path.name
+    match = re.fullmatch(r"(.+)_([0-9]{3})", stem)
+    name, index = (match[1], int(match[2]) + 1) if match else (stem, 2)
+    candidate = path.with_name(f"{name}_{index:03d}{suffix}")
     while candidate.exists():
         index += 1
-        candidate = path.with_name(f"{name}_{index:03d}")
+        candidate = path.with_name(f"{name}_{index:03d}{suffix}")
     return candidate
 
 
@@ -233,14 +237,18 @@ _DATASET_RUNS = (
 
 def _dataset_complete(session):
     directory = session.recordings_dir
-    return bool(
+    if not (
         session.collection_complete
         and directory is not None
+        and session.profile is not None
         and all(
             (directory / f"{index:02d}_{name}.npz").is_file()
             for index, (name, _) in enumerate(_DATASET_RUNS)
         )
-    )
+    ):
+        return False
+    source = _read_profile(directory / "source_profile.json")
+    return source is not None and profile_digest(source) == profile_digest(session.profile)
 
 
 def _dataset_summary(session):
@@ -256,6 +264,12 @@ def _dataset_summary(session):
         return (
             "**Calibration recording complete: 3 of 3 recordings saved.**\n\n"
             "The independent check is included. No more robot motion is needed to tune simulation."
+        )
+    if session.collection_complete:
+        return (
+            f"**{sum(recorded)} of 3 recordings saved.** "
+            "The previous dataset does not match this profile or is incomplete. "
+            "Prepare a new recording. Existing files are preserved."
         )
     rows = []
     for index, (name, title) in enumerate(_DATASET_RUNS):
@@ -275,6 +289,11 @@ def _dataset_summary(session):
 
 def _dynamics_readiness(session):
     active_messages = {
+        "checking": (
+            "Cancelling the motion check. Holding will not be enabled."
+            if session.cancel.is_set()
+            else "Checking all three motions in simulation. Stop commands cancels preparation."
+        ),
         "arming": "Preparing the robot. Keep supporting the arm until it holds steadily.",
         "holding": (
             "The arm is holding. Remove your hands, then record all three motions with one start."
@@ -286,16 +305,18 @@ def _dynamics_readiness(session):
     }
     if session.phase in active_messages:
         return active_messages[session.phase]
+    if _dataset_complete(session):
+        return "All three recordings are ready. Tune simulation next."
     if session.monitor is None:
-        return (
-            "All three recordings are ready. Tune simulation next."
-            if _dataset_complete(session)
-            else "Live readings are closed. Reconnect to prepare another attempt."
-        )
+        return "Live readings are closed. Reconnect to prepare another attempt."
     if any(session.monitor.torque.values()):
         return "Motors are holding. Support the arm and release motors before a new attempt."
     if not session.verified:
-        return "Support the arm at a raised pose, then prepare the robot."
+        return (
+            "Preparation cancelled. Support the arm and prepare it again when ready."
+            if session.status.startswith("Preparation cancelled")
+            else "Support the arm at a raised pose, then prepare the robot."
+        )
     return "Motion check passed. Keep supporting the arm, then prepare the robot."
 
 
@@ -329,6 +350,9 @@ def _fit_candidate(gr, session, viewport, *values):
     destination = _fresh_recording_path(output)
     result = _call(gr, session, session.fit, recordings, str(destination), max_iters)
     if result is None:
+        viewport.fitted_dataset = Path(recordings).expanduser().resolve()
+        viewport.fitted_profile = None
+        viewport.fit_summary = session.status
         return [], [], session.status
     metrics = json.loads((destination / "metrics.json").read_text())
     improved = metrics["validation_improved"]
@@ -339,7 +363,7 @@ def _fit_candidate(gr, session, viewport, *values):
         else "### Keep your original profile\n\nThe independent check did not show a "
         "consistent improvement. You can record another dataset, or inspect the detailed results."
     )
-    viewport.fitted_dataset = session.recordings_dir
+    viewport.fitted_dataset = Path(recordings).expanduser().resolve()
     viewport.fitted_profile = str(destination / "candidate_profile.json")
     viewport.fit_summary = summary
     viewport.fit_improved = improved
@@ -368,8 +392,12 @@ def _connection_settings(gr, ui):
         ui["calibration_dir"] = gr.Textbox(
             str(default_calibration_dir()), label="LeRobot follower calibration directory"
         )
-        ui["saved_profile"] = gr.Textbox(label="Existing confirmed profile JSON")
-        ui["load"] = gr.Button("Load matched profile")
+        ui["saved_profile"] = gr.Dropdown(
+            choices=[(path.stem, str(path)) for path in _saved_profiles()],
+            allow_custom_value=True,
+            label="Saved robot profile",
+        )
+        ui["load"] = gr.Button("Load matched profile", interactive=False)
         gr.Markdown(
             "Choose a confirmed Nexus profile. Loading connects read-only and requires "
             "matching motor calibration."
@@ -436,6 +464,9 @@ def _profile_controls(gr, ui):
         "confirmed. Save them together so simulation can use this robot's joint "
         "coordinates."
     )
+    ui["profile_download"] = gr.File(
+        label="Aligned robot profile", interactive=False, visible=False
+    )
     ui["save"] = gr.Button("Save profile", variant="primary")
     ui["edit_profile"] = gr.Button("Recalibrate robot")
     with gr.Accordion("Save location and control timing", open=False):
@@ -445,9 +476,7 @@ def _profile_controls(gr, ui):
         ui["period"] = gr.Number(0.02, label="Command period (seconds)")
     ui["tune"] = gr.Button("Dynamics tuning", visible=False)
     gr.Markdown(
-        "An aligned profile establishes coordinates. Dynamics tuning improves how "
-        "the simulator predicts motor response; neither step proves policy transfer "
-        "performance."
+        "Dynamics tuning checks whether the simulator can better match your robot's motion."
     )
 
 
@@ -484,6 +513,9 @@ def _motion_controls(gr, ui):
         ui["fraction"] = gr.Slider(0, 1, value=0, step=0.01, label="Position within episode")
     ui["hold_setup"] = gr.Column()
     with ui["hold_setup"]:
+        ui["stop_prepare"] = gr.Button(
+            "Stop commands", variant="stop", interactive=False, min_width=0
+        )
         ui["hold_activity"] = gr.Markdown("", min_height=44, elem_id="calibration-prepare-activity")
         ui["hold"] = gr.Button("Arm supported, prepare robot", variant="primary")
     gr.Markdown("The simulation checks the robot and table. Keep the real workspace clear.")
@@ -495,10 +527,12 @@ def _collection_controls(gr, ui):
         "One start records all three motions automatically, including the independent check. "
         "You do not need to start each motion or collect another dataset."
     )
-    with gr.Column(visible=False) as ui["start_setup"]:
-        ui["start"] = gr.Button(
-            "Hands clear, record calibration", variant="primary", interactive=False
-        )
+    with gr.Row():
+        with gr.Column(visible=False, scale=2, min_width=0) as ui["start_setup"]:
+            ui["start"] = gr.Button(
+                "Hands clear, record calibration", variant="primary", interactive=False
+            )
+        ui["stop"] = gr.Button("Stop commands", variant="stop", visible=False, scale=1, min_width=0)
     gr.Markdown(
         "Stop commands stops motion and keeps the motors holding. "
         "If you do not start within 60 seconds, preparation ends."
@@ -554,16 +588,16 @@ def _build_guide(gr, ui, stage):
                 ("Connect", _connect_controls),
                 ("Match joints", _alignment_controls),
                 ("Check jaws", _gripper_controls),
-                ("Save profile", _profile_controls),
+                ("Your profile", _profile_controls),
             )
         ):
             with gr.Step(label, id=index, interactive=True):
                 builder(gr, ui)
     with gr.Column(visible=False, min_width=0, elem_id="dynamics-workflow") as ui["dynamics"]:
         ui["failure_event"] = gr.JSON(visible=False, label="Collection failure event")
-        ui["failure_alert"] = gr.HTML(visible=False)
-        ui["worker_activity"] = gr.HTML(visible=False)
-        ui["tuning_status"] = gr.Markdown("")
+        ui["failure_alert"] = gr.Markdown(visible=False, container=True)
+        ui["worker_activity"] = gr.Markdown("", min_height=44, elem_id="calibration-hold-activity")
+        ui["tuning_status"] = gr.Markdown("", min_height=48)
         gr.Markdown(
             "Your physical alignment is saved. Follow these steps to match the simulator's motion."
         )
@@ -601,7 +635,7 @@ def _build_scene(gr, ui):
             scale=3,
         )
         ui["fit_view"] = gr.Button("Fit view", scale=1)
-    ui["focus"] = gr.Checkbox(label="Close-up of the active joint", value=False)
+    ui["focus"] = gr.Checkbox(label="Close-up of the active joint", value=False, visible=False)
     with gr.Accordion("Joint readings and connection details", open=False):
         ui["feedback"] = gr.Dataframe(
             headers=[
@@ -626,7 +660,7 @@ def _heading(guide, viewport=None):
             "to match your robot."
         )
     if guide.stage == 3:
-        return "# Your robot profile\n\nUse your saved alignment or recalibrate the robot."
+        return "# Your robot profile\n\nSave your joint mapping or reuse a saved profile."
     return (
         "# Calibrate your robot\n\nConnect, match the physical arm to the model, "
         "and save its profile."
@@ -636,7 +670,7 @@ def _heading(guide, viewport=None):
 def _build_layout(gr, ui, guide):
     ui["heading"] = gr.Markdown(_heading(guide))
     ui["status"] = gr.Markdown(
-        "Disconnected. Connect your follower to begin.", elem_id="hardware-status"
+        "Disconnected. Connect your follower to begin.", elem_id="hardware-status", min_height=44
     )
     with gr.Row():
         with gr.Column(scale=8, min_width=320, elem_classes="calibration-scene"):
@@ -646,7 +680,6 @@ def _build_layout(gr, ui, guide):
             _build_guide(gr, ui, guide.stage)
             ui["progress"] = gr.Markdown("")
             ui["reconnect"] = gr.Button("Connect saved robot", visible=False)
-            ui["stop"] = gr.Button("Stop commands", variant="stop", visible=False)
             with gr.Accordion("Disconnect or release motors", open=False):
                 ui["disconnect"] = gr.Button("Disconnect")
                 ui["release_supported"] = gr.Checkbox(
@@ -694,17 +727,25 @@ def _suggest_path(session):
 
 def _profile_message(session):
     if session.profile_path is not None:
+        if not session.profile_path.is_file():
+            return (
+                "### Save a new copy\n\nThe saved file is no longer here. "
+                "Your checked joint mapping is still available. Save a new copy below."
+            )
+        next_step = (
+            "Connect this robot to continue with dynamics tuning."
+            if session.monitor is None and not _dataset_complete(session)
+            else "You can stop here, or tune the simulator's motion response."
+        )
         return (
-            f"### Profile saved\n\n`{session.profile_path}`\n\n"
-            "Your confirmed joint mapping is ready to use in simulation. "
-            "You can stop here or improve motion dynamics below."
+            "### Your alignment is saved\n\nDownload your profile below. "
+            "You can reuse it without repeating joint calibration.\n\n" + next_step
         )
     if len(session.confirmed) != 5 or not session.gripper_confirmed:
-        return "### Save your aligned profile\n\nFinish the physical joint and jaw checks first."
+        return "### Save your aligned profile\n\nFinish the joint and jaw checks first."
     return (
-        "### Save your aligned profile\n\n"
-        "Your body joints and jaw mapping are confirmed. "
-        "Save them together so simulation can use this robot's joint coordinates."
+        "### Save your aligned profile\n\nYour joint and jaw checks are complete. "
+        "Save them to reuse this alignment."
     )
 
 
@@ -727,15 +768,16 @@ def _collection_alert(message):
     if not message:
         return ""
     return (
-        '<div role="alert" style="padding:16px;border-radius:8px;'
-        "border:1px solid var(--error-border-color,#fecaca);"
-        "background:var(--error-background-fill,#fef2f2);"
-        'color:var(--error-text-color,#991b1b)">'
-        "<strong>Recording stopped</strong>"
-        f"<p>{html.escape(message)}</p>"
-        "<p><strong>Next:</strong> Support the arm, then reconnect to prepare another attempt. "
-        "Completed recordings are preserved.</p></div>"
+        "### Recording stopped\n\n" + html.escape(message) + "\n\n"
+        "**Next:** Support the arm, then reconnect to prepare another attempt. "
+        "Completed recordings are preserved."
     )
+
+
+async def _wait_for_hold(session):
+    while session.phase == "arming" and session.worker is not None and session.worker.is_alive():
+        await asyncio.sleep(0.05)
+    return ""
 
 
 def _notify_collection_error(event):
@@ -743,6 +785,43 @@ def _notify_collection_error(event):
 
     if event:
         gr.Warning(event["message"], title="Recording stopped", duration=None)
+
+
+def _hardware_status(session, confirmed, ready):
+    phase = session.phase
+    if phase == "checking":
+        return "Checking planned motion. Stop cancels preparation."
+    motor_state = (
+        "motors off"
+        if session.monitor is not None and not any(session.monitor.torque.values())
+        else "torque may be enabled"
+    )
+    status = (
+        f"Connected, {motor_state}. {len(confirmed)}/5 body references confirmed."
+        if phase == "monitoring" and session.monitor is not None
+        else phase.replace("_", " ").capitalize()
+    )
+    if phase == "disconnected" and session.torque_possible:
+        status += ". Torque may still be enabled. Support the arm before release."
+    if phase in (
+        "checking",
+        "arming",
+        "holding",
+        "running",
+        "stopped",
+    ) or session.status.startswith("Preflight failed"):
+        status += f". {session.status}"
+    if ready:
+        status = (
+            "Recording complete. Support the arm before releasing the motors."
+            if session.torque_possible
+            else "Recording complete. Motors are off."
+        )
+    return (
+        "Recording stopped. Motors may still hold. Support the arm before release."
+        if session.collection_error
+        else status
+    )
 
 
 def _tick(session, guide, viewport, episode, fraction, aspect):
@@ -797,23 +876,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
         confirmed = session.confirmed.copy()
         gripper_confirmed = session.gripper_confirmed
         phase = session.phase
-        active = session.worker is not None and session.worker.is_alive()
-        motor_state = (
-            "motors off"
-            if session.monitor is not None and not any(session.monitor.torque.values())
-            else "torque may be enabled"
-        )
-        status = (
-            f"Connected, {motor_state}. {len(confirmed)}/5 body references confirmed."
-            if phase == "monitoring" and session.monitor is not None
-            else phase.replace("_", " ").capitalize()
-        )
-        if phase == "disconnected" and session.torque_possible:
-            status += ". Torque may still be enabled. Support the arm before release."
-        if phase in ("arming", "holding", "running", "stopped") or session.status.startswith(
-            "Preflight failed"
-        ):
-            status += f". {session.status}"
+        active = (session.worker is not None and session.worker.is_alive()) or phase == "checking"
         rows = [
             [
                 name,
@@ -831,19 +894,27 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             for index, name in enumerate(SO101_JOINT_NAMES)
         ]
         ready = _dataset_complete(session)
-        if ready:
-            status = (
-                "Recording complete. Support the arm before releasing the motors."
-                if session.torque_possible
-                else "Recording complete. Motors are off."
-            )
-        status = (
-            "Recording stopped. Motors may still hold. Support the arm before release."
-            if session.collection_error
-            else status
+        status = _hardware_status(session, confirmed, ready)
+        if viewport.tuning and not active:
+            if ready:
+                viewport.tuning_step = 2
+            elif viewport.tuning_step == 2:
+                viewport.tuning_step = 0
+        fitted_context = ready and viewport.fitted_dataset == session.recordings_dir
+        fitted = (
+            fitted_context
+            and viewport.fitted_profile is not None
+            and Path(viewport.fitted_profile).is_file()
         )
-        if viewport.tuning and ready and not active:
-            viewport.tuning_step = 2
+        artifacts = [
+            path
+            for path in dict.fromkeys([*session.artifacts, *viewport.previous_artifacts])
+            if Path(path).is_file()
+        ]
+        profile_file = session.profile_path or (
+            guide.saved_profile if session.profile is None else None
+        )
+        profile_file = str(profile_file) if profile_file and profile_file.is_file() else None
         outputs = (
             status,
             "" if viewport.tuning else session.progress,
@@ -855,9 +926,8 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             ),
             gr.update(interactive=phase == "holding" and not session.should_stop()),
             gr.update(
-                value=list(dict.fromkeys([*session.artifacts, *viewport.previous_artifacts]))
-                or None,
-                visible=bool(session.artifacts or viewport.previous_artifacts),
+                value=artifacts or None,
+                visible=bool(artifacts),
             ),
             session.status,
             gr.update(visible=active),
@@ -865,17 +935,18 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             gr.update(visible=viewport.tuning),
             gr.update(
                 visible=session.profile_path is not None
+                and profile_file is not None
                 and len(confirmed) == 5
                 and gripper_confirmed
             ),
             (
-                f"### Saved profile available\n\n`{guide.saved_profile}`\n\n"
-                "Connect your saved robot to verify its motor calibration and continue."
+                "### Saved profile found\n\nConnect your robot to reuse its alignment. "
+                "You only need to recalibrate if its joint mapping has changed."
                 if session.profile is None and guide.saved_profile
                 else _profile_message(session)
             ),
             gr.update(
-                visible=session.profile_path is None
+                visible=profile_file is None
                 and guide.stage == 3
                 and len(confirmed) == 5
                 and gripper_confirmed
@@ -899,7 +970,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
                         "Keep your original profile. Record another dataset or review the results."
                     )
                 )
-                if viewport.fitted_dataset == session.recordings_dir and viewport.fitted_profile
+                if fitted
                 else (
                     f"{session.status}\n\n{_dynamics_readiness(session)}"
                     if (phase == "stopped" and not ready)
@@ -908,13 +979,16 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
                 )
             ),
             gr.update(
-                visible=phase == "monitoring"
-                and session.monitor is not None
-                and not any(session.monitor.torque.values())
+                visible=phase == "checking"
+                or (
+                    phase == "monitoring"
+                    and session.monitor is not None
+                    and not any(session.monitor.torque.values())
+                )
             ),
             gr.update(visible=phase == "holding"),
             gr.update(
-                visible=not active and session.monitor is None and phase != "fitting",
+                visible=not active and (session.monitor is None or ready) and phase != "fitting",
                 value="Record another dataset"
                 if ready
                 else "Reconnect and prepare another attempt",
@@ -926,23 +1000,30 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             _dataset_summary(session),
             gr.update(
                 interactive=ready and not active and phase != "fitting",
-                visible=viewport.fitted_dataset != session.recordings_dir
-                or viewport.fitted_profile is None,
+                visible=not fitted,
             ),
             gr.update(
-                value=viewport.fitted_profile,
+                value=viewport.fitted_profile if fitted else None,
                 label="Tuned robot profile" if viewport.fit_improved else "Candidate for review",
-                visible=viewport.fitted_profile is not None
-                and viewport.fitted_dataset == session.recordings_dir,
+                visible=fitted,
             ),
-            viewport.fit_summary
-            if viewport.fitted_dataset == session.recordings_dir
-            else gr.skip(),
+            (
+                "The tuned profile was moved or removed. "
+                "Tune simulation again to create a new copy."
+                if fitted_context and viewport.fitted_profile is not None and not fitted
+                else viewport.fit_summary
+                if fitted_context
+                else ""
+            ),
+            gr.update(interactive=not active and phase != "fitting"),
+            gr.update(value=profile_file, visible=profile_file is not None),
             gr.update(
-                value='<div role="status"><progress aria-label="Preparing robot"></progress>'
-                "<p>Enabling hold. Keep supporting the arm.</p></div>",
-                visible=phase == "arming",
+                interactive=phase == "monitoring"
+                and session.monitor is not None
+                and not any(session.monitor.torque.values())
             ),
+            gr.update(interactive=phase == "checking"),
+            gr.update(visible=guide.stage in (1, 2) and not viewport.tuning),
             {"sequence": session.failure_sequence, "message": session.collection_error}
             if session.collection_error
             else None,
@@ -1033,7 +1114,9 @@ def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_ou
             profile.control_period_s if profile else 0.02,
             *(profile.gripper_limits_deg if profile else (-10, 100)),
             str(session.profile_path) if session.profile_path else _suggest_path(session),
-            str(session.profile_path) if session.profile_path else "",
+            str(session.profile_path or guide.saved_profile)
+            if session.profile_path or guide.saved_profile
+            else None,
             gr.Walkthrough(selected=viewport.tuning_step),
             *motion,
         )
@@ -1051,8 +1134,7 @@ def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_ou
     ] + [*ui["centers"], *ui["amplitudes"], ui["duration"], ui["table"], ui["seed"]]
 
     def reconnect(port, directory):
-        guide.saved_profile = session.profile_path or guide.saved_profile
-        perform(guide.connect, port, directory)
+        perform(_reconnect_saved_profile, session, guide, viewport, port, directory)
 
     ui["reconnect"].click(reconnect, [ui["port"], ui["calibration_dir"]], **_loading(ui)).then(
         sync, outputs=guide_outputs
@@ -1115,6 +1197,12 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
             perform(guide.load_profile, path)
             return session.profile.control_period_s, *session.profile.gripper_limits_deg
 
+    ui["saved_profile"].change(
+        lambda path: gr.update(interactive=bool(path)),
+        ui["saved_profile"],
+        ui["load"],
+        queue=False,
+    )
     ui["load"].click(
         load,
         [ui["saved_profile"], ui["port"], ui["calibration_dir"]],
@@ -1156,18 +1244,28 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
     ).then(sync, outputs=guide_outputs)
 
     def save(path, period):
-        saved = perform(guide.save_profile, path, period)
+        saved = perform(guide.save_profile, _fresh_recording_path(path), period)
+        choices = list(dict.fromkeys([*_saved_profiles(), saved]))
         return (
-            f"### Profile saved\n\n`{saved}`\n\n"
-            "Your confirmed joint mapping is ready to use in simulation. "
-            "You can stop here or improve motion dynamics below.",
+            _profile_message(session),
             gr.update(visible=True),
+            gr.update(visible=False),
+            gr.update(value=str(saved), visible=True),
+            str(saved),
+            gr.update(value=str(saved), choices=[(p.stem, str(p)) for p in choices]),
         )
 
     ui["save"].click(
         save,
         [ui["profile_output"], ui["period"]],
-        [ui["profile_message"], ui["tune"]],
+        [
+            ui["profile_message"],
+            ui["tune"],
+            ui["save"],
+            ui["profile_download"],
+            ui["profile_output"],
+            ui["saved_profile"],
+        ],
         **_loading(ui),
     )
 
@@ -1181,6 +1279,11 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         try:
             center = _check_motion_pose(session, values, manual_center=manual_center)
             plot = _show_plan(gr, session, *center, *values[6:])
+        except InterruptedError:
+            session.verified = False
+            session.status = "Preparation cancelled. Holding was not enabled."
+            gr.Info(session.status)
+            return None
         except Exception as error:
             session.verified = False
             session.status = (
@@ -1190,12 +1293,28 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         return plot, gr.Walkthrough(selected=0), *center
 
     check_outputs = [ui["trajectory_plot"], ui["tuning_steps"], *ui["centers"]]
-    ui["preview"].click(check, [ui["manual_center"], *settings], check_outputs, **_loading(ui))
+
+    def preview(*values):
+        return check(*values) or (gr.skip(),) * len(check_outputs)
+
+    ui["preview"].click(preview, [ui["manual_center"], *settings], check_outputs, **_loading(ui))
 
     def prepare(path, manual_center, *values):
         checked = check(manual_center, *values)
+        if checked is None:
+            return (gr.skip(),) * (len(check_outputs) + 1)
         try:
-            destination = _prepare_collection(session, path, True, [*checked[2:8], *values[6:]])
+            with session.lock:
+                if not viewport.tuning or session.cancel.is_set():
+                    session.verified = False
+                    session.status = "Preparation cancelled. Holding was not enabled."
+                    return (gr.skip(),) * (len(check_outputs) + 1)
+                destination = _prepare_collection(session, path, True, [*checked[2:8], *values[6:]])
+        except InterruptedError:
+            session.verified = False
+            session.status = "Preparation cancelled. Holding was not enabled."
+            gr.Info(session.status)
+            return (gr.skip(),) * (len(check_outputs) + 1)
         except Exception as error:
             session.status = f"Could not prepare recording: {error}"
             raise gr.Error(session.status) from error
@@ -1210,6 +1329,10 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         [ui["output_dir"], ui["manual_center"], *settings],
         [*check_outputs, ui["output_dir"]],
         **_loading(ui, "hold_activity"),
+    ).success(
+        partial(_wait_for_hold, session),
+        outputs=ui["worker_activity"],
+        **_loading(ui, "worker_activity"),
     ).then(lambda: "", outputs=ui["fit_summary"])
     ui["start"].click(
         lambda *values: _start_motion(gr, session, True, *values),
@@ -1218,6 +1341,10 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         **_loading(ui),
     )
 
+    _wire_recovery(gr, ui, session, guide, viewport, perform)
+
+
+def _wire_recovery(gr, ui, session, guide, viewport, perform):
     def retry(port, directory):
         perform(session._idle)
         saved = perform(_ensure_saved_profile, session)
@@ -1263,7 +1390,7 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
     def begin():
         perform(session._idle)
         perform(session._aligned)
-        if session.profile_path is None or guide.stage != 3:
+        if session.profile_path is None or not session.profile_path.is_file() or guide.stage != 3:
             raise gr.Error("Save your aligned profile first.")
         session.status = (
             "Support the arm in a raised pose, then prepare the robot. "
@@ -1277,9 +1404,10 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
     ui["tune"].click(begin, outputs=[ui["dynamics"], ui["walkthrough"], ui["tuning_steps"]])
 
     def finish():
-        perform(session._idle)
-        viewport.tuning = False
-        viewport.fit()
+        with session.lock:
+            perform(session._idle)
+            viewport.tuning = False
+            viewport.fit()
         return gr.update(visible=False), gr.Walkthrough(visible=True, selected=3)
 
     ui["return_profile"].click(finish, outputs=[ui["dynamics"], ui["walkthrough"]])
@@ -1301,6 +1429,44 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         [ui["errors"], ui["diagnostics"], ui["fit_summary"]],
         **_loading(ui, "fit_activity"),
     )
+
+
+def _read_profile(path):
+    from so101_nexus.profiles import RobotProfile
+
+    try:
+        return RobotProfile.load(path)
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def _reconnect_saved_profile(session, guide, viewport, port, directory):
+    with session.lock:
+        session._idle()
+        recordings = session.recordings_dir
+        completed = _dataset_complete(session)
+        source = _read_profile(recordings / "source_profile.json") if recordings else None
+        artifacts = [path for path in session.artifacts if Path(path).is_file()]
+        viewport.previous_artifacts.extend(artifacts)
+        guide.saved_profile = session.profile_path or guide.saved_profile
+        guide.connect(port, directory)
+        if guide.stage != 3:
+            for path in _saved_profiles():
+                candidate = _read_profile(path)
+                if candidate is not None and (
+                    candidate.calibration == session.profile.calibration
+                    and candidate.servo_gains == session.profile.servo_gains
+                ):
+                    guide.load_profile(path)
+                    break
+        if (
+            completed
+            and source is not None
+            and profile_digest(source) == profile_digest(session.profile)
+        ):
+            session.recordings_dir = recordings
+            session.collection_complete = True
+            session.artifacts = list(dict.fromkeys([*session.artifacts, *artifacts]))
 
 
 def _saved_profiles(directory: Path = Path("runs/calibration")) -> list[Path]:
@@ -1364,7 +1530,11 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "fit",
                 "tuned_profile",
                 "fit_summary",
-                "worker_activity",
+                "return_profile",
+                "profile_download",
+                "edit_profile",
+                "stop_prepare",
+                "focus",
                 "failure_event",
                 "failure_alert",
             )
@@ -1380,6 +1550,7 @@ def build_app(session: CalibrationSession | None = None) -> Any:
         timer.tick(tick, inputs, outputs, js=_MEASURE_VIEW, queue=False, show_progress="hidden")
         app.load(tick, inputs, outputs, js=_MEASURE_VIEW)
         ui["stop"].click(session.stop, queue=False)
+        ui["stop_prepare"].click(session.stop, queue=False)
         ui["disconnect"].click(lambda: perform(session.disconnect), queue=False, **_loading(ui))
         ui["release"].click(
             lambda supported: perform(session.release, supported=supported),

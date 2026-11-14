@@ -272,3 +272,15 @@ def test_saved_profile_for_different_robot_does_not_skip_alignment(guide, tmp_pa
     assert not guide.session.confirmed
     assert guide.session.profile_path is None
     assert "differs" in guide.session.status
+
+
+def test_busy_reconnect_keeps_the_current_guide_stage_and_monitor(guide):
+    guide.connect("/dev/fake", "/unused")
+    guide.stage = 3
+    monitor = guide.session.monitor
+    guide.session._preflighting = True
+    with pytest.raises(RuntimeError, match="motion check"):
+        guide.connect("/dev/fake", "/unused")
+    assert guide.stage == 3
+    assert guide.session.monitor is monitor
+    assert not monitor.closed
