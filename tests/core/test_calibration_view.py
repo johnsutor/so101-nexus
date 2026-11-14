@@ -6,6 +6,7 @@ import pytest
 from so101_nexus.calibration.view import render_overlay
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("provisional", [False, True])
 def test_overlay_distinguishes_reference_from_measured(provisional):
     figure = render_overlay((0, 0, 0, 0, 0, 0), (15, 0, 0, 0, 0, 0), provisional=provisional)
@@ -25,12 +26,14 @@ def test_overlay_distinguishes_reference_from_measured(provisional):
     assert figure.layout.uirevision == "calibration-overlay:front"
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_missing_measurement_has_no_invented_measured_pose():
     figure = render_overlay((0, 0, 0, 0, 0, 0), None)
     assert len(figure.data) == 1
     assert "No live measurement" in figure.layout.annotations[0].text
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_active_joint_axis_uses_forward_kinematics():
     figure = render_overlay((0, 0, 0, 0, 0, 0), None, active_joint="shoulder_lift")
     reference, axis = figure.data
@@ -42,17 +45,20 @@ def test_active_joint_axis_uses_forward_kinematics():
     ) == pytest.approx(0.09)
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("angles", [(0, 0), (0, 0, 0, 0, 0, float("nan"))])
 def test_overlay_rejects_invalid_degree_vectors(angles):
     with pytest.raises(ValueError, match="six finite"):
         render_overlay(angles, None)
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_overlay_rejects_unknown_joint():
     with pytest.raises(ValueError, match="Unknown active joint"):
         render_overlay((0, 0, 0, 0, 0, 0), None, active_joint="missing")
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_identical_poses_have_identical_geometry_and_independent_data():
     angles = (20, -30, 40, -20, 15, 30)
     figure = render_overlay(angles, angles, provisional=False)
@@ -63,6 +69,7 @@ def test_identical_poses_have_identical_geometry_and_independent_data():
     assert len(figure.to_json()) < 700_000
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("measured", [None, (75, -25, 50, 30, 60, 80)])
 def test_default_framing_fits_actual_reference_and_measured_geometry(measured):
     figure = render_overlay((0, 0, 0, 0, 0, 45), measured)
@@ -83,6 +90,7 @@ def test_default_framing_fits_actual_reference_and_measured_geometry(measured):
     assert camera.up.z == 1
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("view", ["front", "side", "top"])
 def test_named_views_preserve_world_geometry_and_keep_camera_stable_with_live_updates(view):
     reference_deg = (0, -15, 30, 45, 0, 50)
@@ -99,6 +107,7 @@ def test_named_views_preserve_world_geometry_and_keep_camera_stable_with_live_up
         assert live.layout.scene.camera.up.z == 1
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_changing_named_view_resets_camera_without_transforming_meshes():
     reference_deg = (0, -15, 30, 45, 0, 50)
     front = render_overlay(reference_deg, view="front")
@@ -108,6 +117,7 @@ def test_changing_named_view_resets_camera_without_transforming_meshes():
     assert front.layout.scene.camera.eye != side.layout.scene.camera.eye
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_explicit_framing_bounds_stay_fixed_across_monitor_updates():
     reference_deg = (0, -15, 30, 45, 0, 50)
     first = render_overlay(reference_deg)
@@ -118,12 +128,14 @@ def test_explicit_framing_bounds_stay_fixed_across_monitor_updates():
     assert update.layout.uirevision == first.layout.uirevision
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("view", ["isometric", "", "FRONT"])
 def test_overlay_rejects_unknown_named_view(view):
     with pytest.raises(ValueError, match="view"):
         render_overlay((0, 0, 0, 0, 0, 45), view=view)
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_overlay_bounds_match_rendered_mesh_union_without_mutating_model_coordinates():
     from so101_nexus.calibration.view import overlay_bounds
 
@@ -135,6 +147,7 @@ def test_overlay_bounds_match_rendered_mesh_union_without_mutating_model_coordin
         assert getattr(figure.layout.scene, name).range == expected
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("viewport_aspect", [0.6, 1.5, 2.0])
 def test_framing_preserves_equal_meter_scale_at_portrait_and_wide_viewports(viewport_aspect):
     figure = render_overlay((0, 0, 0, 0, 0, 45), viewport_aspect=viewport_aspect)
@@ -145,18 +158,21 @@ def test_framing_preserves_equal_meter_scale_at_portrait_and_wide_viewports(view
     assert np.linalg.norm(ratios) == pytest.approx(1.85 * min(viewport_aspect, 1))
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("viewport_aspect", [0, -1, float("nan"), True])
 def test_overlay_rejects_invalid_viewport_shape(viewport_aspect):
     with pytest.raises(ValueError, match="viewport_aspect"):
         render_overlay((0, 0, 0, 0, 0, 45), viewport_aspect=viewport_aspect)
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("bounds", [((0, 1),), ((0, 1), (0, 0), (0, 1))])
 def test_overlay_rejects_invalid_fixed_meter_ranges(bounds):
     with pytest.raises(ValueError, match="bounds_m"):
         render_overlay((0, 0, 0, 0, 0, 45), bounds_m=bounds)
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("focus_joint", ["wrist_flex", "wrist_roll"])
 def test_joint_focus_preserves_geometry_and_frames_wrist_with_upstream_context(focus_joint):
     from so101_nexus.calibration.view import overlay_bounds
@@ -205,6 +221,7 @@ def test_focused_bounds_include_measured_jaw_in_both_poses():
             assert np.all(position < bounds[:, 1])
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_joint_focus_persists_during_timer_updates_and_rejects_unknown_joint():
     reference_deg = (0, 0, 0, 0, 0, 45)
     first = render_overlay(reference_deg, focus_joint="wrist_roll")
@@ -214,6 +231,7 @@ def test_joint_focus_persists_during_timer_updates_and_rejects_unknown_joint():
         render_overlay(reference_deg, focus_joint="jaw_position")
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("view", ["front", "side", "top"])
 def test_camera_updates_omit_presets_unless_reset_is_requested(view):
     figure = render_overlay((0, 0, 0, 0, 0, 45), view=view, camera_reset=False)
@@ -225,6 +243,7 @@ def test_camera_updates_omit_presets_unless_reset_is_requested(view):
     assert reset.layout.scene.camera.projection.type == "orthographic"
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 @pytest.mark.parametrize("pose", [(0, 0, 0, 0, 0, 45), (75, -25, 50, 30, 60, 80)])
 @pytest.mark.parametrize("viewport_aspect", [0.6, 1.5, 2.0])
 def test_arbitrary_orbit_fits_the_entire_bounding_sphere(pose, viewport_aspect):
@@ -249,6 +268,7 @@ def test_arbitrary_orbit_fits_the_entire_bounding_sphere(pose, viewport_aspect):
             assert np.max(np.abs(normalized @ up)) < 1
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_expand_bounds_keeps_encoder_jitter_fixed_and_encloses_large_pose_changes():
     from so101_nexus.calibration.view import expand_bounds, overlay_bounds
 

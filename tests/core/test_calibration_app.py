@@ -71,6 +71,7 @@ def test_motion_settings_reject_invalid_or_too_short_motion(profile, center, amp
         )
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_app_initialization_and_refresh_do_not_open_or_write_hardware(monkeypatch):
     from unittest.mock import Mock
 
@@ -158,6 +159,7 @@ def test_launcher_binds_loopback_and_passes_browser_preference(monkeypatch, tmp_
     )
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_invalid_preview_cannot_render_previous_valid_plan(profile):
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -180,6 +182,7 @@ def test_invalid_preview_cannot_render_previous_valid_plan(profile):
     assert "positive" in session.status
 
 
+@pytest.mark.usefixtures("calibration_plotly")
 def test_valid_preview_contains_exact_generated_commands(profile):
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -232,6 +235,7 @@ def test_plan_uses_visible_command_period_and_rejects_invalid_period(profile):
     assert not session.verified
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_guided_ui_reveals_profile_steps_before_optional_dynamics():
     pytest.importorskip("gradio")
     from so101_nexus.calibration.app import build_app
@@ -269,6 +273,7 @@ def test_guided_ui_reveals_profile_steps_before_optional_dynamics():
     assert plot["props"]["elem_id"] == "calibration-robot-view"
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_motion_events_clear_claims_and_submit_all_visible_settings():
     pytest.importorskip("gradio")
     from so101_nexus.calibration.app import build_app
@@ -369,6 +374,7 @@ def test_start_accepts_matching_visible_plan_with_explicit_hands_clear(holding_s
     gr.Warning.assert_not_called()
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_command_period_input_preserves_loaded_profile_clock_exactly():
     pytest.importorskip("gradio")
     from so101_nexus.calibration.app import build_app
@@ -382,6 +388,7 @@ def test_command_period_input_preserves_loaded_profile_clock_exactly():
     assert period.preprocess(1 / 30) == 1 / 30
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_loading_profile_returns_its_clock_and_gripper_in_one_event(profile, tmp_path):
     from dataclasses import replace
     from types import SimpleNamespace
@@ -443,6 +450,7 @@ def test_using_live_center_revokes_preflight_without_programmatic_change_event(p
     assert not session.verified
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_connection_defaults_to_the_follower_port_without_discovery():
     pytest.importorskip("gradio")
     from so101_nexus.calibration.app import build_app
@@ -457,6 +465,7 @@ def test_connection_defaults_to_the_follower_port_without_discovery():
     assert ("/dev/ttyACM0", "/dev/ttyACM0") in port.choices
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_unload_cancels_commands_but_preserves_the_readonly_alignment_session(profile):
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -529,6 +538,7 @@ def test_capture_rejects_stale_instructions_even_when_the_live_frame_has_advance
     assert guide.joint_index == 1
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_stale_capture_refreshes_the_form_instead_of_repeating_an_error(profile):
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -608,6 +618,7 @@ def test_recording_retries_choose_a_new_directory_without_touching_old_data(tmp_
     assert data.read_bytes() == b"completed episode"
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_live_pose_expands_viewport_without_resetting_camera(profile, monkeypatch):
     from types import SimpleNamespace
 
@@ -642,6 +653,7 @@ def test_live_pose_expands_viewport_without_resetting_camera(profile, monkeypatc
     assert figure["layout"]["uirevision"] == f"guided:{guide.view}:None:{revision}"
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_live_updates_never_replace_the_mounted_plot(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     from so101_nexus.calibration.app import build_app
@@ -658,6 +670,7 @@ def test_live_updates_never_replace_the_mounted_plot(monkeypatch, tmp_path):
     assert "Plotly.react" in updates[0]["js"]
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_saved_profile_opens_completion_without_opening_hardware(profile, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     directory = tmp_path / "app-data/profiles"
@@ -684,6 +697,7 @@ def test_saved_profile_opens_completion_without_opening_hardware(profile, monkey
     assert result[22].startswith("# Your robot profile")
 
 
+@pytest.mark.usefixtures("calibration_ui")
 @pytest.mark.parametrize("improved", [True, False])
 def test_tuning_result_gives_one_clear_profile_outcome(profile, tmp_path, improved):
     import json
@@ -716,6 +730,7 @@ def test_tuning_result_gives_one_clear_profile_outcome(profile, tmp_path, improv
     assert session.profile is profile
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_collection_warning_uses_a_queued_change_event():
     from so101_nexus.calibration.app import _notify_collection_error, build_app
 
@@ -730,6 +745,7 @@ def test_collection_warning_uses_a_queued_change_event():
     assert app.fns[dependency["id"]].fn is _notify_collection_error
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_slow_actions_show_progress_outside_hidden_settings():
     from so101_nexus.calibration.app import build_app
 
@@ -780,6 +796,7 @@ def test_slow_actions_show_progress_outside_hidden_settings():
     assert tick["show_progress"] == "hidden"
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_feedback_uses_native_components_and_arming_wait_is_not_polled():
     from so101_nexus.calibration.app import build_app
 
@@ -797,6 +814,7 @@ def test_feedback_uses_native_components_and_arming_wait_is_not_polled():
     assert indicator["id"] not in tick["outputs"]
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_prepare_stop_reserves_its_space_before_checking():
     from so101_nexus.calibration.app import build_app
 
@@ -813,6 +831,7 @@ def test_prepare_stop_reserves_its_space_before_checking():
     assert status["props"]["min_height"] >= 44
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_prepare_stop_sits_above_progress_and_primary_action():
     from so101_nexus.calibration.app import build_app
 
@@ -839,6 +858,7 @@ def test_prepare_stop_sits_above_progress_and_primary_action():
     assert stop_index < activity_index < prepare_index
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_default_gui_isolates_hardware_collection_without_starting_a_process(monkeypatch):
     import multiprocessing
 
@@ -859,6 +879,7 @@ def test_default_gui_isolates_hardware_collection_without_starting_a_process(mon
     assert {child.pid for child in multiprocessing.active_children()} == before
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_profile_discovery_and_default_outputs_ignore_launch_directory(
     profile, tmp_path, monkeypatch
 ):
@@ -884,6 +905,7 @@ def test_profile_discovery_and_default_outputs_ignore_launch_directory(
         assert values["New fit output directory"] == str(calibration_dir() / "fit")
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_gui_migrates_legacy_before_discovery_without_changing_original(
     profile, tmp_path, monkeypatch
 ):
@@ -908,6 +930,7 @@ def test_gui_migrates_legacy_before_discovery_without_changing_original(
     assert session.monitor is None
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_native_profile_import_copies_upload_and_waits_for_live_verification(profile, tmp_path):
     from so101_nexus.calibration.app import build_app
     from so101_nexus.calibration.storage import profiles_dir
@@ -939,6 +962,7 @@ def test_native_profile_import_copies_upload_and_waits_for_live_verification(pro
     assert list(profiles_dir().glob("*.json")) == [saved]
 
 
+@pytest.mark.usefixtures("calibration_ui")
 def test_filesystem_controls_remain_in_collapsed_advanced_settings():
     from so101_nexus.calibration.app import build_app
 

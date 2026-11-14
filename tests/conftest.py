@@ -89,3 +89,15 @@ def supported_pick_factory(env_factory, monkeypatch):
         return env, pose
 
     return make
+
+
+@pytest.fixture
+def calibration_plotly():
+    """Require the optional plotting dependency for calibration rendering tests."""
+    return pytest.importorskip("plotly.graph_objects")
+
+
+@pytest.fixture
+def calibration_ui(calibration_plotly):
+    """Require both optional GUI dependencies without skipping calibration core tests."""
+    return pytest.importorskip("gradio")
