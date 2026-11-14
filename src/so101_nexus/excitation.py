@@ -62,7 +62,9 @@ class ExcitationConfig:
     min_clearance_m : float
         Minimum tool-center height above the work surface.
     max_overrun_s : float
-        Maximum command lateness. Delays shift subsequent commands without catch-up.
+        Maximum lateness after reading positions or while sending a command.
+    max_wakeup_lateness_s : float
+        Maximum scheduler delay before a fresh position read. Resume without catch-up.
     """
 
     center_qpos_deg: tuple[float, ...]
@@ -80,6 +82,7 @@ class ExcitationConfig:
     max_read_duration_s: float = 0.1
     max_overrun_s: float = 0.05
     seed: int = 0
+    max_wakeup_lateness_s: float = 0.25
 
     def __post_init__(self) -> None:
         """Reject ambiguous poses and invalid motion or timing limits."""
@@ -101,6 +104,7 @@ class ExcitationConfig:
             "max_command_error_deg",
             "max_read_duration_s",
             "max_overrun_s",
+            "max_wakeup_lateness_s",
         ):
             _positive(getattr(self, name), name)
         if self.ramp_s * 2 >= self.duration_s:
@@ -492,12 +496,14 @@ def _collect_episode(
     previous = trajectory.commands_deg[0]
     read_lead_s = 0.0
 
-    def check_deadline(deadline_s: float, stage: str, sample: int) -> None:
+    def check_deadline(
+        deadline_s: float, stage: str, sample: int, limit_s: float = config.max_overrun_s
+    ) -> None:
         late_s = clock() - origin - deadline_s
-        if late_s > config.max_overrun_s:
+        if late_s > limit_s:
             raise RuntimeError(
                 f"hardware loop overrun during {stage}: {late_s * 1000:.1f} ms late, "
-                f"limit {config.max_overrun_s * 1000:.1f} ms "
+                f"limit {limit_s * 1000:.1f} ms "
                 f"(run {trajectory.name}, sample {sample + 1}/{len(trajectory.timestamps_s)}). "
                 "The computer or motor communication could not keep up. "
                 "Close other busy applications and retry."
@@ -513,7 +519,11 @@ def _collect_episode(
         if remaining > 0:
             sleep(remaining)
         _check_cancelled(should_stop)
-        check_deadline(deadline_s, "waiting for the next sample", index)
+        check_deadline(
+            deadline_s, "waiting for the next sample", index, config.max_wakeup_lateness_s
+        )
+        # A scheduler pause held the old target; verify a fresh pose before resuming.
+        deadline_s = max(deadline_s, clock() - origin)
         position, before, after = _read_position(
             robot, profile, clock, origin, config.max_read_duration_s
         )

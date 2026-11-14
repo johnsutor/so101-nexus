@@ -72,6 +72,15 @@ It rejects conflicting calibration files or environment profiles.
 When physics configuration is omitted, environments and this adapter select the profile command interval.
 They choose physics substeps that divide this interval without exceeding the default timestep.
 
+### Excitation timing
+
+`ExcitationConfig.max_wakeup_lateness_s` defaults to 0.25 seconds.
+It bounds scheduler delays before reading the current motor positions.
+After a permitted delay, collection reads a fresh pose, checks tracking, and resumes without catch-up.
+`max_overrun_s` retains a separate 0.05-second lateness limit after reads and during command writes.
+`max_read_duration_s` limits each position read to 0.1 seconds.
+Actual measurement and command timestamps are saved for fitting.
+
 ### Excitation collection callbacks
 
 `collect_excitation(robot, profile, config, ...)` owns the follower connection and disconnection.

@@ -683,7 +683,8 @@ The driver briefly disables torque during connection. An unsupported arm can fal
 The app transfers serial ownership from the monitor to one collection worker.
 The collector requires matching calibration, hardware PID coefficients, and a follower without cameras.
 An initial pose mismatch, excessive tracking error, slow reads, or excessive command lateness stops collection.
-The collector allows the configured lateness budget and shifts later commands after a delay.
+The collector tolerates brief scheduler pauses before reading a fresh pose and resuming.
+Motor reads and writes retain stricter [timing limits](/docs/api/configs#excitation-timing).
 It never sends a burst of commands to catch up. Actual timestamps remain part of each recording.
 A timing error reports the measured delay, allowed delay, run, and sample.
 Collection failures appear as a top-right warning and a persistent error beside the recovery action.

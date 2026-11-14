@@ -49,6 +49,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Tolerate bounded scheduler pauses during dynamics collection by checking a fresh
+  arm pose before resuming without catch-up. Keep strict motor communication and
+  tracking checks, with a separate configurable wake-up lateness budget.
+
 - Prevent a stopped or disconnected motion check from enabling calibration hold
   afterward, and reject navigation or profile changes while a check is running.
 - Keep completed calibration datasets available after a matching-profile reconnect.

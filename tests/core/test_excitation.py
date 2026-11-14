@@ -62,6 +62,8 @@ def test_excitation_is_repeatable_bounded_and_includes_heldout(profile, config):
     [
         {"duration_s": 0},
         {"ramp_s": -1},
+        {"max_wakeup_lateness_s": 0},
+        {"max_wakeup_lateness_s": float("nan")},
         {"max_velocity_deg_s": float("nan")},
         {"center_qpos_deg": (0,) * 5},
         {"amplitudes_deg": (0,) * 6},
@@ -950,6 +952,78 @@ def test_late_wakeup_after_early_read_stops_before_sending(monkeypatch, profile,
     with pytest.raises(
         RuntimeError, match=r"before sending a command: 60.0 ms late, limit 50.0 ms"
     ):
+        collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert len(robot.commands) == 1
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("pause_s", [0.1262, 0.24])
+def test_scheduler_pause_reads_fresh_pose_and_resumes_without_catchup(
+    monkeypatch, profile, config, pause_s
+):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+    delayed = False
+
+    def wait(duration):
+        nonlocal delayed
+        sleep(duration)
+        if len(robot.commands) == 1 and not delayed:
+            clock.now += pause_s
+            delayed = True
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    recordings = collect_excitation(robot, profile, config, clock=clock, sleep=wait)
+    assert delayed
+    for recording, trajectory in zip(recordings, generate_excitation(config, profile), strict=True):
+        np.testing.assert_allclose(recording.commanded_qpos_deg, trajectory.commands_deg)
+        assert np.min(np.diff(recording.command_timestamps_s)) >= profile.control_period_s - 1e-12
+    assert np.max(np.diff(recordings[0].command_timestamps_s)) >= pause_s
+    assert not robot.connected
+
+
+@pytest.mark.parametrize("budget_s", [0.08, 0.25])
+def test_scheduler_pause_budget_stops_before_read_or_command(
+    monkeypatch, profile, config, budget_s
+):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+
+    def wait(duration):
+        sleep(duration)
+        if len(robot.commands) == 1:
+            clock.now += budget_s + 0.02
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match="waiting for the next sample"):
+        collect_excitation(
+            robot,
+            profile,
+            replace(config, max_wakeup_lateness_s=budget_s),
+            clock=clock,
+            sleep=wait,
+        )
+    assert len(robot.commands) == 1
+    assert not robot.connected
+
+
+def test_scheduler_pause_still_checks_fresh_tracking_before_command(monkeypatch, profile, config):
+    robot = FakeRobot(profile, config.center_qpos_deg)
+    clock = FakeClock()
+    sleep = clock.sleep
+
+    def wait(duration):
+        sleep(duration)
+        if len(robot.commands) == 1:
+            clock.now += 0.1262
+            robot.position = np.asarray(
+                profile.from_model_deg(np.asarray(config.center_qpos_deg) + 20)
+            )
+
+    monkeypatch.setattr("so101_nexus.excitation.preflight_excitation", lambda *args: None)
+    with pytest.raises(RuntimeError, match="tracking error"):
         collect_excitation(robot, profile, config, clock=clock, sleep=wait)
     assert len(robot.commands) == 1
     assert not robot.connected
