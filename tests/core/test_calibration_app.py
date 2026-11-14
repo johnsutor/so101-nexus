@@ -216,56 +216,71 @@ def test_plan_uses_visible_command_period_and_rejects_invalid_period(profile):
     assert not session.verified
 
 
-def test_new_connection_and_motion_edits_clear_stale_operator_confirmations():
+def test_guided_ui_reveals_profile_steps_before_optional_dynamics():
+    pytest.importorskip("gradio")
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    kinds = [component["type"] for component in config["components"]]
+    assert "tabs" not in kinds
+    steps = [
+        component for component in config["components"] if component["type"] == "walkthroughstep"
+    ]
+    assert [step["props"]["label"] for step in steps[:4]] == [
+        "Connect",
+        "Match joints",
+        "Check jaws",
+        "Save profile",
+    ]
+    assert all(step["props"]["interactive"] for step in steps)
+    walkthrough_ids = {item["id"] for item in config["components"] if item["type"] == "walkthrough"}
+    guards = [
+        item
+        for item in config["dependencies"]
+        if any(
+            identifier in walkthrough_ids and event == "select"
+            for identifier, event in item["targets"]
+        )
+    ]
+    assert len(guards) == 2
+    groups = {item["props"].get("elem_id"): item for item in config["components"]}
+    assert groups["dynamics-workflow"]["props"]["visible"] is False
+    assert groups["wrist-correction"]["props"]["visible"] is False
+    accordions = [item["props"] for item in config["components"] if item["type"] == "accordion"]
+    assert all(not item["open"] for item in accordions)
+    plot = next(item for item in config["components"] if item["type"] == "plot")
+    assert plot["props"]["elem_id"] == "calibration-robot-view"
+
+
+def test_motion_events_clear_claims_and_submit_all_visible_settings():
     pytest.importorskip("gradio")
     from so101_nexus.calibration.app import build_app
 
     app = build_app()
     config = app.get_config_file()
     components = {item["id"]: item for item in config["components"]}
-    connect_id = next(
-        identifier
-        for identifier, item in components.items()
-        if item["type"] == "button" and item["props"].get("value") == "Connect read-only"
-    )
-    connect_event = next(
-        item
-        for item in config["dependencies"]
-        if any(
-            identifier == connect_id and event == "click" for identifier, event in item["targets"]
-        )
-    )
-    reset_events = [
-        item
-        for item in config["dependencies"]
-        if item.get("trigger_after") == connect_event["id"]
-        and any(components[identifier]["type"] == "checkbox" for identifier in item["outputs"])
-    ]
-    assert reset_events, "Reconnecting must discard previous physical and motion confirmations"
-    reset = reset_events[0]
-    assert len(reset["outputs"]) == 5
-    assert app.fns[reset["id"]].fn() == (False,) * 5
     edit_events = [
         item
         for item in config["dependencies"]
         if len(item["inputs"]) == 16 and any(event == "input" for _, event in item["targets"])
     ]
     assert len(edit_events) == 16
-    for item in edit_events:
-        assert len(item["outputs"]) == 2, "Edited plans must clear support and hands-clear claims"
-
-    start_id = next(
+    assert all(len(item["outputs"]) == 2 for item in edit_events)
+    start = next(
         identifier
         for identifier, item in components.items()
         if item["type"] == "button" and item["props"].get("value") == "Start excitation"
     )
-    start_event = next(
+    event = next(
         item
         for item in config["dependencies"]
-        if any(identifier == start_id and event == "click" for identifier, event in item["targets"])
+        if any(
+            identifier == start and trigger == "click" for identifier, trigger in item["targets"]
+        )
     )
-    assert len(start_event["inputs"]) == 17
-    labels = {components[identifier]["props"].get("label") for identifier in start_event["inputs"]}
+    assert len(event["inputs"]) == 17
+    labels = {components[identifier]["props"].get("label") for identifier in event["inputs"]}
     assert "Command period (seconds)" in labels
     assert "Trajectory seed" in labels
     assert "Holding is stable, my hands and workspace are clear" in labels
@@ -380,7 +395,7 @@ def test_loading_profile_returns_its_clock_and_gripper_in_one_event(profile, tmp
         )
     )
     assert len(event["outputs"]) == 3
-    assert app.fns[event["id"]].fn(str(path)) == (1 / 30, -5, 80)
+    assert app.fns[event["id"]].fn(str(path), "/dev/fake", "/unused") == (1 / 30, -5, 80)
     assert session.profile.control_period_s == 1 / 30
     assert session.profile.gripper_limits_deg == (-5, 80)
     settings_ids = set(
@@ -409,3 +424,70 @@ def test_using_live_center_revokes_preflight_without_programmatic_change_event(p
     result = _current_center(SimpleNamespace(Warning=Mock(), skip=Mock()), session)
     np.testing.assert_array_equal(result, [0, 0, 0, 0, 0, 45])
     assert not session.verified
+
+
+def test_connection_defaults_to_the_follower_port_without_discovery():
+    pytest.importorskip("gradio")
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    port = next(
+        component
+        for component in app.blocks.values()
+        if getattr(component, "label", None) == "Follower serial port"
+    )
+    assert port.value == "/dev/ttyACM0"
+    assert ("/dev/ttyACM0", "/dev/ttyACM0") in port.choices
+
+
+def test_unload_cancels_commands_but_preserves_the_readonly_alignment_session(profile):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    pytest.importorskip("gradio")
+    from so101_nexus.calibration.app import build_app
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.phase = "monitoring"
+    session.confirmed = {0, 1}
+    session.verified = True
+    monitor = SimpleNamespace(close=Mock())
+    session.monitor = monitor
+    app = build_app(session)
+    unload = next(
+        item
+        for item in app.get_config_file()["dependencies"]
+        if any(event == "unload" for _, event in item["targets"])
+    )
+    app.fns[unload["id"]].fn()
+    assert session.cancel.is_set()
+    assert not session.verified
+    assert session.monitor is monitor
+    assert session.confirmed == {0, 1}
+    monitor.close.assert_not_called()
+
+
+def test_capture_uses_the_reference_frame_received_by_the_browser(profile):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from so101_nexus.calibration.app import _capture_visible_reference
+    from so101_nexus.calibration.guide import CalibrationGuide
+    from so101_nexus.calibration.session import CalibrationSession
+
+    session = CalibrationSession()
+    session.profile = profile
+    session.monitor = SimpleNamespace(read=Mock(return_value=np.zeros(6)), torque={})
+    guide = CalibrationGuide(session, stage=1, joint_index=3)
+    guide.set_reference(15)
+    with pytest.raises(ValueError, match="view to update"):
+        _capture_visible_reference(guide, 15, [3, 1])
+    with pytest.raises(ValueError, match="view to update"):
+        _capture_visible_reference(guide, 15, [2, 15])
+    session.monitor.read.assert_not_called()
+    assert not session.confirmed
+    _capture_visible_reference(guide, 15, [3, 15])
+    assert session.confirmed == {3}
+    assert guide.joint_index == 4

@@ -22,7 +22,7 @@ def test_overlay_distinguishes_reference_from_measured(provisional):
     assert figure.layout.scene.xaxis.title.text == "X (m)"
     assert figure.layout.scene.yaxis.title.text == "Y (m)"
     assert figure.layout.scene.zaxis.title.text == "Z (m)"
-    assert figure.layout.uirevision == "calibration-overlay"
+    assert figure.layout.uirevision == "calibration-overlay:front"
 
 
 def test_missing_measurement_has_no_invented_measured_pose():
@@ -61,3 +61,154 @@ def test_identical_poses_have_identical_geometry_and_independent_data():
     render_overlay((0, 0, 0, 0, 0, 0), None)
     np.testing.assert_array_equal(figure.data[0].x, before)
     assert len(figure.to_json()) < 700_000
+
+
+@pytest.mark.parametrize("measured", [None, (75, -25, 50, 30, 60, 80)])
+def test_default_framing_fits_actual_reference_and_measured_geometry(measured):
+    figure = render_overlay((0, 0, 0, 0, 0, 45), measured)
+    vertices = np.concatenate(
+        [np.column_stack((trace.x, trace.y, trace.z)) for trace in figure.data]
+    )
+    lower, upper = vertices.min(axis=0), vertices.max(axis=0)
+    for index, name in enumerate(("xaxis", "yaxis", "zaxis")):
+        bounds = getattr(figure.layout.scene, name).range
+        assert bounds[0] < lower[index]
+        assert bounds[1] > upper[index]
+        assert (upper[index] - lower[index]) / (bounds[1] - bounds[0]) > 0.8
+        assert sum(bounds) / 2 == pytest.approx((lower[index] + upper[index]) / 2, abs=1e-6)
+    camera = figure.layout.scene.camera
+    assert camera.projection.type == "orthographic"
+    assert camera.eye.x == 0
+    assert camera.eye.z == 0
+    assert camera.up.z == 1
+
+
+@pytest.mark.parametrize("view", ["front", "side", "top"])
+def test_named_views_preserve_world_geometry_and_keep_camera_stable_with_live_updates(view):
+    reference_deg = (0, -15, 30, 45, 0, 50)
+    empty = render_overlay(reference_deg, view=view)
+    live = render_overlay(reference_deg, (10, -20, 30, 45, 0, 50), view=view)
+    np.testing.assert_array_equal(empty.data[0].x, live.data[0].x)
+    np.testing.assert_array_equal(empty.data[0].z, live.data[0].z)
+    assert empty.layout.uirevision == live.layout.uirevision
+    assert empty.layout.scene.camera == live.layout.scene.camera
+    assert live.layout.scene.camera.projection.type == "orthographic"
+    if view == "top":
+        assert live.layout.scene.camera.up.y == 1
+    else:
+        assert live.layout.scene.camera.up.z == 1
+
+
+def test_changing_named_view_resets_camera_without_transforming_meshes():
+    reference_deg = (0, -15, 30, 45, 0, 50)
+    front = render_overlay(reference_deg, view="front")
+    side = render_overlay(reference_deg, view="side")
+    np.testing.assert_array_equal(front.data[0].x, side.data[0].x)
+    assert front.layout.uirevision != side.layout.uirevision
+    assert front.layout.scene.camera.eye != side.layout.scene.camera.eye
+
+
+def test_explicit_framing_bounds_stay_fixed_across_monitor_updates():
+    reference_deg = (0, -15, 30, 45, 0, 50)
+    first = render_overlay(reference_deg)
+    bounds = tuple(getattr(first.layout.scene, name).range for name in ("xaxis", "yaxis", "zaxis"))
+    update = render_overlay(reference_deg, (5, -20, 30, 45, 0, 50), bounds_m=bounds)
+    for name, expected in zip(("xaxis", "yaxis", "zaxis"), bounds, strict=True):
+        assert getattr(update.layout.scene, name).range == expected
+    assert update.layout.uirevision == first.layout.uirevision
+
+
+@pytest.mark.parametrize("view", ["isometric", "", "FRONT"])
+def test_overlay_rejects_unknown_named_view(view):
+    with pytest.raises(ValueError, match="view"):
+        render_overlay((0, 0, 0, 0, 0, 45), view=view)
+
+
+def test_overlay_bounds_match_rendered_mesh_union_without_mutating_model_coordinates():
+    from so101_nexus.calibration.view import overlay_bounds
+
+    reference_deg = (0, 0, 0, 0, 0, 45)
+    measured_deg = (75, -25, 50, 30, 60, 80)
+    bounds = overlay_bounds(reference_deg, measured_deg)
+    figure = render_overlay(reference_deg, measured_deg)
+    for name, expected in zip(("xaxis", "yaxis", "zaxis"), bounds, strict=True):
+        assert getattr(figure.layout.scene, name).range == expected
+
+
+@pytest.mark.parametrize("viewport_aspect", [0.6, 1.5, 2.0])
+def test_framing_preserves_equal_meter_scale_at_portrait_and_wide_viewports(viewport_aspect):
+    figure = render_overlay((0, 0, 0, 0, 0, 45), viewport_aspect=viewport_aspect)
+    scene = figure.layout.scene
+    spans = np.array([np.ptp(getattr(scene, name).range) for name in ("xaxis", "yaxis", "zaxis")])
+    ratios = np.array([scene.aspectratio.x, scene.aspectratio.y, scene.aspectratio.z])
+    np.testing.assert_allclose(ratios / spans, np.repeat(ratios[0] / spans[0], 3))
+    assert 1.7 < max(ratios[0] / viewport_aspect, ratios[2]) < 2.0
+
+
+@pytest.mark.parametrize("viewport_aspect", [0, -1, float("nan"), True])
+def test_overlay_rejects_invalid_viewport_shape(viewport_aspect):
+    with pytest.raises(ValueError, match="viewport_aspect"):
+        render_overlay((0, 0, 0, 0, 0, 45), viewport_aspect=viewport_aspect)
+
+
+@pytest.mark.parametrize("bounds", [((0, 1),), ((0, 1), (0, 0), (0, 1))])
+def test_overlay_rejects_invalid_fixed_meter_ranges(bounds):
+    with pytest.raises(ValueError, match="bounds_m"):
+        render_overlay((0, 0, 0, 0, 0, 45), bounds_m=bounds)
+
+
+@pytest.mark.parametrize("focus_joint", ["wrist_flex", "wrist_roll"])
+def test_joint_focus_preserves_geometry_and_frames_wrist_with_upstream_context(focus_joint):
+    from so101_nexus.calibration.view import overlay_bounds
+
+    reference_deg = (0, 0, 0, 0, 0, 45)
+    measured_deg = (0, 0, 0, 15, 30, 70)
+    whole = render_overlay(reference_deg, measured_deg)
+    focused = render_overlay(reference_deg, measured_deg, focus_joint=focus_joint)
+    for original, detail in zip(whole.data, focused.data, strict=True):
+        for coordinate in ("x", "y", "z"):
+            np.testing.assert_array_equal(
+                getattr(original, coordinate), getattr(detail, coordinate)
+            )
+    full_bounds = overlay_bounds(reference_deg, measured_deg)
+    focus_bounds = overlay_bounds(reference_deg, measured_deg, focus_joint=focus_joint)
+    assert focus_bounds[0][0] > full_bounds[0][0]
+    assert focus_bounds[2][0] > full_bounds[2][0]
+    assert focus_bounds[0][1] >= full_bounds[0][1] - 0.04
+    assert focus_bounds[0][0] < 0.23, "Keep some forearm visible before the wrist hinge"
+    assert focused.layout.uirevision != whole.layout.uirevision
+    assert focused.layout.scene.camera == whole.layout.scene.camera
+
+
+def test_focused_bounds_include_measured_jaw_in_both_poses():
+    import mujoco
+
+    from so101_nexus import get_so101_mujoco_model_path
+    from so101_nexus.calibration.view import overlay_bounds
+
+    model = mujoco.MjModel.from_xml_path(str(get_so101_mujoco_model_path()))
+    reference_deg = (0, 0, 0, 0, 0, 45)
+    measured_deg = (0, 0, 0, -30, 90, 85)
+    bounds = np.array(overlay_bounds(reference_deg, measured_deg, focus_joint="wrist_roll"))
+    for pose_deg in (reference_deg, measured_deg):
+        data = mujoco.MjData(model)
+        for name, angle_deg in zip(
+            ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"),
+            pose_deg,
+            strict=True,
+        ):
+            data.qpos[model.joint(name).qposadr[0]] = np.deg2rad(angle_deg)
+        mujoco.mj_forward(model, data)
+        for body_name in ("gripper", "moving_jaw_so101_v1"):
+            position = data.xpos[model.body(body_name).id]
+            assert np.all(position > bounds[:, 0])
+            assert np.all(position < bounds[:, 1])
+
+
+def test_joint_focus_persists_during_timer_updates_and_rejects_unknown_joint():
+    reference_deg = (0, 0, 0, 0, 0, 45)
+    first = render_overlay(reference_deg, focus_joint="wrist_roll")
+    next_frame = render_overlay(reference_deg, (0, 0, 0, 0, 2, 45), focus_joint="wrist_roll")
+    assert first.layout.uirevision == next_frame.layout.uirevision
+    with pytest.raises(ValueError, match="focus_joint"):
+        render_overlay(reference_deg, focus_joint="jaw_position")

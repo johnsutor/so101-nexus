@@ -75,6 +75,14 @@ class CalibrationSession:
             raise ValueError("Confirm the separate gripper endpoint mapping first.")
         return self.profile
 
+    def _update_profile(self, profile: RobotProfile) -> None:
+        if profile != self.profile:
+            self.profile = profile
+            self.verified = False
+            if self.profile_path is not None:
+                self.artifacts = [path for path in self.artifacts if path != str(self.profile_path)]
+            self.profile_path = None
+
     def connect(self, port: str, calibration_dir: str) -> None:
         """Match calibration through a read-only bus and invalidate old alignment."""
         from so101_nexus.calibration.hardware import ReadOnlyFollower
@@ -146,6 +154,38 @@ class CalibrationSession:
                         f"Encoder connection lost: {error}. Reconnect and verify alignment."
                     )
 
+    def preview_joint_offset(self, index: int, delta_deg: float) -> None:
+        """Adjust a provisional body-joint mapping without touching hardware.
+
+        Parameters
+        ----------
+        index : int
+            Body-joint index, from shoulder pan at zero to wrist roll at four.
+        delta_deg : float
+            Relative change to the displayed hardware-to-model offset in degrees.
+        """
+        with self.lock:
+            self._idle()
+            if self.monitor is None or self.profile is None or self.phase != "monitoring":
+                raise RuntimeError("Connect read-only before previewing a joint offset.")
+            if (
+                type(index) is not int
+                or not 0 <= index < 5
+                or isinstance(delta_deg, bool)
+                or not isinstance(delta_deg, (int, float))
+                or not np.isfinite(delta_deg)
+            ):
+                raise ValueError("Choose a body joint and a finite offset change in degrees.")
+            offsets = list(self.profile.joint_offsets_deg)
+            offsets[index] += delta_deg
+            self._update_profile(replace(self.profile, joint_offsets_deg=tuple(offsets)))
+            self.confirmed.discard(index)
+            self.verified = False
+            self.status = (
+                f"Provisional {SO101_JOINT_NAMES[index]} offset changed by {delta_deg:g} deg. "
+                "Hardware did not move. Physically place and capture a known reference to confirm."
+            )
+
     def capture_joint(self, index: int, model_deg: float, *, confirmed: bool) -> None:
         """Capture one physically understood joint without assuming its offset."""
         with self.lock:
@@ -163,7 +203,7 @@ class CalibrationSession:
                 )
             offsets = list(self.profile.joint_offsets_deg)
             offsets[index] = float(model_deg - self.measured[index])
-            self.profile = replace(self.profile, joint_offsets_deg=tuple(offsets))
+            self._update_profile(replace(self.profile, joint_offsets_deg=tuple(offsets)))
             self.confirmed.add(index)
             self.verified = False
             self.status = (
@@ -182,7 +222,7 @@ class CalibrationSession:
                 raise ValueError(
                     "Confirm the gripper endpoint angles independently of body alignment."
                 )
-            self.profile = replace(self.profile, gripper_limits_deg=(lower_deg, upper_deg))
+            self._update_profile(replace(self.profile, gripper_limits_deg=(lower_deg, upper_deg)))
             self.gripper_confirmed = True
             self.verified = False
             self.status = (
@@ -230,6 +270,7 @@ class CalibrationSession:
                 raise ValueError("Saved profile servo gains differ from this follower's readback.")
             self.profile = candidate
             self.profile_path = Path(path).expanduser().resolve()
+            self.artifacts = [str(self.profile_path)]
             self.confirmed = set(range(5))
             self.gripper_confirmed = True
             self.status = (
@@ -248,9 +289,7 @@ class CalibrationSession:
             except ValueError:
                 self.verified = False
                 raise
-            if profile != self.profile:
-                self.profile = profile
-                self.verified = False
+            self._update_profile(profile)
 
     def use_current_center(self) -> tuple[float, ...]:
         """Read an aligned live pose as a candidate excitation center in model degrees."""

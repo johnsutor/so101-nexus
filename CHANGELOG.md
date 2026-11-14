@@ -25,6 +25,10 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Guide calibration through connection, one physical joint at a time, jaw checks,
+  and profile saving before offering optional dynamics tuning. Default to
+  `/dev/ttyACM0` and reveal advanced settings only in the relevant step.
+
 - Update the vendored Menagerie SO-101 model with the corrected wrist-roll limit,
   camera pose and 61-degree field of view, and noncolliding camera PCB and lens.
   Retain Nexus jaw collision hulls, contact tuning, solver settings, and TCP frame.
@@ -39,6 +43,11 @@ for the public-API and deprecation policy.
   Launch it with `python -m so101_nexus.calibration`.
 
 ### Fixed
+
+- Fit the calibration robot to a large upright viewport, with named views and wrist
+  close-ups. Quarter-turn wrist previews remain provisional until physical capture.
+- Revoke saved-profile associations after coordinate or timing changes and restore
+  guide progress and exact profile settings when the browser reconnects.
 
 - Preserve immutable robot profiles when serializing environment configurations
   for training checkpoints or worker processes.

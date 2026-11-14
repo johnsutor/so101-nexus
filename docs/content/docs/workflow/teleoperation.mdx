@@ -584,21 +584,27 @@ uv run --extra teleop --extra sysid python -m so101_nexus.calibration
 ```
 
 The [installation guide](/docs/getting-started/installation#extras) describes the required extras.
-The app guides reference alignment, motion preview, hardware collection, and candidate evaluation.
+The first milestone is a saved, physically aligned profile. Motion collection and dynamics fitting are optional afterward.
 One shared session owns the hardware. Browser reconnects show that same session.
 Port ownership prevents overlapping workers in this app. Close other applications that use the follower port.
 
 ### Connect and align the reference
 
-1. Discover the follower serial port in the app.
-2. Connect the read-only monitor.
-3. Confirm that the app identifies the expected saved LeRobot calibration.
-4. Support the arm with motor torque off.
-5. Select the active body joint and adjust its simulated reference angle.
-6. Match the physical joint to the reference using the overlay and joint instructions.
-7. Confirm the physically understood reference for each of the five body joints.
-8. Confirm the separate gripper endpoint mapping.
-9. Save the robot profile.
+1. Select **Connect robot**. The port defaults to `/dev/ttyACM0`.
+2. Support the arm with motor torque off.
+3. Match the highlighted physical joint to the cyan reference.
+4. Select **Matches, capture and continue** for each of the five body joints.
+5. Compare the closed and open physical jaw endpoints with their reference views.
+6. Confirm the jaw endpoints, then select **Save profile**.
+
+The robot view stays upright and fills most of the screen.
+**Front**, **Side**, **Top**, and **Fit view** change the camera only.
+The guide opens a wrist close-up for the bend and twist steps.
+Visible quarter-turn buttons preview a correction to the measured wrist mapping without moving hardware.
+A preview clears that joint's confirmation. Physical reference capture is still required.
+
+**Different device or existing profile** contains serial discovery, the calibration directory, and trusted profile loading.
+Known reference angles, jaw geometry, save paths, and timing remain in contextual advanced sections.
 
 Discovery and live measurements do not enable torque, write calibration, or send movement commands.
 The viewport shows a translucent reference robot and a distinct measured robot in one coordinate frame.
@@ -616,11 +622,13 @@ The [profile reference](/docs/api/configs#robot-profiles) defines the units, end
 
 ### Preview and preflight
 
+After saving the profile, select **Optional: improve motion dynamics**.
+You can stop after saving if you only need aligned joint coordinates.
+
 1. Place the supported arm at a raised center pose with room for motion.
 2. Capture the excitation center from live measurements.
-3. Adjust the motion amplitudes, duration, seed, and table height.
-4. Preview the generated motion.
-5. Run the simulation preflight.
+3. Open **Motion settings and workspace** if you need different motion or table settings.
+4. Select **Preview and check motion** to preview the commands and run simulation preflight.
 
 The preview and collector use the same trajectory configuration.
 A change to the alignment or motion configuration invalidates the previous preflight.

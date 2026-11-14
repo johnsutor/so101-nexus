@@ -1,33 +1,57 @@
-"""Gradio-first guided calibration, collection, and candidate review."""
+"""A profile-first Gradio walkthrough for physical SO-101 alignment."""
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from so101_nexus.calibration.guide import CalibrationGuide
 from so101_nexus.calibration.session import CalibrationSession
-from so101_nexus.calibration.view import render_overlay
+from so101_nexus.calibration.view import overlay_bounds, render_overlay
 from so101_nexus.config import SO101_JOINT_NAMES
 from so101_nexus.excitation import ExcitationConfig, generate_excitation
 
 if TYPE_CHECKING:
     from so101_nexus.profiles import RobotProfile
-_JOINT_GUIDANCE = (
-    "Shoulder pan: turn the shoulder around the vertical base axis. Match its direction "
-    "relative to the clamp, viewed from above.",
-    "Shoulder lift: support the upper arm and match its inclination. View from the side, "
-    "with the highlighted hinge axis pointing toward you.",
-    "Elbow flex: support the forearm and match the bend between upper arm and forearm. Keep"
-    " the upstream joints fixed while comparing.",
-    "Wrist flex: match the fixed jaw's tilt relative to the forearm. Compare the side "
-    "silhouettes around the highlighted wrist hinge.",
-    "Wrist roll: match the fixed jaw's rotation around the forearm. Look along the forearm "
-    "toward the jaws to compare orientation.",
-)
+
 _DEFAULT_CENTER = (0, -15, 30, 45, 0, 50)
+_JOINT_LABELS = ("Base direction", "Upper arm tilt", "Elbow bend", "Wrist bend", "Jaw twist")
+_GUIDANCE = (
+    "Turn the shoulder around the vertical base axis. Match its facing direction to the "
+    "cyan reference. The other joints do not need to match yet.",
+    "Support the upper arm. Match its inclination to the cyan upper arm, using the "
+    "highlighted hinge. Ignore the elbow and jaws for now.",
+    "Support the forearm. Match the bend between the upper arm and forearm to the cyan "
+    "reference. Leave the wrist for the next steps.",
+    "This hinge bends the hand up and down. In the close-up, match the fixed jaw's tilt "
+    "relative to the forearm. A twist around the forearm belongs to the next joint.",
+    "This joint twists the jaws around the forearm. Match the fixed jaw's orientation to "
+    "the cyan reference. Use Front, Side, or Top if the jaw faces are hard to distinguish.",
+)
+_MEASURE_VIEW = """(...values) => {
+    const plot = document.querySelector('#calibration-robot-view .js-plotly-plot');
+    const container = document.querySelector('#calibration-robot-view');
+    const width = plot?.clientWidth || container?.clientWidth || 975;
+    return [...values.slice(0, -1), width / 650];
+}"""
+
+
+@dataclass
+class _Viewport:
+    bounds: Any = None
+    key: Any = None
+    revision: int = 0
+    tuning: bool = False
+    tuning_step: int = 0
+
+    def fit(self) -> None:
+        self.bounds = None
+        self.revision += 1
 
 
 def make_motion_config(
@@ -48,381 +72,6 @@ def make_motion_config(
         table_z_m=table_z_m,
         seed=int(seed),
     )
-
-
-def _build_connect(gr):
-    from so101_nexus.calibration.hardware import default_calibration_dir
-
-    gr.Markdown(
-        "### Read-only connection\n\nSelect the follower, then match its saved calibration "
-        "against motor registers. Discovery and live monitoring leave torque unchanged."
-    )
-    port = gr.Dropdown(choices=[], allow_custom_value=True, label="Follower serial port")
-    discover = gr.Button("Discover serial devices")
-    calibration_dir = gr.Textbox(
-        str(default_calibration_dir()), label="LeRobot follower calibration directory"
-    )
-    connect = gr.Button("Connect read-only", variant="primary")
-    saved_profile = gr.Textbox(
-        label="Existing confirmed profile JSON", placeholder="/path/to/robot_profile.json"
-    )
-    load = gr.Button("Load matched profile")
-    gr.Markdown(
-        "Loading a saved profile trusts its previous physical alignment and gripper "
-        "mapping. Its encoder snapshot must match the connected arm."
-    )
-    return (port, discover, calibration_dir, connect, saved_profile, load)
-
-
-def _build_align(gr):
-    gr.Markdown(
-        "### Match one joint at a time\n\nKeep the arm supported with torque off. Select a "
-        "joint, choose its reference angle, then physically match that joint to the ghost. "
-        "Rotate the view to compare silhouettes. Use an angle gauge if placement is "
-        "uncertain. Capturing reads the encoder for you."
-    )
-    active = gr.Radio(
-        list(SO101_JOINT_NAMES[:5]), value=SO101_JOINT_NAMES[0], label="Active body joint"
-    )
-    guidance = gr.Markdown(_JOINT_GUIDANCE[0])
-    posture = gr.Dropdown(
-        ["Model zero", "Raised example"],
-        value="Model zero",
-        label="Reference posture (visual aid only)",
-    )
-    refs = [
-        gr.Slider(
-            -180, 180, value=0, step=0.5, label=f"Reference {name.replace('_', ' ')} (model deg)"
-        )
-        for name in SO101_JOINT_NAMES[:5]
-    ]
-    ref_gripper = gr.Slider(-10, 100, value=45, label="Reference jaw angle (model deg)")
-    physically_matched = gr.Checkbox(
-        label="I physically matched the active joint to this reference"
-    )
-    capture = gr.Button("Capture active joint", variant="primary")
-    gr.Markdown(
-        "### Gripper endpoints\n\nBody alignment does not calibrate the jaws. Enter "
-        "independently measured model angles at the calibrated hardware endpoints. Hardware"
-        " readings remain 0 to 100 percent."
-    )
-    grip_low = gr.Number(-10, label="Model angle at hardware 0 percent (deg)")
-    grip_high = gr.Number(100, label="Model angle at hardware 100 percent (deg)")
-    grip_confirm = gr.Checkbox(label="I verified both gripper endpoint angles separately")
-    map_gripper = gr.Button("Confirm gripper mapping")
-    period = gr.Number(0.02, label="Command period (seconds)")
-    profile_output = gr.Textbox(
-        "runs/calibration/robot_profile.json", label="New profile JSON path"
-    )
-    save = gr.Button("Save confirmed profile")
-    return (
-        active,
-        guidance,
-        posture,
-        refs,
-        ref_gripper,
-        physically_matched,
-        capture,
-        grip_low,
-        grip_high,
-        grip_confirm,
-        map_gripper,
-        period,
-        profile_output,
-        save,
-    )
-
-
-def _build_motion(gr):
-    gr.Markdown(
-        "### Preview the exact excitation\n\nCenter and amplitude controls change simulation "
-        "targets only. Use the live pose after alignment, or adjust a raised example with "
-        "room for motion. Preflight includes the robot and a flat table; it cannot see "
-        "other workspace obstacles."
-    )
-    use_current = gr.Button("Use live pose as center")
-    centers = [
-        gr.Number(value, label=f"Center {name.replace('_', ' ')} (model deg)")
-        for name, value in zip(SO101_JOINT_NAMES, _DEFAULT_CENTER, strict=True)
-    ]
-    with gr.Accordion("Excitation settings", open=False):
-        amplitudes = [
-            gr.Number(value, label=f"Amplitude {name.replace('_', ' ')} (model deg)")
-            for name, value in zip(SO101_JOINT_NAMES, (8, 8, 8, 8, 10, 15), strict=True)
-        ]
-        duration = gr.Number(20, label="Duration per episode (seconds)")
-        table = gr.Number(0, label="Table height relative to base (meters)")
-        seed = gr.Number(0, precision=0, label="Trajectory seed")
-    preview_episode = gr.Radio(
-        ["multisine", "joint_chirps", "heldout"], value="multisine", label="Preview episode"
-    )
-    preview_fraction = gr.Slider(
-        0, 1, value=0, step=0.01, label="Scrub planned motion (fraction of episode)"
-    )
-    trajectory_plot = gr.Plot(label="Exact generated commands (model deg)")
-    preview = gr.Button("Preview planned motion")
-    preflight = gr.Button("Run simulation preflight", variant="primary")
-    output_dir = gr.Textbox("runs/calibration/recordings", label="New recordings directory")
-    support = gr.Checkbox(label="Arm supported at the center, torque off, workspace clear")
-    hold = gr.Button("Enable hold", interactive=False)
-    hands_clear = gr.Checkbox(label="Holding is stable, my hands and workspace are clear")
-    start = gr.Button("Start excitation", variant="primary", interactive=False)
-    gr.Markdown(
-        "Enabling hold writes the measured servo goal and configures motors before holding."
-        " Keep supporting until the status says Holding, then remove your hands. Start "
-        "excitation is a separate action. Hold times out after 60 seconds."
-    )
-    return (
-        use_current,
-        centers,
-        amplitudes,
-        duration,
-        table,
-        seed,
-        preview_episode,
-        preview_fraction,
-        trajectory_plot,
-        preview,
-        preflight,
-        output_dir,
-        support,
-        hold,
-        hands_clear,
-        start,
-    )
-
-
-def _build_fit(gr):
-    gr.Markdown(
-        "### Review a candidate\n\nFit the two training episodes and evaluate the independent"
-        " held-out episode. A completed optimization does not accept the candidate or "
-        "change hardware."
-    )
-    fit_recordings = gr.Textbox("runs/calibration/recordings", label="Recordings directory")
-    fit_output = gr.Textbox("runs/calibration/fit", label="New fit output directory")
-    max_iters = gr.Number(100, precision=0, label="Maximum optimizer iterations")
-    fit = gr.Button("Fit candidate", variant="primary")
-    fit_summary = gr.Markdown("")
-    errors = gr.Dataframe(
-        headers=["Episode", "Split", "Joint", "Baseline RMSE deg", "Candidate RMSE deg"],
-        interactive=False,
-    )
-    diagnostics = gr.Dataframe(
-        headers=["Parameter", "Candidate", "At bound", "Poorly identified", "95% CI half-width"],
-        interactive=False,
-    )
-    return (fit_recordings, fit_output, max_iters, fit, fit_summary, errors, diagnostics)
-
-
-def _build_interface(gr, session):
-    gr.Markdown(
-        "# SO Nexus Calibration\n\nMatch a physical reference, preview motion, then identify "
-        "your follower. Opening this app does not connect or write to motors."
-    )
-    status = gr.Markdown(session.status, elem_id="hardware-status")
-    progress = gr.Markdown("")
-    with gr.Row():
-        with gr.Column(scale=5):
-            overlay = gr.Plot(
-                render_overlay((0, 0, 0, 0, 0, 45), active_joint=SO101_JOINT_NAMES[0]),
-                label="Reference and live arm in the same coordinate frame",
-            )
-            gr.Markdown(
-                "**Cyan translucent: reference. Amber solid: measured.** Drag to orbit, "
-                "scroll to zoom, double-click to reset the view. The highlighted axis "
-                "belongs to the selected reference joint.\n\n**Provisional until physically "
-                "confirmed:** encoder calibration gives travel, not model zero. Visual "
-                "overlap alone cannot prove alignment."
-            )
-            feedback = gr.Dataframe(
-                headers=[
-                    "Joint",
-                    "Hardware",
-                    "Unit",
-                    "Model deg",
-                    "Reference deg",
-                    "Difference deg",
-                    "Alignment",
-                ],
-                interactive=False,
-                label="Live joint feedback",
-            )
-            view_mode = gr.Radio(
-                ["Alignment reference", "Motion preview"],
-                value="Alignment reference",
-                label="Viewport",
-            )
-        with gr.Column(scale=4):
-            with gr.Tabs():
-                with gr.Tab("Connect"):
-                    port, discover, calibration_dir, connect, saved_profile, load = _build_connect(
-                        gr
-                    )
-                with gr.Tab("Align"):
-                    (
-                        active,
-                        guidance,
-                        posture,
-                        refs,
-                        ref_gripper,
-                        physically_matched,
-                        capture,
-                        grip_low,
-                        grip_high,
-                        grip_confirm,
-                        map_gripper,
-                        period,
-                        profile_output,
-                        save,
-                    ) = _build_align(gr)
-                with gr.Tab("Motion"):
-                    (
-                        use_current,
-                        centers,
-                        amplitudes,
-                        duration,
-                        table,
-                        seed,
-                        preview_episode,
-                        preview_fraction,
-                        trajectory_plot,
-                        preview,
-                        preflight,
-                        output_dir,
-                        support,
-                        hold,
-                        hands_clear,
-                        start,
-                    ) = _build_motion(gr)
-                with gr.Tab("Fit and review"):
-                    fit_recordings, fit_output, max_iters, fit, fit_summary, errors, diagnostics = (
-                        _build_fit(gr)
-                    )
-            with gr.Row():
-                stop = gr.Button("Stop commands", variant="stop")
-                disconnect = gr.Button("Disconnect")
-            gr.Markdown(
-                "Stop ends future commands and holds the last servo target. Disconnect also"
-                " closes the port. Both preserve torque. If the browser disappears for 5 "
-                "seconds, commands stop and torque remains. A serial failure can prevent "
-                "commands from reaching the arm."
-            )
-            release_supported = gr.Checkbox(
-                label="I am supporting the arm and ready for torque to turn off"
-            )
-            release = gr.Button("Release motors")
-            gr.Markdown("Release turns torque off. A raised, unsupported arm can fall.")
-            files = gr.File(
-                label="Profiles, recordings, and fit diagnostics",
-                file_count="multiple",
-                interactive=False,
-            )
-    return (
-        status,
-        progress,
-        overlay,
-        feedback,
-        view_mode,
-        release_supported,
-        release,
-        files,
-        stop,
-        disconnect,
-        port,
-        discover,
-        calibration_dir,
-        connect,
-        saved_profile,
-        load,
-        active,
-        guidance,
-        posture,
-        refs,
-        ref_gripper,
-        physically_matched,
-        capture,
-        grip_low,
-        grip_high,
-        grip_confirm,
-        map_gripper,
-        period,
-        profile_output,
-        save,
-        use_current,
-        centers,
-        amplitudes,
-        duration,
-        table,
-        seed,
-        preview_episode,
-        preview_fraction,
-        trajectory_plot,
-        preview,
-        preflight,
-        output_dir,
-        support,
-        hold,
-        hands_clear,
-        start,
-        fit_recordings,
-        fit_output,
-        max_iters,
-        fit,
-        fit_summary,
-        errors,
-        diagnostics,
-    )
-
-
-def _refresh(session, selected, mode, episode, fraction, *reference):
-    import gradio as gr
-
-    session.poll()
-    with session.lock:
-        target = np.asarray(reference, dtype=float)
-        if (
-            mode == "Motion preview"
-            and session.profile is not None
-            and (session.config is not None)
-        ):
-            trajectories = generate_excitation(session.config, session.profile)
-            trajectory = next(item for item in trajectories if item.name == episode)
-            target = trajectory.commands_deg[round(fraction * (len(trajectory.commands_deg) - 1))]
-        measured = (
-            session.profile.to_model_deg(session.measured)
-            if session.profile is not None and session.measured is not None
-            else None
-        )
-        rows = []
-        for index, name in enumerate(SO101_JOINT_NAMES):
-            confirmed = index in session.confirmed if index < 5 else session.gripper_confirmed
-            rows.append(
-                [
-                    name,
-                    None if session.measured is None else round(float(session.measured[index]), 2),
-                    "deg" if index < 5 else "percent",
-                    None if measured is None else round(float(measured[index]), 2),
-                    round(float(target[index]), 2),
-                    None
-                    if measured is None or not confirmed
-                    else round(float(measured[index] - target[index]), 2),
-                    "Operator confirmed" if confirmed else "Provisional",
-                ]
-            )
-        return (
-            session.status,
-            session.progress,
-            rows,
-            render_overlay(
-                target,
-                measured,
-                provisional=len(session.confirmed) != 5 or not session.gripper_confirmed,
-                active_joint=selected,
-            ),
-            gr.update(interactive=session.verified and session.phase == "monitoring"),
-            gr.update(interactive=session.phase == "holding" and (not session.should_stop())),
-            session.artifacts or None,
-        )
 
 
 def _call(gr, session, function, *args, **kwargs):
@@ -459,17 +108,6 @@ def _current_center(gr, session):
 
     result = _call(gr, session, read_center)
     return result if result is not None else [gr.skip()] * 6
-
-
-def _load_profile(gr, session, path):
-    def load_values():
-        with session.lock:
-            session.load_profile(path)
-            assert session.profile is not None
-            return session.profile.control_period_s, *session.profile.gripper_limits_deg
-
-    result = _call(gr, session, load_values)
-    return result if result is not None else (gr.skip(),) * 3
 
 
 def _show_plan(gr, session, *values):
@@ -551,162 +189,760 @@ def _fit_candidate(gr, session, *values):
     return result if result is not None else ([], [], session.status)
 
 
-def _wire_events(gr, app, session, components):
+def _connect_controls(gr, ui):
+    gr.Markdown(
+        "### Connect your follower\n\nConnect the USB cable, then open the live view. "
+        "Connecting does not enable torque or move the robot."
+    )
+    ui["port"] = gr.Dropdown(
+        choices=["/dev/ttyACM0"],
+        value="/dev/ttyACM0",
+        allow_custom_value=True,
+        label="Follower serial port",
+    )
+    ui["connect"] = gr.Button("Connect robot", variant="primary")
+    with gr.Accordion("Different device or existing profile", open=False):
+        from so101_nexus.calibration.hardware import default_calibration_dir
+
+        ui["discover"] = gr.Button("Find serial devices")
+        ui["calibration_dir"] = gr.Textbox(
+            str(default_calibration_dir()), label="LeRobot follower calibration directory"
+        )
+        ui["saved_profile"] = gr.Textbox(label="Existing confirmed profile JSON")
+        ui["load"] = gr.Button("Load matched profile")
+        gr.Markdown(
+            "Connect first. Loading a profile trusts its previous physical alignment and "
+            "requires matching motor calibration."
+        )
+
+
+def _alignment_controls(gr, ui):
+    ui["joint_title"] = gr.Markdown("### Joint 1 of 5: Base direction")
+    ui["instruction"] = gr.Markdown(_GUIDANCE[0])
+    gr.Markdown(
+        "Support the arm with torque off. Move only the highlighted joint by hand until it "
+        "matches the cyan reference. The amber pose is provisional until you confirm that "
+        "physical reference."
+    )
+    with gr.Group(visible=False, elem_id="wrist-correction") as ui["rotation_group"]:
+        gr.Markdown(
+            "**Wrist looks a quarter-turn off?** Preview a correction to the amber display."
+            " These buttons do not move the robot or confirm alignment."
+        )
+        with gr.Row():
+            ui["rotate_minus"] = gr.Button("Preview -90 deg")
+            ui["rotate_plus"] = gr.Button("Preview +90 deg")
+        gr.Markdown(
+            "After the preview, physically match this joint to the cyan reference before "
+            "capturing it."
+        )
+    ui["capture"] = gr.Button("Matches, capture and continue", variant="primary")
+    ui["previous"] = gr.Button("Previous joint", interactive=False)
+    with gr.Accordion("Use a different known reference angle", open=False):
+        ui["reference_angle"] = gr.Number(
+            0,
+            label="Reference angle (model deg)",
+            info="Use a known physical angle. This changes the cyan reference only.",
+        )
+
+
+def _gripper_controls(gr, ui):
+    gr.Markdown(
+        "### Check the jaw endpoints\n\nOpen and close the jaws by hand while watching the "
+        "live view. Compare the closed and open physical endpoints with the cyan reference."
+        " This is separate from wrist alignment."
+    )
+    with gr.Row():
+        ui["closed"] = gr.Button("Show closed reference")
+        ui["open"] = gr.Button("Show open reference")
+    ui["grip_confirm"] = gr.Checkbox(
+        label="I checked both physical jaw endpoints against the reference"
+    )
+    ui["map_gripper"] = gr.Button("Jaw endpoints match, continue", variant="primary")
+    ui["back_body"] = gr.Button("Back to wrist alignment")
+    with gr.Accordion("Adjust model jaw geometry", open=False):
+        ui["grip_low"] = gr.Number(-10, label="Model angle at hardware 0 percent (deg)")
+        ui["grip_high"] = gr.Number(100, label="Model angle at hardware 100 percent (deg)")
+        gr.Markdown(
+            "The defaults use nominal SO-101 geometry. Confirm the physical endpoints or "
+            "enter independently measured angles."
+        )
+
+
+def _profile_controls(gr, ui):
+    ui["profile_message"] = gr.Markdown(
+        "### Save your aligned profile\n\nYour five body joints and jaw mapping are "
+        "confirmed. Save them together so simulation can use this robot's joint "
+        "coordinates."
+    )
+    ui["save"] = gr.Button("Save profile", variant="primary")
+    ui["edit_profile"] = gr.Button("Recheck alignment")
+    with gr.Accordion("Save location and control timing", open=False):
+        ui["profile_output"] = gr.Textbox(
+            "runs/calibration/robot_profile.json", label="New profile JSON path"
+        )
+        ui["period"] = gr.Number(0.02, label="Command period (seconds)")
+    ui["tune"] = gr.Button("Optional: improve motion dynamics", visible=False)
+    gr.Markdown(
+        "An aligned profile establishes coordinates. Optional dynamics tuning improves how "
+        "the simulator predicts motor response; neither step proves policy transfer "
+        "performance."
+    )
+
+
+def _motion_controls(gr, ui):
+    gr.Markdown(
+        "### Preview a small motion\n\nPlace and support the arm at a raised pose with room "
+        "to move. Read that pose as the center, then preview and check all three episodes "
+        "in simulation."
+    )
+    ui["current"] = gr.Button("Use live pose as center")
+    with gr.Accordion("Motion settings and workspace", open=False):
+        ui["centers"] = [
+            gr.Number(value, label=f"Center {name.replace('_', ' ')} (model deg)")
+            for name, value in zip(SO101_JOINT_NAMES, _DEFAULT_CENTER, strict=True)
+        ]
+        ui["amplitudes"] = [
+            gr.Number(value, label=f"Amplitude {name.replace('_', ' ')} (model deg)")
+            for name, value in zip(SO101_JOINT_NAMES, (8, 8, 8, 8, 10, 15), strict=True)
+        ]
+        ui["duration"] = gr.Number(20, label="Duration per episode (seconds)")
+        ui["table"] = gr.Number(0, label="Table height relative to base (meters)")
+        ui["seed"] = gr.Number(0, precision=0, label="Trajectory seed")
+    ui["preview"] = gr.Button("Preview and check motion", variant="primary")
+    ui["trajectory_plot"] = gr.Plot(label="Planned joint motion (model deg)")
+    with gr.Accordion("Inspect an episode", open=False):
+        ui["episode"] = gr.Radio(
+            ["multisine", "joint_chirps", "heldout"], value="multisine", label="Preview episode"
+        )
+        ui["fraction"] = gr.Slider(0, 1, value=0, step=0.01, label="Position within episode")
+    gr.Markdown(
+        "The check includes the robot and a flat table. It cannot see other workspace obstacles."
+    )
+
+
+def _collection_controls(gr, ui):
+    gr.Markdown(
+        "### Hold first, then start motion\n\nSupport the arm at the checked center. Enable "
+        "hold, wait for Holding, then remove your hands before starting excitation."
+    )
+    ui["support"] = gr.Checkbox(label="Arm supported at the center, torque off, workspace clear")
+    ui["hold"] = gr.Button("Enable hold", interactive=False)
+    ui["hands_clear"] = gr.Checkbox(label="Holding is stable, my hands and workspace are clear")
+    ui["start"] = gr.Button("Start excitation", variant="primary", interactive=False)
+    ui["review"] = gr.Button("Review completed recordings")
+    ui["back_preview_collect"] = gr.Button("Back to motion preview")
+    with gr.Accordion("Recording location", open=False):
+        ui["output_dir"] = gr.Textbox(
+            "runs/calibration/recordings", label="New recordings directory"
+        )
+    gr.Markdown(
+        "Stop ends further commands and preserves torque at the last target. Hold times out"
+        " after 60 seconds without a start action."
+    )
+
+
+def _fit_controls(gr, ui):
+    gr.Markdown(
+        "### Review a candidate\n\nFit the recorded motor response and compare baseline and "
+        "candidate errors, including the independent held-out episode. A completed fit does"
+        " not accept the candidate or change hardware."
+    )
+    ui["fit"] = gr.Button("Fit candidate", variant="primary")
+    ui["back_preview_review"] = gr.Button("Check another motion")
+    ui["fit_summary"] = gr.Markdown("")
+    ui["errors"] = gr.Dataframe(
+        headers=["Episode", "Split", "Joint", "Baseline RMSE deg", "Candidate RMSE deg"],
+        interactive=False,
+    )
+    ui["diagnostics"] = gr.Dataframe(
+        headers=["Parameter", "Candidate", "At bound", "Poorly identified", "95% CI half-width"],
+        interactive=False,
+    )
+    with gr.Accordion("Fit settings and recording paths", open=False):
+        ui["fit_recordings"] = gr.Textbox(
+            "runs/calibration/recordings", label="Recordings directory"
+        )
+        ui["fit_output"] = gr.Textbox("runs/calibration/fit", label="New fit output directory")
+        ui["max_iters"] = gr.Number(100, precision=0, label="Maximum optimizer iterations")
+
+
+def _build_guide(gr, ui):
+    with gr.Walkthrough(selected=0) as ui["walkthrough"]:
+        for index, (label, builder) in enumerate(
+            (
+                ("Connect", _connect_controls),
+                ("Match joints", _alignment_controls),
+                ("Check jaws", _gripper_controls),
+                ("Save profile", _profile_controls),
+            )
+        ):
+            with gr.Step(label, id=index, interactive=True):
+                builder(gr, ui)
+    with gr.Group(visible=False, elem_id="dynamics-workflow") as ui["dynamics"]:
+        gr.Markdown(
+            "### Optional dynamics tuning\n\nYour aligned profile is already saved. These "
+            "extra steps identify the robot's motion response."
+        )
+        with gr.Walkthrough(selected=0) as ui["tuning_steps"]:
+            for index, (label, builder) in enumerate(
+                (
+                    ("Preview motion", _motion_controls),
+                    ("Collect motion", _collection_controls),
+                    ("Review dynamics", _fit_controls),
+                )
+            ):
+                with gr.Step(label, id=index, interactive=True):
+                    builder(gr, ui)
+        ui["return_profile"] = gr.Button("Return to your profile")
+
+
+def _build_scene(gr, ui):
+    ui["overlay"] = gr.Plot(
+        render_overlay((0, 0, 0, 0, 0, 45)),
+        label="Your robot and its physical reference",
+        elem_id="calibration-robot-view",
+    )
+    gr.Markdown(
+        "**Cyan: physical reference to match. Amber: live encoder pose.** Unconfirmed joint"
+        " offsets are provisional. Drag to orbit; use Fit view to reset."
+    )
+    with gr.Row():
+        ui["camera"] = gr.Radio(
+            [("Front", "front"), ("Side", "side"), ("Top", "top")],
+            value="front",
+            label="View",
+            scale=3,
+        )
+        ui["fit_view"] = gr.Button("Fit view", scale=1)
+    ui["focus"] = gr.Checkbox(label="Close-up of the active joint", value=False)
+    with gr.Accordion("Joint readings and connection details", open=False):
+        ui["feedback"] = gr.Dataframe(
+            headers=[
+                "Joint",
+                "Hardware",
+                "Unit",
+                "Model deg",
+                "Reference deg",
+                "Difference deg",
+                "Alignment",
+            ],
+            interactive=False,
+            label="Live joint feedback",
+        )
+        ui["details"] = gr.Markdown("")
+
+
+def _build_layout(gr, ui):
+    gr.Markdown(
+        "# Calibrate your robot\n\nConnect, match the physical arm to the model, and save its"
+        " profile."
+    )
+    ui["status"] = gr.Markdown(
+        "Disconnected. Connect your follower to begin.", elem_id="hardware-status"
+    )
+    with gr.Row():
+        with gr.Column(scale=8, min_width=320, elem_classes="calibration-scene"):
+            _build_scene(gr, ui)
+        with gr.Column(scale=3, min_width=320):
+            _build_guide(gr, ui)
+            ui["progress"] = gr.Markdown("")
+            ui["reconnect"] = gr.Button("Reconnect saved robot", visible=False)
+            ui["stop"] = gr.Button("Stop commands", variant="stop", visible=False)
+            with gr.Accordion("Disconnect or release motors", open=False):
+                ui["disconnect"] = gr.Button("Disconnect")
+                ui["release_supported"] = gr.Checkbox(
+                    label="I am supporting the arm and ready for torque to turn off"
+                )
+                ui["release"] = gr.Button("Release motors")
+                gr.Markdown(
+                    "Disconnect preserves torque. Release turns torque off and can let an "
+                    "unsupported arm fall."
+                )
+            ui["files"] = gr.File(
+                label="Your profile and recordings",
+                file_count="multiple",
+                interactive=False,
+                visible=False,
+            )
+    ui["aspect"] = gr.Number(1.5, visible=False, label="Robot viewport aspect")
+    ui["shown_reference"] = gr.JSON([0, 0], visible=False, label="Displayed reference frame")
+
+
+def _guide_updates(gr, guide):
+    return (
+        gr.Walkthrough(selected=guide.stage),
+        f"### Joint {guide.joint_index + 1} of 5: {_JOINT_LABELS[guide.joint_index]}",
+        _GUIDANCE[guide.joint_index],
+        guide.reference_deg[guide.joint_index],
+        gr.update(visible=guide.stage == 1 and guide.joint_index >= 3),
+        guide.focused,
+        guide.view,
+        gr.update(interactive=guide.joint_index > 0),
+    )
+
+
+def _suggest_path(session):
+    name = session.profile.robot_id if session.profile else "robot"
+    path = Path("runs/calibration") / f"{name}_profile.json"
+    if path.exists():
+        path = path.with_stem(f"{path.stem}_{datetime.now(UTC):%Y%m%dT%H%M%SZ}")
+    return str(path)
+
+
+def _profile_message(session):
+    if session.profile_path is not None:
+        return (
+            f"### Profile saved\n\n`{session.profile_path}`\n\n"
+            "Your confirmed joint mapping is ready to use in simulation. "
+            "You can stop here or improve motion dynamics below."
+        )
+    if len(session.confirmed) != 5 or not session.gripper_confirmed:
+        return "### Save your aligned profile\n\nFinish the physical joint and jaw checks first."
+    return (
+        "### Save your aligned profile\n\n"
+        "Your body joints and jaw mapping are confirmed. "
+        "Save them together so simulation can use this robot's joint coordinates."
+    )
+
+
+def _capture_visible_reference(guide, angle, displayed):
+    if displayed != [guide.joint_index, angle]:
+        raise ValueError(
+            "Wait for the reference view to update, then check the physical joint before capturing."
+        )
+    guide.capture_next(angle)
+
+
+def _tick(session, guide, viewport, episode, fraction, aspect):
+    import gradio as gr
+
+    session.poll()
+    with session.lock:
+        if session.phase in ("disconnected", "fault"):
+            guide.stage = 0
+            viewport.tuning = False
+        target = np.array(guide.reference_deg, dtype=float)
+        if viewport.tuning and session.config is not None and session.profile is not None:
+            trajectory = next(
+                item
+                for item in generate_excitation(session.config, session.profile)
+                if item.name == episode
+            )
+            target = trajectory.commands_deg[round(fraction * (len(trajectory.commands_deg) - 1))]
+        measured = (
+            session.profile.to_model_deg(session.measured)
+            if session.profile is not None and session.measured is not None
+            else None
+        )
+        hardware = None if session.measured is None else session.measured.copy()
+        focus = (
+            SO101_JOINT_NAMES[guide.joint_index] if guide.focused and not viewport.tuning else None
+        )
+        if guide.stage == 2 and guide.focused and not viewport.tuning:
+            focus = "gripper"
+        key = (
+            tuple(target),
+            guide.view,
+            focus,
+            measured is not None,
+            None
+            if session.profile is None
+            else (session.profile.joint_offsets_deg, session.profile.gripper_limits_deg),
+        )
+        if viewport.bounds is None or key != viewport.key:
+            viewport.bounds = overlay_bounds(target, measured, focus_joint=focus)
+            viewport.key = key
+        confirmed = session.confirmed.copy()
+        gripper_confirmed = session.gripper_confirmed
+        phase = session.phase
+        active = session.worker is not None and session.worker.is_alive()
+        motor_state = (
+            "motors off"
+            if session.monitor is not None and not any(session.monitor.torque.values())
+            else "torque may be enabled"
+        )
+        status = (
+            f"Connected, {motor_state}. {len(confirmed)}/5 body references confirmed."
+            if phase == "monitoring" and session.monitor is not None
+            else phase.replace("_", " ").capitalize()
+        )
+        if phase == "disconnected" and session.torque_possible:
+            status += ". Torque may still be enabled. Support the arm before release."
+        if phase in ("arming", "holding", "running", "stopped") or session.status.startswith(
+            "Preflight failed"
+        ):
+            status += f". {session.status}"
+        rows = [
+            [
+                name,
+                None if hardware is None else round(float(hardware[index]), 2),
+                "deg" if index < 5 else "percent",
+                None if measured is None else round(float(measured[index]), 2),
+                round(float(target[index]), 2),
+                None
+                if measured is None or not (index in confirmed if index < 5 else gripper_confirmed)
+                else round(float(measured[index] - target[index]), 2),
+                "Physically confirmed"
+                if (index in confirmed if index < 5 else gripper_confirmed)
+                else "Provisional",
+            ]
+            for index, name in enumerate(SO101_JOINT_NAMES)
+        ]
+        outputs = (
+            status,
+            session.progress,
+            rows,
+            gr.update(interactive=session.verified and phase == "monitoring"),
+            gr.update(interactive=phase == "holding" and not session.should_stop()),
+            gr.update(value=session.artifacts or None, visible=bool(session.artifacts)),
+            session.status,
+            gr.update(visible=active),
+            gr.Walkthrough(selected=guide.stage, visible=not viewport.tuning),
+            gr.update(visible=viewport.tuning),
+            gr.update(
+                visible=session.profile_path is not None
+                and len(confirmed) == 5
+                and gripper_confirmed
+            ),
+            _profile_message(session),
+            gr.update(
+                visible=session.profile_path is None
+                and guide.stage == 3
+                and len(confirmed) == 5
+                and gripper_confirmed
+            ),
+            gr.update(visible=guide.stage > 0 and session.monitor is None and not active),
+            [guide.joint_index, float(target[guide.joint_index])],
+            gr.update(interactive=guide.stage == 1 and session.monitor is not None),
+        )
+    figure = render_overlay(
+        target,
+        measured,
+        provisional=len(confirmed) != 5 or not gripper_confirmed,
+        active_joint=None
+        if viewport.tuning
+        else ("gripper" if guide.stage == 2 else SO101_JOINT_NAMES[guide.joint_index]),
+        view=guide.view,
+        focus_joint=focus,
+        bounds_m=viewport.bounds,
+        viewport_aspect=aspect,
+    )
+    figure.update_layout(uirevision=f"guided:{guide.view}:{focus}:{viewport.revision}")
+    return (*outputs[:3], figure, *outputs[3:])
+
+
+def _wire_scene(gr, ui, guide, viewport, perform):
+    def reference(angle):
+        perform(guide.set_reference, angle)
+        viewport.fit()
+        return gr.update(interactive=False)
+
+    def rotation(delta):
+        perform(guide.preview_rotation, delta)
+        viewport.fit()
+
+    def jaw(angle):
+        if not isinstance(angle, (int, float)) or isinstance(angle, bool) or not np.isfinite(angle):
+            raise gr.Error("Enter a finite jaw angle in model degrees.")
+        guide.reference_deg[5] = angle
+        viewport.fit()
+
+    ui["reference_angle"].input(
+        reference, ui["reference_angle"], ui["capture"], trigger_mode="always_last"
+    )
+    ui["rotate_minus"].click(lambda: rotation(-90))
+    ui["rotate_plus"].click(lambda: rotation(90))
+    ui["closed"].click(jaw, ui["grip_low"])
+    ui["open"].click(jaw, ui["grip_high"])
+    for endpoint in ("grip_low", "grip_high"):
+        ui[endpoint].input(lambda: False, outputs=ui["grip_confirm"], queue=False)
+
+    def camera(value):
+        guide.view = value
+        viewport.fit()
+
+    def focus(value):
+        guide.focused = value
+        viewport.fit()
+
+    ui["camera"].input(camera, ui["camera"], trigger_mode="always_last")
+    ui["focus"].input(focus, ui["focus"], trigger_mode="always_last")
+    ui["fit_view"].click(viewport.fit)
+
+
+def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_outputs):
+    def restore():
+        profile, config = session.profile, session.config
+        motion = (
+            (
+                *config.center_qpos_deg,
+                *config.amplitudes_deg,
+                config.duration_s,
+                config.table_z_m,
+                config.seed,
+            )
+            if config is not None
+            else (gr.skip(),) * 15
+        )
+        return (
+            profile.control_period_s if profile else 0.02,
+            *(profile.gripper_limits_deg if profile else (-10, 100)),
+            str(session.profile_path) if session.profile_path else _suggest_path(session),
+            str(session.profile_path) if session.profile_path else "",
+            gr.Walkthrough(selected=viewport.tuning_step),
+            *motion,
+        )
+
+    restore_outputs = [
+        ui[name]
+        for name in (
+            "period",
+            "grip_low",
+            "grip_high",
+            "profile_output",
+            "saved_profile",
+            "tuning_steps",
+        )
+    ] + [*ui["centers"], *ui["amplitudes"], ui["duration"], ui["table"], ui["seed"]]
+
+    def reconnect(port, directory):
+        saved = session.profile_path
+        perform(guide.connect, port, directory)
+        if saved is not None:
+            perform(guide.load_profile, saved)
+
+    ui["reconnect"].click(reconnect, [ui["port"], ui["calibration_dir"]]).then(
+        sync, outputs=guide_outputs
+    ).then(
+        restore,
+        outputs=restore_outputs,
+    )
+    app.load(sync, outputs=guide_outputs).then(
+        restore,
+        outputs=restore_outputs,
+    )
+
+
+def _wire_profile(gr, app, ui, session, guide, viewport):
     from so101_nexus.calibration.hardware import discover_ports
 
-    (
-        status,
-        progress,
-        overlay,
-        feedback,
-        view_mode,
-        release_supported,
-        release,
-        files,
-        stop,
-        disconnect,
-        port,
-        discover,
-        calibration_dir,
+    guide_outputs = [
+        ui[name]
+        for name in (
+            "walkthrough",
+            "joint_title",
+            "instruction",
+            "reference_angle",
+            "rotation_group",
+            "focus",
+            "camera",
+            "previous",
+        )
+    ]
+
+    def perform(function, *args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except Exception as error:
+            raise gr.Error(str(error)) from error
+
+    def sync():
+        viewport.fit()
+        return _guide_updates(gr, guide)
+
+    def connect(port, directory):
+        perform(guide.connect, port, directory)
+        return _suggest_path(session), False, False, False
+
+    ui["connect"].click(
         connect,
-        saved_profile,
+        [ui["port"], ui["calibration_dir"]],
+        [ui["profile_output"], ui["grip_confirm"], ui["support"], ui["hands_clear"]],
+    ).then(sync, outputs=guide_outputs)
+    ui["discover"].click(lambda: gr.update(choices=discover_ports()), outputs=ui["port"])
+
+    def load(path, port, directory):
+        with session.lock:
+            if session.monitor is None:
+                perform(guide.connect, port, directory)
+            perform(guide.load_profile, path)
+            return session.profile.control_period_s, *session.profile.gripper_limits_deg
+
+    ui["load"].click(
         load,
-        active,
-        guidance,
-        posture,
-        refs,
-        ref_gripper,
-        physically_matched,
-        capture,
-        grip_low,
-        grip_high,
-        grip_confirm,
-        map_gripper,
-        period,
-        profile_output,
-        save,
-        use_current,
-        centers,
-        amplitudes,
-        duration,
-        table,
-        seed,
-        preview_episode,
-        preview_fraction,
-        trajectory_plot,
-        preview,
-        preflight,
-        output_dir,
-        support,
-        hold,
-        hands_clear,
-        start,
-        fit_recordings,
-        fit_output,
-        max_iters,
-        fit,
-        fit_summary,
-        errors,
-        diagnostics,
-    ) = components
-    call = partial(_call, gr, session)
-    plan = partial(_plan, session)
-    current_center = partial(_current_center, gr, session)
-    show_plan = partial(_show_plan, gr, session)
-    verify = partial(_verify, gr, session)
-    enable_hold = partial(_enable_hold, gr, session)
-    fit_candidate = partial(_fit_candidate, gr, session)
-    settings = [*centers, *amplitudes, duration, table, seed, period]
-    refresh = partial(_refresh, session)
-    refresh_inputs = [active, view_mode, preview_episode, preview_fraction, *refs, ref_gripper]
-    refresh_outputs = [status, progress, feedback, overlay, hold, start, files]
-    timer = gr.Timer(0.5)
-    timer.tick(refresh, refresh_inputs, refresh_outputs, queue=False, show_progress="hidden")
-    app.load(refresh, refresh_inputs, refresh_outputs)
-    discover.click(lambda: gr.update(choices=discover_ports()), outputs=port)
-    connect.click(lambda p, c: call(session.connect, p, c), [port, calibration_dir]).then(
-        lambda: (False,) * 5,
-        outputs=[physically_matched, grip_confirm, support, hands_clear, release_supported],
-    ).then(refresh, refresh_inputs, refresh_outputs)
-    load.click(
-        partial(_load_profile, gr, session), saved_profile, [period, grip_low, grip_high]
-    ).then(refresh, refresh_inputs, refresh_outputs)
-    active.change(
-        lambda name: (_JOINT_GUIDANCE[SO101_JOINT_NAMES.index(name)], False),
-        active,
-        [guidance, physically_matched],
-    )
-    posture.change(
-        lambda name: [*(list(_DEFAULT_CENTER[:5]) if name == "Raised example" else [0] * 5), False],
-        posture,
-        [*refs, physically_matched],
-    )
-    for reference in refs:
-        reference.input(lambda: False, outputs=physically_matched, queue=False)
-    capture.click(
-        lambda name, confirmed, *values: call(
-            session.capture_joint,
-            SO101_JOINT_NAMES.index(name),
-            values[SO101_JOINT_NAMES.index(name)],
-            confirmed=confirmed,
-        ),
-        [active, physically_matched, *refs],
-    ).then(lambda: False, outputs=physically_matched).then(refresh, refresh_inputs, refresh_outputs)
-    map_gripper.click(
-        lambda lo, hi, confirmed: call(session.set_gripper, lo, hi, confirmed=confirmed),
-        [grip_low, grip_high, grip_confirm],
-    ).then(refresh, refresh_inputs, refresh_outputs)
-    period.input(lambda value: call(session.set_period, value), period, queue=False)
-
-    def save_current(path, period_s):
-        def save_profile():
-            session.set_period(period_s)
-            session.save_profile(path)
-
-        call(save_profile)
-
-    save.click(save_current, [profile_output, period]).then(
-        refresh, refresh_inputs, refresh_outputs
-    )
-    use_current.click(current_center, outputs=centers).then(
-        lambda: (False, False), outputs=[support, hands_clear]
+        [ui["saved_profile"], ui["port"], ui["calibration_dir"]],
+        [ui["period"], ui["grip_low"], ui["grip_high"]],
+    ).then(sync, outputs=guide_outputs).then(
+        lambda: str(session.profile_path), outputs=ui["profile_output"]
     )
 
-    def edited_plan(*values):
-        call(plan, *values)
+    def capture(angle, displayed):
+        perform(_capture_visible_reference, guide, angle, displayed)
+        return gr.update(interactive=False)
+
+    ui["capture"].click(
+        capture, [ui["reference_angle"], ui["shown_reference"]], ui["capture"]
+    ).then(sync, outputs=guide_outputs)
+    for name in ("previous", "back_body", "edit_profile"):
+        ui[name].click(lambda: perform(guide.previous_joint)).then(
+            sync, outputs=guide_outputs
+        ).then(lambda: False, outputs=ui["grip_confirm"])
+
+    ui["map_gripper"].click(
+        lambda lo, hi, confirmed: perform(guide.confirm_gripper, lo, hi, confirmed=confirmed),
+        [ui["grip_low"], ui["grip_high"], ui["grip_confirm"]],
+    ).then(sync, outputs=guide_outputs)
+
+    def save(path, period):
+        saved = perform(guide.save_profile, path, period)
+        return (
+            f"### Profile saved\n\n`{saved}`\n\n"
+            "Your confirmed joint mapping is ready to use in simulation. "
+            "You can stop here or improve motion dynamics below.",
+            gr.update(visible=True),
+        )
+
+    ui["save"].click(
+        save, [ui["profile_output"], ui["period"]], [ui["profile_message"], ui["tune"]]
+    )
+
+    _wire_scene(gr, ui, guide, viewport, perform)
+    _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_outputs)
+    return perform
+
+
+def _wire_tuning(gr, ui, session, guide, viewport, perform):
+    settings = [
+        *ui["centers"],
+        *ui["amplitudes"],
+        ui["duration"],
+        ui["table"],
+        ui["seed"],
+        ui["period"],
+    ]
+
+    def begin():
+        perform(session._idle)
+        perform(session._aligned)
+        if session.profile_path is None or guide.stage != 3:
+            raise gr.Error("Save your aligned profile first.")
+        viewport.tuning = True
+        viewport.tuning_step = 0
+        viewport.fit()
+        return gr.update(visible=True), gr.update(visible=False), gr.Walkthrough(selected=0)
+
+    ui["tune"].click(begin, outputs=[ui["dynamics"], ui["walkthrough"], ui["tuning_steps"]])
+
+    def finish():
+        perform(session._idle)
+        viewport.tuning = False
+        viewport.fit()
+        return gr.update(visible=False), gr.Walkthrough(visible=True, selected=3)
+
+    ui["return_profile"].click(finish, outputs=[ui["dynamics"], ui["walkthrough"]])
+    ui["current"].click(partial(_current_center, gr, session), outputs=ui["centers"]).then(
+        lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]]
+    )
+
+    def edited(*values):
+        _call(gr, session, _plan, session, *values)
         return False, False
 
     for setting in settings:
-        setting.input(edited_plan, settings, [support, hands_clear], queue=False)
-    preview.click(show_plan, settings, trajectory_plot).then(
-        lambda: "Motion preview", outputs=view_mode
+        setting.input(edited, settings, [ui["support"], ui["hands_clear"]], queue=False)
+
+    def check(*values):
+        plot = _show_plan(gr, session, *values)
+        _verify(gr, session, *values)
+        if not session.verified:
+            raise gr.Error(session.status)
+        viewport.tuning_step = 1
+        return plot, gr.Walkthrough(selected=1)
+
+    ui["preview"].click(check, settings, [ui["trajectory_plot"], ui["tuning_steps"]])
+    ui["hold"].click(
+        partial(_enable_hold, gr, session), [ui["output_dir"], ui["support"], *settings]
+    ).then(lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]])
+    ui["start"].click(
+        partial(_start_motion, gr, session), [ui["hands_clear"], *settings], queue=False
+    ).then(lambda: False, outputs=ui["hands_clear"])
+
+    def review():
+        perform(session._idle)
+        if session.recordings_dir is None or not list(session.recordings_dir.glob("*.npz")):
+            raise gr.Error("No completed recordings yet. Collect all three episodes first.")
+        viewport.tuning_step = 2
+        return gr.Walkthrough(selected=2), str(session.recordings_dir)
+
+    def back_preview():
+        perform(session._idle)
+        session.verified = False
+        viewport.tuning_step = 0
+        return gr.Walkthrough(selected=0)
+
+    for button in ("back_preview_collect", "back_preview_review"):
+        ui[button].click(back_preview, outputs=ui["tuning_steps"])
+
+    ui["review"].click(review, outputs=[ui["tuning_steps"], ui["fit_recordings"]])
+    ui["fit"].click(
+        partial(_fit_candidate, gr, session),
+        [ui["fit_recordings"], ui["fit_output"], ui["max_iters"]],
+        [ui["errors"], ui["diagnostics"], ui["fit_summary"]],
     )
-    preflight.click(verify, settings).then(refresh, refresh_inputs, refresh_outputs)
-    hold.click(enable_hold, [output_dir, support, *settings]).then(
-        lambda: (False, False), outputs=[support, hands_clear]
-    ).then(refresh, refresh_inputs, refresh_outputs)
-    start.click(partial(_start_motion, gr, session), [hands_clear, *settings], queue=False).then(
-        lambda: False, outputs=hands_clear
-    )
-    stop.click(session.stop, queue=False)
-    disconnect.click(lambda: call(session.disconnect), queue=False).then(
-        refresh, refresh_inputs, refresh_outputs
-    )
-    release.click(
-        lambda supported: call(session.release, supported=supported), release_supported, queue=False
-    ).then(lambda: False, outputs=release_supported).then(refresh, refresh_inputs, refresh_outputs)
-    fit.click(
-        fit_candidate, [fit_recordings, fit_output, max_iters], [errors, diagnostics, fit_summary]
-    )
-    app.unload(session.disconnect)
 
 
 def build_app(session: CalibrationSession | None = None) -> Any:
-    """Build a local, shared hardware session without connecting to any serial port."""
+    """Build a guided local profile workflow without opening a hardware connection."""
     import gradio as gr
 
     session = session or CalibrationSession()
+    guide, viewport, ui = CalibrationGuide(session), _Viewport(), {}
     with gr.Blocks(title="SO Nexus Calibration", fill_width=True) as app:
-        components = _build_interface(gr, session)
-        _wire_events(gr, app, session, components)
+        _build_layout(gr, ui)
+        perform = _wire_profile(gr, app, ui, session, guide, viewport)
+        _wire_tuning(gr, ui, session, guide, viewport, perform)
+        tick = partial(_tick, session, guide, viewport)
+        inputs = [ui["episode"], ui["fraction"], ui["aspect"]]
+        outputs = [
+            ui[name]
+            for name in (
+                "status",
+                "progress",
+                "feedback",
+                "overlay",
+                "hold",
+                "start",
+                "files",
+                "details",
+                "stop",
+                "walkthrough",
+                "dynamics",
+                "tune",
+                "profile_message",
+                "save",
+                "reconnect",
+                "shown_reference",
+                "capture",
+            )
+        ]
+        timer = gr.Timer(0.5)
+        timer.tick(tick, inputs, outputs, js=_MEASURE_VIEW, queue=False, show_progress="hidden")
+        app.load(tick, inputs, outputs, js=_MEASURE_VIEW)
+        ui["stop"].click(session.stop, queue=False)
+        ui["disconnect"].click(lambda: perform(session.disconnect), queue=False)
+        ui["release"].click(
+            lambda supported: perform(session.release, supported=supported),
+            ui["release_supported"],
+            queue=False,
+        ).then(lambda: False, outputs=ui["release_supported"])
+        ui["walkthrough"].select(
+            lambda: gr.Walkthrough(selected=guide.stage), outputs=ui["walkthrough"], queue=False
+        )
+        ui["tuning_steps"].select(
+            lambda: gr.Walkthrough(selected=viewport.tuning_step),
+            outputs=ui["tuning_steps"],
+            queue=False,
+        )
+        app.unload(session.stop)
     return app

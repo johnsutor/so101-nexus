@@ -2,6 +2,7 @@
 
 import threading
 from dataclasses import replace
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -278,6 +279,9 @@ def test_collection_failed_serial_close_retains_lease_until_disconnect(
 def test_explicit_release_failure_keeps_ownership_for_disconnect_retry(session, monkeypatch):
     import lerobot.motors
 
+    # Resolve the lazy normalization import before replacing its constructor dependency.
+    import_module("so101_nexus.lerobot_adapter.normalization")
+
     bus = SimpleNamespace(is_connected=False, fail_close=True, releases=0)
 
     def connect(*, handshake):
@@ -453,6 +457,9 @@ def test_arm_requires_support_before_closing_monitor_or_starting_worker(
 def test_release_success_changes_only_torque_after_support_confirmation(session, monkeypatch):
     import lerobot.motors
 
+    # Resolve the lazy normalization import before replacing its constructor dependency.
+    import_module("so101_nexus.lerobot_adapter.normalization")
+
     events = []
     bus = SimpleNamespace(is_connected=False)
 
@@ -517,3 +524,104 @@ def test_arming_clears_previous_progress_before_new_worker_runs(session, monkeyp
     with pytest.raises(RuntimeError, match="skip worker"):
         session.arm(tmp_path / "recordings", supported=True)
     assert session.progress == ""
+
+
+def test_provisional_offset_updates_mapping_without_reading_or_confirming(session, monkeypatch):
+    measured = session.measured.copy()
+    profile = session.profile
+    monkeypatch.setattr(
+        session.monitor, "read", lambda: pytest.fail("preview must not read hardware")
+    )
+    session.preview_joint_offset(4, 90)
+    assert session.profile.joint_offsets_deg == (0, 0, 0, 0, 90)
+    assert session.confirmed == {0, 1, 2, 3}
+    assert session.gripper_confirmed
+    assert not session.verified
+    np.testing.assert_array_equal(session.measured, measured)
+    original_model = profile.to_model_deg(measured)
+    draft_model = session.profile.to_model_deg(measured)
+    np.testing.assert_allclose(draft_model, original_model + np.array([0, 0, 0, 0, 90, 0]))
+    np.testing.assert_allclose(session.profile.from_model_deg(draft_model), measured)
+    session.preview_joint_offset(4, -90)
+    assert session.profile.joint_offsets_deg == profile.joint_offsets_deg
+    assert 4 not in session.confirmed
+    assert "provisional" in session.status.lower()
+
+
+@pytest.mark.parametrize(
+    ("index", "delta_deg"),
+    [(-1, 90), (5, 90), (True, 90), (1.5, 90), (4, float("nan")), (4, float("inf")), (4, True)],
+)
+def test_invalid_provisional_offsets_do_not_mutate_alignment(session, index, delta_deg):
+    profile = session.profile
+    confirmed = session.confirmed.copy()
+    with pytest.raises(ValueError, match=r"body joint|finite"):
+        session.preview_joint_offset(index, delta_deg)
+    assert session.profile is profile
+    assert session.confirmed == confirmed
+
+
+def test_provisional_offset_requires_connected_idle_reader(session):
+    profile = session.profile
+    session.worker = SimpleNamespace(is_alive=lambda: True)
+    with pytest.raises(RuntimeError, match="worker"):
+        session.preview_joint_offset(3, -90)
+    assert session.profile is profile
+    session.worker = None
+    session.disconnect()
+    with pytest.raises(RuntimeError, match="read-only"):
+        session.preview_joint_offset(3, -90)
+    assert session.profile is profile
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda session: session.capture_joint(0, 90, confirmed=True),
+        lambda session: session.preview_joint_offset(4, 90),
+        lambda session: session.set_gripper(-5, 95, confirmed=True),
+        lambda session: session.set_period(1 / 30),
+    ],
+    ids=["capture", "preview", "gripper", "period"],
+)
+def test_profile_changes_revoke_saved_identity_without_deleting_files(session, tmp_path, change):
+    profile = session.profile
+    path = session.save_profile(tmp_path / "profile.json")
+    recording = tmp_path / "previous-recording.npz"
+    recording.write_bytes(b"previous recording")
+    session.artifacts.append(str(recording))
+    session.verified = True
+    change(session)
+    assert session.profile_path is None
+    assert not session.verified
+    assert session.artifacts == [str(recording)]
+    assert RobotProfile.load(path) == profile
+    assert recording.read_bytes() == b"previous recording"
+
+
+def test_unchanged_period_and_equivalent_capture_preserve_saved_identity(session, tmp_path):
+    path = session.save_profile(tmp_path / "profile.json")
+    session.verified = True
+    session.set_period(session.profile.control_period_s)
+    assert session.verified
+    assert session.profile_path == path
+    session.capture_joint(0, session.measured[0], confirmed=True)
+    assert session.profile_path == path
+    assert session.artifacts == [str(path)]
+    assert session.profile == RobotProfile.load(path)
+
+
+def test_loading_profile_replaces_artifact_attribution_and_preserves_exact_period(
+    session, tmp_path
+):
+    path = tmp_path / "thirty-hz-profile.json"
+    profile = replace(session.profile, control_period_s=1 / 30)
+    profile.save(path)
+    session.artifacts = [str(tmp_path / "unrelated-profile.json")]
+    session.load_profile(path)
+    assert session.artifacts == [str(path.resolve())]
+    assert session.profile_path == path.resolve()
+    assert session.profile.control_period_s == 1 / 30
+    session.set_period(1 / 30)
+    assert session.profile_path == path.resolve()
+    assert session.profile == profile
