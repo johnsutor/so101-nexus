@@ -622,4 +622,45 @@ def test_live_pose_expands_viewport_without_resetting_camera(profile, monkeypatc
     expected = expand_bounds(bounds, guide.reference_deg, profile.to_model_deg(session.measured))
     np.testing.assert_allclose(viewport.bounds, expected)
     assert viewport.revision == revision
-    assert figure.layout.uirevision == f"guided:{guide.view}:None:{revision}"
+    assert figure["layout"]["uirevision"] == f"guided:{guide.view}:None:{revision}"
+
+
+def test_live_updates_never_replace_the_mounted_plot(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    components = {component["id"]: component for component in config["components"]}
+    tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+    assert all(components[i]["type"] != "plot" for i in tick["outputs"])
+    payload = components[tick["outputs"][3]]
+    assert payload["type"] == "json"
+    updates = [d for d in config["dependencies"] if d["inputs"] == [payload["id"]]]
+    assert len(updates) == 1
+    assert "Plotly.react" in updates[0]["js"]
+
+
+def test_saved_profile_opens_completion_without_opening_hardware(profile, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    directory = tmp_path / "runs/calibration"
+    directory.mkdir(parents=True)
+    (directory / "bad.json").write_text("{}")
+    path = directory / "confirmed.json"
+    profile.save(path)
+    from so101_nexus.calibration.app import build_app
+
+    app = build_app()
+    config = app.get_config_file()
+    tick = next(d for d in config["dependencies"] if any(e == "tick" for _, e in d["targets"]))
+    callback = app.fns[tick["id"]].fn
+    session, guide = callback.args[:2]
+    assert session.monitor is None
+    assert session.profile is None
+    assert guide.stage == 3
+    assert guide.saved_profile == path
+    result = callback("multisine", 0, 1.5)
+    assert result[9].selected == 3
+    assert result[14]["visible"]
+    assert "confirmed.json" in result[12]
+    assert result[-1].startswith("# Your robot profile")

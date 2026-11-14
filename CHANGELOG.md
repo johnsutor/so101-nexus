@@ -44,6 +44,10 @@ for the public-API and deprecation policy.
 
 ### Fixed
 
+- Update calibration meshes in the mounted viewer instead of replacing the plot,
+  preserving camera interaction while live joint measurements change.
+- Open the saved-profile pane when a calibration profile exists, verify it against
+  the connected follower, and offer an explicit full recalibration action.
 - Preserve the calibration viewer camera across live updates and expand framing
   for changing arm poses and arbitrary rotations.
 - Refresh stale calibration instructions before another capture, without recording

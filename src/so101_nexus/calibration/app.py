@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -36,41 +37,43 @@ _GUIDANCE = (
 )
 _MEASURE_VIEW = """(...values) => {
     const container = document.querySelector('#calibration-robot-view');
-    if (container && !container.nexusCamera) {
-        const state = {plot: null, camera: null, revision: null, restoring: false};
-        container.nexusCamera = state;
-        const remember = (plot) => {
-            if (plot !== state.plot || state.restoring) return;
-            const scene = plot?._fullLayout?.scene?._scene;
-            if (scene) state.camera = structuredClone(scene.getCamera());
-        };
-        const scan = () => {
-            const plot = container.querySelector('.js-plotly-plot');
-            if (!plot?._fullLayout?.scene?._scene) return;
-            if (plot === state.plot) { remember(plot); return; }
-            const revision = plot.layout.uirevision;
-            if (revision !== state.revision) state.camera = null;
-            state.plot = plot;
-            state.revision = revision;
-            plot.on('plotly_relayout', () => remember(plot));
-            plot.on('plotly_relayouting', () => remember(plot));
-            if (state.camera && window.Plotly) {
-                state.restoring = true;
-                Promise.resolve(window.Plotly.relayout(plot, {'scene.camera': state.camera}))
-                    .finally(() => { state.restoring = false; remember(plot); });
-            } else { remember(plot); }
-        };
-        const observer = new MutationObserver(() => requestAnimationFrame(scan));
-        observer.observe(container, {subtree: true, childList: true});
-        const timer = setInterval(() => {
-            if (container.isConnected) scan();
-            else { clearInterval(timer); observer.disconnect(); }
-        }, 50);
-        scan();
-    }
-    const plot = container?.querySelector('.js-plotly-plot');
-    const width = plot?.clientWidth || container?.clientWidth || 975;
+    const width = container?.clientWidth || 975;
     return [...values.slice(0, -1), width / 650];
+}"""
+_UPDATE_VIEW = """async (figure) => {
+    const container = document.querySelector('#calibration-robot-view');
+    if (!container || !figure) return;
+    if (!container.nexusView) {
+        const state = {pending: null, updating: false, revision: null, dragging: false};
+        container.nexusView = state;
+        container.addEventListener('pointerdown', () => { state.dragging = true; });
+        const finish = () => { state.dragging = false; };
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
+        window.addEventListener('blur', finish);
+    }
+    const state = container.nexusView;
+    state.pending = figure;
+    if (state.updating) return;
+    state.updating = true;
+    try {
+        while (state.pending && container.isConnected) {
+            const plot = container.querySelector('.js-plotly-plot');
+            if (state.dragging || !plot?._fullLayout?.scene?._scene || !window.Plotly) {
+                await new Promise(requestAnimationFrame);
+                continue;
+            }
+            const next = state.pending;
+            state.pending = null;
+            const revision = next.layout.uirevision;
+            if (state.revision === revision) {
+                next.layout.scene.camera = plot._fullLayout.scene._scene.getCamera();
+            }
+            next.layout.scene.uirevision = revision;
+            await window.Plotly.react(plot, next.data, next.layout, plot._context);
+            state.revision = revision;
+        }
+    } finally { state.updating = false; }
 }"""
 
 
@@ -271,14 +274,17 @@ def _connect_controls(gr, ui):
         "### Connect your follower\n\nConnect the USB cable, then open the live view. "
         "Connecting does not enable torque or move the robot."
     )
-    ui["port"] = gr.Dropdown(
-        choices=["/dev/ttyACM0"],
-        value="/dev/ttyACM0",
-        allow_custom_value=True,
-        label="Follower serial port",
-    )
     ui["connect"] = gr.Button("Connect robot", variant="primary")
-    with gr.Accordion("Different device or existing profile", open=False):
+
+
+def _connection_settings(gr, ui):
+    with gr.Accordion("Connection and saved profile", open=False):
+        ui["port"] = gr.Dropdown(
+            choices=["/dev/ttyACM0"],
+            value="/dev/ttyACM0",
+            allow_custom_value=True,
+            label="Follower serial port",
+        )
         from so101_nexus.calibration.hardware import default_calibration_dir
 
         ui["discover"] = gr.Button("Find serial devices")
@@ -288,8 +294,8 @@ def _connect_controls(gr, ui):
         ui["saved_profile"] = gr.Textbox(label="Existing confirmed profile JSON")
         ui["load"] = gr.Button("Load matched profile")
         gr.Markdown(
-            "Connect first. Loading a profile trusts its previous physical alignment and "
-            "requires matching motor calibration."
+            "Choose a confirmed Nexus profile. Loading connects read-only and requires "
+            "matching motor calibration."
         )
 
 
@@ -354,7 +360,7 @@ def _profile_controls(gr, ui):
         "coordinates."
     )
     ui["save"] = gr.Button("Save profile", variant="primary")
-    ui["edit_profile"] = gr.Button("Recheck alignment")
+    ui["edit_profile"] = gr.Button("Recalibrate robot")
     with gr.Accordion("Save location and control timing", open=False):
         ui["profile_output"] = gr.Textbox(
             "runs/calibration/robot_profile.json", label="New profile JSON path"
@@ -458,8 +464,8 @@ def _fit_controls(gr, ui):
         ui["max_iters"] = gr.Number(100, precision=0, label="Maximum optimizer iterations")
 
 
-def _build_guide(gr, ui):
-    with gr.Walkthrough(selected=0) as ui["walkthrough"]:
+def _build_guide(gr, ui, stage):
+    with gr.Walkthrough(selected=stage) as ui["walkthrough"]:
         for index, (label, builder) in enumerate(
             (
                 ("Connect", _connect_controls),
@@ -490,6 +496,7 @@ def _build_guide(gr, ui):
 
 
 def _build_scene(gr, ui):
+    ui["scene_frame"] = gr.JSON(visible=False, label="Live robot scene")
     ui["overlay"] = gr.Plot(
         render_overlay((0, 0, 0, 0, 0, 45)),
         label="Your robot and its physical reference",
@@ -525,11 +532,17 @@ def _build_scene(gr, ui):
         ui["details"] = gr.Markdown("")
 
 
-def _build_layout(gr, ui):
-    gr.Markdown(
-        "# Calibrate your robot\n\nConnect, match the physical arm to the model, and save its"
-        " profile."
+def _heading(guide):
+    if guide.stage == 3:
+        return "# Your robot profile\n\nUse your saved alignment or recalibrate the robot."
+    return (
+        "# Calibrate your robot\n\nConnect, match the physical arm to the model, "
+        "and save its profile."
     )
+
+
+def _build_layout(gr, ui, guide):
+    ui["heading"] = gr.Markdown(_heading(guide))
     ui["status"] = gr.Markdown(
         "Disconnected. Connect your follower to begin.", elem_id="hardware-status"
     )
@@ -537,9 +550,9 @@ def _build_layout(gr, ui):
         with gr.Column(scale=8, min_width=320, elem_classes="calibration-scene"):
             _build_scene(gr, ui)
         with gr.Column(scale=3, min_width=320):
-            _build_guide(gr, ui)
+            _build_guide(gr, ui, guide.stage)
             ui["progress"] = gr.Markdown("")
-            ui["reconnect"] = gr.Button("Reconnect saved robot", visible=False)
+            ui["reconnect"] = gr.Button("Connect saved robot", visible=False)
             ui["stop"] = gr.Button("Stop commands", variant="stop", visible=False)
             with gr.Accordion("Disconnect or release motors", open=False):
                 ui["disconnect"] = gr.Button("Disconnect")
@@ -551,6 +564,7 @@ def _build_layout(gr, ui):
                     "Disconnect preserves torque. Release turns torque off and can let an "
                     "unsupported arm fall."
                 )
+            _connection_settings(gr, ui)
             ui["files"] = gr.File(
                 label="Your profile and recordings",
                 file_count="multiple",
@@ -621,7 +635,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
     session.poll()
     with session.lock:
         if session.phase in ("disconnected", "fault"):
-            guide.stage = 0
+            guide.stage = 3 if guide.saved_profile or session.profile_path else 0
             viewport.tuning = False
         target = np.array(guide.reference_deg, dtype=float)
         if viewport.tuning and session.config is not None and session.profile is not None:
@@ -660,7 +674,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
         camera_revision = f"guided:{view}:{focus}:{viewport.revision}"
         active_joint = (
             None
-            if viewport.tuning
+            if viewport.tuning or guide.stage not in (1, 2)
             else ("gripper" if guide.stage == 2 else SO101_JOINT_NAMES[guide.joint_index])
         )
         bounds = viewport.bounds
@@ -725,14 +739,22 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
                 and len(confirmed) == 5
                 and gripper_confirmed
             ),
-            _profile_message(session),
+            (
+                f"### Saved profile available\n\n`{guide.saved_profile}`\n\n"
+                "Connect your saved robot to verify its motor calibration and continue."
+                if session.profile is None and guide.saved_profile
+                else _profile_message(session)
+            ),
             gr.update(
                 visible=session.profile_path is None
                 and guide.stage == 3
                 and len(confirmed) == 5
                 and gripper_confirmed
             ),
-            gr.update(visible=guide.stage > 0 and session.monitor is None and not active),
+            gr.update(
+                visible=guide.stage > 0 and session.monitor is None and not active,
+                value="Reconnect saved robot" if session.profile_path else "Connect saved robot",
+            ),
             [guide.joint_index, float(target[guide.joint_index])],
             gr.update(interactive=guide.stage == 1 and session.monitor is not None),
             f"{session.status}\n\n**Next:** {_dynamics_readiness(session)}",
@@ -744,6 +766,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             gr.update(visible=phase == "holding"),
             gr.update(visible=not active and session.monitor is None),
             gr.update(visible=session.monitor is not None and any(session.monitor.torque.values())),
+            _heading(guide),
         )
     figure = render_overlay(
         target,
@@ -763,7 +786,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
         )
         figure.update_annotations(text=text)
     figure.update_layout(uirevision=camera_revision)
-    return (*outputs[:3], figure, *outputs[3:])
+    return (*outputs[:3], json.loads(figure.to_json()), *outputs[3:])
 
 
 def _wire_scene(gr, ui, guide, viewport, perform):
@@ -841,10 +864,8 @@ def _wire_restore(gr, app, ui, session, guide, viewport, perform, sync, guide_ou
     ] + [*ui["centers"], *ui["amplitudes"], ui["duration"], ui["table"], ui["seed"]]
 
     def reconnect(port, directory):
-        saved = session.profile_path
+        guide.saved_profile = session.profile_path or guide.saved_profile
         perform(guide.connect, port, directory)
-        if saved is not None:
-            perform(guide.load_profile, saved)
 
     ui["reconnect"].click(reconnect, [ui["port"], ui["calibration_dir"]]).then(
         sync, outputs=guide_outputs
@@ -931,7 +952,8 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
         [ui["reference_angle"], ui["shown_reference"], ui["instruction_joint"]],
         [ui["capture"], ui["capture_notice"]],
     ).then(sync, outputs=guide_outputs)
-    for name in ("previous", "back_body", "edit_profile"):
+    ui["edit_profile"].click(lambda: perform(guide.recalibrate)).then(sync, outputs=guide_outputs)
+    for name in ("previous", "back_body"):
         ui[name].click(lambda: perform(guide.previous_joint)).then(
             sync, outputs=guide_outputs
         ).then(lambda: False, outputs=ui["grip_confirm"])
@@ -1100,14 +1122,31 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
     )
 
 
+def _saved_profiles(directory: Path = Path("runs/calibration")) -> list[Path]:
+    from so101_nexus.profiles import RobotProfile
+
+    profiles = []
+    for path in directory.glob("*.json"):
+        try:
+            RobotProfile.load(path)
+            profiles.append(path.resolve())
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+    return sorted(profiles, key=lambda path: path.stat().st_mtime_ns, reverse=True)
+
+
 def build_app(session: CalibrationSession | None = None) -> Any:
     """Build a guided local profile workflow without opening a hardware connection."""
     import gradio as gr
 
     session = session or CalibrationSession()
     guide, viewport, ui = CalibrationGuide(session), _Viewport(), {}
+    candidates = _saved_profiles()
+    guide.saved_profile = session.profile_path or (candidates[0] if candidates else None)
+    if guide.saved_profile:
+        guide.stage = 3
     with gr.Blocks(title="SO Nexus Calibration", fill_width=True) as app:
-        _build_layout(gr, ui)
+        _build_layout(gr, ui, guide)
         perform = _wire_profile(gr, app, ui, session, guide, viewport)
         _wire_tuning(gr, ui, session, guide, viewport, perform)
         tick = partial(_tick, session, guide, viewport)
@@ -1118,7 +1157,7 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "status",
                 "progress",
                 "feedback",
-                "overlay",
+                "scene_frame",
                 "hold",
                 "start",
                 "files",
@@ -1137,8 +1176,10 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "start_setup",
                 "retry",
                 "release_setup",
+                "heading",
             )
         ]
+        ui["scene_frame"].change(fn=None, inputs=ui["scene_frame"], js=_UPDATE_VIEW, queue=False)
         timer = gr.Timer(0.5)
         timer.tick(tick, inputs, outputs, js=_MEASURE_VIEW, queue=False, show_progress="hidden")
         app.load(tick, inputs, outputs, js=_MEASURE_VIEW)

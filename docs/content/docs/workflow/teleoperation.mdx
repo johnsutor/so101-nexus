@@ -603,7 +603,7 @@ The guide opens a wrist close-up for the bend and twist steps.
 Visible quarter-turn buttons preview a correction to the measured wrist mapping without moving hardware.
 A preview clears that joint's confirmation. Physical reference capture is still required.
 
-**Different device or existing profile** contains serial discovery, the calibration directory, and trusted profile loading.
+**Connection and saved profile** contains serial discovery, the calibration directory, and trusted profile loading.
 Known reference angles, jaw geometry, save paths, and timing remain in contextual advanced sections.
 
 Discovery and live measurements do not enable torque, write calibration, or send movement commands.
@@ -619,6 +619,13 @@ The app captures encoder readings directly, so angle transcription is unnecessar
 
 Body-joint alignment and gripper endpoint mapping are separate steps.
 The [profile reference](/docs/api/configs#robot-profiles) defines the units, endpoint mapping, and saved fields.
+
+The app opens the profile pane when it finds a saved Nexus profile in `runs/calibration`.
+Select **Connect saved robot** to verify the profile against the follower's motor calibration.
+A matching profile restores the completed alignment without new reference captures.
+**Recalibrate robot** starts again at the first joint and preserves the saved file.
+The **Connection and saved profile** settings also accept a profile from another location.
+LeRobot encoder calibration alone does not establish physical model alignment.
 
 ### Preview and preflight
 

@@ -234,3 +234,41 @@ def test_capture_rejects_invalid_visible_angles_before_encoder_reads(guide, monk
     read.assert_not_called()
     assert guide.joint_index == 0
     assert not guide.session.confirmed
+
+
+def test_saved_profile_resumes_completion_after_readonly_match(guide, tmp_path):
+    from dataclasses import replace
+
+    path = tmp_path / "confirmed.json"
+    profile = guide.session.monitor_factory().profile
+    saved = replace(profile, joint_offsets_deg=(1, 2, 3, 4, 5))
+    saved.save(path)
+    guide.saved_profile = path
+    guide.connect("/dev/fake", "/unused")
+    assert guide.stage == 3
+    assert guide.session.profile == saved
+    assert guide.session.confirmed == set(range(5))
+    assert guide.session.gripper_confirmed
+    guide.recalibrate()
+    assert guide.stage == 1
+    assert guide.joint_index == 0
+    assert not guide.session.confirmed
+    assert not guide.session.gripper_confirmed
+    assert guide.session.profile_path is None
+    assert path.exists()
+
+
+def test_saved_profile_for_different_robot_does_not_skip_alignment(guide, tmp_path):
+    from dataclasses import replace
+
+    path = tmp_path / "other.json"
+    profile = guide.session.monitor_factory().profile
+    calibration = {name: dict(values) for name, values in profile.calibration.items()}
+    calibration[SO101_JOINT_NAMES[0]]["homing_offset"] = 10
+    replace(profile, calibration=calibration).save(path)
+    guide.saved_profile = path
+    guide.connect("/dev/fake", "/unused")
+    assert guide.stage == 1
+    assert not guide.session.confirmed
+    assert guide.session.profile_path is None
+    assert "differs" in guide.session.status

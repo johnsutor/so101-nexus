@@ -28,6 +28,7 @@ class CalibrationGuide:
     reference_deg: list[float] = field(default_factory=lambda: [0, 0, 0, 0, 0, 45])
     view: str = "front"
     focused: bool = False
+    saved_profile: Path | None = None
 
     def _require_stage(self, stage: int) -> None:
         if self.stage != stage:
@@ -48,6 +49,25 @@ class CalibrationGuide:
         with self.session.lock:
             self.stage = 0
             self.session.connect(port, calibration_dir)
+            self.reference_deg = [0, 0, 0, 0, 0, 45]
+            self._select_joint(0)
+            self.stage = 1
+            if self.saved_profile is not None:
+                try:
+                    self.load_profile(self.saved_profile)
+                except (OSError, ValueError) as error:
+                    self.session.status = f"Saved profile could not be restored: {error}"
+
+    def recalibrate(self) -> None:
+        """Start physical alignment again while preserving the saved file."""
+        with self.session.lock:
+            self.session._idle()
+            if self.session.monitor is None:
+                raise RuntimeError("Connect the robot before recalibrating.")
+            self.session.confirmed.clear()
+            self.session.gripper_confirmed = False
+            self.session.verified = False
+            self.session.profile_path = None
             self.reference_deg = [0, 0, 0, 0, 0, 45]
             self._select_joint(0)
             self.stage = 1
@@ -115,6 +135,7 @@ class CalibrationGuide:
         """Restore a trusted profile without treating the current pose as a reference."""
         with self.session.lock:
             self.session.load_profile(path)
+            self.saved_profile = self.session.profile_path
             self._show_save()
 
     def save_profile(self, path: str | Path, period_s: float) -> Path:

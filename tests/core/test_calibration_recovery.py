@@ -158,12 +158,12 @@ def test_partial_attempt_reconnect_requires_explicit_fake_release_before_new_pre
     assert ui.session.phase == "stopped"
     assert ui.session.monitor is None
     assert (destination / "source_profile.json").is_file()
-    assert ui.tick()[-2]["visible"] is True
+    assert ui.tick()[-3]["visible"] is True
     retry = ui.callback("Reconnect and prepare another attempt")
     restored = retry("/dev/FAKE-recovery", str(ui.directory))
     assert restored[0].selected == 1
     assert ui.session.profile_path == ui.saved
-    assert ui.tick()[-1]["visible"] is True
+    assert ui.tick()[-2]["visible"] is True
     release = ui.callback("Release motors and prepare another attempt")
     with pytest.raises(ui.gr.Error, match="Support"):
         release(False, "/dev/FAKE-recovery", str(ui.directory))
@@ -172,7 +172,7 @@ def test_partial_attempt_reconnect_requires_explicit_fake_release_before_new_pre
     assert result[0].selected == 0
     assert ui.releases == [True]
     assert not any(ui.torque.values())
-    assert ui.tick()[-1]["visible"] is False
+    assert ui.tick()[-2]["visible"] is False
     assert str(destination / "00_multisine.npz") in ui.viewport.previous_artifacts
     assert str(destination / "source_profile.json") in ui.viewport.previous_artifacts
     assert ui.callback("Read current pose and check motion")(False, *ui.settings)[1].selected == 1
@@ -194,7 +194,7 @@ def test_torque_free_retry_restores_profile_and_retains_prior_downloads(workflow
     assert ui.session.confirmed == set(range(5))
     assert not ui.session.verified
     assert str(previous) in ui.viewport.previous_artifacts
-    assert ui.tick()[-1]["visible"] is False
+    assert ui.tick()[-2]["visible"] is False
     assert ui.releases == []
 
 
