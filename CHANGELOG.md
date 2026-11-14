@@ -9,11 +9,6 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
-### Changed
-
-- Keep installation and a runnable simulation example in the README alongside
-  links to the full guides.
-
 ## [0.12.0] - 2026-11-14
 
 ### Added
@@ -33,7 +28,8 @@ for the public-API and deprecation policy.
 ### Changed
 
 - Shorten the README and getting-started pages around the record, clone, reinforce
-  workflow. Link to canonical simulation and training recipes instead of repeating them.
+  workflow. Keep installation and a runnable simulation in the README, with links
+  to the full guides. Other entry pages link to canonical recipes.
 
 - Keep calibration profiles, recordings, and fitted results in persistent per-user
   application data using platformdirs, with directory overrides. Discover saved
