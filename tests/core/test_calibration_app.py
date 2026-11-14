@@ -89,7 +89,7 @@ def test_app_initialization_and_refresh_do_not_open_or_write_hardware(monkeypatc
         for component in components
         if component["type"] == "button"
     ]
-    for action in ("hold", "excitation", "stop", "disconnect", "release", "fit"):
+    for action in ("prepare robot", "record calibration", "stop", "disconnect", "release", "tune"):
         assert any(action in value.lower() for value in buttons), action
     for dependency in config["dependencies"]:
         events = {event for _, event in dependency["targets"]}
@@ -266,11 +266,12 @@ def test_motion_events_clear_claims_and_submit_all_visible_settings():
         if len(item["inputs"]) == 16 and any(event == "input" for _, event in item["targets"])
     ]
     assert len(edit_events) == 16
-    assert all(len(item["outputs"]) == 2 for item in edit_events)
+    assert all(not item["outputs"] for item in edit_events)
     start = next(
         identifier
         for identifier, item in components.items()
-        if item["type"] == "button" and item["props"].get("value") == "Start excitation"
+        if item["type"] == "button"
+        and item["props"].get("value") == "Hands clear, record calibration"
     )
     event = next(
         item
@@ -279,11 +280,11 @@ def test_motion_events_clear_claims_and_submit_all_visible_settings():
             identifier == start and trigger == "click" for identifier, trigger in item["targets"]
         )
     )
-    assert len(event["inputs"]) == 17
+    assert len(event["inputs"]) == 16
     labels = {components[identifier]["props"].get("label") for identifier in event["inputs"]}
     assert "Command period (seconds)" in labels
     assert "Trajectory seed" in labels
-    assert "Holding is stable, my hands and workspace are clear" in labels
+    assert "Holding is stable, my hands and workspace are clear" not in labels
 
 
 @pytest.fixture
@@ -663,4 +664,36 @@ def test_saved_profile_opens_completion_without_opening_hardware(profile, monkey
     assert result[9].selected == 3
     assert result[14]["visible"]
     assert "confirmed.json" in result[12]
-    assert result[-1].startswith("# Your robot profile")
+    assert result[22].startswith("# Your robot profile")
+
+
+@pytest.mark.parametrize("improved", [True, False])
+def test_tuning_result_gives_one_clear_profile_outcome(profile, tmp_path, improved):
+    import json
+    from types import SimpleNamespace
+
+    import gradio as gr
+
+    from so101_nexus.calibration.app import _fit_candidate, _Viewport
+
+    destination = tmp_path / "fit"
+
+    def fit(recordings, output, max_iters):
+        assert recordings == str(tmp_path / "recordings")
+        assert max_iters == 10
+        destination.mkdir()
+        (destination / "metrics.json").write_text(json.dumps({"validation_improved": improved}))
+        profile.save(destination / "candidate_profile.json")
+        return [], [], "technical metrics"
+
+    session = SimpleNamespace(
+        fit=fit, recordings_dir=tmp_path / "recordings", profile=profile, status=""
+    )
+    viewport = _Viewport()
+    result = _fit_candidate(
+        gr, session, viewport, str(session.recordings_dir), str(destination), 10
+    )
+    assert ("Simulation tuned" if improved else "Keep your original profile") in result[2]
+    assert viewport.fitted_profile == str(destination / "candidate_profile.json")
+    assert viewport.fitted_dataset == session.recordings_dir
+    assert session.profile is profile

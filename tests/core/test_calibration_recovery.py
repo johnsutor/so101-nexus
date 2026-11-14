@@ -116,7 +116,7 @@ def workflow(tmp_path, monkeypatch):
 
 def test_motion_check_failure_can_retry_using_current_live_model_pose(workflow, monkeypatch):
     ui = workflow
-    check = ui.callback("Read current pose and check motion")
+    check = ui.callback("Preview motion without enabling hold")
     monkeypatch.setattr(
         "so101_nexus.calibration.session.preflight_excitation",
         lambda *args: (_ for _ in ()).throw(ValueError("tool clearance violated")),
@@ -133,7 +133,7 @@ def test_motion_check_failure_can_retry_using_current_live_model_pose(workflow, 
     assert list(result[2:8]) == expected
     assert ui.session.config.center_qpos_deg == tuple(expected)
     assert ui.session.verified
-    assert result[1].selected == 1
+    assert result[1].selected == 0
     assert ui.releases == []
 
 
@@ -141,7 +141,7 @@ def test_partial_attempt_reconnect_requires_explicit_fake_release_before_new_pre
     workflow, monkeypatch
 ):
     ui = workflow
-    checked = ui.callback("Read current pose and check motion")(False, *ui.settings)
+    checked = ui.callback("Preview motion without enabling hold")(False, *ui.settings)
     settings = [*checked[2:8], *ui.settings[6:]]
     destination = ui.directory / "attempt"
 
@@ -152,18 +152,18 @@ def test_partial_attempt_reconnect_requires_explicit_fake_release_before_new_pre
         raise RuntimeError("fake tracking failure after completed episode")
 
     monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", collect)
-    ui.callback("Enable hold")(str(destination), True, *settings)
+    ui.callback("Arm supported, prepare robot")(str(destination), False, *settings)
     ui.session.worker.join(2)
     assert not ui.session.worker.is_alive()
     assert ui.session.phase == "stopped"
     assert ui.session.monitor is None
     assert (destination / "source_profile.json").is_file()
-    assert ui.tick()[-3]["visible"] is True
+    assert ui.tick()[20]["visible"] is True
     retry = ui.callback("Reconnect and prepare another attempt")
     restored = retry("/dev/FAKE-recovery", str(ui.directory))
-    assert restored[0].selected == 1
+    assert restored.selected == 1
     assert ui.session.profile_path == ui.saved
-    assert ui.tick()[-2]["visible"] is True
+    assert ui.tick()[21]["visible"] is True
     release = ui.callback("Release motors and prepare another attempt")
     with pytest.raises(ui.gr.Error, match="Support"):
         release(False, "/dev/FAKE-recovery", str(ui.directory))
@@ -172,10 +172,10 @@ def test_partial_attempt_reconnect_requires_explicit_fake_release_before_new_pre
     assert result[0].selected == 0
     assert ui.releases == [True]
     assert not any(ui.torque.values())
-    assert ui.tick()[-2]["visible"] is False
+    assert ui.tick()[21]["visible"] is False
     assert str(destination / "00_multisine.npz") in ui.viewport.previous_artifacts
     assert str(destination / "source_profile.json") in ui.viewport.previous_artifacts
-    assert ui.callback("Read current pose and check motion")(False, *ui.settings)[1].selected == 1
+    assert ui.callback("Preview motion without enabling hold")(False, *ui.settings)[1].selected == 0
     assert (destination / "00_multisine.npz").read_bytes() == b"completed fake episode"
 
 
@@ -189,12 +189,12 @@ def test_torque_free_retry_restores_profile_and_retains_prior_downloads(workflow
     restored = ui.callback("Reconnect and prepare another attempt")(
         "/dev/FAKE-recovery", str(ui.directory)
     )
-    assert restored[0].selected == 0
+    assert restored.selected == 0
     assert ui.session.profile_path == ui.saved
     assert ui.session.confirmed == set(range(5))
     assert not ui.session.verified
     assert str(previous) in ui.viewport.previous_artifacts
-    assert ui.tick()[-2]["visible"] is False
+    assert ui.tick()[21]["visible"] is False
     assert ui.releases == []
 
 
@@ -210,3 +210,101 @@ def test_busy_collection_rejects_retry_without_closing_reader(workflow):
     assert not monitor.closed
     assert ui.session.profile_path == ui.saved
     assert ui.releases == []
+
+
+def test_one_start_records_training_and_validation_then_opens_tuning(workflow, monkeypatch):
+    import threading
+
+    ui = workflow
+    ready = threading.Event()
+    checks = []
+    monkeypatch.setattr(
+        "so101_nexus.calibration.session.preflight_excitation",
+        lambda trajectories, *args: checks.append(tuple(t.name for t in trajectories)),
+    )
+    wait = ui.session.motion.wait
+    monkeypatch.setattr(ui.session.motion, "wait", lambda timeout: (ready.set(), wait(timeout))[1])
+    destination = ui.directory / "complete_dataset"
+
+    def collect(robot, profile, config, **kwargs):
+        kwargs["on_ready"]()
+        destination.mkdir()
+        for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+            kwargs["on_progress"](name, 10, 10)
+            (destination / f"{index:02d}_{name}.npz").write_bytes(b"fake completed recording")
+        return ()
+
+    monkeypatch.setattr("so101_nexus.calibration.session.collect_excitation", collect)
+    prepared = ui.callback("Arm supported, prepare robot")(str(destination), False, *ui.settings)
+    assert ready.wait(2)
+    assert ui.session.phase == "holding"
+    assert not ui.session.motion.is_set()
+    assert not ui.session.verified
+    assert checks == [("multisine", "joint_chirps", "heldout")]
+    np.testing.assert_allclose(prepared[2:8], ui.session.profile.to_model_deg(ui.positions))
+    actual_settings = [*prepared[2:8], *ui.settings[6:]]
+    ui.callback("Hands clear, record calibration")(*actual_settings)
+    ui.session.worker.join(2)
+    assert not ui.session.worker.is_alive()
+    assert len(list(destination.glob("*.npz"))) == 3
+    assert ui.session.collection_complete
+    updates = ui.tick()
+    assert ui.viewport.tuning_step == 2
+    assert updates[23].selected == 2
+    assert updates[24] == str(destination)
+    assert "3 of 3" in updates[25]
+    assert updates[26]["interactive"]
+
+
+@pytest.mark.parametrize("count,complete", [(1, False), (2, True), (3, False)])
+def test_partial_dataset_never_advances_to_tuning(workflow, count, complete):
+    ui = workflow
+    destination = ui.directory / "partial_dataset"
+    destination.mkdir()
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")[:count]):
+        (destination / f"{index:02d}_{name}.npz").write_bytes(b"partial dataset")
+    ui.session.recordings_dir = destination
+    ui.session.phase = "stopped"
+    ui.session.collection_complete = complete
+    ui.viewport.tuning_step = 1
+    updates = ui.tick()
+    assert ui.viewport.tuning_step == 1
+    assert not updates[26]["interactive"]
+    assert f"{count} of 3" in updates[25]
+
+
+def test_prepare_never_enables_hold_when_motion_check_fails(workflow, monkeypatch):
+    from unittest.mock import Mock
+
+    ui = workflow
+    arm = Mock(side_effect=AssertionError("must not arm"))
+    monkeypatch.setattr(ui.session, "arm", arm)
+    monkeypatch.setattr(
+        "so101_nexus.calibration.session.preflight_excitation",
+        lambda *args: (_ for _ in ()).throw(ValueError("table collision")),
+    )
+    with pytest.raises(ui.gr.Error, match="table collision"):
+        ui.callback("Arm supported, prepare robot")(
+            str(ui.directory / "never_created"), False, *ui.settings
+        )
+    arm.assert_not_called()
+    assert ui.session.monitor is ui.monitors[-1]
+    assert ui.session.phase == "monitoring"
+    assert not ui.session.verified
+
+
+def test_completed_dataset_can_be_tuned_after_disconnect(workflow):
+    ui = workflow
+    directory = ui.directory / "saved_dataset"
+    directory.mkdir()
+    for index, name in enumerate(("multisine", "joint_chirps", "heldout")):
+        (directory / f"{index:02d}_{name}.npz").write_bytes(b"saved recording")
+    ui.session.recordings_dir = directory
+    ui.session.collection_complete = True
+    ui.session.disconnect()
+    assert ui.session.monitor is None
+    updates = ui.tick()
+    assert ui.viewport.tuning
+    assert ui.viewport.tuning_step == 2
+    assert updates[26]["interactive"]
+    assert updates[24] == str(directory)

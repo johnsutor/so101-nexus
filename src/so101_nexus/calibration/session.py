@@ -56,6 +56,8 @@ class CalibrationSession:
         self.artifacts: list[str] = []
         self.torque_possible = False
         self.progress = ""
+        self.collection_complete = False
+        self.collection_progress: tuple[str, int, int] | None = None
         self._pending_bus: Any = None
         self._pending_lease: Any = None
         self._fitting = False
@@ -99,6 +101,8 @@ class CalibrationSession:
             self.recordings_dir = None
             self.artifacts = []
             self.progress = ""
+            self.collection_complete = False
+            self.collection_progress = None
             monitor = (self.monitor_factory or ReadOnlyFollower)(port, Path(calibration_dir))
             self.monitor = monitor
             try:
@@ -378,6 +382,8 @@ class CalibrationSession:
             self.last_seen = time.monotonic()
             self.phase = "arming"
             self.progress = ""
+            self.collection_complete = False
+            self.collection_progress = None
             self.status = (
                 "Enabling hold at the measured center. Keep supporting until Holding appears."
             )
@@ -428,6 +434,7 @@ class CalibrationSession:
 
     def _progress(self, name: str, completed: int, total: int) -> None:
         self.progress = f"{name}: {completed}/{total} samples"
+        self.collection_progress = (name, completed, total)
 
     def _track_observation(self, robot: Any) -> None:
         read = getattr(robot, "get_observation", None)
@@ -451,6 +458,7 @@ class CalibrationSession:
     ) -> None:
         robot = None
         message = "Collection interrupted."
+        complete = False
         try:
             with TemporaryDirectory(prefix="nexus-calibration-") as directory:
                 robot = self._make_robot(profile, Path(directory))
@@ -464,6 +472,7 @@ class CalibrationSession:
                     should_stop=self.should_stop,
                     on_progress=self._progress,
                 )
+            complete = True
             message = f"Collection complete: {destination}."
         except Exception as error:
             message = f"Collection stopped: {error}."
@@ -477,6 +486,7 @@ class CalibrationSession:
                     lease.release()
                 artifacts, snapshot_error = self._recording_artifacts(profile, destination)
                 self.phase = "stopped"
+                self.collection_complete = complete
                 self.verified = False
                 self.measured = None
                 self.status = (
@@ -543,6 +553,7 @@ class CalibrationSession:
             self._close_pending()
             self.phase = "disconnected"
             self.progress = ""
+            self.collection_progress = None
             self.verified = False
             self.status = (
                 "Disconnected. Torque was not changed; support the arm before motor release."

@@ -627,17 +627,23 @@ A matching profile restores the completed alignment without new reference captur
 The **Connection and saved profile** settings also accept a profile from another location.
 LeRobot encoder calibration alone does not establish physical model alignment.
 
-### Preview and preflight
+### Prepare dynamics calibration
 
 After saving the profile, select **Dynamics tuning**.
+The main flow is **Prepare robot**, **Record calibration**, then **Tune simulation**.
 You can stop after saving if you only need aligned joint coordinates.
 
-1. Place the supported arm at a raised center pose with room for motion.
-2. If needed, open **Motion settings and workspace** to change motion or table settings.
-3. Select **Read current pose and check motion**.
+1. Support the arm at a raised pose with room for motion.
+2. Select **Arm supported, prepare robot**.
+3. Keep supporting the arm until it holds steadily.
 
-The app reads the live arm position as the center, previews the commands, and runs simulation preflight.
-The advanced settings also allow a manually specified center.
+Preparation reads the live pose, checks all three motions in simulation, then enables holding torque.
+The robot does not start the recording until the separate hands-clear action.
+The run plan shows all three motions and their total duration before preparation.
+Two recordings tune the simulator. The third is an independent check, recorded in the same sequence.
+No separate held-out collection is needed.
+
+**Motion settings and workspace** contains manual centers, motion settings, and a preview without holding torque.
 
 The preview and collector use the same trajectory configuration.
 A change to the alignment or motion configuration invalidates the previous preflight.
@@ -652,16 +658,16 @@ The default scene contains the robot and a horizontal table.
 Simulation cannot represent unmodeled obstacles or establish hardware safety.
 For a custom workspace model, use `collect_excitation(..., model=workspace_model)` through the library API.
 
-### Collect automatic excitation
+### Record dynamics calibration
 
-1. Support the arm at the verified center pose.
-2. Select the support acknowledgment, then **Enable hold** to enable torque at the current position.
-3. Check that the arm holds its position.
-4. Remove your hands from the arm and its workspace.
-5. Select the hands-clear acknowledgment, then **Start excitation** to begin motion.
+1. Wait until the supported arm holds steadily.
+2. Remove your hands from the arm and its workspace.
+3. Select **Hands clear, record calibration**.
 
-The app shows each acknowledgment at the relevant stage.
-The status above the controls explains the next action and any collection error.
+One start records all three motions automatically, including the independent check.
+The run plan shows the current motion and how many recordings are saved.
+After all three recordings finish, the app opens **Tune simulation** automatically.
+A stopped or incomplete sequence stays in the recording step with recovery instructions.
 
 The driver briefly disables torque during connection. An unsupported arm can fall.
 The app transfers serial ownership from the monitor to one collection worker.
@@ -675,7 +681,7 @@ Neither action releases the motors.
 If browser heartbeats stop for five seconds, the worker cancels collection and preserves torque.
 A stopped or disconnected arm can still hold its previous target.
 
-To release the motors, support the arm first. Then confirm **Release motors** in the app.
+To release the motors, support the arm first. Then select **Release motors** in the app.
 This action disables torque, so an unsupported arm can fall.
 
 After a stopped attempt, select **Reconnect and prepare another attempt**.
@@ -693,7 +699,10 @@ Host write times do not measure motor receipt.
 
 ### Fit and evaluate dynamics
 
-Select **Fit candidate** after collection. The app shows baseline and candidate errors for each joint and episode.
+Select **Tune simulation** after collection.
+The app reports whether the independent check improved and provides the candidate profile for download.
+If the check does not improve consistently, the app recommends the original profile.
+**Detailed results** shows prediction errors and parameter diagnostics.
 The fitter uses training episodes for optimization and separate held-out episodes for evaluation.
 It writes `candidate_profile.json` and `metrics.json`.
 The candidate contains effective simulation dynamics, not hardware register gains.

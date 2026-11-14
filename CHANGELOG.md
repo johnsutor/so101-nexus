@@ -25,6 +25,11 @@ for the public-API and deprecation policy.
 
 ### Changed
 
+- Simplify dynamics tuning to prepare, record, and tune. One start records both
+  training motions and the independent check, with an up-front run plan and live
+  progress. Preparation combines the pose read, motion check, and explicit hold
+  action. Completed datasets advance automatically to a clear tuning result and
+  profile download; technical previews and diagnostics stay under advanced controls.
 - Guide calibration through connection, one physical joint at a time, jaw checks,
   and profile saving before offering dynamics tuning. Default to
   `/dev/ttyACM0` and reveal advanced settings only in the relevant step.

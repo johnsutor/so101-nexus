@@ -85,6 +85,10 @@ class _Viewport:
     tuning: bool = False
     tuning_step: int = 0
     previous_artifacts: list[str] = field(default_factory=list)
+    fitted_dataset: Path | None = None
+    fitted_profile: str | None = None
+    fit_summary: str = ""
+    fit_improved: bool = False
 
     def fit(self) -> None:
         self.bounds = None
@@ -215,25 +219,77 @@ def _prepare_collection(session, path, supported, values):
         return str(destination)
 
 
+_DATASET_RUNS = (
+    ("multisine", "Coordinated motion"),
+    ("joint_chirps", "Individual joint motion"),
+    ("heldout", "Independent check"),
+)
+
+
+def _dataset_complete(session):
+    directory = session.recordings_dir
+    return bool(
+        session.collection_complete
+        and directory is not None
+        and all(
+            (directory / f"{index:02d}_{name}.npz").is_file()
+            for index, (name, _) in enumerate(_DATASET_RUNS)
+        )
+    )
+
+
+def _dataset_summary(session):
+    duration = session.config.duration_s if session.config else 20
+    directory = session.recordings_dir
+    recorded = [
+        directory is not None and (directory / f"{index:02d}_{name}.npz").is_file()
+        for index, (name, _) in enumerate(_DATASET_RUNS)
+    ]
+    if _dataset_complete(session):
+        return (
+            "**Calibration recording complete: 3 of 3 recordings saved.**\n\n"
+            "The independent check is included. No more robot motion is needed to tune simulation."
+        )
+    rows = []
+    for index, (name, title) in enumerate(_DATASET_RUNS):
+        state = "Recorded" if recorded[index] else "Waiting"
+        progress = session.collection_progress
+        if session.phase == "running" and progress and progress[0] == name:
+            state = f"Recording, {100 * progress[1] / max(progress[2], 1):.0f}%"
+        rows.append(f"| {index + 1}. {title} | {state} |")
+    return (
+        f"**One dataset, three automatic motions.** About {3 * duration:g} seconds of motion "
+        f"({duration:g} seconds each). The independent check is recorded now and kept "
+        "separate from tuning. No second collection is needed.\n\n"
+        f"**{sum(recorded)} of 3 recordings saved.**\n\n"
+        "| Motion | Progress |\n| :--- | :--- |\n" + "\n".join(rows)
+    )
+
+
 def _dynamics_readiness(session):
     active_messages = {
-        "arming": "Preparing holding. Keep supporting the arm until Holding appears.",
+        "arming": "Preparing the robot. Keep supporting the arm until it holds steadily.",
         "holding": (
-            "Holding is ready. Remove your hands, confirm they are clear, then start excitation."
+            "The arm is holding. Remove your hands, then record all three motions with one start."
         ),
-        "running": "Recording motion. Stop commands ends this attempt and preserves torque.",
+        "running": (
+            "Recording all three motions automatically. Keep your hands clear until recording ends."
+        ),
+        "fitting": "Tuning simulation from your recordings. The robot will not move.",
     }
     if session.phase in active_messages:
         return active_messages[session.phase]
     if session.monitor is None:
-        return "Live readings are closed. Reconnect to prepare another attempt."
+        return (
+            "All three recordings are ready. Tune simulation next."
+            if _dataset_complete(session)
+            else "Live readings are closed. Reconnect to prepare another attempt."
+        )
     if any(session.monitor.torque.values()):
         return "Motors are holding. Support the arm and release motors before a new attempt."
     if not session.verified:
-        return "Read the current pose and check motion before enabling hold."
-    return (
-        "Motion check passed. Keep the arm at the checked pose, confirm support, and enable hold."
-    )
+        return "Support the arm at a raised pose, then prepare the robot."
+    return "Motion check passed. Keep supporting the arm, then prepare the robot."
 
 
 def _start_motion(gr, session, hands_clear, *values):
@@ -261,12 +317,26 @@ def _start_motion(gr, session, hands_clear, *values):
         _call(gr, session, session.start_motion, hands_clear=hands_clear)
 
 
-def _fit_candidate(gr, session, *values):
+def _fit_candidate(gr, session, viewport, *values):
     recordings, output, max_iters = values
-    result = _call(
-        gr, session, session.fit, recordings, str(_fresh_recording_path(output)), max_iters
+    destination = _fresh_recording_path(output)
+    result = _call(gr, session, session.fit, recordings, str(destination), max_iters)
+    if result is None:
+        return [], [], session.status
+    metrics = json.loads((destination / "metrics.json").read_text())
+    improved = metrics["validation_improved"]
+    summary = (
+        "### Simulation tuned\n\nThe tuned profile predicted the independent check more "
+        "accurately. Download it below and select it for your simulation."
+        if improved
+        else "### Keep your original profile\n\nThe independent check did not show a "
+        "consistent improvement. You can record another dataset, or inspect the detailed results."
     )
-    return result if result is not None else ([], [], session.status)
+    viewport.fitted_dataset = session.recordings_dir
+    viewport.fitted_profile = str(destination / "candidate_profile.json")
+    viewport.fit_summary = summary
+    viewport.fit_improved = improved
+    return *result[:2], summary
 
 
 def _connect_controls(gr, ui):
@@ -376,9 +446,9 @@ def _profile_controls(gr, ui):
 
 def _motion_controls(gr, ui):
     gr.Markdown(
-        "### Preview a small motion\n\nPlace and support the arm at a raised pose with room "
-        "to move. Read that pose as the center, then preview and check all three episodes "
-        "in simulation."
+        "### Prepare your robot\n\nRaise the arm into a comfortable pose with room to move. "
+        "Keep supporting it. We will read this pose, check the planned motions in simulation, "
+        "and turn on holding torque. The robot will stay still until you start recording."
     )
     with gr.Accordion("Motion settings and workspace", open=False):
         ui["manual_center"] = gr.Checkbox(
@@ -396,69 +466,73 @@ def _motion_controls(gr, ui):
         ui["duration"] = gr.Number(20, label="Duration per episode (seconds)")
         ui["table"] = gr.Number(0, label="Table height relative to base (meters)")
         ui["seed"] = gr.Number(0, precision=0, label="Trajectory seed")
-    ui["preview"] = gr.Button("Read current pose and check motion", variant="primary")
-    ui["trajectory_plot"] = gr.Plot(label="Planned joint motion (model deg)")
-    with gr.Accordion("Inspect an episode", open=False):
+        ui["output_dir"] = gr.Textbox(
+            "runs/calibration/recordings", label="New recordings directory"
+        )
+        ui["preview"] = gr.Button("Preview motion without enabling hold")
+        ui["trajectory_plot"] = gr.Plot(label="Planned joint motion (model deg)")
         ui["episode"] = gr.Radio(
             ["multisine", "joint_chirps", "heldout"], value="multisine", label="Preview episode"
         )
         ui["fraction"] = gr.Slider(0, 1, value=0, step=0.01, label="Position within episode")
-    gr.Markdown(
-        "The check includes the robot and a flat table. It cannot see other workspace obstacles."
-    )
+    ui["hold_setup"] = gr.Column()
+    with ui["hold_setup"]:
+        ui["hold"] = gr.Button("Arm supported, prepare robot", variant="primary")
+    gr.Markdown("The simulation checks the robot and table. Keep the real workspace clear.")
 
 
 def _collection_controls(gr, ui):
     gr.Markdown(
-        "### Hold first, then start motion\n\nSupport the arm at the checked center. Enable "
-        "hold, wait for Holding, then remove your hands before starting excitation."
+        "### Record calibration\n\nWait until the arm holds steadily, then remove your hands. "
+        "One start records all three motions automatically, including the independent check. "
+        "You do not need to start each motion or collect another dataset."
     )
-    with gr.Column() as ui["hold_setup"]:
-        ui["support"] = gr.Checkbox(
-            label="Arm supported at the center, torque off, workspace clear"
-        )
-        ui["hold"] = gr.Button("Enable hold", interactive=False)
     with gr.Column(visible=False) as ui["start_setup"]:
-        ui["hands_clear"] = gr.Checkbox(label="Holding is stable, my hands and workspace are clear")
-        ui["start"] = gr.Button("Start excitation", variant="primary", interactive=False)
+        ui["start"] = gr.Button(
+            "Hands clear, record calibration", variant="primary", interactive=False
+        )
+    gr.Markdown(
+        "Stop commands stops motion and keeps the motors holding. "
+        "If you do not start within 60 seconds, preparation ends."
+    )
+
+
+def _recovery_controls(gr, ui):
     ui["retry"] = gr.Button("Reconnect and prepare another attempt", visible=False)
     with gr.Column(visible=False) as ui["release_setup"]:
         ui["tuning_release_supported"] = gr.Checkbox(
             label="I am supporting the arm before turning torque off"
         )
         ui["tuning_release"] = gr.Button("Release motors and prepare another attempt")
-    ui["review"] = gr.Button("Review completed recordings")
-    ui["back_preview_collect"] = gr.Button("Back to motion preview")
-    with gr.Accordion("Recording location", open=False):
-        ui["output_dir"] = gr.Textbox(
-            "runs/calibration/recordings", label="New recordings directory"
-        )
-    gr.Markdown(
-        "Stop ends further commands and preserves torque at the last target. Hold times out"
-        " after 60 seconds without a start action."
-    )
 
 
 def _fit_controls(gr, ui):
     gr.Markdown(
-        "### Review a candidate\n\nFit the recorded motor response and compare baseline and "
-        "candidate errors, including the independent held-out episode. A completed fit does"
-        " not accept the candidate or change hardware."
+        "### Tune your simulation\n\nYour calibration dataset is ready. Use it to tune the "
+        "simulator, then see how closely it matches the independent check recording. "
+        "This step does not move the robot or change its motor settings."
     )
-    ui["fit"] = gr.Button("Fit candidate", variant="primary")
-    ui["back_preview_review"] = gr.Button("Check another motion")
+    ui["fit"] = gr.Button("Tune simulation", variant="primary", interactive=False)
     ui["fit_summary"] = gr.Markdown("")
-    ui["errors"] = gr.Dataframe(
-        headers=["Episode", "Split", "Joint", "Baseline RMSE deg", "Candidate RMSE deg"],
-        interactive=False,
-    )
-    ui["diagnostics"] = gr.Dataframe(
-        headers=["Parameter", "Candidate", "At bound", "Poorly identified", "95% CI half-width"],
-        interactive=False,
-    )
+    ui["tuned_profile"] = gr.File(label="Tuned robot profile", interactive=False, visible=False)
+    with gr.Accordion("Detailed results", open=False):
+        ui["errors"] = gr.Dataframe(
+            headers=["Episode", "Split", "Joint", "Baseline RMSE deg", "Candidate RMSE deg"],
+            interactive=False,
+        )
+        ui["diagnostics"] = gr.Dataframe(
+            headers=[
+                "Parameter",
+                "Candidate",
+                "At bound",
+                "Poorly identified",
+                "95% CI half-width",
+            ],
+            interactive=False,
+        )
     with gr.Accordion("Fit settings and recording paths", open=False):
         ui["fit_recordings"] = gr.Textbox(
-            "runs/calibration/recordings", label="Recordings directory"
+            "runs/calibration/recordings", label="Recorded dataset directory", interactive=False
         )
         ui["fit_output"] = gr.Textbox("runs/calibration/fit", label="New fit output directory")
         ui["max_iters"] = gr.Number(100, precision=0, label="Maximum optimizer iterations")
@@ -479,19 +553,20 @@ def _build_guide(gr, ui, stage):
     with gr.Column(visible=False, min_width=0, elem_id="dynamics-workflow") as ui["dynamics"]:
         ui["tuning_status"] = gr.Markdown("")
         gr.Markdown(
-            "### Dynamics tuning\n\nYour aligned profile is already saved. These "
-            "extra steps identify the robot's motion response."
+            "Your physical alignment is saved. Follow these steps to match the simulator's motion."
         )
+        ui["run_plan"] = gr.Markdown("")
         with gr.Walkthrough(selected=0) as ui["tuning_steps"]:
             for index, (label, builder) in enumerate(
                 (
-                    ("Preview motion", _motion_controls),
-                    ("Collect motion", _collection_controls),
-                    ("Review dynamics", _fit_controls),
+                    ("Prepare robot", _motion_controls),
+                    ("Record calibration", _collection_controls),
+                    ("Tune simulation", _fit_controls),
                 )
             ):
                 with gr.Step(label, id=index, interactive=True):
                     builder(gr, ui)
+        _recovery_controls(gr, ui)
         ui["return_profile"] = gr.Button("Return to your profile")
 
 
@@ -532,7 +607,12 @@ def _build_scene(gr, ui):
         ui["details"] = gr.Markdown("")
 
 
-def _heading(guide):
+def _heading(guide, viewport=None):
+    if viewport is not None and viewport.tuning:
+        return (
+            "# Dynamics tuning\n\nRecord a short calibration and tune simulation "
+            "to match your robot."
+        )
     if guide.stage == 3:
         return "# Your robot profile\n\nUse your saved alignment or recalibrate the robot."
     return (
@@ -565,12 +645,13 @@ def _build_layout(gr, ui, guide):
                     "unsupported arm fall."
                 )
             _connection_settings(gr, ui)
-            ui["files"] = gr.File(
-                label="Your profile and recordings",
-                file_count="multiple",
-                interactive=False,
-                visible=False,
-            )
+            with gr.Accordion("Profile and dataset files", open=False):
+                ui["files"] = gr.File(
+                    label="Your profile and recordings",
+                    file_count="multiple",
+                    interactive=False,
+                    visible=False,
+                )
     ui["aspect"] = gr.Number(1.5, visible=False, label="Robot viewport aspect")
     ui["shown_reference"] = gr.JSON([0, 0], visible=False, label="Displayed reference frame")
     ui["instruction_joint"] = gr.Number(0, precision=0, visible=False, label="Instruction joint")
@@ -636,7 +717,7 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
     with session.lock:
         if session.phase in ("disconnected", "fault"):
             guide.stage = 3 if guide.saved_profile or session.profile_path else 0
-            viewport.tuning = False
+            viewport.tuning = viewport.tuning and _dataset_complete(session)
         target = np.array(guide.reference_deg, dtype=float)
         if viewport.tuning and session.config is not None and session.profile is not None:
             trajectory = next(
@@ -714,13 +795,21 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
             ]
             for index, name in enumerate(SO101_JOINT_NAMES)
         ]
+        ready = _dataset_complete(session)
+        if ready:
+            status = (
+                "Recording complete. Support the arm before releasing the motors."
+                if session.torque_possible
+                else "Recording complete. Motors are off."
+            )
+        if viewport.tuning and ready and not active:
+            viewport.tuning_step = 2
         outputs = (
             status,
-            session.progress,
+            "" if viewport.tuning else session.progress,
             rows,
             gr.update(
-                interactive=session.verified
-                and phase == "monitoring"
+                interactive=phase == "monitoring"
                 and session.monitor is not None
                 and not any(session.monitor.torque.values())
             ),
@@ -752,21 +841,61 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
                 and gripper_confirmed
             ),
             gr.update(
-                visible=guide.stage > 0 and session.monitor is None and not active,
+                visible=guide.stage > 0
+                and session.monitor is None
+                and not active
+                and not viewport.tuning,
                 value="Reconnect saved robot" if session.profile_path else "Connect saved robot",
             ),
             [guide.joint_index, float(target[guide.joint_index])],
             gr.update(interactive=guide.stage == 1 and session.monitor is not None),
-            f"{session.status}\n\n**Next:** {_dynamics_readiness(session)}",
+            (
+                (
+                    "Tuning complete. Download your tuned profile below."
+                    if viewport.fit_improved
+                    else (
+                        "Keep your original profile. Record another dataset or review the results."
+                    )
+                )
+                if viewport.fitted_dataset == session.recordings_dir and viewport.fitted_profile
+                else (
+                    f"{session.status}\n\n{_dynamics_readiness(session)}"
+                    if (phase == "stopped" and not ready)
+                    or session.status.startswith(("Motion check failed", "Could not prepare"))
+                    else _dynamics_readiness(session)
+                )
+            ),
             gr.update(
                 visible=phase == "monitoring"
                 and session.monitor is not None
                 and not any(session.monitor.torque.values())
             ),
             gr.update(visible=phase == "holding"),
-            gr.update(visible=not active and session.monitor is None),
+            gr.update(
+                visible=not active and session.monitor is None and phase != "fitting",
+                value="Record another dataset"
+                if ready
+                else "Reconnect and prepare another attempt",
+            ),
             gr.update(visible=session.monitor is not None and any(session.monitor.torque.values())),
-            _heading(guide),
+            _heading(guide, viewport),
+            gr.Walkthrough(selected=viewport.tuning_step),
+            str(session.recordings_dir) if ready else gr.skip(),
+            _dataset_summary(session),
+            gr.update(
+                interactive=ready and not active and phase != "fitting",
+                visible=viewport.fitted_dataset != session.recordings_dir
+                or viewport.fitted_profile is None,
+            ),
+            gr.update(
+                value=viewport.fitted_profile,
+                label="Tuned robot profile" if viewport.fit_improved else "Candidate for review",
+                visible=viewport.fitted_profile is not None
+                and viewport.fitted_dataset == session.recordings_dir,
+            ),
+            viewport.fit_summary
+            if viewport.fitted_dataset == session.recordings_dir
+            else gr.skip(),
         )
     figure = render_overlay(
         target,
@@ -778,11 +907,15 @@ def _tick(session, guide, viewport, episode, fraction, aspect):
         bounds_m=bounds,
         viewport_aspect=aspect,
     )
-    if measured is None and phase in ("arming", "stopped"):
+    if measured is None and (phase in ("arming", "stopped") or ready):
         text = (
             "Preparing holding. Keep supporting the arm."
             if phase == "arming"
-            else "No live pose after this attempt. Reconnect to read the arm again."
+            else (
+                "Recording complete. Live view is paused."
+                if ready
+                else "No live pose after this attempt. Reconnect to read the arm again."
+            )
         )
         figure.update_annotations(text=text)
     figure.update_layout(uirevision=camera_revision)
@@ -909,12 +1042,12 @@ def _wire_profile(gr, app, ui, session, guide, viewport):
 
     def connect(port, directory):
         perform(guide.connect, port, directory)
-        return _suggest_path(session), False, False, False
+        return _suggest_path(session), False
 
     ui["connect"].click(
         connect,
         [ui["port"], ui["calibration_dir"]],
-        [ui["profile_output"], ui["grip_confirm"], ui["support"], ui["hands_clear"]],
+        [ui["profile_output"], ui["grip_confirm"]],
     ).then(sync, outputs=guide_outputs)
     ui["discover"].click(lambda: gr.update(choices=discover_ports()), outputs=ui["port"])
 
@@ -985,42 +1118,39 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
     def check(manual_center, *values):
         try:
             center = _check_motion_pose(session, values, manual_center=manual_center)
-            settings_values = [*center, *values[6:]]
-            plot = _show_plan(gr, session, *settings_values)
+            plot = _show_plan(gr, session, *center, *values[6:])
         except Exception as error:
             session.verified = False
             session.status = (
                 f"Motion check failed: {error}. Adjust the supported pose and check again."
             )
             raise gr.Error(session.status) from error
-        viewport.tuning_step = 1
-        return plot, gr.Walkthrough(selected=1), *center, False, False
+        return plot, gr.Walkthrough(selected=0), *center
 
-    ui["preview"].click(
-        check,
-        [ui["manual_center"], *settings],
-        [
-            ui["trajectory_plot"],
-            ui["tuning_steps"],
-            *ui["centers"],
-            ui["support"],
-            ui["hands_clear"],
-        ],
-    )
+    check_outputs = [ui["trajectory_plot"], ui["tuning_steps"], *ui["centers"]]
+    ui["preview"].click(check, [ui["manual_center"], *settings], check_outputs)
 
-    def hold(path, supported, *values):
+    def prepare(path, manual_center, *values):
+        checked = check(manual_center, *values)
         try:
-            return _prepare_collection(session, path, supported, values)
+            destination = _prepare_collection(session, path, True, [*checked[2:8], *values[6:]])
         except Exception as error:
-            session.status = f"Could not enable hold: {error}"
+            session.status = f"Could not prepare recording: {error}"
             raise gr.Error(session.status) from error
+        viewport.tuning_step = 1
+        viewport.fitted_dataset = None
+        viewport.fitted_profile = None
+        viewport.fit_summary = ""
+        return checked[0], gr.Walkthrough(selected=1), *checked[2:], destination
 
-    ui["hold"].click(hold, [ui["output_dir"], ui["support"], *settings], ui["output_dir"]).then(
-        lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]]
-    )
+    ui["hold"].click(
+        prepare,
+        [ui["output_dir"], ui["manual_center"], *settings],
+        [*check_outputs, ui["output_dir"]],
+    ).then(lambda: "", outputs=ui["fit_summary"])
     ui["start"].click(
-        partial(_start_motion, gr, session), [ui["hands_clear"], *settings], queue=False
-    ).then(lambda: False, outputs=ui["hands_clear"])
+        lambda *values: _start_motion(gr, session, True, *values), settings, queue=False
+    )
 
     def retry(port, directory):
         perform(session._idle)
@@ -1035,16 +1165,16 @@ def _wire_attempts(gr, ui, session, guide, viewport, perform, settings):
         session.status = (
             "Read-only connection restored. Check the arm's current supported pose again."
         )
-        return gr.Walkthrough(selected=viewport.tuning_step), False, False
+        return gr.Walkthrough(selected=viewport.tuning_step)
 
     retry_inputs = [ui["port"], ui["calibration_dir"]]
-    retry_outputs = [ui["tuning_steps"], ui["support"], ui["hands_clear"]]
+    retry_outputs = [ui["tuning_steps"]]
     ui["retry"].click(retry, retry_inputs, retry_outputs)
 
     def release_and_retry(supported, port, directory):
         perform(session.release, supported=supported)
         result = retry(port, directory)
-        return *result, False
+        return result, False
 
     ui["tuning_release"].click(
         release_and_retry,
@@ -1069,7 +1199,8 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         if session.profile_path is None or guide.stage != 3:
             raise gr.Error("Save your aligned profile first.")
         session.status = (
-            "Position and support the arm in a raised pose. Check its current pose to plan motion."
+            "Support the arm in a raised pose, then prepare the robot. "
+            "Preparation checks all three motions before enabling hold."
         )
         viewport.tuning = True
         viewport.tuning_step = 0
@@ -1085,38 +1216,18 @@ def _wire_tuning(gr, ui, session, guide, viewport, perform):
         return gr.update(visible=False), gr.Walkthrough(visible=True, selected=3)
 
     ui["return_profile"].click(finish, outputs=[ui["dynamics"], ui["walkthrough"]])
-    ui["current"].click(partial(_current_center, gr, session), outputs=ui["centers"]).then(
-        lambda: (False, False), outputs=[ui["support"], ui["hands_clear"]]
-    )
+    ui["current"].click(partial(_current_center, gr, session), outputs=ui["centers"])
 
     def edited(*values):
         _call(gr, session, _plan, session, *values)
-        return False, False
 
     for setting in settings:
-        setting.input(edited, settings, [ui["support"], ui["hands_clear"]], queue=False)
+        setting.input(edited, settings, queue=False)
 
     _wire_attempts(gr, ui, session, guide, viewport, perform, settings)
 
-    def review():
-        perform(session._idle)
-        if session.recordings_dir is None or not list(session.recordings_dir.glob("*.npz")):
-            raise gr.Error("No completed recordings yet. Collect all three episodes first.")
-        viewport.tuning_step = 2
-        return gr.Walkthrough(selected=2), str(session.recordings_dir)
-
-    def back_preview():
-        perform(session._idle)
-        session.verified = False
-        viewport.tuning_step = 0
-        return gr.Walkthrough(selected=0)
-
-    for button in ("back_preview_collect", "back_preview_review"):
-        ui[button].click(back_preview, outputs=ui["tuning_steps"])
-
-    ui["review"].click(review, outputs=[ui["tuning_steps"], ui["fit_recordings"]])
     ui["fit"].click(
-        partial(_fit_candidate, gr, session),
+        partial(_fit_candidate, gr, session, viewport),
         [ui["fit_recordings"], ui["fit_output"], ui["max_iters"]],
         [ui["errors"], ui["diagnostics"], ui["fit_summary"]],
     )
@@ -1177,6 +1288,12 @@ def build_app(session: CalibrationSession | None = None) -> Any:
                 "retry",
                 "release_setup",
                 "heading",
+                "tuning_steps",
+                "fit_recordings",
+                "run_plan",
+                "fit",
+                "tuned_profile",
+                "fit_summary",
             )
         ]
         ui["scene_frame"].change(fn=None, inputs=ui["scene_frame"], js=_UPDATE_VIEW, queue=False)
