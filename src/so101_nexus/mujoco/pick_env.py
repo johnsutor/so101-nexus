@@ -272,7 +272,7 @@ class PickLiftEnv(PickEnv):
         if self._pregrasp_solver is None:
             self._pregrasp_solver = PregraspSolver(self.model)
         targets = self._pregrasp_solver.solve(
-            self.data.qpos, self._slots[self._target_slot_idx], self.np_random.random((8, 4))
+            self.data.qpos, self._slots[self._target_slot_idx], self.np_random.random((8, 5))
         )
         if targets is not None:
             self._reset_robot_joints(targets)

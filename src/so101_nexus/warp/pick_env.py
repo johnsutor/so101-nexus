@@ -273,7 +273,7 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         if not idx.numel():
             return
         # Copy only resetting worlds to the shared MuJoCo pose solver.
-        draws = self._rng.rand("robot", idx, 8, 4).cpu().numpy()
+        draws = self._rng.rand("robot", idx, 8, 5).cpu().numpy()
         scenes = self.qpos[idx].cpu().numpy()
         world_ids = idx.tolist()
         targets = []

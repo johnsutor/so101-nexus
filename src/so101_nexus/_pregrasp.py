@@ -17,11 +17,13 @@ class PregraspSolver:
         self.site = model.site(SO101_TCP_SITE_NAME).id
         joints = [model.joint(name).id for name in SO101_JOINT_NAMES]
         actuators = [model.actuator(name).id for name in SO101_JOINT_NAMES]
+        self.base_body = model.jnt_bodyid[joints[0]]
+        self.wrist_flex = model.joint("wrist_flex").id
         self.qpos = model.jnt_qposadr[joints]
         self.dofs = model.jnt_dofadr[joints[:-1]]
         self.low = np.maximum(model.jnt_range[joints, 0], model.actuator_ctrlrange[actuators, 0])
         self.high = np.minimum(model.jnt_range[joints, 1], model.actuator_ctrlrange[actuators, 1])
-        robot_root = model.body_rootid[model.jnt_bodyid[joints[0]]]
+        robot_root = model.body_rootid[self.base_body]
         self.robot_geom = model.body_rootid[model.geom_bodyid] == robot_root
 
     def solve(
@@ -44,14 +46,20 @@ class PregraspSolver:
         jacr = np.zeros_like(jacp)
         quat = np.zeros(4)
         desired_quat = np.zeros(4)
-        for x, y, z, yaw in draws:
+        for x, y, z, roll, pitch in draws:
             goal = np.array(
                 [*(target_xy + (np.array([x, y]) - 0.5) * 0.02), top + 0.025 + z * 0.02]
             )
-            base = model.jnt_bodyid[model.joint(SO101_JOINT_NAMES[0]).id]
-            delta = goal[:2] - data.xpos[base, :2]
+            delta = goal[:2] - data.xpos[self.base_body, :2]
             q = np.clip(
-                [-np.arctan2(delta[1], delta[0]), -1, 1, np.pi / 2, np.deg2rad(20 * yaw - 10), 1.3],
+                [
+                    -np.arctan2(delta[1], delta[0]),
+                    -1,
+                    1,
+                    np.pi / 2,
+                    np.deg2rad(20 * roll - 10),
+                    1.3,
+                ],
                 self.low,
                 self.high,
             )
@@ -61,7 +69,11 @@ class PregraspSolver:
                 mujoco.mj_comPos(model, data)
                 mujoco.mju_mat2Quat(quat, data.site_xmat[self.site])
                 if iteration == 0:
-                    desired_quat[:] = quat
+                    # Tilt around the wrist-flex axis, a reachable pointing error for this arm.
+                    tilt = np.empty(4)
+                    wrist_axis = data.xaxis[self.wrist_flex]
+                    mujoco.mju_axisAngle2Quat(tilt, wrist_axis, np.deg2rad(20 * pitch - 10))
+                    mujoco.mju_mulQuat(desired_quat, tilt, quat)
                 error = np.linalg.norm(data.site_xpos[self.site] - goal)
                 if error < 0.003 and data.site_xmat[self.site, 8] < -0.65:
                     mujoco.mj_forward(model, data)
@@ -75,7 +87,8 @@ class PregraspSolver:
                     quat,
                     goal,
                     desired_quat,
-                    orientation_weight=0.012,
+                    # Relax orientation when joint limits prevent the requested pitch.
+                    orientation_weight=0.035 if iteration < 15 else 0.012,
                     damping=0.02,
                 )
                 q[:-1] = np.clip(q[:-1] + dq, self.low[:-1], self.high[:-1])

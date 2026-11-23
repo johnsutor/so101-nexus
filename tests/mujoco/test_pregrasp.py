@@ -40,3 +40,20 @@ def test_unreachable_pregrasp_preserves_normal_reset(env_factory):
     pregrasp.reset(seed=3)
     np.testing.assert_array_equal(pregrasp.data.ctrl, default.data.ctrl)
     np.testing.assert_array_equal(pregrasp.data.qpos, default.data.qpos)
+
+
+def test_approach_tilt_changes_tool_direction_at_fixed_target(env_factory):
+    env = env_factory(task="PickLift", config=PickConfig(pregrasp_reset_probability=1)).unwrapped
+    env.reset(seed=7)
+    solver = env._pregrasp_solver
+    scene = env.data.qpos.copy()
+    axes = []
+    positions = []
+    for pitch in (0.0, 1.0):
+        draw = np.array([[0.5, 0.5, 0.5, 0.5, pitch]])
+        joints = solver.solve(scene, env._slots[env._target_slot_idx], draw)
+        assert joints is not None
+        axes.append(solver.data.site_xmat[solver.site].reshape(3, 3)[:, 2].copy())
+        positions.append(solver.data.site_xpos[solver.site].copy())
+    assert np.dot(*axes) < np.cos(np.deg2rad(8))
+    assert np.linalg.norm(positions[0] - positions[1]) < 0.006
