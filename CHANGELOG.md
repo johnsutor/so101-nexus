@@ -9,9 +9,11 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-22
+
 ### Added
 
-- PickLift and PickReturn can start the open gripper near the selected object for grasp and lift training.
+- PickLift and PickReturn can start the open gripper near the selected object for grasp and lift training. Set the fraction of episodes that use this geometry with `--pregrasp-reset-probability` in `examples/ppo_warp.py`.
 
 ## [0.12.0] - 2026-11-14
 
@@ -1060,7 +1062,8 @@ for the public-API and deprecation policy.
 
 - Initial release: SO-101 MuJoCo simulation with cameras, GitHub Actions CI, and the core project structure.
 
-[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.12.0...HEAD
+[Unreleased]: https://github.com/johnsutor/so101-nexus/compare/0.12.1...HEAD
+[0.12.1]: https://github.com/johnsutor/so101-nexus/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/johnsutor/so101-nexus/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/johnsutor/so101-nexus/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/johnsutor/so101-nexus/compare/0.9.1...0.10.0
