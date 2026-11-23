@@ -55,7 +55,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from so101_nexus import privileged_state_feature_names
+from so101_nexus import PickConfig, privileged_state_feature_names
 from so101_nexus._reproducibility import seed_everything
 from so101_nexus._run_metadata import training_metadata
 
@@ -77,6 +77,8 @@ class Args:
 
     env_id: str = "WarpPickLift-v1"
     """any registered ``Warp*-v1`` id; the recipe is tuned for ``WarpPickLift-v1``"""
+    pregrasp_reset_probability: float = 0.0
+    """fraction of PickLift training resets requesting a near-object start"""
     num_envs: int = 1024
     """number of GPU-parallel Warp worlds"""
     episode_length: int = 512
@@ -187,6 +189,7 @@ _save = _training._save
 def train(  # noqa: PLR0915, PLR0912, C901
     *,
     env_id="WarpPickLift-v1",
+    pregrasp_reset_probability=0.0,
     num_envs=1024,
     num_steps=16,
     total_timesteps=30_000_000,
@@ -256,11 +259,17 @@ def train(  # noqa: PLR0915, PLR0912, C901
     policy_rng = torch.Generator(device=dev).manual_seed(seed + 1)
     stagger_rng = torch.Generator(device=dev).manual_seed(seed + 2)
 
+    config = None
+    if pregrasp_reset_probability:
+        if env_id != "WarpPickLift-v1":
+            raise ValueError("pregrasp_reset_probability requires WarpPickLift-v1")
+        config = PickConfig(pregrasp_reset_probability=pregrasp_reset_probability)
     envs = _make_envs(
         env_id,
         num_envs,
         dev,
         seed,
+        config=config,
         control_mode=control_mode,
         episode_length=episode_length,
         terminate_on_success=terminate_on_success,
@@ -497,6 +506,7 @@ def main():
 
     stats = train(
         env_id=args.env_id,
+        pregrasp_reset_probability=args.pregrasp_reset_probability,
         num_envs=args.num_envs,
         num_steps=args.num_steps,
         total_timesteps=args.total_timesteps,

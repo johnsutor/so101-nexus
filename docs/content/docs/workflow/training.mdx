@@ -36,6 +36,14 @@ uv run --extra warp python examples/eval_warp.py \
 `examples/ppo_warp.py` can also render periodic transfer videos in the matching `MuJoCo*`
 environment with `--capture-video`.
 
+For grasp practice from synthetic approach poses, train PickLift with the pre-grasp reset enabled:
+
+```bash
+uv run --extra warp --extra train python examples/ppo_warp.py --pregrasp-reset-probability 1.0
+```
+
+Periodic MuJoCo transfer evaluation uses ordinary resets. See [PickConfig](/docs/api/configs#pickconfig) for mixed starts.
+
 ## Recommended commands
 
 `WarpTouch-v1`, `WarpLookAt-v1`, and `WarpMove-v1` need nothing beyond a step budget:
