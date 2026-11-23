@@ -615,6 +615,19 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `lift_threshold` | `float` | `0.05` | Height above the table to count as lifted (meters) |
 | `max_goal_height` | `float` | `0.08` | Maximum target lift height (meters) |
 | `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+| `pregrasp_reset_probability` | `float` | `0.0` | Probability of requesting an open-gripper start near the selected target in PickLift or PickReturn |
+
+Use `PickConfig(pregrasp_reset_probability=1.0)` to practice pickup from imperfect approaches. A value such as `0.5` mixes those starts with ordinary resets when training one policy to approach and lift.
+
+The sampler aims the tool downward, with the gripper open. It samples independent
+horizontal offsets within 10 mm of the target origin on each axis and a clearance
+of 25 to 45 mm above the target collision bounds. It independently perturbs the
+wrist roll and desired approach pitch by up to 10 degrees each. Inverse kinematics
+prioritizes reaching the sampled position when the orientation is constrained. These ranges model small approach errors
+without recorded demonstrations. If all eight candidates are unreachable or in
+contact with any part of the arm, including contact with a distractor, the world keeps its ordinary reset pose. An explicit `init_qpos`
+reset option takes precedence. Warp uses the same CPU pose solver for each
+selected world, so near-object starts add reset time.
 
 Each reset samples an integer uniformly from `min_distractors` through
 `max_distractors`, including both endpoints, using the environment's seeded RNG.
@@ -632,6 +645,8 @@ When `observations` is not specified: `[JointPositions(), JointVelocities(), End
 ---
 
 ## PickReturnConfig
+
+Use `PickReturnConfig(pregrasp_reset_probability=1.0)` for the same [near-object starts](#pickconfig) while keeping the configured rest pose as the return goal.
 
 Extends `PickConfig` for the [pick-and-return task](/docs/environments#success-conditions).
 

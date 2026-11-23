@@ -1030,13 +1030,13 @@ class SO101NexusMuJoCoBaseEnv(gymnasium.Env, _PotentialState[float]):
         )
 
         self._prev_action = None
-        applied_qpos = self._reset_robot_joints(init_qpos=init_qpos)
+        self._reset_robot_joints(init_qpos=init_qpos)
         self._task_reset()
         if self._reset_options.get("target_index") is not None and not self._target_index_consumed:
             raise ValueError(f"{type(self).__name__} has no object pool to target")
         self._randomize_wrist_camera()
 
-        self._prev_target = applied_qpos.copy()
+        self._prev_target = self.data.ctrl[self._actuator_ids].copy()
         mujoco.mj_forward(self.model, self.data)
         self._settle_after_reset()
         self._refresh_reset_reference_state()

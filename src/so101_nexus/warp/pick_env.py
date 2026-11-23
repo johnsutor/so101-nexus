@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 import numpy as np
 import torch
 
+from so101_nexus._pregrasp import PregraspSolver
 from so101_nexus.config import ControlMode, PickConfig, describe_pick_target
 from so101_nexus.constants import sample_color
 from so101_nexus.object_slots import (
@@ -162,6 +163,12 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         )
         self._mjm = mjm
 
+        self._pregrasp_solver = (
+            PregraspSolver(mjm)
+            if isinstance(config, PickConfig) and config.pregrasp_reset_probability
+            else None
+        )
+        self._slots = slots
         self._slot_objs = scene_objects
         self._init_slot_tensors(slots, mjm.ngeom, config.spawn_max_radius, config.spawn_center)
 
@@ -254,6 +261,36 @@ class WarpPickLiftVectorEnv(SO101NexusWarpVectorEnv, _ObjectSlotRuntime):
         for world, slot in zip(idx.tolist(), target.tolist(), strict=True):
             self._target_slot_host[world] = slot
             self.task_descriptions[world] = self._describe_target(self._slot_objs[slot])
+
+    def _write_reset_state(self, mask: torch.Tensor, init_qpos: torch.Tensor | None = None) -> None:
+        super()._write_reset_state(mask, init_qpos=init_qpos)
+        if self._pregrasp_solver is None or init_qpos is not None:
+            return
+        idx = mask.nonzero(as_tuple=True)[0]
+        probability = self.config.pregrasp_reset_probability
+        if idx.numel() and probability < 1:
+            idx = idx[self._rng.rand("robot", idx) < probability]
+        if not idx.numel():
+            return
+        # Copy only resetting worlds to the shared MuJoCo pose solver.
+        draws = self._rng.rand("robot", idx, 8, 5).cpu().numpy()
+        scenes = self.qpos[idx].cpu().numpy()
+        world_ids = idx.tolist()
+        targets = []
+        valid_worlds = []
+        for world, scene, draw in zip(world_ids, scenes, draws, strict=True):
+            slot = self._slots[self._target_slot_host[world]]
+            solution = self._pregrasp_solver.solve(scene, slot, draw)
+            if solution is not None:
+                targets.append(solution)
+                valid_worlds.append(world)
+        if not valid_worlds:
+            return
+        idx = torch.as_tensor(valid_worlds, device=self.device)
+        target = torch.as_tensor(np.stack(targets), dtype=self.qpos.dtype, device=self.device)
+        self.qpos[idx[:, None], self._qpos_adr] = target
+        self.ctrl[idx[:, None], self._act_ids] = target
+        self._prev_target[idx] = target
 
     def _task_reset(self, mask: torch.Tensor) -> None:
         for idx, count in self._distractor_reset_groups(

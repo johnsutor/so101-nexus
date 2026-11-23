@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 import mujoco
 import numpy as np
 
+from so101_nexus._pregrasp import PregraspSolver
 from so101_nexus.config import (
     ControlMode,
     PickConfig,
@@ -203,6 +204,22 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             chosen[0] = target
         return chosen, target
 
+    _pregrasp_solver: PregraspSolver | None = None
+
+    def _reset_pregrasp(self) -> None:
+        probability = self.config.pregrasp_reset_probability
+        if not probability or self._reset_options.get("init_qpos") is not None:
+            return
+        if self.np_random.random() >= probability:
+            return
+        if self._pregrasp_solver is None:
+            self._pregrasp_solver = PregraspSolver(self.model)
+        targets = self._pregrasp_solver.solve(
+            self.data.qpos, self._slots[self._target_slot_idx], self.np_random.random((8, 5))
+        )
+        if targets is not None:
+            self._reset_robot_joints(targets)
+
     def _task_reset(self) -> None:
         rng = self.np_random
         min_r = self.config.spawn_min_radius
@@ -250,6 +267,7 @@ class PickEnv(SO101NexusMuJoCoBaseEnv):
             hide_freejoint_slot(self.model, self.data, self._slots[pool_idx])
 
         self._task_description = self._describe_target(target_obj)
+        self._reset_pregrasp()
 
 
 class PickLiftEnv(PickEnv):

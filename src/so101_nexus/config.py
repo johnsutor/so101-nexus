@@ -1230,6 +1230,8 @@ class PickConfig(EnvironmentConfig):
         Height cap used to normalize lift progress to [0, 1].
     min_object_separation : float
         Minimum distance between spawned objects (metres).
+    pregrasp_reset_probability : float
+        Probability of sampling a target-relative starting pose for PickLift or PickReturn.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -1242,11 +1244,19 @@ class PickConfig(EnvironmentConfig):
         max_goal_height: float = 0.08,
         min_object_separation: float = 0.04,
         *,
+        pregrasp_reset_probability: float = 0.0,
         min_distractors: int | None = None,
         max_distractors: int | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        if not 0 <= pregrasp_reset_probability <= 1:
+            raise ValueError("pregrasp_reset_probability must be in [0, 1]")
+        if pregrasp_reset_probability and isinstance(self, TouchConfig):
+            raise ValueError(
+                "pregrasp_reset_probability is only supported for PickLift and PickReturn"
+            )
+        self.pregrasp_reset_probability = pregrasp_reset_probability
         if not isinstance(self, PickReturnConfig):
             _warn_inert_velocity_scale(self.reward, type(self).__name__)
         self.objects = _normalize_objects(objects, CubeObject())

@@ -594,3 +594,17 @@ def test_training_recipes_preserve_rollout_rng_and_episode_statistics(monkeypatc
         torch.testing.assert_close(first[2]["model"][key], second[2]["model"][key], rtol=0, atol=0)
     for key in ("obs_mean", "obs_var"):
         torch.testing.assert_close(first[2][key], second[2][key], rtol=0, atol=0)
+
+
+def test_picklift_pregrasp_training_config(monkeypatch):
+    from examples import ppo_warp
+
+    def inspect_config(*args, config, **kwargs):
+        assert config.pregrasp_reset_probability == 0.75
+        raise StopIteration
+
+    monkeypatch.setattr(ppo_warp, "_make_envs", inspect_config)
+    with pytest.raises(StopIteration):
+        ppo_warp.train(device="cpu", pregrasp_reset_probability=0.75)
+    with pytest.raises(ValueError, match="WarpPickLift"):
+        ppo_warp.train(env_id="WarpTouch-v1", device="cpu", pregrasp_reset_probability=1.0)

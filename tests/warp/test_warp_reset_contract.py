@@ -148,3 +148,81 @@ def test_masked_reset_clears_only_selected_world_integration_state():
     for value in views.values():
         assert torch.count_nonzero(value[0]) == 0
         torch.testing.assert_close(value[1], torch.full_like(value[1], 3.0))
+
+
+def test_pick_pregrasp_reset_targets_selected_object_and_preserves_other_world(env_factory):
+    import torch
+
+    from so101_nexus import CubeObject, PickConfig
+
+    config = PickConfig(
+        objects=[CubeObject(), CubeObject()],
+        pregrasp_reset_probability=1,
+        reset_settle_frames=0,
+    )
+    env = env_factory("warp", task="PickLift", config=config).unwrapped
+    options = {"target_index": [0, 1]}
+    env.reset(seed=42, options=options)
+    pose = env._joint_qpos().clone()
+    offset = env._tcp_pos() - env._target_pos()
+    assert torch.all(torch.linalg.vector_norm(offset[:, :2], dim=1) < 0.025)
+    assert torch.all((offset[:, 2] > 0) & (offset[:, 2] < 0.10))
+    assert torch.all(env._is_grasping() == 0)
+    torch.testing.assert_close(pose, env._prev_target)
+    assert not torch.allclose(offset[0], offset[1])
+    env.reset(seed=42, options=options)
+    torch.testing.assert_close(env._joint_qpos(), pose)
+    env._rng.begin(torch.tensor([0]), advance=True)
+    other = env.qpos[1].clone()
+    env._write_reset_state(torch.tensor([True, False]))
+    torch.testing.assert_close(env.qpos[1], other)
+    assert not torch.allclose(env._joint_qpos()[0], pose[0])
+
+
+def test_pick_pregrasp_reset_honors_explicit_joint_pose(env_factory):
+    import torch
+
+    from so101_nexus import PickConfig
+
+    env = env_factory(
+        "warp",
+        task="PickLift",
+        config=PickConfig(pregrasp_reset_probability=1, reset_settle_frames=0),
+    ).unwrapped
+    env.reset(seed=1, options={"init_qpos": [0.0] * 6})
+    torch.testing.assert_close(env._joint_qpos(), torch.zeros_like(env._joint_qpos()))
+
+
+def test_pick_pregrasp_probability_mixes_starts_within_batch(env_factory):
+    import torch
+
+    from so101_nexus import PickConfig, RobotConfig
+
+    config = PickConfig(
+        robot=RobotConfig(rest_qpos_deg=(0.0,) * 6),
+        pregrasp_reset_probability=0.5,
+        reset_settle_frames=0,
+        robot_init_qpos_noise=0,
+    )
+    env = env_factory("warp", task="PickLift", config=config, num_envs=12).unwrapped
+    env.reset(seed=4)
+    ordinary = torch.isclose(env._joint_qpos(), env._rest_qpos).all(dim=1)
+    assert 0 < ordinary.sum() < env.num_envs
+
+
+def test_pick_pregrasp_unreachable_target_preserves_ordinary_start(env_factory):
+    import torch
+
+    from so101_nexus import PickConfig, RobotConfig
+
+    config = PickConfig(
+        robot=RobotConfig(rest_qpos_deg=(0.0,) * 6),
+        pregrasp_reset_probability=1,
+        spawn_center=(0.0, 2.0),
+        reset_settle_frames=0,
+        robot_init_qpos_noise=0,
+    )
+    env = env_factory("warp", task="PickLift", config=config).unwrapped
+    env.reset(seed=1)
+    torch.testing.assert_close(env._joint_qpos(), env._rest_qpos.expand(env.num_envs, -1))
+    torch.testing.assert_close(env._prev_target, env._joint_qpos())

@@ -9,6 +9,10 @@ for the public-API and deprecation policy.
 
 ## [Unreleased]
 
+### Added
+
+- PickLift and PickReturn can start the open gripper near the selected object for grasp and lift training.
+
 ## [0.12.0] - 2026-11-14
 
 ### Added
