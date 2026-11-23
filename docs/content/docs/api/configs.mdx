@@ -615,6 +615,18 @@ These are in addition to all `EnvironmentConfig` parameters.
 | `lift_threshold` | `float` | `0.05` | Height above the table to count as lifted (meters) |
 | `max_goal_height` | `float` | `0.08` | Maximum target lift height (meters) |
 | `min_object_separation` | `float` | `0.04` | Minimum distance between spawned objects (meters) |
+| `pregrasp_reset_probability` | `float` | `0.0` | Probability of requesting an open-gripper start near the selected target in PickLift |
+
+Use `PickConfig(pregrasp_reset_probability=1.0)` to practice pickup from imperfect approaches. A value such as `0.5` mixes those starts with ordinary resets when training one policy to approach and lift.
+
+The sampler aims the tool downward, with the gripper open. It samples independent
+horizontal offsets within 10 mm of the target origin on each axis, a clearance of
+25 to 45 mm above the target collision bounds, and up to 10 degrees of wrist-roll
+variation in the IK starting pose. These ranges model small approach errors
+without recorded demonstrations. If all eight candidates are unreachable or in
+contact, the world keeps its ordinary reset pose. An explicit `init_qpos`
+reset option takes precedence. Warp uses the same CPU pose solver for each
+selected world, so near-object starts add reset time.
 
 Each reset samples an integer uniformly from `min_distractors` through
 `max_distractors`, including both endpoints, using the environment's seeded RNG.

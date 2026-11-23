@@ -663,6 +663,15 @@ class TestEnergyPenalty:
 
 
 class TestPickConfig:
+    @pytest.mark.parametrize("probability", [-0.01, 1.01, float("nan")])
+    def test_invalid_pregrasp_probability(self, probability):
+        with pytest.raises(ValueError, match="pregrasp_reset_probability"):
+            PickConfig(pregrasp_reset_probability=probability)
+
+    def test_pregrasp_is_picklift_only(self):
+        with pytest.raises(ValueError, match="PickLift"):
+            TouchConfig(pregrasp_reset_probability=1.0)
+
     def test_default_single_cube(self):
         cfg = PickConfig()
         assert len(cfg.objects) == 1

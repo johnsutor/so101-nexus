@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 import mujoco
 import numpy as np
 
+from so101_nexus._pregrasp import PregraspSolver
 from so101_nexus.config import (
     ControlMode,
     PickConfig,
@@ -258,6 +259,23 @@ class PickLiftEnv(PickEnv):
     Extends ``PickEnv`` with a lift reward and ``success`` flag in the info
     dict. Uses ``config.lift_threshold`` as the minimum height.
     """
+
+    _pregrasp_solver: PregraspSolver | None = None
+
+    def _task_reset(self) -> None:
+        super()._task_reset()
+        probability = self.config.pregrasp_reset_probability
+        if not probability or self._reset_options.get("init_qpos") is not None:
+            return
+        if self.np_random.random() >= probability:
+            return
+        if self._pregrasp_solver is None:
+            self._pregrasp_solver = PregraspSolver(self.model)
+        targets = self._pregrasp_solver.solve(
+            self.data.qpos, self._slots[self._target_slot_idx], self.np_random.random((8, 4))
+        )
+        if targets is not None:
+            self._reset_robot_joints(targets)
 
     def _get_info(self) -> dict:
         info = super()._get_info()
