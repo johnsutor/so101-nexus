@@ -1231,7 +1231,7 @@ class PickConfig(EnvironmentConfig):
     min_object_separation : float
         Minimum distance between spawned objects (metres).
     pregrasp_reset_probability : float
-        Probability of sampling a target-relative starting pose for PickLift.
+        Probability of sampling a target-relative starting pose for PickLift or PickReturn.
     **kwargs
         Forwarded to EnvironmentConfig.
     """
@@ -1252,8 +1252,10 @@ class PickConfig(EnvironmentConfig):
         super().__init__(**kwargs)
         if not 0 <= pregrasp_reset_probability <= 1:
             raise ValueError("pregrasp_reset_probability must be in [0, 1]")
-        if pregrasp_reset_probability and isinstance(self, (TouchConfig, PickReturnConfig)):
-            raise ValueError("pregrasp_reset_probability is only supported for PickLift")
+        if pregrasp_reset_probability and isinstance(self, TouchConfig):
+            raise ValueError(
+                "pregrasp_reset_probability is only supported for PickLift and PickReturn"
+            )
         self.pregrasp_reset_probability = pregrasp_reset_probability
         if not isinstance(self, PickReturnConfig):
             _warn_inert_velocity_scale(self.reward, type(self).__name__)

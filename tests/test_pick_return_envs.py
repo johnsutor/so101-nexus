@@ -336,3 +336,16 @@ def test_all_control_modes(backend, env_factory, control_mode):
     obs, reward, _, _, _ = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
     assert np.isfinite(as_numpy(obs)).all()
     assert np.isfinite(as_numpy(reward)).all()
+
+
+def test_pregrasp_start_preserves_return_goal(backend, env_factory):
+    from so101_nexus import ObjectOffset
+
+    config = PickReturnConfig(pregrasp_reset_probability=1)
+    env = env_factory(backend=backend, task="PickReturn", config=config)
+    obs, _ = env.reset(seed=3)
+    obs = as_numpy(obs)
+    rest = obs[..., component_slice(config.observations, RestingJointPositions)]
+    np.testing.assert_allclose(rest, np.broadcast_to(config.robot.rest_qpos_deg[:5], rest.shape))
+    offset = obs[..., component_slice(config.observations, ObjectOffset)]
+    assert np.all(np.linalg.norm(offset, axis=-1) < 0.09)

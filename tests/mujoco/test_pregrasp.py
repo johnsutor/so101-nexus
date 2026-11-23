@@ -57,3 +57,26 @@ def test_approach_tilt_changes_tool_direction_at_fixed_target(env_factory):
         positions.append(solver.data.site_xpos[solver.site].copy())
     assert np.dot(*axes) < np.cos(np.deg2rad(8))
     assert np.linalg.norm(positions[0] - positions[1]) < 0.006
+
+
+def test_distractor_at_candidate_arm_or_jaw_blocks_pregrasp(env_factory):
+    from so101_nexus import CubeObject
+
+    config = PickConfig(
+        objects=[CubeObject(), CubeObject()], n_distractors=1, pregrasp_reset_probability=1
+    )
+    env = env_factory(task="PickLift", config=config).unwrapped
+    env.reset(seed=7, options={"target_index": 0})
+    solver = env._pregrasp_solver
+    scene = env.data.qpos.copy()
+    target, distractor = env._slots
+    draw = np.full((1, 5), 0.5)
+    assert solver.solve(scene, target, draw) is not None
+    jaw = env.model.geom("fixed_jaw_box4").id
+    lower_arm = env.model.body("lower_arm").id
+    forearm = np.flatnonzero((env.model.geom_bodyid == lower_arm) & (env.model.geom_contype != 0))[
+        0
+    ]
+    for obstacle_pos in solver.data.geom_xpos[[jaw, forearm]]:
+        scene[distractor.qpos_addr : distractor.qpos_addr + 3] = obstacle_pos
+        assert solver.solve(scene, target, draw) is None

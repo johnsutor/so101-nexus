@@ -668,7 +668,7 @@ class TestPickConfig:
         with pytest.raises(ValueError, match="pregrasp_reset_probability"):
             PickConfig(pregrasp_reset_probability=probability)
 
-    def test_pregrasp_is_picklift_only(self):
+    def test_touch_rejects_pregrasp(self):
         with pytest.raises(ValueError, match="PickLift"):
             TouchConfig(pregrasp_reset_probability=1.0)
 
